@@ -419,3 +419,60 @@ describe('a courier is not an owner', () => {
   it('can still read the orders it will have to carry', () =>
     assertSucceeds(getDoc(doc(merchantCourier(), 'orders/waiting'))));
 });
+
+describe('daily meals', () => {
+  const kitchen = () =>
+    env
+      .authenticatedContext('cook1', { merchantId: 'm1', role: 'owner', scope: 'merchant' })
+      .firestore();
+
+  beforeEach(() =>
+    seed(async (db) => {
+      await setDoc(doc(db, 'dailyMeals/d1'), {
+        merchantId: 'm1',
+        cityId: 'edku',
+        name: 'محشي',
+        price: 9000,
+        date: '2026-08-23',
+        totalQty: 20,
+        remainingQty: 8,
+        status: 'published',
+      });
+    }),
+  );
+
+  it('anyone can read what is on offer', () =>
+    assertSucceeds(getDoc(doc(anonymous(), 'dailyMeals/d1'))));
+
+  it('the kitchen can rename its own meal', () =>
+    assertSucceeds(updateDoc(doc(kitchen(), 'dailyMeals/d1'), { name: 'ورق عنب' })));
+
+  it('the kitchen can take it down early', () =>
+    assertSucceeds(updateDoc(doc(kitchen(), 'dailyMeals/d1'), { status: 'closed' })));
+
+  // The one thing this collection exists to get right: two people tapping the last
+  // portion at the same moment. A kitchen that can write the count can sell it twice.
+  it('the kitchen cannot write what is left', () =>
+    assertFails(updateDoc(doc(kitchen(), 'dailyMeals/d1'), { remainingQty: 99 })));
+
+  // Raising it alone would only skew the meter — they cannot raise what is left to match.
+  it('the kitchen cannot raise the total either', () =>
+    assertFails(updateDoc(doc(kitchen(), 'dailyMeals/d1'), { totalQty: 99 })));
+
+  it('another kitchen cannot touch it at all', () =>
+    assertFails(
+      updateDoc(
+        doc(
+          env
+            .authenticatedContext('cook2', {
+              merchantId: 'm2',
+              role: 'owner',
+              scope: 'merchant',
+            })
+            .firestore(),
+          'dailyMeals/d1',
+        ),
+        { name: 'حاجة تانية' },
+      ),
+    ));
+});

@@ -12,9 +12,11 @@ import '../models/geography.dart';
 import '../models/home_section.dart';
 import '../models/menu_item.dart';
 import '../models/merchant.dart';
+import '../models/daily_meal.dart';
 import '../models/order.dart';
 import '../repositories/address_repository.dart';
 import '../repositories/courier_order_repository.dart';
+import '../repositories/daily_meal_repository.dart';
 import '../repositories/feedback_repository.dart';
 import '../repositories/geography_repository.dart';
 import '../repositories/home_section_repository.dart';
@@ -158,6 +160,37 @@ Stream<List<Order>> merchantDeliveries(Ref ref, String merchantId) =>
 @riverpod
 Stream<List<Order>> platformDeliveries(Ref ref, String cityId) =>
     ref.watch(courierOrderRepositoryProvider).watchForPlatform(cityId);
+
+@Riverpod(keepAlive: true)
+DailyMealRepository dailyMealRepository(Ref ref) =>
+    FirestoreDailyMealRepository(ref.watch(firestoreProvider));
+
+/// What time it is.
+///
+/// A seam rather than `DateTime.now()` scattered through widgets. Home kitchens are the
+/// reason: whether a meal can still be reserved depends on the day *and* the collection
+/// window, so a test that cannot move the clock can only be written by waiting for a
+/// Tuesday afternoon. It also keeps every screen agreeing on the same instant, which a
+/// dozen separate `now()` calls do not.
+@Riverpod(keepAlive: true)
+DateTime Function() clock(Ref ref) => DateTime.now;
+
+/// The day the app is showing, derived from [clock].
+@riverpod
+String today(Ref ref) => DailyMeal.dayKeyOf(ref.watch(clockProvider)());
+
+/// Today's home-cooked meals in this city. Live.
+@riverpod
+Stream<List<DailyMeal>> todaysMeals(Ref ref) =>
+    ref.watch(dailyMealRepositoryProvider).watchToday(
+          cityId: ref.watch(currentCityProvider),
+          day: ref.watch(todayProvider),
+        );
+
+/// One kitchen's own meals, drafts included. Live.
+@riverpod
+Stream<List<DailyMeal>> merchantMeals(Ref ref, String merchantId) =>
+    ref.watch(dailyMealRepositoryProvider).watchForMerchant(merchantId);
 
 @Riverpod(keepAlive: true)
 FeedbackRepository feedbackRepository(Ref ref) =>

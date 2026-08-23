@@ -128,8 +128,13 @@ service cloud.firestore {
       // remainingQty moves only through a Cloud Function, so a customer cannot reserve
       // a portion by writing the number down themselves.
       allow create, delete: if isAdmin() || isMerchantOwner(request.resource.data.merchantId);
+      // Neither quantity moves from a client. `remainingQty` is the server's, decremented
+      // in a transaction; and letting a kitchen raise `totalQty` alone would only skew
+      // the meter, since they cannot raise what is left to match it.
       allow update: if isAdmin() || (
-        isMerchantOwner(resource.data.merchantId) && !('remainingQty' in changed())
+        isMerchantOwner(resource.data.merchantId) &&
+        !('remainingQty' in changed()) &&
+        !('totalQty' in changed())
       );
     }
 

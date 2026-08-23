@@ -18,15 +18,28 @@ import '../result.dart';
 class OrderDraft {
   const OrderDraft({
     required this.merchantId,
-    required this.addressId,
     required this.items,
     required this.type,
+    this.addressId,
+    this.dailyMealId,
     this.couponCode,
     this.note,
   });
 
   final String merchantId;
-  final String addressId;
+
+  /// Null for a pre-order the customer is collecting themselves — there is nowhere to
+  /// deliver it to, and demanding an address for a meal somebody is walking to would be
+  /// a step invented for the sake of a required field.
+  final String? addressId;
+
+  /// Which meal's counter to decrement, for a pre-order.
+  ///
+  /// The server does the decrement in a transaction. Two people tapping the last portion
+  /// at the same moment is the one thing the whole `dailyMeals` collection exists to get
+  /// right, and no client can do it correctly.
+  final String? dailyMealId;
+
   final List<OrderLine> items;
   final OrderType type;
   final String? couponCode;
@@ -34,7 +47,8 @@ class OrderDraft {
 
   Map<String, dynamic> toJson() => {
         'merchantId': merchantId,
-        'addressId': addressId,
+        if (addressId != null) 'addressId': addressId,
+        if (dailyMealId != null) 'dailyMealId': dailyMealId,
         'items': items.map((i) => i.toJson()).toList(),
         'type': type.name,
         if (couponCode != null) 'couponCode': couponCode,
