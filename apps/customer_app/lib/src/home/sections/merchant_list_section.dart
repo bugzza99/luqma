@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:luqma_core/luqma_core.dart';
 
+import '../../merchant/open_merchant.dart';
 import 'section_header.dart';
 
 /// A list of merchants, ordered by whatever the section asked for.
@@ -74,6 +75,9 @@ class MerchantListSection extends ConsumerWidget {
 class MerchantRow extends ConsumerWidget {
   const MerchantRow({super.key, required this.merchant, this.onTap});
 
+  /// Overrides where the row goes. Left null it opens the merchant, which is what every
+  /// list on the home wants.
+
   final Merchant merchant;
   final VoidCallback? onTap;
 
@@ -89,7 +93,7 @@ class MerchantRow extends ConsumerWidget {
       // wondering where their usual place went, and it still tells them when it reopens.
       opacity: open ? 1 : 0.6,
       child: InkWell(
-        onTap: onTap,
+        onTap: onTap ?? () => openMerchant(context, merchant.id),
         borderRadius: Radii.cardAll,
         child: Container(
           padding: const EdgeInsets.all(Space.sm + 2),

@@ -4,6 +4,8 @@
 /// logo lockup. Models, repositories and `RemoteConfigService` land in Phase 1.
 library;
 
+export 'src/app/emulator.dart';
+export 'src/app/firebase_options.dart';
 export 'src/auth/auth_service.dart';
 export 'src/config/luqma_config.dart';
 export 'src/config/remote_config_service.dart';

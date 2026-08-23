@@ -4,6 +4,7 @@ import 'package:luqma_core/luqma_core.dart';
 
 import '../cart/cart.dart';
 import '../cart/cart_controller.dart';
+import '../cart/open_cart.dart';
 import 'item_sheet.dart';
 
 /// One merchant: who they are, what they cook, and what is in the basket so far.
@@ -110,8 +111,13 @@ class _Loaded extends ConsumerWidget {
           ],
         ],
       ),
-      bottomNavigationBar:
-          cart.isNotEmpty ? _CartBar(cart: cart, strings: strings) : null,
+      bottomNavigationBar: cart.isNotEmpty
+          ? _CartBar(
+              cart: cart,
+              strings: strings,
+              onOpenCart: () => openCart(context),
+            )
+          : null,
     );
   }
 
@@ -377,10 +383,15 @@ class _ItemRow extends StatelessWidget {
 }
 
 class _CartBar extends StatelessWidget {
-  const _CartBar({required this.cart, required this.strings});
+  const _CartBar({
+    required this.cart,
+    required this.strings,
+    required this.onOpenCart,
+  });
 
   final Cart cart;
   final LuqmaStrings strings;
+  final VoidCallback onOpenCart;
 
   @override
   Widget build(BuildContext context) {
@@ -391,7 +402,7 @@ class _CartBar extends StatelessWidget {
       child: Padding(
         padding: const EdgeInsets.all(Space.md),
         child: FilledButton(
-          onPressed: () {},
+          onPressed: onOpenCart,
           style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(50)),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,

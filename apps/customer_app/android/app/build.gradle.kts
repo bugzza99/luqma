@@ -5,7 +5,7 @@ plugins {
 }
 
 android {
-    namespace = "com.luqma.customer_app"
+    namespace = "com.luqma.customer"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
@@ -15,8 +15,10 @@ android {
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "com.luqma.customer_app"
+        // Registered in Firebase and permanent once published: an application id
+        // cannot be changed on an app already in the Play Store, and it is half of
+        // what an OAuth client is keyed on (the other half is the signing key's SHA-1).
+        applicationId = "com.luqma.customer"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion
