@@ -1,4 +1,5 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
+// `Order` here would be Firestore's index-definition enum, not ours.
+import 'package:cloud_firestore/cloud_firestore.dart' hide Order;
 import 'package:firebase_remote_config/firebase_remote_config.dart';
 import 'package:flutter/foundation.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
@@ -10,6 +11,7 @@ import '../models/geography.dart';
 import '../models/home_section.dart';
 import '../models/menu_item.dart';
 import '../models/merchant.dart';
+import '../models/order.dart';
 import '../repositories/address_repository.dart';
 import '../repositories/geography_repository.dart';
 import '../repositories/home_section_repository.dart';
@@ -212,6 +214,23 @@ class AddressActions extends _$AddressActions {
     ref.invalidate(chosenAddressProvider);
   }
 }
+
+/// One customer's orders, newest first. Live.
+///
+/// Takes the uid rather than reaching for the session itself. A generator that awaits
+/// the identity and then delegates with `yield*` swallows the delegate's error into a
+/// loading state, and the screen above spins forever instead of saying "no connection".
+/// The caller already knows who is signed in — it has to, to decide between this and the
+/// signed-out view.
+@riverpod
+Stream<List<Order>> ordersFor(Ref ref, String uid) =>
+    ref.watch(orderRepositoryProvider).watchMyOrders(uid);
+
+/// One order, live. This is the tracking screen's whole data source: the merchant
+/// accepting, the courier setting off, and delivery all arrive as document changes.
+@riverpod
+Stream<Order> order(Ref ref, String orderId) =>
+    ref.watch(orderRepositoryProvider).watchOrder(orderId);
 
 // ------------------------------------------------------------------ config
 
