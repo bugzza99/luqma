@@ -14,6 +14,7 @@ class LuqmaIdentity {
     this.email,
     this.phone,
     this.photoUrl,
+    this.claims = const {},
   });
 
   final String uid;
@@ -21,6 +22,13 @@ class LuqmaIdentity {
   final String? email;
   final String? phone;
   final String? photoUrl;
+
+  /// The custom claims on the ID token.
+  ///
+  /// Empty for a customer, and the whole of what a staff account is allowed to be —
+  /// see [StaffIdentity]. Carried here rather than fetched where it is needed, so
+  /// there is one place the session comes from and one place tests replace.
+  final Map<String, Object?> claims;
 }
 
 /// Three states, not two.
@@ -57,6 +65,13 @@ abstract interface class AuthService {
   /// sheet is the app apologising for their decision.
   Future<Result<LuqmaIdentity?>> signInWithGoogle();
 
+  /// Signs in a staff account. Merchants and couriers get an email and a password from
+  /// the owner; there is no self-service sign-up for either.
+  Future<Result<LuqmaIdentity>> signInWithPassword({
+    required String email,
+    required String password,
+  });
+
   Future<void> signOut();
 }
 
@@ -64,8 +79,11 @@ abstract interface class AuthService {
 /// of the app — and every security rule — actually trusts.
 class FirebaseAuthService implements AuthService {
   FirebaseAuthService(this._auth, {required this.googleCredential}) {
-    _subscription = _auth.authStateChanges().listen((user) {
-      _identity = user == null ? null : _toIdentity(user);
+    // Token changes, not just sign-in and sign-out: a claim granted while the app is
+    // open arrives on the next refresh, and a merchant whose account was set up a minute
+    // ago should get in then rather than at the next cold start.
+    _subscription = _auth.idTokenChanges().listen((user) async {
+      _identity = user == null ? null : await _toIdentity(user);
       _state = user == null ? AuthState.signedOut : AuthState.signedIn;
       _controller.add(_identity);
       if (!_resolved.isCompleted) _resolved.complete();
@@ -120,7 +138,21 @@ class FirebaseAuthService implements AuthService {
 
       final result = await _auth.signInWithCredential(credential);
       final user = result.user;
-      return user == null ? null : _toIdentity(user);
+      return user == null ? null : await _toIdentity(user);
+    });
+  }
+
+  @override
+  Future<Result<LuqmaIdentity>> signInWithPassword({
+    required String email,
+    required String password,
+  }) {
+    return Result.guard(() async {
+      final result = await _auth.signInWithEmailAndPassword(
+        email: email.trim(),
+        password: password,
+      );
+      return _toIdentity(result.user!);
     });
   }
 
@@ -132,13 +164,20 @@ class FirebaseAuthService implements AuthService {
     _controller.close();
   }
 
-  static LuqmaIdentity _toIdentity(User user) => LuqmaIdentity(
-        uid: user.uid,
-        name: user.displayName,
-        email: user.email,
-        phone: user.phoneNumber,
-        photoUrl: user.photoURL,
-      );
+  static Future<LuqmaIdentity> _toIdentity(User user) async {
+    // Never forced: a forced refresh on every token change is a network round trip on
+    // every launch, and the claims in the cached token are the ones the rules will see
+    // for this request anyway.
+    final token = await user.getIdTokenResult();
+    return LuqmaIdentity(
+      uid: user.uid,
+      name: user.displayName,
+      email: user.email,
+      phone: user.phoneNumber,
+      photoUrl: user.photoURL,
+      claims: token.claims ?? const {},
+    );
+  }
 }
 
 /// An in-memory session, for tests and for running the app with no Firebase project.
@@ -211,6 +250,23 @@ class FakeAuthService implements AuthService {
     _state = AuthState.signedIn;
     _controller.add(_identity);
     return Result.ok(_identity);
+  }
+
+  @override
+  Future<Result<LuqmaIdentity>> signInWithPassword({
+    required String email,
+    required String password,
+  }) async {
+    if (failure != null) {
+      _state = AuthState.signedOut;
+      return Result.err(failure!);
+    }
+
+    _identity = _restoring ??
+        LuqmaIdentity(uid: 'fake-uid', email: email, name: 'حساب تجريبي');
+    _state = AuthState.signedIn;
+    _controller.add(_identity);
+    return Result.ok(_identity!);
   }
 
   @override

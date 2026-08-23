@@ -7,6 +7,7 @@ library;
 export 'src/app/emulator.dart';
 export 'src/app/firebase_options.dart';
 export 'src/auth/auth_service.dart';
+export 'src/auth/staff_identity.dart';
 export 'src/config/luqma_config.dart';
 export 'src/config/remote_config_service.dart';
 export 'src/l10n/app_localizations.dart';

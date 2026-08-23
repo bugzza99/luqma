@@ -1,7 +1,6 @@
 import 'package:luqma_core/luqma_core.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
-import '../auth/identity_provider.dart';
 
 part 'media_controller.g.dart';
 
@@ -22,7 +21,7 @@ Stream<List<Media>> pendingMedia(Ref ref) =>
 @Riverpod(keepAlive: true)
 class MediaActions extends _$MediaActions {
   @override
-  String? build() => ref.watch(adminIdentityProvider).value?.uid;
+  String? build() => ref.watch(currentIdentityProvider).value?.uid;
 
   Future<void> approve(String id) async {
     await ref.read(mediaRepositoryProvider).setStatus(

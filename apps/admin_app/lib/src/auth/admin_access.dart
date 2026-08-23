@@ -1,4 +1,4 @@
-import 'package:flutter/foundation.dart';
+import 'package:luqma_core/luqma_core.dart';
 
 /// The routes AdminApp knows about.
 ///
@@ -19,22 +19,6 @@ abstract final class Routes {
   static const staff = '/staff';
 }
 
-/// Who is holding the phone, as far as the token says.
-@immutable
-class AdminIdentity {
-  const AdminIdentity({required this.uid, required this.isAdmin, this.email});
-
-  final String uid;
-
-  /// From the `admin` custom claim on the ID token.
-  ///
-  /// A claim, not a Firestore field: a field is something a client can try to write, and
-  /// the security rules would then be trusting a value the client supplied.
-  final bool isAdmin;
-
-  final String? email;
-}
-
 enum AdminAccess {
   /// The session has not resolved yet. Distinct from [signedOut] on purpose.
   unknown,
@@ -44,9 +28,12 @@ enum AdminAccess {
   notAuthorised,
   granted;
 
-  static AdminAccess from(AdminIdentity? identity) {
-    if (identity == null) return AdminAccess.signedOut;
-    return identity.isAdmin ? AdminAccess.granted : AdminAccess.notAuthorised;
+  /// A merchant owner or a courier lands on [notAuthorised], not [signedOut]: they are
+  /// signed in, with a real account, just not this one — and being told "sign in" when
+  /// you already have is the most confusing thing a gate can say.
+  static AdminAccess from(StaffIdentity staff) {
+    if (!staff.isSignedIn) return AdminAccess.signedOut;
+    return staff.isAdmin ? AdminAccess.granted : AdminAccess.notAuthorised;
   }
 }
 

@@ -30,8 +30,10 @@ void main() {
       ProviderScope(
         overrides: [
           mediaRepositoryProvider.overrideWithValue(repository),
-          adminIdentityProvider.overrideWith(
-            (ref) => Stream.value(const AdminIdentity(uid: 'admin1', isAdmin: true)),
+          currentIdentityProvider.overrideWith(
+            (ref) => Stream.value(
+              const LuqmaIdentity(uid: 'admin1', claims: {'admin': true}),
+            ),
           ),
         ],
         child: MaterialApp(

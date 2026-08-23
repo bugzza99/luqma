@@ -1,5 +1,6 @@
 import 'package:admin_app/src/auth/admin_access.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:luqma_core/luqma_core.dart';
 
 /// Who is allowed into AdminApp, and where each answer sends them.
 ///
@@ -10,12 +11,12 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   group('reading the identity', () {
     test('nobody signed in', () {
-      expect(AdminAccess.from(null), AdminAccess.signedOut);
+      expect(AdminAccess.from(StaffIdentity.none), AdminAccess.signedOut);
     });
 
     test('signed in with the claim', () {
       expect(
-        AdminAccess.from(const AdminIdentity(uid: 'u1', isAdmin: true)),
+        AdminAccess.from(const StaffIdentity(uid: 'u1', isAdmin: true)),
         AdminAccess.granted,
       );
     });
@@ -24,7 +25,23 @@ void main() {
     // and signs in gets this, and the rules would refuse them anyway.
     test('signed in without the claim', () {
       expect(
-        AdminAccess.from(const AdminIdentity(uid: 'u1', isAdmin: false)),
+        AdminAccess.from(const StaffIdentity(uid: 'u1')),
+        AdminAccess.notAuthorised,
+      );
+    });
+
+    // Signed in, real account, wrong app. Telling them to sign in when they already
+    // have is the most confusing thing this gate could say.
+    test('a merchant owner is turned away, not asked to sign in', () {
+      expect(
+        AdminAccess.from(
+          const StaffIdentity(
+            uid: 'u1',
+            role: StaffRole.owner,
+            scope: StaffScope.merchant,
+            merchantId: 'm1',
+          ),
+        ),
         AdminAccess.notAuthorised,
       );
     });
