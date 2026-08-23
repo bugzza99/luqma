@@ -9,6 +9,7 @@ resources — edit the scripts and re-run them, or the next build silently rever
 python brand/src/build_logo.py      # SVG masters
 python brand/src/export_png.py      # PNG masters for the store and for print
 python brand/src/build_android.py   # Android res/ tree, then copy into each app
+python brand/src/build_alarm.py     # the new-order alarm, for MerchantApp
 ```
 
 `build_logo.py` must run first: the other two import it for the flattened mark path.
@@ -47,6 +48,7 @@ placement where the letter and the bite both survive at 32px.
 | `app_icon_foreground.svg` | Adaptive icon foreground on the 108dp grid. |
 | `png/` | Raster masters. `app_icon_512.png` is the Play Store icon. |
 | `android/res/` | Drop into each app's `android/app/src/main/res/`. |
+| `audio/new_order.wav` | The new-order alarm. Goes in MerchantApp's `res/raw/`. Loops seamlessly, so the notification channel can repeat it until the order is opened. The reasoning behind every number in it is at the top of `src/build_alarm.py` — it is a kitchen sound, not a pleasant one. |
 
 The Android tree carries the adaptive icon, the Android 13 themed (monochrome) icon, the
 API 31+ system splash, the pre-31 launch window, and legacy mipmaps for API < 26.
