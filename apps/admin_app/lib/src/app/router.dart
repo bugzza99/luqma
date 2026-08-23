@@ -6,6 +6,7 @@ import '../auth/admin_access.dart';
 import '../auth/gate_screens.dart';
 import '../auth/identity_provider.dart';
 import '../dashboard/dashboard_screen.dart';
+import '../merchants/merchants_screen.dart';
 import '../places/places_screen.dart';
 import '../shell/layout.dart';
 
@@ -46,7 +47,7 @@ GoRouter router(Ref ref) {
         ),
         routes: [
           GoRoute(path: Routes.dashboard, builder: (_, _) => const DashboardScreen()),
-          GoRoute(path: Routes.merchants, builder: (_, _) => const _Placeholder('المطاعم')),
+          GoRoute(path: Routes.merchants, builder: (_, _) => const MerchantsScreen()),
           GoRoute(path: Routes.zones, builder: (_, _) => const PlacesScreen()),
           GoRoute(path: Routes.media, builder: (_, _) => const _Placeholder('الصور')),
         ],
