@@ -200,12 +200,15 @@ class FakeOrderRepository implements OrderRepository {
   final Map<String, Order> _orders;
   final Failure? failure;
 
-  /// Every issue and rating filed, so a test can assert on what a screen produced.
+  /// Every draft, issue and rating this repository was handed, so a test can assert on
+  /// what a screen produced rather than on what it displayed.
+  final List<OrderDraft> drafts = [];
   final List<Map<String, dynamic>> issues = [];
   final List<Map<String, dynamic>> ratings = [];
 
   @override
   Future<Result<Order>> placeOrder(OrderDraft draft) async {
+    drafts.add(draft);
     if (failure != null) return Result.err(failure!);
 
     final id = 'order-${_orders.length + 1}';
