@@ -1,0 +1,21 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "admin",
+      "runtimeExecutable": "flutter",
+      "runtimeArgs": [
+        "run",
+        "-d",
+        "web-server",
+        "--web-port",
+        "5051",
+        "--web-hostname",
+        "127.0.0.1",
+        "--dart-define=USE_EMULATOR=true"
+      ],
+      "port": 5051,
+      "cwd": "apps/admin_app"
+    }
+  ]
+}
