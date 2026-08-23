@@ -28,6 +28,7 @@ export 'src/repositories/geography_repository.dart';
 export 'src/repositories/home_section_repository.dart';
 export 'src/repositories/media_repository.dart';
 export 'src/repositories/menu_repository.dart';
+export 'src/repositories/merchant_order_repository.dart';
 export 'src/repositories/order_repository.dart';
 export 'src/repositories/merchant_repository.dart';
 export 'src/result.dart';

@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 import '../auth/auth_service.dart';
+import '../auth/staff_identity.dart';
 import '../config/luqma_config.dart';
 import '../config/remote_config_service.dart';
 import '../models/geography.dart';
@@ -17,6 +18,7 @@ import '../repositories/geography_repository.dart';
 import '../repositories/home_section_repository.dart';
 import '../repositories/media_repository.dart';
 import '../repositories/menu_repository.dart';
+import '../repositories/merchant_order_repository.dart';
 import '../repositories/merchant_repository.dart';
 import '../repositories/order_repository.dart';
 import '../result.dart';
@@ -128,6 +130,36 @@ Stream<LuqmaIdentity?> currentIdentity(Ref ref) async* {
   yield auth.identity;
   yield* auth.changes;
 }
+
+/// What the signed-in staff account is allowed to be.
+///
+/// Collapses "still resolving" into "nobody", so it is for screens *behind* a gate that
+/// has already made that distinction — never for the gate itself, which has to tell the
+/// two apart or it flashes a sign-in screen at somebody already signed in.
+@Riverpod(keepAlive: true)
+StaffIdentity staffIdentity(Ref ref) => switch (ref.watch(currentIdentityProvider)) {
+      AsyncData(:final value) => StaffIdentity.from(value),
+      _ => StaffIdentity.none,
+    };
+
+@Riverpod(keepAlive: true)
+MerchantOrderRepository merchantOrderRepository(Ref ref) =>
+    FirestoreMerchantOrderRepository(ref.watch(firestoreProvider));
+
+/// Orders waiting for this kitchen to answer. Live, oldest first.
+@riverpod
+Stream<List<Order>> incomingOrders(Ref ref, String merchantId) =>
+    ref.watch(merchantOrderRepositoryProvider).watchIncoming(merchantId);
+
+/// Accepted, cooking, or on the road. Live.
+@riverpod
+Stream<List<Order>> liveOrders(Ref ref, String merchantId) =>
+    ref.watch(merchantOrderRepositoryProvider).watchLive(merchantId);
+
+/// One order, from the kitchen's side.
+@riverpod
+Stream<Order> merchantOrder(Ref ref, String orderId) =>
+    ref.watch(merchantOrderRepositoryProvider).watchOrder(orderId);
 
 @Riverpod(keepAlive: true)
 AddressRepository addressRepository(Ref ref) =>
