@@ -1,0 +1,114 @@
+import 'package:flutter_test/flutter_test.dart';
+import 'package:luqma_core/luqma_core.dart';
+
+/// The control plane is the one place where a typo made in AdminApp reaches every phone
+/// at once. So the contract is narrow on purpose: a value is used only if it is present,
+/// the right type, and inside a range the app can actually operate in. Anything else
+/// falls back to the value compiled into the binary.
+void main() {
+  LuqmaConfig configFrom(Map<String, Object> values) =>
+      LuqmaConfig.from(MapConfigSource(values));
+
+  group('cold start', () {
+    test('an empty source yields the compiled-in defaults', () {
+      final config = configFrom({});
+      expect(config.acceptTimeoutMinutes, 5);
+      expect(config.marketingPushPerWeek, 3);
+      expect(config.rejectionBanThreshold, 3);
+      expect(config.minRatingsToShow, 10);
+    });
+
+    test('the flags that were decided to ship off are off by default', () {
+      final config = configFrom({});
+      expect(config.otpEnabled, isFalse);
+      expect(config.admobEnabled, isFalse);
+      expect(config.publicCommentsEnabled, isFalse);
+      expect(config.onlinePaymentEnabled, isFalse);
+    });
+  });
+
+  group('remote values', () {
+    test('a present value replaces its default', () {
+      final config = configFrom({'accept_timeout_minutes': 8});
+      expect(config.acceptTimeoutMinutes, 8);
+    });
+
+    test('a flag can be switched on remotely', () {
+      final config = configFrom({'otp_enabled': true});
+      expect(config.otpEnabled, isTrue);
+    });
+  });
+
+  group('bad values never reach the app', () {
+    test('a value of the wrong type is ignored', () {
+      final config = configFrom({'accept_timeout_minutes': 'خمسة'});
+      expect(config.acceptTimeoutMinutes, 5);
+    });
+
+    // Zero would move every order to needsAttention the instant it was placed, and
+    // there would be no way to undo it from the phone that caused it.
+    test('an accept timeout of zero is rejected, not obeyed', () {
+      final config = configFrom({'accept_timeout_minutes': 0});
+      expect(config.acceptTimeoutMinutes, 5);
+    });
+
+    test('an absurdly long accept timeout is rejected', () {
+      final config = configFrom({'accept_timeout_minutes': 600});
+      expect(config.acceptTimeoutMinutes, 5);
+    });
+
+    test('a negative push cap is rejected', () {
+      final config = configFrom({'marketing_push_per_week': -1});
+      expect(config.marketingPushPerWeek, 3);
+    });
+
+    test('a rejection threshold below one is rejected', () {
+      // Zero would auto-block every customer on their first refused delivery.
+      final config = configFrom({'rejection_ban_threshold': 0});
+      expect(config.rejectionBanThreshold, 3);
+    });
+
+    test('a delivery fee range with max below min is ignored entirely', () {
+      final config = configFrom({'delivery_fee_min': 3000, 'delivery_fee_max': 500});
+      expect(config.deliveryFeeMin, LuqmaConfig.defaults.deliveryFeeMin);
+      expect(config.deliveryFeeMax, LuqmaConfig.defaults.deliveryFeeMax);
+    });
+
+    test('one bad key does not discard the good keys beside it', () {
+      final config = configFrom({
+        'accept_timeout_minutes': 0,
+        'marketing_push_per_week': 5,
+      });
+      expect(config.acceptTimeoutMinutes, 5, reason: 'rejected');
+      expect(config.marketingPushPerWeek, 5, reason: 'accepted');
+    });
+  });
+
+  group('force update', () {
+    test('no minimum version means no update is required', () {
+      final config = configFrom({});
+      expect(config.requiresUpdate('1.0.0'), isFalse);
+    });
+
+    test('an older build is asked to update', () {
+      final config = configFrom({'min_supported_version': '1.4.0'});
+      expect(config.requiresUpdate('1.3.9'), isTrue);
+    });
+
+    test('the exact minimum build is not asked to update', () {
+      final config = configFrom({'min_supported_version': '1.4.0'});
+      expect(config.requiresUpdate('1.4.0'), isFalse);
+    });
+
+    test('a newer build is not asked to update', () {
+      final config = configFrom({'min_supported_version': '1.4.0'});
+      expect(config.requiresUpdate('1.10.0'), isFalse,
+          reason: '1.10 is above 1.4 — comparing as text would get this backwards');
+    });
+
+    test('an unparseable minimum version blocks nobody', () {
+      final config = configFrom({'min_supported_version': 'الإصدار الأخير'});
+      expect(config.requiresUpdate('1.0.0'), isFalse);
+    });
+  });
+}

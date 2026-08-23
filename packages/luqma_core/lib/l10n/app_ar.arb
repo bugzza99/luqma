@@ -1,0 +1,195 @@
+{
+  "@@locale": "ar",
+
+  "orderCount": "{count, plural, =0{لا توجد طلبات} =1{طلب واحد} =2{طلبان} few{{count} طلبات} many{{count} طلبًا} other{{count} طلب}}",
+  "@orderCount": {
+    "description": "A count of orders. Arabic has six plural categories; a single '{count} طلبات' form would be wrong for five of them.",
+    "placeholders": { "count": { "type": "int" } }
+  },
+
+  "portionsLeft": "{count, plural, =0{خلصت} =1{فاضل طبق واحد} =2{فاضل طبقان} few{فاضل {count} أطباق} many{فاضل {count} طبقًا} other{فاضل {count} طبق}}",
+  "@portionsLeft": {
+    "description": "Remaining portions of a home-cooked meal. Zero is 'sold out' rather than 'zero left'.",
+    "placeholders": { "count": { "type": "int" } }
+  },
+
+  "minutes": "{count, plural, =1{دقيقة} =2{دقيقتان} few{{count} دقائق} many{{count} دقيقة} other{{count} دقيقة}}",
+  "@minutes": {
+    "description": "A duration in minutes, used for preparation time and the accept countdown.",
+    "placeholders": { "count": { "type": "int" } }
+  },
+
+  "addressZone": "المنطقة",
+  "@addressZone": {},
+
+  "addressZoneRequired": "اختر المنطقة",
+  "@addressZoneRequired": {},
+
+  "addressLandmark": "أقرب علامة مميزة",
+  "@addressLandmark": {},
+
+  "addressOtherLandmark": "علامة تانية",
+  "@addressOtherLandmark": {},
+
+  "addressLandmarkHint": "اكتب أقرب علامة مميزة",
+  "@addressLandmarkHint": {},
+
+  "addressDetail": "تفاصيل العنوان",
+  "@addressDetail": {},
+
+  "addressStreet": "الشارع",
+  "@addressStreet": {},
+
+  "addressBuilding": "عمارة",
+  "@addressBuilding": {},
+
+  "addressFloor": "الدور",
+  "@addressFloor": {},
+
+  "addressApartment": "شقة",
+  "@addressApartment": {},
+
+  "addressDeliveryFee": "التوصيل للمنطقة دي:",
+  "@addressDeliveryFee": {},
+
+  "addressSave": "احفظ العنوان",
+  "@addressSave": {},
+
+  "menuNoCategories": "مفيش أقسام في المنيو لسه",
+  "@menuNoCategories": {},
+
+  "menuAddItem": "+ صنف",
+  "@menuAddItem": {},
+
+  "menuUnavailable": "غير متاح دلوقتي",
+  "@menuUnavailable": {},
+
+  "menuItemName": "اسم الصنف",
+  "@menuItemName": {},
+
+  "menuItemPrice": "السعر بالجنيه",
+  "@menuItemPrice": {},
+
+  "menuItemDescription": "الوصف",
+  "@menuItemDescription": {},
+
+  "menuItemAvailable": "متاح دلوقتي",
+  "@menuItemAvailable": {},
+
+  "menuSaveItem": "احفظ الصنف",
+  "@menuSaveItem": {},
+
+  "menuNameRequired": "اكتب اسم الصنف",
+  "@menuNameRequired": {},
+
+  "menuPriceInvalid": "اكتب سعر صحيح",
+  "@menuPriceInvalid": {},
+
+  "appName": "لقمة",
+  "@appName": {},
+
+  "homeKitchenToday": "أكل بيتي النهارده",
+  "@homeKitchenToday": {},
+
+  "searchHint": "دوّر على مطعم أو وجبة…",
+  "@searchHint": {},
+
+  "deliveringTo": "التوصيل إلى",
+  "@deliveringTo": {},
+
+  "cashOnDelivery": "الدفع كاش عند الاستلام",
+  "@cashOnDelivery": {},
+
+  "placeOrder": "اطلب دلوقتي",
+  "@placeOrder": {},
+
+  "orderProblem": "في مشكلة في الطلب",
+  "@orderProblem": {},
+
+  "newCustomer": "عميل جديد",
+  "@newCustomer": {},
+
+  "collectFromCustomer": "المطلوب تحصيله",
+  "@collectFromCustomer": {},
+
+  "callCustomer": "اتصل بالعميل",
+  "@callCustomer": {},
+
+  "navigateToCustomer": "توجّه للعميل",
+  "@navigateToCustomer": {},
+
+  "startedDelivery": "خرجت",
+  "@startedDelivery": {},
+
+  "markDelivered": "تم التسليم",
+  "@markDelivered": {},
+
+  "acceptOrder": "اقبل الطلب",
+  "@acceptOrder": {},
+
+  "rejectOrder": "ارفض",
+  "@rejectOrder": {},
+
+  "busyToggle": "مشغول مؤقتاً",
+  "@busyToggle": {},
+
+  "couponHint": "عندك كود خصم؟",
+  "@couponHint": {},
+
+  "couponApplied": "الخصم اتطبق",
+  "@couponApplied": {},
+
+  "errorOffline": "مفيش اتصال بالإنترنت — الطلب مااتبعتش",
+  "@errorOffline": {
+    "description": "Shown when an order cannot be sent. Says plainly that nothing was sent, because a customer who thinks the order went through will sit and wait for it."
+  },
+
+  "errorPermission": "مش مسموح بالعملية دي",
+  "@errorPermission": {},
+
+  "errorNotFound": "الحاجة دي مابقتش موجودة",
+  "@errorNotFound": {},
+
+  "errorConflict": "حد سبقك — جرّب تاني",
+  "@errorConflict": {
+    "description": "Someone else changed the world first: the last portion was reserved, the merchant closed."
+  },
+
+  "errorUnknown": "حصل خطأ — جرّب تاني",
+  "@errorUnknown": {},
+
+  "couponNotFound": "الكود ده مش موجود",
+  "@couponNotFound": {},
+
+  "couponExpired": "الكود ده انتهت صلاحيته",
+  "@couponExpired": {},
+
+  "couponMinOrder": "الكود ده محتاج طلب أكبر",
+  "@couponMinOrder": {},
+
+  "couponWrongMerchant": "الكود ده مش شغال على المطعم ده",
+  "@couponWrongMerchant": {},
+
+  "couponAlreadyUsed": "استخدمت الكود ده قبل كده",
+  "@couponAlreadyUsed": {},
+
+  "couponFirstOrderOnly": "الكود ده لأول طلب بس",
+  "@couponFirstOrderOnly": {},
+
+  "couponExhausted": "الكود ده خلص",
+  "@couponExhausted": {},
+
+  "merchantClosed": "المطعم مقفول دلوقتي",
+  "@merchantClosed": {},
+
+  "merchantBusy": "المطعم مشغول دلوقتي",
+  "@merchantBusy": {},
+
+  "priceFree": "مجاناً",
+  "@priceFree": {},
+
+  "currencySuffix": "ج",
+  "@currencySuffix": {
+    "description": "Short form of the Egyptian pound, written after the number."
+  }
+}

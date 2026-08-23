@@ -1,0 +1,11 @@
+name: luqma_workspace
+description: Luqma — the workspace root. Not a published package.
+publish_to: none
+
+environment:
+  sdk: ^3.12.0
+
+# A pub workspace resolves every package against one lockfile, so the three apps and
+# luqma_core can never drift onto different versions of the same dependency.
+workspace:
+  - packages/luqma_core

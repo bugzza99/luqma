@@ -1,0 +1,561 @@
+<title>هوية لقمة</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&family=Amiri:wght@400;700&family=Lemonada:wght@400;600;700&family=Reem+Kufi:wght@400;600&display=swap">
+
+<style>
+:root{
+  --cream:#F5EBE2;
+  --surface:#E5D3C1;
+  --white:#FFFFFF;
+  --burgundy:#761812;
+  --burgundy-dark:#451410;
+  --orange:#D67F2B;
+  --orange-light:#E69B4A;
+  --orange-text:#995A1D;
+  --ink:#130B07;
+  --ink-2:#5A452B;
+  --hair:#D6BFA9;
+  --edge:#A5794F;
+
+  --bg:var(--cream);
+  --card:var(--white);
+  --band:var(--surface);
+  --fg:var(--ink);
+  --fg-2:var(--ink-2);
+  --brand:var(--burgundy);
+  --brand-fg:#FFFFFF;
+  --accent:var(--orange);
+  --accent-text:var(--orange-text);
+  --rule:var(--hair);
+  --outline:var(--edge);
+  --shadow:0 2px 8px rgba(19,11,7,.06), 0 12px 32px rgba(19,11,7,.05);
+  --phone-bg:var(--cream);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#150C08;
+    --card:#241610;
+    --band:#33211A;
+    --fg:#F5EBE2;
+    --fg-2:#C9B3A0;
+    --brand:#8F2019;
+    --brand-fg:#FFFFFF;
+    --accent:#E69B4A;
+    --accent-text:#E69B4A;
+    --rule:#3E2A21;
+    --outline:#8A6A55;
+    --shadow:0 2px 8px rgba(0,0,0,.45), 0 12px 32px rgba(0,0,0,.35);
+    --phone-bg:#1D110C;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#150C08;
+  --card:#241610;
+  --band:#33211A;
+  --fg:#F5EBE2;
+  --fg-2:#C9B3A0;
+  --brand:#8F2019;
+  --brand-fg:#FFFFFF;
+  --accent:#E69B4A;
+  --accent-text:#E69B4A;
+  --rule:#3E2A21;
+  --outline:#8A6A55;
+  --shadow:0 2px 8px rgba(0,0,0,.45), 0 12px 32px rgba(0,0,0,.35);
+  --phone-bg:#1D110C;
+}
+
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{
+  margin:0;
+  direction:rtl;
+  background:var(--bg);
+  color:var(--fg);
+  font-family:"Cairo",system-ui,"Segoe UI",sans-serif;
+  font-size:16px;
+  line-height:1.7;
+}
+.wrap{max-width:940px;margin:0 auto;padding:0 20px 96px}
+
+/* ---------- masthead ---------- */
+header.masthead{
+  padding:72px 0 40px;
+  display:flex;flex-direction:column;gap:24px;align-items:flex-start;
+}
+.eyebrow{
+  font-family:"Reem Kufi",'Cairo',sans-serif;
+  font-size:13px;letter-spacing:.16em;text-transform:uppercase;
+  color:var(--accent-text);
+}
+.masthead h1{
+  font-family:"Amiri",serif;
+  font-size:clamp(38px,7vw,64px);
+  font-weight:700;line-height:1.25;margin:0;
+  text-wrap:balance;
+}
+.masthead p{
+  margin:0;max-width:60ch;color:var(--fg-2);font-size:17px;
+}
+.rule{height:1px;background:var(--rule);border:0;margin:0}
+
+/* ---------- sections ---------- */
+section{padding:56px 0 0}
+h2{
+  font-family:"Amiri",serif;
+  font-size:30px;font-weight:700;margin:0 0 6px;line-height:1.3;
+}
+h2 + .lede{margin:0 0 28px;color:var(--fg-2);max-width:62ch}
+h3{font-size:18px;font-weight:700;margin:0 0 10px}
+p{margin:0 0 14px}
+.num{
+  font-variant-numeric:tabular-nums;
+}
+
+/* ---------- colour ---------- */
+.swatches{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
+.sw{border-radius:12px;overflow:hidden;border:1px solid var(--rule);background:var(--card)}
+.sw .chip{height:74px}
+.sw .lab{padding:10px 12px;font-size:12.5px;line-height:1.5}
+.sw .lab b{display:block;font-size:13.5px}
+.sw .lab code{font-family:ui-monospace,"SFMono-Regular",Menlo,monospace;font-size:11.5px;color:var(--fg-2);font-variant-numeric:tabular-nums}
+
+.tablewrap{overflow-x:auto;border:1px solid var(--rule);border-radius:12px;background:var(--card)}
+table{border-collapse:collapse;width:100%;min-width:520px;font-size:14.5px}
+th,td{text-align:right;padding:11px 16px;border-bottom:1px solid var(--rule)}
+th{font-weight:700;font-size:13px;color:var(--fg-2);letter-spacing:.02em}
+tr:last-child td{border-bottom:0}
+td.n{font-variant-numeric:tabular-nums;white-space:nowrap}
+.tag{display:inline-block;padding:2px 9px;border-radius:999px;font-size:12px;font-weight:700}
+.pass{background:rgba(45,110,60,.14);color:#2D6E3C}
+.fail{background:rgba(158,32,26,.14);color:#9E201A}
+.warn{background:rgba(214,127,43,.18);color:var(--accent-text)}
+:root[data-theme="dark"] .pass,
+:root:not([data-theme="light"]) .pass{}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]) .pass{background:rgba(120,200,140,.16);color:#8FD9A4}
+  :root:not([data-theme="light"]) .fail{background:rgba(240,120,110,.16);color:#F0847A}
+  :root:not([data-theme="light"]) .warn{background:rgba(230,155,74,.18);color:#E69B4A}
+}
+:root[data-theme="dark"] .pass{background:rgba(120,200,140,.16);color:#8FD9A4}
+:root[data-theme="dark"] .fail{background:rgba(240,120,110,.16);color:#F0847A}
+:root[data-theme="dark"] .warn{background:rgba(230,155,74,.18);color:#E69B4A}
+
+.fixes{display:grid;gap:14px;margin-top:22px}
+.fix{
+  background:var(--card);border:1px solid var(--rule);border-right:4px solid var(--accent);
+  border-radius:12px;padding:16px 20px;box-shadow:var(--shadow);
+}
+.fix h3{margin:0 0 6px;font-size:16px}
+.fix p{margin:0;font-size:14.5px;color:var(--fg-2);line-height:1.7}
+.fix code{font-family:ui-monospace,Menlo,monospace;font-size:13px;background:var(--band);padding:1px 6px;border-radius:5px;color:var(--fg)}
+
+/* ---------- type scale ---------- */
+.scale{background:var(--card);border:1px solid var(--rule);border-radius:14px;box-shadow:var(--shadow);overflow:hidden}
+.scale-row{display:flex;align-items:baseline;gap:20px;padding:14px 20px;border-bottom:1px solid var(--rule);flex-wrap:wrap}
+.scale-row:last-child{border-bottom:0}
+.scale-row .k{flex:0 0 118px;font-size:12.5px;color:var(--fg-2);font-variant-numeric:tabular-nums}
+.scale-row .v{flex:1 1 auto}
+
+/* ---------- phones ---------- */
+.phones{display:grid;gap:26px;grid-template-columns:repeat(auto-fit,minmax(266px,1fr));align-items:start}
+.phone{
+  background:var(--phone-bg);
+  border:1px solid var(--outline);
+  border-radius:26px;padding:12px;box-shadow:var(--shadow);
+  overflow:hidden;
+}
+.phone .screen{border-radius:16px;overflow:hidden;background:#F5EBE2}
+.pcap{margin-top:12px;font-size:13px;color:var(--fg-2);text-align:center;line-height:1.6}
+
+/* mini-ui bits inside phone mockups */
+.appbar{background:var(--burgundy);color:#fff;padding:12px 14px;display:flex;align-items:center;justify-content:space-between;font-size:13.5px;font-weight:600}
+.appbar .z{font-size:11.5px;opacity:.85;font-weight:400}
+.barlock{display:flex;align-items:center;gap:7px;flex-direction:row-reverse}
+.barwm{font-family:"Lemonada",cursive;font-weight:700;font-size:15px;color:#F5EBE2;line-height:1.6}
+.pbody{background:#F5EBE2;padding:12px;display:flex;flex-direction:column;gap:12px}
+.searchbar{background:#fff;border:1px solid #D6BFA9;border-radius:10px;padding:9px 12px;font-size:12.5px;color:#5A452B}
+.banner{height:64px;border-radius:10px;background:linear-gradient(105deg,#761812,#451410);color:#fff;display:flex;align-items:center;padding:0 14px;font-size:12.5px;font-weight:600}
+.sechead{display:flex;align-items:center;justify-content:space-between;font-size:13px;font-weight:700;color:#130B07}
+.sechead span{font-size:11px;color:#995A1D;font-weight:600}
+.hk-card{background:#fff;border:1px solid #D6BFA9;border-radius:12px;padding:10px;display:flex;gap:10px}
+.hk-thumb{width:56px;height:56px;border-radius:9px;background:linear-gradient(135deg,#E69B4A,#D67F2B);flex:0 0 auto}
+.hk-meta{flex:1;min-width:0}
+.hk-meta b{display:block;font-size:12.5px;color:#130B07}
+.hk-meta small{display:block;font-size:11px;color:#5A452B;line-height:1.6}
+.meter{height:5px;border-radius:99px;background:#E5D3C1;margin-top:6px;overflow:hidden}
+.meter i{display:block;height:100%;width:40%;background:#D67F2B}
+.price{color:#995A1D;font-weight:700;font-size:13px;font-variant-numeric:tabular-nums}
+.rest-row{background:#fff;border:1px solid #D6BFA9;border-radius:12px;padding:9px 10px;display:flex;align-items:center;gap:9px}
+.rest-thumb{width:40px;height:40px;border-radius:8px;background:#E5D3C1;flex:0 0 auto}
+.rest-row b{font-size:12.5px;color:#130B07;display:block}
+.rest-row small{font-size:11px;color:#5A452B}
+.star{color:#995A1D;font-size:11.5px;font-weight:700;font-variant-numeric:tabular-nums}
+.tabbar{display:flex;border-top:1px solid #D6BFA9;background:#fff}
+.tabbar div{flex:1;text-align:center;padding:9px 0;font-size:10.5px;color:#5A452B}
+.tabbar div.on{color:#761812;font-weight:700;box-shadow:inset 0 2px 0 #761812}
+.chips{display:flex;gap:6px;overflow:hidden}
+.chips span{font-size:11px;padding:5px 11px;border-radius:99px;border:1px solid #A5794F;color:#5A452B;background:#fff;white-space:nowrap}
+.chips span.on{background:#761812;border-color:#761812;color:#fff;font-weight:700}
+
+.crit{background:#761812;color:#fff;padding:20px 16px;display:flex;flex-direction:column;gap:14px;min-height:300px}
+.crit .lbl{font-size:11.5px;letter-spacing:.1em;opacity:.85}
+.crit .tot{font-size:34px;font-weight:900;font-variant-numeric:tabular-nums;line-height:1}
+.crit .who{font-size:13px;opacity:.92;line-height:1.7}
+.ring{width:60px;height:60px;border-radius:50%;border:4px solid rgba(255,255,255,.28);border-top-color:#E69B4A;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;font-variant-numeric:tabular-nums}
+.crit .btns{display:flex;gap:10px;margin-top:auto}
+.btn-acc{flex:2;background:#E69B4A;color:#130B07;border-radius:11px;padding:14px 0;text-align:center;font-weight:700;font-size:14px}
+.btn-rej{flex:1;border:1.5px solid rgba(255,255,255,.55);color:#fff;border-radius:11px;padding:14px 0;text-align:center;font-weight:600;font-size:13.5px}
+.newtag{display:inline-block;background:#E69B4A;color:#130B07;font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:99px}
+
+.cour{background:#F5EBE2;padding:14px;display:flex;flex-direction:column;gap:11px;min-height:300px}
+.cour .blk{background:#fff;border:1px solid #D6BFA9;border-radius:11px;padding:11px 12px}
+.cour .blk .k{font-size:10.5px;color:#5A452B;letter-spacing:.04em}
+.cour .blk .v{font-size:15px;font-weight:700;color:#130B07;line-height:1.5}
+.cour .cash{background:#761812;color:#fff;border:0}
+.cour .cash .k{color:rgba(255,255,255,.8)}
+.cour .cash .v{color:#fff;font-size:24px;font-variant-numeric:tabular-nums}
+.cour .call{border:1.5px solid #A5794F;border-radius:11px;padding:12px;text-align:center;font-size:13.5px;font-weight:700;color:#761812;background:#fff}
+.cour .go{background:#D67F2B;color:#130B07;border-radius:11px;padding:14px;text-align:center;font-weight:700;font-size:14.5px;margin-top:auto}
+
+
+/* ---------- lockups ---------- */
+.lockups{display:grid;gap:20px;grid-template-columns:repeat(auto-fit,minmax(280px,1fr))}
+.lockup-card{background:var(--card);border:1px solid var(--rule);border-radius:14px;
+  padding:26px 22px;box-shadow:var(--shadow);display:flex;flex-direction:column;gap:14px}
+.lockup-card h3{margin:0;font-size:16px}
+.lockup-card p{margin:0;font-size:13.5px;color:var(--fg-2);line-height:1.65}
+.stage{display:flex;align-items:center;justify-content:center;min-height:132px}
+.lockup-h{display:flex;align-items:center;gap:16px;flex-direction:row-reverse}
+.wm{font-family:"Lemonada",cursive;font-weight:700;color:var(--brand);line-height:1.5}
+.splash-panel{background:var(--brand);border-radius:16px;padding:34px 20px;
+  display:flex;flex-direction:column;align-items:center;gap:12px;width:100%}
+.splash-panel .wm{color:var(--cream)}
+.onecolor{display:flex;gap:20px;align-items:center;justify-content:center}
+
+/* ---------- banner modes ---------- */
+.banners{display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(260px,1fr))}
+.bn-card{background:var(--card);border:1px solid var(--rule);border-radius:14px;
+  padding:16px;box-shadow:var(--shadow);display:flex;flex-direction:column;gap:12px}
+.bn{aspect-ratio:3/1;border-radius:10px;overflow:hidden;position:relative;display:flex;
+  align-items:center;padding:0 16px}
+.bn-text{background:linear-gradient(105deg,#761812,#451410)}
+.bn-img{background:linear-gradient(135deg,#E69B4A 0%,#D67F2B 55%,#8A4E14 100%)}
+.bn .art{position:absolute;inset:0;background:linear-gradient(135deg,#E69B4A 0%,#D67F2B 55%,#8A4E14 100%)}
+.bn .scrim{position:absolute;inset:0;background:linear-gradient(270deg,rgba(69,20,16,.92) 0%,rgba(69,20,16,.72) 42%,rgba(69,20,16,0) 88%)}
+.bn .cap{position:relative;color:#fff}
+.bn .cap b{display:block;font-size:14px;line-height:1.4}
+.bn .cap small{display:block;font-size:11.5px;opacity:.9}
+.bn-card h3{margin:0;font-size:15px}
+.bn-card p{margin:0;font-size:13px;color:var(--fg-2);line-height:1.6}
+.bn-card code{font-family:ui-monospace,Menlo,monospace;font-size:12px;background:var(--band);
+  padding:1px 6px;border-radius:5px;color:var(--fg)}
+
+/* ---------- checklist ---------- */
+.checks{display:grid;gap:10px;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));margin-top:8px}
+.check{display:flex;gap:11px;align-items:flex-start;background:var(--card);border:1px solid var(--rule);border-radius:11px;padding:13px 15px;font-size:14px;line-height:1.6}
+.check svg{flex:0 0 auto;margin-top:3px;color:var(--accent-text)}
+
+footer{margin-top:64px;padding-top:22px;border-top:1px solid var(--rule);color:var(--fg-2);font-size:13.5px}
+@media (max-width:640px){
+  header.masthead{padding:48px 0 28px}
+  .spec{gap:14px}
+}
+</style>
+
+<div class="wrap">
+
+<header class="masthead">
+  <div class="eyebrow">نظام التصميم · النسخة الأولى</div>
+  <div style="display:flex;align-items:center;gap:20px;flex-wrap:wrap">
+    <svg width="76" height="76" viewBox="0 0 120 120" role="img" aria-label="شعار لقمة"><defs><mask id="mk-head"><rect width="120" height="120" fill="#fff"/><circle cx="99" cy="23" r="21" fill="#000"/><path d="M76 38 L76 63 Q76 84 55 84 Q34 84 34 63 L34 50" fill="none" stroke="#000" stroke-width="13" stroke-linecap="round" stroke-linejoin="round"/></mask></defs><circle cx="60" cy="60" r="46" fill="var(--brand)" mask="url(#mk-head)"/><circle cx="108" cy="47" r="4.4" fill="var(--accent)"/></svg>
+    <h1 style="margin:0">هوية لقمة</h1>
+  </div>
+  <p>الشعار، الألوان، الخطوط، والشاشات الأساسية لتطبيقات لقمة الثلاثة. كل رقم في الصفحة دي متقاس فعلياً مش متقدَّر — نسب التباين اتحسبت واحدة واحدة، والألوان اللي رسبت اتحطلها بدايل.</p>
+</header>
+
+<hr class="rule">
+
+<!-- ================= LOGO ================= -->
+<section>
+  <h2>الشعار</h2>
+  <p class="lede">المعتمد: <b>الحرف المحفور</b>. قرص بورجوندي صلب هو اللقمة نفسها، متاخد منه قضمة من فوق، وحرف <b>ل</b> محفور جواه بالفراغ، وفتفوتة برتقالي واحدة. اتختار على الاتجاه المفرّغ لسبب عملي: عند <span class="num">48</span> بكسل الحرف المرسوم بخط رفيع بيتحول لخربشة، أما الكتلة اللونية فبتفضل شكل واضح من على بعد.</p>
+
+  <div class="lockups">
+
+    <div class="lockup-card">
+      <div class="stage"><svg width="118" height="118" viewBox="0 0 120 120" role="img" aria-label="شعار لقمة"><defs><mask id="mk-a"><rect width="120" height="120" fill="#fff"/><circle cx="99" cy="23" r="21" fill="#000"/><path d="M76 38 L76 63 Q76 84 55 84 Q34 84 34 63 L34 50" fill="none" stroke="#000" stroke-width="13" stroke-linecap="round" stroke-linejoin="round"/></mask></defs><circle cx="60" cy="60" r="46" fill="var(--brand)" mask="url(#mk-a)"/><circle cx="108" cy="47" r="4.4" fill="var(--accent)"/></svg></div>
+      <h3>العلامة</h3>
+      <p>الصيغة الأساسية. تتستخدم لوحدها في الأماكن الضيقة، وجنب الاسم في القفل الكامل.</p>
+    </div>
+
+    <div class="lockup-card">
+      <div class="stage"><svg width="118" height="118" viewBox="0 0 120 120" role="img" aria-label="أيقونة تطبيق لقمة"><defs><mask id="mk-ico"><rect width="120" height="120" fill="#fff"/><circle cx="92" cy="30" r="17" fill="#000"/><path d="M72 42 L72 62 Q72 79 55 79 Q38 79 38 62 L38 52" fill="none" stroke="#000" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/></mask></defs><rect x="4" y="4" width="112" height="112" rx="27" fill="var(--brand)"/><circle cx="58" cy="60" r="37" fill="var(--cream)" mask="url(#mk-ico)"/><circle cx="99" cy="47" r="3.6" fill="var(--orange-light)"/></svg></div>
+      <h3>أيقونة التطبيق</h3>
+      <p>العلامة معكوسة — قرص كريمي على مربع بورجوندي. الكتلة اللونية هي اللي بتخلّيها تتميّز وسط أيقونات الشاشة الرئيسية.</p>
+    </div>
+
+    <div class="lockup-card">
+      <div class="stage onecolor">
+        <svg width="74" height="74" viewBox="0 0 120 120" role="img" aria-label="شعار لقمة"><defs><mask id="mk-1c"><rect width="120" height="120" fill="#fff"/><circle cx="99" cy="23" r="21" fill="#000"/><path d="M76 38 L76 63 Q76 84 55 84 Q34 84 34 63 L34 50" fill="none" stroke="#000" stroke-width="13" stroke-linecap="round" stroke-linejoin="round"/></mask></defs><circle cx="60" cy="60" r="46" fill="var(--fg)" mask="url(#mk-1c)"/></svg>
+        <svg width="44" height="44" viewBox="0 0 120 120" role="img" aria-label="شعار لقمة"><defs><mask id="mk-sm"><rect width="120" height="120" fill="#fff"/><circle cx="99" cy="23" r="21" fill="#000"/><path d="M76 38 L76 63 Q76 84 55 84 Q34 84 34 63 L34 50" fill="none" stroke="#000" stroke-width="13" stroke-linecap="round" stroke-linejoin="round"/></mask></defs><circle cx="60" cy="60" r="46" fill="var(--brand)" mask="url(#mk-sm)"/></svg>
+      </div>
+      <h3>لون واحد و 44 بكسل</h3>
+      <p>لازم تشتغل مطبوعة بلون واحد، وتفضل مقروءة في حجم الأيقونة. الفتفوتة البرتقالي بتتشال في الصيغتين دول.</p>
+    </div>
+
+  </div>
+</section>
+
+<!-- ================= LOCKUP ================= -->
+<section>
+  <h2>القفل الكامل</h2>
+  <p class="lede">الاسم <b>لُقْمَة</b> بخط <b>Lemonada</b> بالتشكيل الكامل. Lemonada خط عربي عرضي مستدير متصمَّم أصلاً لعلامات المأكولات — يعني الدفا جاي من الاسم نفسه مش من الألوان بس. الحروف بتتحوّل لمسارات وبتتظبط بالإيد، لأن اللوجو رسم مش استدعاء خط.</p>
+
+  <div class="lockups">
+
+    <div class="lockup-card">
+      <div class="stage">
+        <div class="lockup-h">
+          <svg width="62" height="62" viewBox="0 0 120 120" role="img" aria-label="شعار لقمة"><defs><mask id="mk-lk"><rect width="120" height="120" fill="#fff"/><circle cx="99" cy="23" r="21" fill="#000"/><path d="M76 38 L76 63 Q76 84 55 84 Q34 84 34 63 L34 50" fill="none" stroke="#000" stroke-width="13" stroke-linecap="round" stroke-linejoin="round"/></mask></defs><circle cx="60" cy="60" r="46" fill="var(--brand)" mask="url(#mk-lk)"/><circle cx="108" cy="47" r="4.4" fill="var(--accent)"/></svg>
+          <span class="wm" style="font-size:44px">لُقْمَة</span>
+        </div>
+      </div>
+      <h3>القفل الأفقي</h3>
+      <p>العلامة يمين، الاسم شماله، والمسافة بينهم بعرض العلامة. ده الشكل اللي يتستخدم في الشريط العلوي وأي مساحة عرضية.</p>
+    </div>
+
+    <div class="lockup-card">
+      <div class="stage">
+        <div class="splash-panel">
+          <svg width="68" height="68" viewBox="0 0 120 120" role="img" aria-label="شعار لقمة"><defs><mask id="mk-sp"><rect width="120" height="120" fill="#fff"/><circle cx="99" cy="23" r="21" fill="#000"/><path d="M76 38 L76 63 Q76 84 55 84 Q34 84 34 63 L34 50" fill="none" stroke="#000" stroke-width="13" stroke-linecap="round" stroke-linejoin="round"/></mask></defs><circle cx="60" cy="60" r="46" fill="var(--cream)" mask="url(#mk-sp)"/></svg>
+          <span class="wm" style="font-size:40px">لُقْمَة</span>
+        </div>
+      </div>
+      <h3>القفل الرأسي — شاشة البداية</h3>
+      <p>شاشة النظام بتعرض العلامة في نص خلفية بورجوندي، وأول فريم من فلاتر بيكمّل من نفس المكان والاسم بيظهر تحتها بتدرّج ناعم. سبلاش واحدة متصلة، ~<span class="num">1.5</span> ثانية.</p>
+    </div>
+
+    <div class="lockup-card">
+      <div class="stage" style="flex-direction:column;gap:14px">
+        <div class="lockup-h" style="gap:10px">
+          <svg width="34" height="34" viewBox="0 0 120 120" role="img" aria-label="شعار لقمة"><defs><mask id="mk-xs"><rect width="120" height="120" fill="#fff"/><circle cx="99" cy="23" r="21" fill="#000"/><path d="M76 38 L76 63 Q76 84 55 84 Q34 84 34 63 L34 50" fill="none" stroke="#000" stroke-width="13" stroke-linecap="round" stroke-linejoin="round"/></mask></defs><circle cx="60" cy="60" r="46" fill="var(--brand)" mask="url(#mk-xs)"/></svg>
+          <span class="wm" style="font-size:24px">لُقْمَة</span>
+        </div>
+        <div class="lockup-h" style="gap:8px">
+          <svg width="22" height="22" viewBox="0 0 120 120" role="img" aria-label="شعار لقمة"><defs><mask id="mk-xxs"><rect width="120" height="120" fill="#fff"/><circle cx="99" cy="23" r="21" fill="#000"/><path d="M76 38 L76 63 Q76 84 55 84 Q34 84 34 63 L34 50" fill="none" stroke="#000" stroke-width="13" stroke-linecap="round" stroke-linejoin="round"/></mask></defs><circle cx="60" cy="60" r="46" fill="var(--brand)" mask="url(#mk-xxs)"/></svg>
+          <span class="wm" style="font-size:16px">لُقْمَة</span>
+        </div>
+      </div>
+      <h3>الأحجام الصغيرة</h3>
+      <p>أقل ارتفاع مسموح بيه للعلامة هو <span class="num">22</span> بكسل. تحت كده يتستخدم الاسم لوحده. المساحة الفاضية حوالين أي قفل متقلّش عن ارتفاع حرف الـ ل.</p>
+    </div>
+
+  </div>
+
+  <div class="fix" style="margin-top:20px">
+    <h3>Lemonada خط لوجو فقط</h3>
+    <p>الخط ده <b>مايتشحنش مع التطبيق ومايظهرش في أي واجهة</b> — Cairo بيشيل الواجهة كلها. Lemonada موجود جوه التطبيق بس كرسم مسارات على شاشة البداية. ده اللي بيمنع الاسم إنه يبقى عادي من كتر ما تشوفه.</p>
+  </div>
+</section>
+
+<!-- ================= COLOUR ================= -->
+<section>
+  <h2>الألوان — بعد الفحص</h2>
+  <p class="lede">اللوحة اللي بعتّها قوية، وتسع أزواج منها عدّت معيار <span class="num">AA</span> بفرق مريح. تلاتة رسبوا، وكل واحد منهم كان هيظهر في مكان أساسي جداً في التطبيق.</p>
+
+  <div class="swatches">
+    <div class="sw"><div class="chip" style="background:#761812"></div><div class="lab"><b>Primary</b><code>#761812</code></div></div>
+    <div class="sw"><div class="chip" style="background:#451410"></div><div class="lab"><b>Primary Dark</b><code>#451410</code></div></div>
+    <div class="sw"><div class="chip" style="background:#D67F2B"></div><div class="lab"><b>Accent</b><code>#D67F2B</code></div></div>
+    <div class="sw"><div class="chip" style="background:#995A1D"></div><div class="lab"><b>Price Strong ✚</b><code>#995A1D</code></div></div>
+    <div class="sw"><div class="chip" style="background:#F5EBE2"></div><div class="lab"><b>Background</b><code>#F5EBE2</code></div></div>
+    <div class="sw"><div class="chip" style="background:#E5D3C1"></div><div class="lab"><b>Surface</b><code>#E5D3C1</code></div></div>
+    <div class="sw"><div class="chip" style="background:#A5794F"></div><div class="lab"><b>Border Strong ✚</b><code>#A5794F</code></div></div>
+    <div class="sw"><div class="chip" style="background:#130B07"></div><div class="lab"><b>Text</b><code>#130B07</code></div></div>
+  </div>
+
+  <p style="margin:20px 0 10px;font-size:14px;color:var(--fg-2)">العلامة ✚ معناها لون مشتق أضفناه لسد ثغرة، مش لون جديد — نفس درجة اللون الأصلي بقيمة أغمق.</p>
+
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>الاستخدام</th><th>النسبة</th><th>الحكم</th></tr></thead>
+      <tbody>
+        <tr><td>أبيض على البورجوندي — الزرار الأساسي</td><td class="n">11.0</td><td><span class="tag pass">ناجح</span></td></tr>
+        <tr><td>النص الأساسي على الخلفية الكريمي</td><td class="n">16.6</td><td><span class="tag pass">ناجح</span></td></tr>
+        <tr><td>النص الثانوي على الكريمي</td><td class="n">7.7</td><td><span class="tag pass">ناجح</span></td></tr>
+        <tr><td>نص غامق على شارة برتقالي</td><td class="n">6.4</td><td><span class="tag pass">ناجح</span></td></tr>
+        <tr><td><b>برتقالي على الكريمي</b></td><td class="n">2.58</td><td><span class="tag fail">راسب</span></td></tr>
+        <tr><td><b>أبيض على شارة برتقالي</b></td><td class="n">3.03</td><td><span class="tag fail">راسب للنص العادي</span></td></tr>
+        <tr><td><b>الحدود على الكريمي</b></td><td class="n">1.5</td><td><span class="tag fail">راسب</span></td></tr>
+        <tr><td>Surface على الكريمي</td><td class="n">1.24</td><td><span class="tag warn">غير مرئي</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="fixes">
+    <div class="fix">
+      <h3>١. السعر البرتقالي على الخلفية الكريمي</h3>
+      <p>اللوحة بتقول إن البرتقالي للأسعار، والكريمي للخلفية — والاتنين مع بعض بيدّوا <span class="num">2.58</span> وده راسب. الحل: <b>الأسعار تقعد على كروت بيضا بس</b>، بحجم <code>18sp</code> أو أكبر وبوزن تقيل، وساعتها <code>#D67F2B</code> بيعدّي. أي سعر أصغر من كده أو واقع على كريمي بيستخدم <code>#995A1D</code>.</p>
+    </div>
+    <div class="fix">
+      <h3>٢. النص الأبيض فوق البرتقالي</h3>
+      <p>ده أكتر غلط اللوحة دي بتغري بيه. الشارات البرتقالي (عرض، خصم، تقييم) لازم يكون نصها <b>غامق <code>#130B07</code></b> مش أبيض — الفرق بين <span class="num">6.42</span> و<span class="num">3.03</span>.</p>
+    </div>
+    <div class="fix">
+      <h3>٣. الحدود شبه مختفية</h3>
+      <p><code>#D6BFA9</code> على الكريمي بيدي <span class="num">1.5</span> — أقل بكتير من الـ<span class="num">3</span> المطلوبة لأي حد له معنى. يفضل للخطوط الزخرفية بس؛ أما إطارات حقول الإدخال والاختيارات فتستخدم <code>#A5794F</code>. وكمان: الكروت لازم تبقى <b>بيضا بظل خفيف</b>، مش بلون Surface، لأن Surface على الكريمي عملياً مش بيتشاف.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ================= TYPE ================= -->
+<section>
+  <h2>الخطوط والمقاسات</h2>
+  <p class="lede">خط واحد للواجهة كلها — <b>Cairo</b> — والتدرّج بيتعمل بالأوزان مش بخطوط مختلفة. الخط العربي بيحتاج مقاسات ومسافات أكبر من اللاتيني، فالحد الأدنى للنص <span class="num">15</span> مش <span class="num">14</span>.</p>
+
+  <div class="scale">
+    <div class="scale-row"><div class="k">24sp · 700</div><div class="v" style="font-size:24px;font-weight:700;line-height:1.35">عنوان الشاشة</div></div>
+    <div class="scale-row"><div class="k">20sp · 700</div><div class="v" style="font-size:20px;font-weight:700;line-height:1.4">عنوان قسم</div></div>
+    <div class="scale-row"><div class="k">18sp · 700</div><div class="v" style="font-size:18px;font-weight:700;color:var(--accent-text);font-variant-numeric:tabular-nums">السعر · 85 ج</div></div>
+    <div class="scale-row"><div class="k">17sp · 600</div><div class="v" style="font-size:17px;font-weight:600">عنوان كارت مطعم</div></div>
+    <div class="scale-row"><div class="k">16sp · 600</div><div class="v" style="font-size:16px;font-weight:600">نص الزرار</div></div>
+    <div class="scale-row"><div class="k">15sp · 400</div><div class="v" style="font-size:15px;line-height:1.6">النص الأساسي — وصف الوجبة والتفاصيل. ده أصغر مقاس مسموح بيه للنص العادي في التطبيق.</div></div>
+    <div class="scale-row"><div class="k">13sp · 400</div><div class="v" style="font-size:13px;color:var(--fg-2);line-height:1.6">نص مساعد وتفاصيل ثانوية</div></div>
+    <div class="scale-row"><div class="k">12sp · 500</div><div class="v" style="font-size:12px;color:var(--fg-2)">تسميات صغيرة وحالات</div></div>
+  </div>
+</section>
+
+<!-- ================= SCREENS ================= -->
+<section>
+  <h2>الشاشات الأساسية</h2>
+  <p class="lede">تلات شاشات هي اللي بتحدد شخصية التطبيق كله. كل واحدة فيهم ليها وظيفة مختلفة تماماً، فمينفعش يتصمّموا بنفس المنطق.</p>
+
+  <div class="phones">
+
+    <div>
+      <div class="phone"><div class="screen">
+        <div class="appbar"><span class="barlock"><svg width="21" height="21" viewBox="0 0 120 120" aria-label="لقمة" style="flex:0 0 auto"><defs><mask id="mk-bar"><rect width="120" height="120" fill="#fff"/><circle cx="99" cy="23" r="21" fill="#000"/><path d="M76 38 L76 63 Q76 84 55 84 Q34 84 34 63 L34 50" fill="none" stroke="#000" stroke-width="13" stroke-linecap="round" stroke-linejoin="round"/></mask></defs><circle cx="60" cy="60" r="46" fill="#F5EBE2" mask="url(#mk-bar)"/></svg><span class="barwm">لُقْمَة</span></span><span class="z">التوصيل إلى · شط إدكو</span></div>
+        <div class="pbody">
+          <div class="searchbar">دوّر على مطعم أو وجبة…</div>
+          <div class="chips"><span class="on">الكل</span><span>مشويات</span><span>كشري</span><span>بيتزا</span><span>أسماك</span></div>
+          <div class="banner">خصم 20٪ من مطعم البحر — النهارده بس</div>
+          <div class="sechead"><span>أكل بيتي النهارده</span><span>شوف الكل</span></div>
+          <div class="hk-card">
+            <div class="hk-thumb"></div>
+            <div class="hk-meta">
+              <b>محشي ورق عنب — أم أحمد</b>
+              <small>الاستلام 2:00 – 5:00 م</small>
+              <div class="meter"><i></i></div>
+              <small style="margin-top:4px">فاضل 6 من 15 · <span class="price">65 ج</span></small>
+            </div>
+          </div>
+          <div class="sechead"><span>الأكتر طلباً</span><span>شوف الكل</span></div>
+          <div class="rest-row"><div class="rest-thumb"></div><div style="flex:1"><b>مطعم الشاطئ</b><small>مشويات · 25 د</small></div><span class="star">4.6 ★</span></div>
+          <div class="rest-row"><div class="rest-thumb"></div><div style="flex:1"><b>كشري المحطة</b><small>كشري · 15 د</small></div><span class="star">4.8 ★</span></div>
+        </div>
+        <div class="tabbar"><div class="on">الرئيسية</div><div>طلباتي</div><div>حسابي</div></div>
+      </div></div>
+      <div class="pcap">تطبيق المستخدم — الاسم في الشريط العلوي هو القفل كـ SVG، مش نص. تلات تابات بس، والأقسام بقت شريط داخل الرئيسية. الرئيسية بتتركّب من السيرفر، وقسم الأكل البيتي هو الكتلة الأعرض والأدفى فيها</div>
+    </div>
+
+    <div>
+      <div class="phone"><div class="screen">
+        <div class="crit">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start">
+            <div>
+              <div class="lbl">طلب جديد</div>
+              <div class="tot">142 ج</div>
+            </div>
+            <div class="ring">4:12</div>
+          </div>
+          <div class="who">
+            <span class="newtag">عميل جديد</span><br>
+            محمود · المعمورة، جنب صيدلية النور<br>
+            3 أصناف · دفع كاش
+          </div>
+          <div class="btns">
+            <div class="btn-acc">اقبل الطلب</div>
+            <div class="btn-rej">ارفض</div>
+          </div>
+        </div>
+      </div></div>
+      <div class="pcap">تطبيق التاجر — شاشة الطلب الجديد مش شاشة تصفّح، دي شاشة إنذار: بتاخد الشاشة كلها وبتفضل بصوت لحد ما يترد عليها</div>
+    </div>
+
+    <div>
+      <div class="phone"><div class="screen">
+        <div class="appbar"><span>طلب #1043</span><span class="z">مندوب</span></div>
+        <div class="cour">
+          <div class="blk"><div class="k">المنطقة</div><div class="v">المعمورة</div></div>
+          <div class="blk"><div class="k">العنوان</div><div class="v">جنب صيدلية النور — عمارة 12، الدور 3</div></div>
+          <div class="blk cash"><div class="k">المطلوب تحصيله</div><div class="v">142 ج</div></div>
+          <div class="call">اتصل بالعميل</div>
+          <div class="go">توجّه للعميل</div>
+        </div>
+      </div></div>
+      <div class="pcap">شاشة المندوب — خمس معلومات وبس. بتتستخدم بإيد واحدة في الشمس، فالخط كبير والتباين أقصى ما يمكن</div>
+    </div>
+
+  </div>
+</section>
+
+<!-- ================= BANNERS ================= -->
+<section>
+  <h2>بانر الإعلانات</h2>
+  <p class="lede">البانر بيتكتب نص، أو يبقى صورة، أو الاتنين — على حسب العرض وعلى حسب المطعم. الوضع النصي مش رفاهية بصرية: هو اللي بيخلّي مطعم مالوش مصمم ولا صور جاهزة يشتري إعلان في نفس اليوم اللي بيطلبه فيه، وده حال معظم مطاعم إدكو.</p>
+
+  <div class="banners">
+
+    <div class="bn-card">
+      <div class="bn bn-text">
+        <div class="cap"><b>خصم 20٪ من مطعم البحر</b><small>النهارده بس · لحد 11 م</small></div>
+      </div>
+      <h3><code>text</code> — نص على تدرّج البراند</h3>
+      <p>مفيش صورة خالص. شكله مضمون دايماً لأن التصميم بتاعك انت، والمطعم بيبعت الكلام بس.</p>
+    </div>
+
+    <div class="bn-card">
+      <div class="bn bn-img"></div>
+      <h3><code>image</code> — صورة كاملة</h3>
+      <p>تصميم المطعم بيملا البانر وبيحمل رسالته بنفسه. بيعدّي على طابور مراجعة الصور زي أي صورة تانية.</p>
+    </div>
+
+    <div class="bn-card">
+      <div class="bn">
+        <div class="art"></div><div class="scrim"></div>
+        <div class="cap"><b>مشويات على الفحم</b><small>وصل خلال 25 دقيقة</small></div>
+      </div>
+      <h3><code>imageWithText</code> — صورة وراها طبقة</h3>
+      <p>صورة أكل حقيقية والكلام فوقها على طبقة بورجوندي متدرجة. الطبقة <b>إجبارية</b> — من غيرها النص بيضيع في الصورة.</p>
+    </div>
+
+  </div>
+
+  <div class="fix" style="margin-top:20px">
+    <h3>نسبة ثابتة 3:1 لكل الأوضاع</h3>
+    <p>أي صورة بانر لازم تكون <code>1080×360</code>، والتلات أوضاع بياخدوا نفس المساحة بالظبط. ده بيمنع أشهر حاجتين بيخربوا شاشة رئيسية فيها إعلانات: نِسَب غلط بتخلّي الشاشة تنطّ وهي بتقلّب، ونص مش مقروء فوق صورة مزدحمة.</p>
+  </div>
+</section>
+
+<!-- ================= RULES ================= -->
+<section>
+  <h2>قواعد ثابتة</h2>
+  <p class="lede">القواعد دي مش تفضيلات — دي اللي بتفرق بين تطبيق شكله محترف وتطبيق شكله مركّب على السريع.</p>
+  <div class="checks">
+    <div class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg><div>مفيش إيموجي كأيقونة — كل الأيقونات من عائلة واحدة وبسُمك خط واحد</div></div>
+    <div class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg><div>أقل مساحة لمس <span class="num">48×48</span> بكسل، وبينها <span class="num">8</span> بكسل على الأقل</div></div>
+    <div class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg><div>كل ضغطة ليها رد فعل مرئي خلال <span class="num">100</span> مللي ثانية، من غير ما الشكل يتزحزح</div></div>
+    <div class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg><div>اللون لوحده ميحملش معنى — حالة الطلب فيها أيقونة ونص كمان</div></div>
+    <div class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg><div>البرتقالي محجوز للأسعار والعروض والتقييمات — لحظة ما يبقى لون عام، بيبطّل يلفت النظر</div></div>
+    <div class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg><div>الوضع الليلي متصمَّم ومتقاس، مش مقلوب آلياً من الوضع النهاري</div></div>
+    <div class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg><div>مفيش لون مكتوب في شاشة — كل الألوان من التوكنز في <code style="font-family:ui-monospace,Menlo,monospace;font-size:12.5px">luqma_core</code></div></div>
+    <div class="check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg><div>المساحات الآمنة محترمة — شريط التابات وأي زرار ثابت تحت مش بيتصادم مع أزرار النظام</div></div>
+  </div>
+</section>
+
+<footer>
+  الصفحة دي مخرَج المرحلة الرابعة من تخطيط مشروع لقمة. الأرقام كلها متقاسة بمعيار WCAG&nbsp;AA، والشاشات مبنية بألوان وخطوط النظام نفسه — يعني اللي شايفه هنا هو اللي هيتنفّذ.
+</footer>
+
+</div>

@@ -1,0 +1,17 @@
+# Normalise line endings so a Windows checkout and a CI runner produce identical diffs.
+# Without this, every file touched on Windows shows as fully rewritten to anyone else.
+* text=auto eol=lf
+
+# Binary — never convert, never diff as text.
+*.ttf binary
+*.png binary
+*.jpg binary
+*.webp binary
+*.pdf binary
+
+# Generated. Marked so a review shows them collapsed rather than as thousands of lines
+# nobody wrote.
+*.g.dart linguist-generated=true
+*.freezed.dart linguist-generated=true
+pubspec.lock linguist-generated=true
+package-lock.json linguist-generated=true

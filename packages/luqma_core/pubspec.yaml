@@ -1,0 +1,61 @@
+name: luqma_core
+description: Shared theme, brand assets and components for the Luqma apps.
+version: 0.1.0
+publish_to: none
+resolution: workspace
+
+environment:
+  sdk: ^3.12.0
+  flutter: ">=3.44.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+
+  # Brand assets are vector; see brand/README.md for why.
+  flutter_svg: ^2.0.0
+
+  # State. Riverpod is code-generated: see docs and Q8 in the Phase 1 decisions.
+  flutter_riverpod: ^3.0.0
+  riverpod_annotation: ^3.0.0
+
+  # Models are generated rather than hand-written — twenty collections of hand-rolled
+  # JSON mapping is twenty chances at a silently dropped field.
+  freezed_annotation: ^3.0.0
+  json_annotation: ^4.9.0
+
+  firebase_core: ^4.0.0
+  firebase_auth: ^6.0.0
+  cloud_firestore: ^6.0.0
+  firebase_storage: ^13.0.0
+  firebase_remote_config: ^6.0.0
+
+  intl: any
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+  build_runner: ^2.4.0
+  freezed: ^3.0.0
+  json_serializable: ^6.8.0
+  riverpod_generator: ^3.0.0
+
+  # An in-memory Firestore. This is not a mock of our own code — it is a real
+  # implementation of the Firestore API, so the repository under test runs its actual
+  # queries and mapping instead of being stubbed out.
+  fake_cloud_firestore: ^4.0.0
+
+flutter:
+  # Turns on the l10n code generator configured in l10n.yaml.
+  generate: true
+  assets:
+    - assets/brand/
+  fonts:
+    - family: Cairo
+      fonts:
+        # One variable file covers every weight the app uses; pick weights with
+        # FontVariation, never by shipping a file per weight.
+        - asset: assets/fonts/Cairo.ttf
