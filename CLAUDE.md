@@ -54,13 +54,33 @@ Two things are outstanding and both are deliberate:
   structurally correct but not local knowledge. The owner replaces them; a wrong zone name
   sends a courier to the wrong part of town.
 
-**Next: Phase 3 — CustomerApp core.**
+**Phase 3 is done**, on branch `phase-3-customer-app`. CustomerApp runs end to end:
+the home composed from `homeSections`, merchant and item browsing, the basket, the
+zone-based address flow, cash checkout, live order tracking, order history, the issue
+ticket and the rating prompt. Three tabs in one `IndexedStack`, with the basket above all
+of them. 501 Dart tests across the workspace; both APKs build.
+
+Two things are outstanding and both are the owner's to do:
+
+- **Google Sign-In has no OAuth client.** The code is wired and every screen above it is
+  tested through `AuthService`, but `firebase apps:sdkconfig` reports `oauth_client: []`
+  for all three apps. On a real phone sign-in fails until Google is enabled as a provider
+  in Firebase Auth *and* the signing key's SHA-1 is registered against `com.luqma.customer`.
+  Debug and release keys are different fingerprints; both need registering.
+- **Placing an order needs Blaze.** `OrderRepository.placeOrder` calls a Cloud Function
+  that does not exist yet. Everything else about orders — watching, cancelling, issues,
+  ratings — is ordinary Firestore and works on Spark today.
+
+**Next: Phase 4 — MerchantApp core.**
 
 ### Infrastructure
 
 Firebase project **`luqma-edku`**, Firestore in **`europe-west3`** — the location is
 permanent and cannot be changed. Three Android apps registered:
-`com.luqma.customer`, `com.luqma.merchant`, `com.luqma.admin`.
+`com.luqma.customer`, `com.luqma.merchant`, `com.luqma.admin`. Those are the Gradle
+`applicationId`s too — an application id is permanent once an app is published, and it
+is half of what an OAuth client is keyed on. The Flutter template's `_app` suffix was
+wrong and was corrected in Phase 3.
 
 **Deliberately still on the Spark plan.** Cloud Functions and Cloud Storage both need
 Blaze, so neither is deployed. Everything is built and tested against the local emulator
@@ -81,6 +101,10 @@ is not usage, it is a function that calls itself.
 ```
 cd packages/luqma_core && flutter analyze && flutter test
 ```
+
+`kotlin.incremental=false` is set in both apps' `android/gradle.properties`. Kotlin's
+incremental compiler cannot close its caches on this drive and fails every plugin module
+without it.
 
 The rules tests need JDK 21+, which is not the system default here — Android Studio's
 bundled runtime is:
@@ -106,7 +130,9 @@ JAVA_HOME="C:\Program Files\Android\Android Studio\jbr" firebase emulators:exec 
 | `graphify-out/graph.html` | Dependency graph, open in a browser |
 | `brand/identity.html` | Logo, palette, type and screen mockups |
 | `brand/README.md` | How the logo assets are generated, and why |
-| `packages/luqma_core/` | Models, repositories, config, theme, l10n, brand widgets |
+| `packages/luqma_core/` | Models, repositories, config, theme, l10n, brand widgets, Firebase options |
+| `apps/customer_app/` | CustomerApp — home, merchant, basket, checkout, orders, account |
+| `apps/admin_app/` | AdminApp — merchants, menus, places, media queue |
 | `firebase/firestore.rules` | The real security boundary — read its tests beside it |
 | `firebase/test/` | Rules tests, run against the emulator |
 

@@ -1,4 +1,4 @@
-package com.luqma.admin_app
+package com.luqma.customer
 
 import io.flutter.embedding.android.FlutterActivity
 

@@ -4,8 +4,6 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:luqma_core/luqma_core.dart';
 
-import 'src/app/emulator.dart';
-import 'src/app/firebase_options.dart';
 import 'src/app/router.dart';
 
 Future<void> main() async {

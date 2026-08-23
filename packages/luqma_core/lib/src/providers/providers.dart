@@ -1,17 +1,25 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
+// `Order` here would be Firestore's index-definition enum, not ours.
+import 'package:cloud_firestore/cloud_firestore.dart' hide Order;
 import 'package:firebase_remote_config/firebase_remote_config.dart';
 import 'package:flutter/foundation.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
+import '../auth/auth_service.dart';
 import '../config/luqma_config.dart';
 import '../config/remote_config_service.dart';
 import '../models/geography.dart';
+import '../models/home_section.dart';
 import '../models/menu_item.dart';
 import '../models/merchant.dart';
+import '../models/order.dart';
+import '../repositories/address_repository.dart';
 import '../repositories/geography_repository.dart';
+import '../repositories/home_section_repository.dart';
 import '../repositories/media_repository.dart';
 import '../repositories/menu_repository.dart';
 import '../repositories/merchant_repository.dart';
+import '../repositories/order_repository.dart';
+import '../result.dart';
 
 part 'providers.g.dart';
 
@@ -54,6 +62,16 @@ Future<List<Landmark>> landmarks(Ref ref) async {
 }
 
 @Riverpod(keepAlive: true)
+HomeSectionRepository homeSectionRepository(Ref ref) =>
+    FirestoreHomeSectionRepository(ref.watch(firestoreProvider));
+
+/// The customer home screen's arrangement, live.
+@riverpod
+Stream<List<HomeSection>> homeSections(Ref ref) => ref
+    .watch(homeSectionRepositoryProvider)
+    .watchSections(cityId: ref.watch(currentCityProvider));
+
+@Riverpod(keepAlive: true)
 MediaRepository mediaRepository(Ref ref) =>
     FirestoreMediaRepository(ref.watch(firestoreProvider));
 
@@ -73,6 +91,148 @@ Stream<List<MenuItem>> menuItems(Ref ref, String merchantId) =>
 @riverpod
 Stream<List<Merchant>> merchants(Ref ref, String cityId) =>
     ref.watch(merchantRepositoryProvider).watchMerchants(cityId: cityId);
+
+/// One merchant, by id.
+///
+/// Throws the [Failure] rather than surfacing a `Result`, so the screen above reads it
+/// as an `AsyncValue` and gets loading, data and error from one `switch` — the same
+/// shape every other read on the screen already has.
+@riverpod
+Future<Merchant> merchant(Ref ref, String id) async {
+  final result = await ref.watch(merchantRepositoryProvider).getMerchant(id);
+  return result.valueOrThrow;
+}
+
+// ------------------------------------------------------------------ identity
+
+/// Where a session comes from.
+///
+/// Deliberately has no default. Google's SDK lives in the app, not here, so a default
+/// would either drag that dependency into every package or quietly hand back a service
+/// that can never sign anybody in. Overridden once, in `main`.
+@Riverpod(keepAlive: true)
+AuthService authService(Ref ref) => throw UnimplementedError(
+      'Override authServiceProvider in main(). The Google credential source lives in '
+      'the app, so luqma_core cannot build one.',
+    );
+
+/// Who is signed in right now, or null.
+///
+/// Seeded with whatever the session already resolved to before following changes: the
+/// change stream is a broadcast, so a listener attaching after sign-in would otherwise
+/// hear nothing until the next sign-out.
+@Riverpod(keepAlive: true)
+Stream<LuqmaIdentity?> currentIdentity(Ref ref) async* {
+  final auth = ref.watch(authServiceProvider);
+  await auth.restore();
+  yield auth.identity;
+  yield* auth.changes;
+}
+
+@Riverpod(keepAlive: true)
+AddressRepository addressRepository(Ref ref) =>
+    FirestoreAddressRepository(ref.watch(firestoreProvider));
+
+@Riverpod(keepAlive: true)
+OrderRepository orderRepository(Ref ref) =>
+    FirestoreOrderRepository(ref.watch(firestoreProvider));
+
+/// The signed-in customer's addresses.
+///
+/// Keyed off the identity rather than passed a uid, so signing out empties it by
+/// construction. An address list that outlived a sign-out would show one person another
+/// person's home.
+@riverpod
+Future<List<Address>> myAddresses(Ref ref) async {
+  final identity = await ref.watch(currentIdentityProvider.future);
+  if (identity == null) return const [];
+
+  final result = await ref.watch(addressRepositoryProvider).addresses(identity.uid);
+  return result.valueOrThrow;
+}
+
+/// The address an order would go to: the default, or nothing at all.
+@riverpod
+Future<Address?> chosenAddress(Ref ref) async {
+  final identity = await ref.watch(currentIdentityProvider.future);
+  if (identity == null) return null;
+
+  final addresses = await ref.watch(myAddressesProvider.future);
+  if (addresses.isEmpty) return null;
+
+  final chosenId =
+      (await ref.watch(addressRepositoryProvider).defaultAddressId(identity.uid))
+          .valueOrNull;
+
+  // A default naming an address that is gone falls back to one that exists, rather than
+  // rendering as nothing with no way for the customer to tell why.
+  return addresses.where((a) => a.id == chosenId).firstOrNull ?? addresses.first;
+}
+
+/// Writing addresses. Kept alive so a command survives the screen that started it.
+@Riverpod(keepAlive: true)
+class AddressActions extends _$AddressActions {
+  @override
+  AddressActions build() => this;
+
+  Future<Result<Address>> save(Address address) async {
+    final identity = await ref.read(currentIdentityProvider.future);
+    // Saving into nowhere would look like it worked and lose the address.
+    if (identity == null) return const Result.err(PermissionFailure());
+
+    final result = await ref.read(addressRepositoryProvider).saveAddress(
+          identity.uid,
+          address,
+        );
+    _refresh();
+    return result;
+  }
+
+  Future<Result<void>> remove(String addressId) async {
+    final identity = await ref.read(currentIdentityProvider.future);
+    if (identity == null) return const Result.err(PermissionFailure());
+
+    final result =
+        await ref.read(addressRepositoryProvider).deleteAddress(identity.uid, addressId);
+    _refresh();
+    return result;
+  }
+
+  Future<Result<void>> choose(String addressId) async {
+    final identity = await ref.read(currentIdentityProvider.future);
+    if (identity == null) return const Result.err(PermissionFailure());
+
+    final result = await ref
+        .read(addressRepositoryProvider)
+        .setDefaultAddress(identity.uid, addressId);
+    _refresh();
+    return result;
+  }
+
+  void _refresh() {
+    ref.invalidate(myAddressesProvider);
+    ref.invalidate(chosenAddressProvider);
+  }
+}
+
+/// One customer's orders, newest first. Live.
+///
+/// Takes the uid rather than reaching for the session itself. A generator that awaits
+/// the identity and then delegates with `yield*` swallows the delegate's error into a
+/// loading state, and the screen above spins forever instead of saying "no connection".
+/// The caller already knows who is signed in — it has to, to decide between this and the
+/// signed-out view.
+@riverpod
+Stream<List<Order>> ordersFor(Ref ref, String uid) =>
+    ref.watch(orderRepositoryProvider).watchMyOrders(uid);
+
+/// One order, live. This is the tracking screen's whole data source: the merchant
+/// accepting, the courier setting off, and delivery all arrive as document changes.
+@riverpod
+Stream<Order> order(Ref ref, String orderId) =>
+    ref.watch(orderRepositoryProvider).watchOrder(orderId);
+
+// ------------------------------------------------------------------ config
 
 /// The one path from AdminApp to this phone.
 ///

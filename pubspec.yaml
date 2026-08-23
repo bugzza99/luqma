@@ -10,3 +10,4 @@ environment:
 workspace:
   - packages/luqma_core
   - apps/admin_app
+  - apps/customer_app
