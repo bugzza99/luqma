@@ -190,6 +190,24 @@ class FakeMerchantOrderRepository implements MerchantOrderRepository {
 
   Order? operator [](String orderId) => _orders[orderId];
 
+  /// Puts an order in and tells everyone watching — a new order landing, as Firestore
+  /// would deliver it.
+  Future<void> add(Order order) async {
+    _orders[order.id] = order;
+    _notify();
+    await Future<void>.delayed(Duration.zero);
+  }
+
+  /// Re-emits without changing anything.
+  ///
+  /// Firestore does this: a snapshot fires for reasons of its own — a field written by
+  /// a function, a metadata change — and anything downstream that treats every emission
+  /// as news will act twice on one event.
+  Future<void> touch() async {
+    _notify();
+    await Future<void>.delayed(Duration.zero);
+  }
+
   /// Emits now and after every change, with the subscription attached in the same
   /// synchronous callback so nothing can slip through the gap.
   Stream<T> _live<T>(T Function() read) => Stream.multi((listener) {

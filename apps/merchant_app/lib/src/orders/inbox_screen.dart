@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:luqma_core/luqma_core.dart';
 
+import '../alarm/order_alarm.dart';
+
 /// Orders waiting for an answer.
 ///
 /// The one screen this app exists for. A merchant who does not answer does not cook, and
@@ -13,6 +15,7 @@ class InboxScreen extends ConsumerWidget {
   const InboxScreen({super.key});
 
   static const emptyKey = Key('inbox.empty');
+  static const silenceKey = Key('inbox.silence');
   static const errorKey = Key('inbox.error');
   static const prepSheetKey = Key('inbox.prepSheet');
   static const reasonSheetKey = Key('inbox.reasonSheet');
@@ -48,10 +51,24 @@ class InboxScreen extends ConsumerWidget {
     if (merchantId == null) return const _NoMerchant();
 
     final incoming = ref.watch(incomingOrdersProvider(merchantId));
+    final ringing = ref.watch(orderAlarmProvider);
 
     return Scaffold(
       backgroundColor: colors.background,
-      appBar: AppBar(title: const Text('الطلبات الجديدة')),
+      appBar: AppBar(
+        title: const Text('الطلبات الجديدة'),
+        // Across the whole bar, not a button in a corner. The sound has done its job the
+        // moment somebody is looking, and making them hunt for accept first is exactly
+        // what gets an app muted for good.
+        bottom: ringing
+            ? PreferredSize(
+                preferredSize: const Size.fromHeight(Sizes.minTarget + Space.md),
+                child: _SilenceBar(
+                  onSilence: () => ref.read(orderAlarmProvider.notifier).acknowledge(),
+                ),
+              )
+            : null,
+      ),
       // Matched on `hasError` rather than on the `AsyncError` type, and matched first.
       // A stream that fails before it ever emits stays `AsyncLoading` with the error
       // hanging off it, so an `AsyncError()` arm never fires and the screen spins for
@@ -67,6 +84,34 @@ class InboxScreen extends ConsumerWidget {
           ),
         _ => const Center(child: CircularProgressIndicator()),
       },
+    );
+  }
+}
+
+/// The one thing on screen while the sound is going.
+class _SilenceBar extends StatelessWidget {
+  const _SilenceBar({required this.onSilence});
+
+  final VoidCallback onSilence;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).luqma;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(Space.gutter, 0, Space.gutter, Space.sm),
+      child: FilledButton.icon(
+        key: InboxScreen.silenceKey,
+        onPressed: onSilence,
+        icon: const Icon(Icons.notifications_off_outlined, size: Sizes.iconSm),
+        label: const Text('استلمت — وقّف الصوت'),
+        style: FilledButton.styleFrom(
+          backgroundColor: colors.accent,
+          // Dark text on the orange, never white: white on it is 3.03:1.
+          foregroundColor: colors.onAccent,
+          minimumSize: const Size.fromHeight(Sizes.minTarget),
+        ),
+      ),
     );
   }
 }
@@ -236,6 +281,7 @@ class _OrderCard extends ConsumerWidget {
 
     if (minutes == null || !context.mounted) return;
 
+    ref.read(orderAlarmProvider.notifier).acknowledge();
     final result = await ref
         .read(merchantOrderRepositoryProvider)
         .accept(order.id, prepMinutes: minutes);
@@ -263,6 +309,7 @@ class _OrderCard extends ConsumerWidget {
 
     if (reason == null || !context.mounted) return;
 
+    ref.read(orderAlarmProvider.notifier).acknowledge();
     final result =
         await ref.read(merchantOrderRepositoryProvider).reject(order.id, reason: reason);
     if (context.mounted) _reportIfFailed(context, result);

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:luqma_core/luqma_core.dart';
+import 'package:merchant_app/src/alarm/alarm.dart';
 import 'package:merchant_app/src/orders/inbox_screen.dart';
 
 /// The screen the app exists for.
@@ -49,6 +50,7 @@ void main() {
       );
 
   late FakeMerchantOrderRepository orders;
+  late FakeAlarm alarm;
 
   Future<void> pump(
     WidgetTester tester, {
@@ -56,6 +58,7 @@ void main() {
     Failure? failure,
   }) async {
     orders = FakeMerchantOrderRepository(seed: seed, failure: failure);
+    alarm = FakeAlarm();
 
     await tester.pumpWidget(
       ProviderScope(
@@ -69,6 +72,7 @@ void main() {
             ),
           ),
           merchantOrderRepositoryProvider.overrideWithValue(orders),
+          alarmProvider.overrideWithValue(alarm),
           remoteConfigServiceProvider
               .overrideWithValue(RemoteConfigService(FakeConfigFetcher({}))),
         ],
@@ -231,6 +235,45 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(orders['o1']!.status, OrderStatus.placed);
+    });
+  });
+
+  group('the sound', () {
+    testWidgets('an order waiting sets it off', (tester) async {
+      await pump(tester, seed: [order()]);
+      expect(alarm.isPlaying, isTrue);
+    });
+
+    // The sound has done its job the moment a person is looking. Making them find the
+    // accept button first is what gets an app muted.
+    testWidgets('a way to silence it is on screen while it rings', (tester) async {
+      await pump(tester, seed: [order()]);
+
+      expect(find.byKey(InboxScreen.silenceKey), findsOneWidget);
+
+      await tester.tap(find.byKey(InboxScreen.silenceKey));
+      await tester.pump();
+
+      expect(alarm.isPlaying, isFalse);
+    });
+
+    testWidgets('nothing waiting means no banner and no sound', (tester) async {
+      await pump(tester);
+
+      expect(find.byKey(InboxScreen.silenceKey), findsNothing);
+      expect(alarm.isPlaying, isFalse);
+    });
+
+    // Answering is a stronger acknowledgement than tapping "I have it".
+    testWidgets('accepting an order silences it', (tester) async {
+      await pump(tester, seed: [order()]);
+
+      await tester.tap(find.byKey(InboxScreen.acceptKey('o1')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(InboxScreen.prepChoiceKey(30)));
+      await tester.pumpAndSettle();
+
+      expect(alarm.isPlaying, isFalse);
     });
   });
 
