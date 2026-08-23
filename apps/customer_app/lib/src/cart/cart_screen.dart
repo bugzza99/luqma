@@ -137,17 +137,9 @@ class _Stepper extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final colors = Theme.of(context).luqma;
-    // Read from the notifier's current state rather than from [line], which is a
-    // frame old: two quick taps would otherwise both compute from the same number.
-    void step(int by) {
-      final controller = ref.read(cartProvider.notifier);
-      final current = controller.state.lines
-          .where((l) => l.id == line.id)
-          .map((l) => l.quantity)
-          .firstOrNull;
-      if (current == null) return;
-      controller.setQuantity(line.id, current + by);
-    }
+    // The step, not the new total: [line] is a frame old, so two quick taps would both
+    // compute the same number and one of them would be swallowed.
+    void step(int by) => ref.read(cartProvider.notifier).changeQuantity(line.id, by);
 
     return Container(
       decoration: BoxDecoration(

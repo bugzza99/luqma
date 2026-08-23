@@ -33,6 +33,7 @@ dependencies:
   firebase_remote_config: ^6.0.0
 
   intl: any
+  cloud_functions: ^6.3.6
 
 dev_dependencies:
   flutter_test:

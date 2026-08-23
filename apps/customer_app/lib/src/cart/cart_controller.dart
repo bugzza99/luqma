@@ -74,5 +74,16 @@ class CartController extends _$CartController {
     state = state.setQuantity(lineId, quantity);
   }
 
+  /// Moves a line's quantity by [by], relative to what the basket holds right now.
+  ///
+  /// Relative rather than absolute because the caller is a widget holding a line that is
+  /// a frame old: two taps landing before a rebuild would both compute the same new
+  /// total and one of them would be swallowed.
+  void changeQuantity(String lineId, int by) {
+    final line = state.lines.where((l) => l.id == lineId).firstOrNull;
+    if (line == null) return;
+    setQuantity(lineId, line.quantity + by);
+  }
+
   void clear() => state = Cart.empty;
 }

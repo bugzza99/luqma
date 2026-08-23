@@ -4,6 +4,7 @@
 /// logo lockup. Models, repositories and `RemoteConfigService` land in Phase 1.
 library;
 
+export 'src/auth/auth_service.dart';
 export 'src/config/luqma_config.dart';
 export 'src/config/remote_config_service.dart';
 export 'src/l10n/app_localizations.dart';
@@ -19,10 +20,12 @@ export 'src/models/menu_item.dart';
 export 'src/models/money.dart';
 export 'src/models/order.dart';
 export 'src/providers/providers.dart';
+export 'src/repositories/address_repository.dart';
 export 'src/repositories/geography_repository.dart';
 export 'src/repositories/home_section_repository.dart';
 export 'src/repositories/media_repository.dart';
 export 'src/repositories/menu_repository.dart';
+export 'src/repositories/order_repository.dart';
 export 'src/repositories/merchant_repository.dart';
 export 'src/result.dart';
 export 'src/theme/colors.dart';
