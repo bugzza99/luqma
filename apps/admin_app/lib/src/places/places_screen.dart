@@ -53,9 +53,12 @@ class _PlacesScreenState extends ConsumerState<PlacesScreen> {
             ),
             Expanded(
               child: switch (state) {
-                AsyncLoading() => const Center(child: CircularProgressIndicator()),
-                AsyncError(:final error) => _Error(failure: error),
-                AsyncData(:final value) => switch (_tab) {
+                // An error arm comes first, and matches on `hasError` rather than on the
+                // `AsyncError` type: a stream that fails before it has ever emitted stays
+                // `AsyncLoading` with the error hanging off it, so a type match never fires
+                // and the screen spins for ever on a dropped connection.
+                AsyncValue(hasError: true, :final error?) => _Error(failure: error),
+                AsyncValue(hasValue: true, :final value?) => switch (_tab) {
                     _Tab.zones => _Zones(zones: value.zones),
                     _Tab.landmarks =>
                       _Landmarks(zones: value.zones, landmarks: value.landmarks),
@@ -64,7 +67,8 @@ class _PlacesScreenState extends ConsumerState<PlacesScreen> {
                         zones: value.zones,
                       ),
                   },
-              },
+                              _ => const Center(child: CircularProgressIndicator()),
+},
             ),
           ],
         ),

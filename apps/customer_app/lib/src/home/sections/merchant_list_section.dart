@@ -34,12 +34,14 @@ class MerchantListSection extends ConsumerWidget {
     final merchants = ref.watch(merchantsProvider(ref.watch(currentCityProvider)));
 
     return switch (merchants) {
-      AsyncLoading() => const _Skeleton(),
       // An error here costs this section, not the screen: the home is assembled from
       // several independent blocks, and one failing feed should not blank the others.
-      AsyncError() => const SizedBox.shrink(),
-      AsyncData(:final value) when value.isEmpty => const SizedBox.shrink(),
-      AsyncData(:final value) => Column(
+      // First, and on `hasError`: a stream that fails before it has ever emitted stays
+      // `AsyncLoading`, and a skeleton that never resolves is worse than nothing.
+      AsyncValue(hasError: true) => const SizedBox.shrink(),
+      AsyncValue(hasValue: true, :final value?) when value.isEmpty =>
+        const SizedBox.shrink(),
+      AsyncValue(hasValue: true, :final value?) => Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             SectionHeader(title: _title),
@@ -56,7 +58,8 @@ class MerchantListSection extends ConsumerWidget {
             ),
           ],
         ),
-    };
+          _ => const _Skeleton(),
+};
   }
 
   List<Merchant> _sorted(List<Merchant> merchants) {

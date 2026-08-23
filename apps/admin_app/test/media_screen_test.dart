@@ -1,5 +1,3 @@
-import 'package:admin_app/src/auth/admin_access.dart';
-import 'package:admin_app/src/auth/identity_provider.dart';
 import 'package:admin_app/src/media/media_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -30,8 +28,10 @@ void main() {
       ProviderScope(
         overrides: [
           mediaRepositoryProvider.overrideWithValue(repository),
-          adminIdentityProvider.overrideWith(
-            (ref) => Stream.value(const AdminIdentity(uid: 'admin1', isAdmin: true)),
+          currentIdentityProvider.overrideWith(
+            (ref) => Stream.value(
+              const LuqmaIdentity(uid: 'admin1', claims: {'admin': true}),
+            ),
           ),
         ],
         child: MaterialApp(

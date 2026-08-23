@@ -1,4 +1,3 @@
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:luqma_core/luqma_core.dart';
@@ -40,20 +39,24 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
       _error = null;
     });
 
-    try {
-      await FirebaseAuth.instance
-          .signInWithEmailAndPassword(email: _email, password: _password);
-      // No navigation here. The router is watching the session and moves on its own —
-      // pushing a route as well would race it.
-    } on FirebaseException catch (error) {
-      if (!mounted) return;
-      setState(() => _error = switch (Failure.from(error)) {
-            OfflineFailure() => 'مفيش اتصال بالإنترنت',
-            _ => 'البيانات غلط',
-          });
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
+    final result = await ref.read(authServiceProvider).signInWithPassword(
+          email: _email,
+          password: _password,
+        );
+    if (!mounted) return;
+
+    // No navigation on success. The router is watching the session and moves on its
+    // own — pushing a route as well would race it.
+    setState(() {
+      _busy = false;
+      _error = switch (result) {
+        Ok() => null,
+        // Never the raw Firebase code, and never "invalid credential" — neither tells
+        // somebody standing in a shop anything they can act on.
+        Err(failure: OfflineFailure()) => 'مفيش اتصال بالإنترنت',
+        Err() => 'البيانات غلط',
+      };
+    });
   }
 
   @override
@@ -114,11 +117,11 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
 }
 
 /// Signed in, but the token carries no admin claim.
-class NoAccessScreen extends StatelessWidget {
+class NoAccessScreen extends ConsumerWidget {
   const NoAccessScreen({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
 
     return Scaffold(
@@ -144,7 +147,7 @@ class NoAccessScreen extends StatelessWidget {
               ),
               const SizedBox(height: Space.xl),
               OutlinedButton(
-                onPressed: () => FirebaseAuth.instance.signOut(),
+                onPressed: () => ref.read(authServiceProvider).signOut(),
                 child: const Text('تسجيل الخروج'),
               ),
             ],

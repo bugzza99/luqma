@@ -48,8 +48,11 @@ landmark suggestion queue, and the media moderation queue.
 
 Two things are outstanding and both are deliberate:
 
-- **`staff` management waits on Blaze.** Creating a staff account means creating a Firebase
-  Auth user, which only a server can do. Nothing else in AdminApp needs Cloud Functions.
+- **`staff` management in AdminApp still has no screen**, but it is no longer blocked:
+  `firebase/scripts/staff.js` creates accounts and stamps claims from a laptop. Creating
+  a Firebase Auth user and setting a custom claim are ordinary Admin SDK calls and cost
+  nothing on Spark — only *deployed* functions need Blaze. `createStaffAccount` is still
+  worth building later, so a merchant can add their own couriers without a terminal.
 - **The zone and landmark names in `firebase/seed/edku.json` are placeholders.** They are
   structurally correct but not local knowledge. The owner replaces them; a wrong zone name
   sends a courier to the wrong part of town.
@@ -75,7 +78,21 @@ Two things are outstanding and both are the owner's to do:
   that does not exist yet. Everything else about orders — watching, cancelling, issues,
   ratings — is ordinary Firestore and works on Spark today.
 
-**Next: Phase 4 — MerchantApp core.**
+**Phase 4 is done**, on branch `phase-4-merchant-app`. MerchantApp runs end to end:
+the order inbox with the alarm, accept and reject, the live board and its transitions,
+the `pausedUntil` busy toggle, menu editing through the shared `MenuEditor`, and the
+private rating feedback. Four tabs, inbox first. 596 Dart tests; all three APKs build.
+
+Two things wait on Blaze, and both are server work by nature:
+
+- **The accept-deadline task.** Nothing moves an unanswered order to `needsAttention`
+  yet. The countdown a merchant sees is computed on the device from `acceptDeadlineAt`,
+  so the *screen* is already right; what is missing is the task that acts when it runs
+  out and tells the admin.
+- **Rejection counting and auto-block.** `users.rejectedOrdersCount` has to be written
+  by a server — a client that can increment its own refusal count can also reset it.
+
+**Next: Phase 5 — Courier mode.**
 
 ### Infrastructure
 
@@ -134,8 +151,11 @@ JAVA_HOME="C:\Program Files\Android\Android Studio\jbr" firebase emulators:exec 
 | `graphify-out/graph.html` | Dependency graph, open in a browser |
 | `brand/identity.html` | Logo, palette, type and screen mockups |
 | `brand/README.md` | How the logo assets are generated, and why |
+| `firebase/scripts/staff.js` | Creates merchant, courier and admin accounts. No Blaze needed |
+| `brand/src/build_alarm.py` | The new-order alarm, and why every number in it is what it is |
 | `packages/luqma_core/` | Models, repositories, config, theme, l10n, brand widgets, Firebase options |
 | `apps/customer_app/` | CustomerApp — home, merchant, basket, checkout, orders, account |
+| `apps/merchant_app/` | MerchantApp — inbox, live board, menu, shop |
 | `apps/admin_app/` | AdminApp — merchants, menus, places, media queue |
 | `firebase/firestore.rules` | The real security boundary — read its tests beside it |
 | `firebase/test/` | Rules tests, run against the emulator |
@@ -172,6 +192,12 @@ JAVA_HOME="C:\Program Files\Android\Android Studio\jbr" firebase emulators:exec 
 - Whether a merchant can take an order is **derived** from `workingHours` + `pausedUntil`.
   Never store it.
 - The merchant's accept countdown is shown on **instant orders only**. Pre-orders have no deadline.
+- **Never match `AsyncError()` after `AsyncLoading()`.** A stream that fails before it has
+  ever emitted stays `AsyncLoading` with the error hanging off it, so the error arm never
+  fires and the screen spins for ever. Every switch tests `hasError` first. On the
+  merchant inbox that bug reads as a quiet evening.
+- The merchant is derived from the **`merchantId` custom claim**, never from a Firestore
+  field — that is what `firestore.rules` checks, and only a server can issue a claim.
 
 ## Coupons
 
