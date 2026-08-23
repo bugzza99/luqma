@@ -15,8 +15,11 @@ service cloud.firestore {
 
     // Admin is a custom claim set by a Cloud Function, never a field in a document a
     // client can reach. A role stored in Firestore is a role a client can try to write.
+    // `get` with a default, not a bare lookup: on a token that carries no custom claims
+    // at all — every customer — a bare `token.admin` *errors* rather than reading false,
+    // which fails the branch it is in for a reason that has nothing to do with access.
     function isAdmin() {
-      return signedIn() && request.auth.token.admin == true;
+      return signedIn() && request.auth.token.get('admin', false) == true;
     }
 
     function isUser(uid) {
@@ -25,8 +28,38 @@ service cloud.firestore {
 
     // Merchant staff carry their merchantId as a claim, so ownership is decided without
     // a second read on every single request.
+    //
+    // "Belongs to" is not "runs". An owner and their courier carry the SAME merchantId,
+    // so this alone cannot tell them apart — and a rule written on it alone would let a
+    // courier accept orders, rewrite the menu and close the shop. Everything that acts
+    // for a merchant uses isMerchantOwner below; this is only the shared half.
     function ownsMerchant(merchantId) {
       return signedIn() && request.auth.token.merchantId == merchantId;
+    }
+
+    // `get` with a default rather than a bare lookup: a token without the claim is an
+    // ordinary customer, not an error, and a missing key would otherwise fail the whole
+    // evaluation rather than the one branch.
+    function staffRole() {
+      return signedIn() ? request.auth.token.get('role', '') : '';
+    }
+
+    function staffScope() {
+      return signedIn() ? request.auth.token.get('scope', '') : '';
+    }
+
+    function isMerchantOwner(merchantId) {
+      return ownsMerchant(merchantId) && staffRole() == 'owner';
+    }
+
+    function isCourierFor(merchantId) {
+      return ownsMerchant(merchantId) && staffRole() == 'courier';
+    }
+
+    // Luqma's own courier: home kitchens, and merchants that do not deliver. Belongs to
+    // no merchant, so it is scope rather than merchantId that identifies them.
+    function isPlatformCourier() {
+      return staffRole() == 'courier' && staffScope() == 'platform';
     }
 
     // The set of fields this write actually changes.
@@ -72,7 +105,7 @@ service cloud.firestore {
       allow create, delete: if isAdmin();
 
       allow update: if isAdmin() || (
-        ownsMerchant(merchantId) &&
+        isMerchantOwner(merchantId) &&
         // Everything not in this list — status, planId, revenueModel, walletBalance,
         // servedZones, ratingAvg, ownerUid — belongs to the admin. A merchant that can
         // set its own revenue model sets its own price.
@@ -87,16 +120,16 @@ service cloud.firestore {
 
     match /menuItems/{itemId} {
       allow read: if true;
-      allow write: if isAdmin() || ownsMerchant(request.resource.data.merchantId);
+      allow write: if isAdmin() || isMerchantOwner(request.resource.data.merchantId);
     }
 
     match /dailyMeals/{mealId} {
       allow read: if true;
       // remainingQty moves only through a Cloud Function, so a customer cannot reserve
       // a portion by writing the number down themselves.
-      allow create, delete: if isAdmin() || ownsMerchant(request.resource.data.merchantId);
+      allow create, delete: if isAdmin() || isMerchantOwner(request.resource.data.merchantId);
       allow update: if isAdmin() || (
-        ownsMerchant(resource.data.merchantId) && !('remainingQty' in changed())
+        isMerchantOwner(resource.data.merchantId) && !('remainingQty' in changed())
       );
     }
 
@@ -117,17 +150,24 @@ service cloud.firestore {
 
     // ---------------------------------------------------------------- orders
     match /orders/{orderId} {
+      // A courier reads their merchant's orders too — they carry the same merchantId,
+      // and they have to see what is ready before they can pick it up.
       allow read: if isAdmin()
                   || isUser(resource.data.customerUid)
                   || ownsMerchant(resource.data.merchantId)
-                  || isUser(resource.data.courierUid);
+                  || isUser(resource.data.courierUid)
+                  // Without this the platform courier cannot find the work at all: they
+                  // are not named on an order until they take it, and they cannot take
+                  // what they cannot see.
+                  || (isPlatformCourier()
+                      && resource.data.deliveryBy == 'platform');
 
       // Orders are created by a Cloud Function, which is what recomputes the total and
       // the coupon. A client-written order is a client-chosen price.
       allow create: if false;
 
       allow update: if isAdmin() || (
-        ownsMerchant(resource.data.merchantId) &&
+        isMerchantOwner(resource.data.merchantId) &&
         onlyChanges(['status', 'prepMinutes', 'cancelReason', 'cancelledBy',
                      'statusHistory', 'courierUid', 'updatedAt'])
       ) || (
@@ -136,8 +176,25 @@ service cloud.firestore {
         request.resource.data.status == 'cancelled' &&
         onlyChanges(['status', 'cancelReason', 'cancelledBy', 'statusHistory', 'updatedAt'])
       ) || (
-        isUser(resource.data.courierUid) &&
-        onlyChanges(['status', 'statusHistory', 'updatedAt'])
+        // A courier taking an order out, delivering it, or reporting that it failed.
+        // `deliveredAt` is here because it is what the revenue engine keys off, and
+        // `cancelReason` because a failed delivery with no reason tells nobody anything.
+        // Once an order names a courier, only that courier may move it. Whoever marks
+        // it delivered is saying the cash changed hands, and in a shop with two riders
+        // that has to be the one holding the bag.
+        (('courierUid' in resource.data)
+          ? isUser(resource.data.courierUid)
+          : (isCourierFor(resource.data.merchantId)
+             || (isPlatformCourier() && resource.data.deliveryBy == 'platform'))) &&
+        onlyChanges(['status', 'statusHistory', 'courierUid', 'deliveredAt',
+                     'cancelReason', 'cancelledBy', 'updatedAt']) &&
+        // A courier may only ever write their own name, and only onto an order nobody
+        // else is already carrying. Otherwise one could hand another's phone a delivery,
+        // or take an order off somebody halfway to the door.
+        (!('courierUid' in changed())
+          || (request.resource.data.courierUid == request.auth.uid
+              && (!('courierUid' in resource.data)
+                  || resource.data.courierUid == request.auth.uid)))
       );
 
       allow delete: if false;

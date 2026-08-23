@@ -2,6 +2,7 @@ import 'package:freezed_annotation/freezed_annotation.dart';
 
 import 'converters.dart';
 import 'coupon.dart';
+import 'geography.dart';
 import 'merchant.dart';
 
 part 'order.freezed.dart';
@@ -26,6 +27,19 @@ enum OrderStatus {
   /// The merchant let the accept deadline pass. Raised for the admin, never shown to
   /// the customer as an error — someone is about to phone the restaurant.
   needsAttention,
+}
+
+/// Whose courier takes this order out.
+///
+/// Frozen onto the order rather than read from the merchant, like everything else here
+/// that decides responsibility: a merchant who stops delivering their own orders next
+/// week must not change who was answerable for last week's.
+enum DeliveryBy {
+  /// The merchant's own courier.
+  merchant,
+
+  /// Luqma's courier. Home kitchens, and merchants with `deliversSelf = false`.
+  platform,
 }
 
 /// Who is asking to move an order. Every transition is checked against this, because
@@ -174,6 +188,18 @@ abstract class Order with _$Order {
     required String merchantId,
     required String merchantName,
     required String zoneId,
+
+    /// The address as it stood when the order was placed.
+    ///
+    /// A copy, not a reference. A courier cannot read another person's address
+    /// collection — the rules see to that — so a reference would render as nothing at
+    /// the one moment it is needed. And an address corrected next month must not
+    /// rewrite where last week's order actually went.
+    ///
+    /// Nullable only so that an order written before this field existed still opens
+    /// rather than crashing the screen a courier is standing in the street holding.
+    Address? address,
+    @Default(DeliveryBy.merchant) DeliveryBy deliveryBy,
     required OrderType type,
     required List<OrderLine> items,
     required OrderPricing pricing,

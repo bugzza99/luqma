@@ -24,6 +24,7 @@ export 'src/models/money.dart';
 export 'src/models/order.dart';
 export 'src/providers/providers.dart';
 export 'src/repositories/address_repository.dart';
+export 'src/repositories/courier_order_repository.dart';
 export 'src/repositories/feedback_repository.dart';
 export 'src/repositories/geography_repository.dart';
 export 'src/repositories/home_section_repository.dart';
