@@ -18,6 +18,29 @@ abstract interface class MerchantRepository {
 
   /// Pauses order intake until [until], or clears the pause when null.
   Future<Result<void>> setPausedUntil(String id, DateTime? until);
+
+  /// Every merchant in the city, whatever their status.
+  ///
+  /// For AdminApp only. The ones waiting for approval are the reason that screen exists,
+  /// and hiding suspended ones would remove the only place they could be reinstated.
+  /// Sorted so anything needing a decision is at the top.
+  Stream<List<Merchant>> watchAllMerchants({required String cityId});
+
+  /// Creates or replaces. An empty id means create.
+  Future<Result<Merchant>> saveMerchant(Merchant merchant);
+
+  Future<Result<void>> setStatus(String id, MerchantStatus status);
+}
+
+/// Pending first, then approved, then suspended.
+int _byAttentionThenName(Merchant a, Merchant b) {
+  const order = {
+    MerchantStatus.pending: 0,
+    MerchantStatus.approved: 1,
+    MerchantStatus.suspended: 2,
+  };
+  final byStatus = order[a.status]!.compareTo(order[b.status]!);
+  return byStatus != 0 ? byStatus : a.name.compareTo(b.name);
 }
 
 class FirestoreMerchantRepository implements MerchantRepository {
@@ -53,6 +76,34 @@ class FirestoreMerchantRepository implements MerchantRepository {
         'pausedUntil': until == null ? FieldValue.delete() : Timestamp.fromDate(until),
       });
     });
+  }
+
+  @override
+  Stream<List<Merchant>> watchAllMerchants({required String cityId}) {
+    return _merchants
+        .where('cityId', isEqualTo: cityId)
+        .snapshots()
+        .map((snapshot) => snapshot.docs.map(_toMerchant).toList()
+          ..sort(_byAttentionThenName));
+  }
+
+  @override
+  Future<Result<Merchant>> saveMerchant(Merchant merchant) {
+    return Result.guard(() async {
+      final doc = merchant.id.isEmpty ? _merchants.doc() : _merchants.doc(merchant.id);
+      final saved = merchant.copyWith(id: doc.id);
+      // Merged rather than replaced: fields the admin form does not carry — the rating,
+      // the wallet balance, the plan — must survive an edit to the name.
+      await doc.set(saved.toJson()..remove('id'), SetOptions(merge: true));
+      return saved;
+    });
+  }
+
+  @override
+  Future<Result<void>> setStatus(String id, MerchantStatus status) {
+    return Result.guard(
+      () => _merchants.doc(id).update({'status': status.name}),
+    );
   }
 
   Merchant _toMerchant(DocumentSnapshot<Map<String, dynamic>> doc) {
@@ -102,6 +153,34 @@ class FakeMerchantRepository implements MerchantRepository {
     final merchant = _merchants[id];
     if (merchant == null) return const Result.err(NotFoundFailure());
     _merchants[id] = merchant.copyWith(pausedUntil: until);
+    return const Result.ok(null);
+  }
+
+  @override
+  Stream<List<Merchant>> watchAllMerchants({required String cityId}) {
+    if (failure != null) return Stream.error(failure!);
+    return Stream.value(
+      _merchants.values.where((m) => m.cityId == cityId).toList()
+        ..sort(_byAttentionThenName),
+    );
+  }
+
+  @override
+  Future<Result<Merchant>> saveMerchant(Merchant merchant) async {
+    if (failure != null) return Result.err(failure!);
+    final saved = merchant.id.isEmpty
+        ? merchant.copyWith(id: 'merchant-${_merchants.length + 1}')
+        : merchant;
+    _merchants[saved.id] = saved;
+    return Result.ok(saved);
+  }
+
+  @override
+  Future<Result<void>> setStatus(String id, MerchantStatus status) async {
+    if (failure != null) return Result.err(failure!);
+    final merchant = _merchants[id];
+    if (merchant == null) return const Result.err(NotFoundFailure());
+    _merchants[id] = merchant.copyWith(status: status);
     return const Result.ok(null);
   }
 }

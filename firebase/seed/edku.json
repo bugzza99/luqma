@@ -1,0 +1,130 @@
+{
+  "_comment": [
+    "Edku's zones and landmarks.",
+    "",
+    "PLACEHOLDERS. These names are structurally correct but they are not researched local",
+    "knowledge — the owner lives in Edku and must replace them with the real ones before",
+    "this is seeded into production. A wrong zone name is not cosmetic: the zone prices the",
+    "delivery, bounds which merchants may take an order, and is the first thing a courier",
+    "reads.",
+    "",
+    "Landmarks should be things people actually say: a named pharmacy, a mosque, a tuk-tuk",
+    "stop, a school. Not a street name — the point of a landmark is that it is the thing",
+    "people navigate by when the street has no useful name.",
+    "",
+    "deliveryFee is in piastres. 1000 = 10.00 EGP."
+  ],
+
+  "city": {
+    "id": "edku",
+    "name": "إدكو",
+    "isActive": true
+  },
+
+  "zones": [
+    { "id": "balad", "name": "البلد", "defaultDeliveryFee": 800, "sortOrder": 0 },
+    { "id": "maamoura", "name": "المعمورة", "defaultDeliveryFee": 1000, "sortOrder": 1 },
+    { "id": "shatt", "name": "الشط", "defaultDeliveryFee": 1500, "sortOrder": 2 },
+    { "id": "mahatta", "name": "المحطة", "defaultDeliveryFee": 800, "sortOrder": 3 },
+    { "id": "bahri", "name": "بحري", "defaultDeliveryFee": 1200, "sortOrder": 4 },
+    { "id": "qibli", "name": "قبلي", "defaultDeliveryFee": 1200, "sortOrder": 5 },
+    { "id": "sahel", "name": "الساحل", "defaultDeliveryFee": 1800, "sortOrder": 6 },
+    { "id": "gharb", "name": "الغربية", "defaultDeliveryFee": 1500, "sortOrder": 7 }
+  ],
+
+  "landmarks": [
+    { "zoneId": "balad", "name": "المسجد الكبير" },
+    { "zoneId": "balad", "name": "سوق البلد" },
+    { "zoneId": "balad", "name": "مكتب البريد" },
+    { "zoneId": "balad", "name": "الوحدة الصحية" },
+    { "zoneId": "balad", "name": "موقف التوك توك" },
+
+    { "zoneId": "maamoura", "name": "صيدلية النور" },
+    { "zoneId": "maamoura", "name": "مسجد الفتح" },
+    { "zoneId": "maamoura", "name": "مدرسة المعمورة الابتدائية" },
+    { "zoneId": "maamoura", "name": "الفرن البلدي" },
+    { "zoneId": "maamoura", "name": "كافيه الركن" },
+
+    { "zoneId": "shatt", "name": "الكورنيش" },
+    { "zoneId": "shatt", "name": "نادي الشط" },
+    { "zoneId": "shatt", "name": "مرسى الصيادين" },
+    { "zoneId": "shatt", "name": "سوق السمك" },
+
+    { "zoneId": "mahatta", "name": "محطة القطار" },
+    { "zoneId": "mahatta", "name": "موقف الأتوبيس" },
+    { "zoneId": "mahatta", "name": "صيدلية المحطة" },
+    { "zoneId": "mahatta", "name": "مسجد المحطة" },
+
+    { "zoneId": "bahri", "name": "مدرسة بحري الإعدادية" },
+    { "zoneId": "bahri", "name": "مسجد بحري" },
+    { "zoneId": "bahri", "name": "محل العطارة" },
+
+    { "zoneId": "qibli", "name": "مسجد قبلي" },
+    { "zoneId": "qibli", "name": "المخبز الآلي" },
+    { "zoneId": "qibli", "name": "ملعب النادي" },
+
+    { "zoneId": "sahel", "name": "الطريق الساحلي" },
+    { "zoneId": "sahel", "name": "محطة البنزين" },
+    { "zoneId": "sahel", "name": "كوبري الساحل" },
+
+    { "zoneId": "gharb", "name": "مسجد الغربية" },
+    { "zoneId": "gharb", "name": "الوحدة المحلية" },
+    { "zoneId": "gharb", "name": "سوق الجمعة" }
+  ],
+
+  "plans": [
+    {
+      "id": "free",
+      "name": "مجانية",
+      "priceMonthly": 0,
+      "sortOrder": 0,
+      "isActive": true,
+      "features": {
+        "maxItems": 20,
+        "verifiedBadge": false,
+        "analytics": false,
+        "boostRank": false,
+        "homeBannerSlots": 0,
+        "monthlyPromotionCount": 0
+      }
+    },
+    {
+      "id": "basic",
+      "name": "أساسية",
+      "priceMonthly": 25000,
+      "sortOrder": 1,
+      "isActive": true,
+      "features": {
+        "maxItems": 0,
+        "verifiedBadge": true,
+        "analytics": true,
+        "boostRank": false,
+        "homeBannerSlots": 0,
+        "monthlyPromotionCount": 0
+      }
+    },
+    {
+      "id": "premium",
+      "name": "مميزة",
+      "priceMonthly": 60000,
+      "sortOrder": 2,
+      "isActive": true,
+      "features": {
+        "maxItems": 0,
+        "verifiedBadge": true,
+        "analytics": true,
+        "boostRank": true,
+        "homeBannerSlots": 1,
+        "monthlyPromotionCount": 1
+      }
+    }
+  ],
+
+  "homeSections": [
+    { "key": "categories", "titleAr": "الأقسام", "type": "categoryChips", "sortOrder": 0, "isVisible": true },
+    { "key": "top_banner", "titleAr": "", "type": "adSlot", "sortOrder": 1, "isVisible": true, "params": { "maxAds": 3, "rotationSeconds": 6 } },
+    { "key": "home_kitchen", "titleAr": "أكل بيتي النهارده", "type": "homeKitchenToday", "sortOrder": 2, "isVisible": true },
+    { "key": "most_ordered", "titleAr": "الأكتر طلباً", "type": "mostOrdered", "sortOrder": 3, "isVisible": true },
+    { "key": "all_merchants", "titleAr": "كل المطاعم", "type": "merchantList", "sortOrder": 4, "isVisible": true }
+  ]
+}

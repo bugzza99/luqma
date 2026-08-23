@@ -9,6 +9,7 @@ import '../models/geography.dart';
 import '../models/menu_item.dart';
 import '../models/merchant.dart';
 import '../repositories/geography_repository.dart';
+import '../repositories/media_repository.dart';
 import '../repositories/menu_repository.dart';
 import '../repositories/merchant_repository.dart';
 
@@ -51,6 +52,10 @@ Future<List<Landmark>> landmarks(Ref ref) async {
       );
   return result.valueOrThrow;
 }
+
+@Riverpod(keepAlive: true)
+MediaRepository mediaRepository(Ref ref) =>
+    FirestoreMediaRepository(ref.watch(firestoreProvider));
 
 @Riverpod(keepAlive: true)
 MenuRepository menuRepository(Ref ref) =>

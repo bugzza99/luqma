@@ -40,9 +40,21 @@ assets and the Android resource tree.
 
 Order creation and coupon validation are Cloud Functions and wait on Blaze.
 
-**Next: Phase 2 — AdminApp minimum.** Auth with custom claims, `staff`, cities, zones,
-landmarks, merchant CRUD, menu entry on behalf of merchants, the media queue. It ends with
-real Edku data in the database.
+**Phase 2 is done**, on branch `phase-2-admin-app`. AdminApp runs on a phone and in a
+browser from one codebase — the owner types roughly six hundred menu items during the
+launch, and a real keyboard is the difference between an afternoon and a fortnight. It
+carries the access gate, the merchants list with menu entry, the places screen with the
+landmark suggestion queue, and the media moderation queue.
+
+Two things are outstanding and both are deliberate:
+
+- **`staff` management waits on Blaze.** Creating a staff account means creating a Firebase
+  Auth user, which only a server can do. Nothing else in AdminApp needs Cloud Functions.
+- **The zone and landmark names in `firebase/seed/edku.json` are placeholders.** They are
+  structurally correct but not local knowledge. The owner replaces them; a wrong zone name
+  sends a courier to the wrong part of town.
+
+**Next: Phase 3 — CustomerApp core.**
 
 ### Infrastructure
 

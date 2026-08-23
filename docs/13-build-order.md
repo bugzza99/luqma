@@ -24,8 +24,19 @@ Building the two shared components here is what stops AdminApp and MerchantApp f
 two menu editors.
 
 ## Phase 2 — AdminApp minimum
-Auth with custom claims, `staff`, cities, zones, landmarks, merchant CRUD, menu entry on
-behalf of merchants, the media queue. Ends with real Edku data in the database.
+Auth with custom claims, cities, zones, landmarks, merchant CRUD, menu entry on behalf of
+merchants, the media queue. Ends with real Edku data in the database.
+
+Also here, and not in the original plan: the landmark suggestion queue. Nobody can write
+Edku's landmark list in advance, so it is grown from the notes customers type when the
+list does not have theirs — every such note is a place a courier has already had to be
+told about.
+
+**`staff` management moved out of this phase.** Creating a staff account means creating a
+Firebase Auth user, which only a server can do, which means Cloud Functions, which means
+Blaze. Everything else in AdminApp works on the free tier; this one thing does not, and
+building half a screen whose main action is disabled would be worse than waiting. It lands
+with `createStaffAccount` — see `07-backend-functions.md`.
 
 ## Phase 3 — CustomerApp core
 Google Sign-In, home rendered from `homeSections`, merchant and item browsing, cart,

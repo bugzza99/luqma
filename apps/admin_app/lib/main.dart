@@ -1,0 +1,42 @@
+import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:luqma_core/luqma_core.dart';
+
+import 'src/app/emulator.dart';
+import 'src/app/firebase_options.dart';
+import 'src/app/router.dart';
+
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp(options: LuqmaFirebase.admin);
+  await Emulators.connect();
+
+  runApp(const ProviderScope(child: AdminApp()));
+}
+
+class AdminApp extends ConsumerWidget {
+  const AdminApp({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return MaterialApp.router(
+      title: 'لقمة — الأدمن',
+      debugShowCheckedModeBanner: false,
+      theme: LuqmaTheme.light,
+      darkTheme: LuqmaTheme.dark,
+      routerConfig: ref.watch(routerProvider),
+      // Arabic only, and right-to-left everywhere. There is no English build to fall
+      // back to, so the locale is fixed rather than following the device.
+      locale: const Locale('ar'),
+      supportedLocales: LuqmaStrings.supportedLocales,
+      localizationsDelegates: const [
+        ...LuqmaStrings.localizationsDelegates,
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
+    );
+  }
+}
