@@ -12,9 +12,11 @@ import '../models/geography.dart';
 import '../models/home_section.dart';
 import '../models/menu_item.dart';
 import '../models/merchant.dart';
+import '../models/billing.dart';
 import '../models/daily_meal.dart';
 import '../models/order.dart';
 import '../repositories/address_repository.dart';
+import '../repositories/billing_repository.dart';
 import '../repositories/courier_order_repository.dart';
 import '../repositories/daily_meal_repository.dart';
 import '../repositories/feedback_repository.dart';
@@ -145,6 +147,23 @@ StaffIdentity staffIdentity(Ref ref) => switch (ref.watch(currentIdentityProvide
       AsyncData(:final value) => StaffIdentity.from(value),
       _ => StaffIdentity.none,
     };
+
+@Riverpod(keepAlive: true)
+BillingRepository billingRepository(Ref ref) =>
+    FirestoreBillingRepository(ref.watch(firestoreProvider));
+
+/// The plans on offer. Kept alive: three documents that change a few times a year, and
+/// every merchant screen wants them.
+@Riverpod(keepAlive: true)
+Future<List<Plan>> plans(Ref ref) async {
+  final result = await ref.watch(billingRepositoryProvider).plans();
+  return result.valueOrThrow;
+}
+
+/// One merchant's most recent term, expired or not. Live.
+@riverpod
+Stream<Subscription?> subscription(Ref ref, String merchantId) =>
+    ref.watch(billingRepositoryProvider).watchSubscription(merchantId);
 
 @Riverpod(keepAlive: true)
 CourierOrderRepository courierOrderRepository(Ref ref) =>

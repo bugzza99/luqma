@@ -59,6 +59,13 @@ void main() {
               .overrideWithValue(FakeMerchantRepository(seed: [shopIs])),
           dailyMealRepositoryProvider
               .overrideWithValue(FakeDailyMealRepository()),
+          billingRepositoryProvider.overrideWithValue(
+            FakeBillingRepository(
+              seedPlans: const [
+                Plan(id: 'basic', name: 'أساسية', priceMonthly: 25000),
+              ],
+            ),
+          ),
           merchantOrderRepositoryProvider
               .overrideWithValue(FakeMerchantOrderRepository()),
           courierOrderRepositoryProvider
@@ -194,6 +201,63 @@ void main() {
 
   // A cook has no standing menu — what they sell is today's meal and a count of
   // portions — so the third tab is the one that matches the business.
+  // Read-only on purpose: money is settled in cash with the owner, so a merchant
+  // changing their own terms from their phone is not a feature, it is a hole.
+  group('what the merchant pays', () {
+    testWidgets('is shown on the shop tab', (tester) async {
+      await pump(tester, shopIs: shop.copyWith(planId: 'basic'));
+
+      await tester.tap(find.byKey(MerchantApp.shopTabKey));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(ShopScreen.billingKey), findsOneWidget);
+      expect(find.text('أساسية'), findsWidgets);
+    });
+
+    testWidgets('a prepaid merchant sees the balance', (tester) async {
+      await pump(
+        tester,
+        shopIs: shop.copyWith(
+          revenueModel: RevenueModel.prepaid,
+          revenueValue: 500,
+          walletBalance: 4000,
+        ),
+      );
+
+      await tester.tap(find.byKey(MerchantApp.shopTabKey));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(ShopScreen.walletKey), findsOneWidget);
+      expect(find.textContaining('40 ج'), findsWidgets);
+    });
+
+    // The one line on that card that changes what happens next.
+    testWidgets('an empty wallet says orders have stopped', (tester) async {
+      await pump(
+        tester,
+        shopIs: shop.copyWith(
+          revenueModel: RevenueModel.prepaid,
+          revenueValue: 500,
+          walletBalance: 100,
+        ),
+      );
+
+      await tester.tap(find.byKey(MerchantApp.shopTabKey));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('مش هتوصلك طلبات'), findsOneWidget);
+    });
+
+    testWidgets('a subscriber sees no wallet at all', (tester) async {
+      await pump(tester);
+
+      await tester.tap(find.byKey(MerchantApp.shopTabKey));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(ShopScreen.walletKey), findsNothing);
+    });
+  });
+
   group('a home kitchen', () {
     testWidgets('gets the meals tab instead of the menu', (tester) async {
       await pump(

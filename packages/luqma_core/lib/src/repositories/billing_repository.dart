@@ -104,7 +104,7 @@ class FirestoreBillingRepository implements BillingRepository {
         planId: planId,
         amount: amount,
         startedAt: now,
-        expiresAt: from.add(const Duration(days: _daysPerMonth * 1) * months),
+        expiresAt: from.add(Duration(days: _daysPerMonth * months)),
         recordedBy: recordedBy,
       );
 
@@ -193,6 +193,18 @@ class FakeBillingRepository implements BillingRepository {
 
   int walletOf(String merchantId) => _wallets[merchantId] ?? 0;
 
+  /// The merchant's latest term, read synchronously.
+  ///
+  /// A widget test runs on a fake clock and cannot await the stream above — the future
+  /// simply never completes — so this is what lets a test assert on what a screen wrote.
+  Subscription? subscriptionOf(String merchantId) {
+    final terms = _subscriptions.values
+        .where((s) => s.merchantId == merchantId)
+        .toList()
+      ..sort((a, b) => b.expiresAt.compareTo(a.expiresAt));
+    return terms.firstOrNull;
+  }
+
   Stream<T> _live<T>(T Function() read) => Stream.multi((listener) {
         listener.add(read());
         final sub = _changed.stream.listen((_) => listener.add(read()));
@@ -238,7 +250,9 @@ class FakeBillingRepository implements BillingRepository {
     if (months < 1 || amount < 0) return const Result.err(ConflictFailure());
 
     final now = DateTime.now();
-    final existing = await watchSubscription(merchantId).first;
+    // Read synchronously, not by awaiting this fake's own stream: under a widget test's
+    // fake clock that future never completes, and the screen calling this would hang.
+    final existing = subscriptionOf(merchantId);
     final from =
         existing != null && existing.isActiveAt(now) ? existing.expiresAt : now;
 
