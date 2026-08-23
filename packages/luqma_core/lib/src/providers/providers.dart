@@ -86,6 +86,17 @@ Stream<List<MenuItem>> menuItems(Ref ref, String merchantId) =>
 Stream<List<Merchant>> merchants(Ref ref, String cityId) =>
     ref.watch(merchantRepositoryProvider).watchMerchants(cityId: cityId);
 
+/// One merchant, by id.
+///
+/// Throws the [Failure] rather than surfacing a `Result`, so the screen above reads it
+/// as an `AsyncValue` and gets loading, data and error from one `switch` — the same
+/// shape every other read on the screen already has.
+@riverpod
+Future<Merchant> merchant(Ref ref, String id) async {
+  final result = await ref.watch(merchantRepositoryProvider).getMerchant(id);
+  return result.valueOrThrow;
+}
+
 /// The one path from AdminApp to this phone.
 ///
 /// Overridden in tests and at start-up; the app never constructs it inline, so there is
