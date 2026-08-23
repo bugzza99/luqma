@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:luqma_core/luqma_core.dart';
 import 'package:merchant_app/src/app/merchant_app.dart';
 import 'package:merchant_app/src/auth/sign_in_screen.dart';
+import 'package:merchant_app/src/courier/courier_screen.dart';
 import 'package:merchant_app/src/menu/menu_screen.dart';
 import 'package:merchant_app/src/orders/inbox_screen.dart';
 import 'package:merchant_app/src/orders/live_board_screen.dart';
@@ -56,6 +57,9 @@ void main() {
               .overrideWithValue(FakeMerchantRepository(seed: const [shop])),
           merchantOrderRepositoryProvider
               .overrideWithValue(FakeMerchantOrderRepository()),
+          courierOrderRepositoryProvider
+              .overrideWithValue(FakeCourierOrderRepository()),
+          geographyRepositoryProvider.overrideWithValue(FakeGeographyRepository()),
           menuRepositoryProvider.overrideWithValue(
             FakeMenuRepository(categories: shop.menuCategories),
           ),
@@ -101,6 +105,36 @@ void main() {
 
       expect(find.byType(SignInScreen), findsNothing);
       expect(find.byKey(MerchantApp.noAccessKey), findsOneWidget);
+    });
+
+    // One app, two modes. A courier has no menu, no busy toggle and no inbox — there is
+    // nothing on those screens they are allowed to touch.
+    testWidgets('a courier lands on the delivery screen, not the inbox', (tester) async {
+      await pump(
+        tester,
+        signedInAs: const LuqmaIdentity(
+          uid: 'c1',
+          claims: {'role': 'courier', 'scope': 'merchant', 'merchantId': 'm1'},
+        ),
+      );
+
+      expect(find.byType(CourierScreen), findsOneWidget);
+      expect(find.byType(InboxScreen), findsNothing);
+      expect(find.byKey(MerchantApp.menuTabKey), findsNothing);
+    });
+
+    testWidgets('a platform courier gets in too, with no merchant at all',
+        (tester) async {
+      await pump(
+        tester,
+        signedInAs: const LuqmaIdentity(
+          uid: 'c9',
+          claims: {'role': 'courier', 'scope': 'platform'},
+        ),
+      );
+
+      expect(find.byType(CourierScreen), findsOneWidget);
+      expect(find.byKey(MerchantApp.noAccessKey), findsNothing);
     });
 
     testWidgets('signing out returns to the sign-in screen', (tester) async {

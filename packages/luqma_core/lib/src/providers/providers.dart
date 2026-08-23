@@ -14,6 +14,7 @@ import '../models/menu_item.dart';
 import '../models/merchant.dart';
 import '../models/order.dart';
 import '../repositories/address_repository.dart';
+import '../repositories/courier_order_repository.dart';
 import '../repositories/feedback_repository.dart';
 import '../repositories/geography_repository.dart';
 import '../repositories/home_section_repository.dart';
@@ -142,6 +143,21 @@ StaffIdentity staffIdentity(Ref ref) => switch (ref.watch(currentIdentityProvide
       AsyncData(:final value) => StaffIdentity.from(value),
       _ => StaffIdentity.none,
     };
+
+@Riverpod(keepAlive: true)
+CourierOrderRepository courierOrderRepository(Ref ref) =>
+    FirestoreCourierOrderRepository(ref.watch(firestoreProvider));
+
+/// What one merchant's own courier has to take out. Live.
+@riverpod
+Stream<List<Order>> merchantDeliveries(Ref ref, String merchantId) =>
+    ref.watch(courierOrderRepositoryProvider).watchForMerchant(merchantId);
+
+/// What Luqma's courier has to take out: home kitchens, and merchants that do not
+/// deliver for themselves. Live.
+@riverpod
+Stream<List<Order>> platformDeliveries(Ref ref, String cityId) =>
+    ref.watch(courierOrderRepositoryProvider).watchForPlatform(cityId);
 
 @Riverpod(keepAlive: true)
 FeedbackRepository feedbackRepository(Ref ref) =>

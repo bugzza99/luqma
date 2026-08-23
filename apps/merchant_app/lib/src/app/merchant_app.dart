@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:luqma_core/luqma_core.dart';
 
 import '../auth/sign_in_screen.dart';
+import '../courier/courier_screen.dart';
 import '../menu/menu_screen.dart';
 import '../orders/inbox_screen.dart';
 import '../orders/live_board_screen.dart';
@@ -14,10 +15,15 @@ import '../shop/shop_screen.dart';
 /// The gate is not a router: this app has four tabs and one question — is the signed-in
 /// account a merchant. A route table would be machinery for decisions it does not make.
 ///
-/// The three answers are kept apart on purpose. *Not resolved yet* is not *signed out*,
-/// or every launch flashes a login screen at a merchant who is already signed in. And a
-/// signed-in account that owns no merchant is *turned away*, not asked to sign in —
-/// they have a real account, just not one this app is for.
+/// One app, two modes, chosen by the role on the token. A courier gets the delivery
+/// screen and nothing else — no menu, no busy toggle, no inbox. There is no driver app
+/// to install and no second APK to keep in step.
+///
+/// The three answers to "who is this" are kept apart on purpose. *Not resolved yet* is
+/// not *signed out*, or every launch flashes a login screen at somebody already signed
+/// in. And a signed-in account that belongs to no merchant and is not a platform courier
+/// is *turned away*, not asked to sign in — they have a real account, just not one this
+/// app is for.
 class MerchantApp extends ConsumerWidget {
   const MerchantApp({super.key});
 
@@ -58,10 +64,13 @@ class _Gate extends ConsumerWidget {
 
     return switch (session) {
       AsyncValue(hasValue: true, value: null) => const SignInScreen(),
-      AsyncValue(hasValue: true, :final value?) =>
-        StaffIdentity.from(value).ownsAMerchant
-            ? const _Shell()
-            : const _NoAccess(),
+      AsyncValue(hasValue: true, :final value?) => switch (StaffIdentity.from(value)) {
+          // A platform courier belongs to no merchant, so `ownsAMerchant` is false for
+          // them and the role is what decides.
+          StaffIdentity(role: StaffRole.courier) => const CourierScreen(),
+          StaffIdentity(ownsAMerchant: true) => const _Shell(),
+          _ => const _NoAccess(),
+        },
       // Being unable to read the session means nobody is signed in, never that
       // somebody is.
       AsyncValue(hasError: true) => const SignInScreen(),
