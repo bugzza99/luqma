@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:luqma_core/luqma_core.dart';
@@ -58,6 +59,17 @@ void main() {
           menuRepositoryProvider.overrideWithValue(
             FakeMenuRepository(categories: shop.menuCategories),
           ),
+          feedbackRepositoryProvider.overrideWithValue(
+            FakeFeedbackRepository(seed: const [
+              CustomerRating(
+                orderId: 'o1',
+                merchantId: 'm1',
+                stars: 2,
+                comment: 'الأكل وصل بارد',
+              ),
+              CustomerRating(orderId: 'o2', merchantId: 'm1', stars: 5),
+            ]),
+          ),
           remoteConfigServiceProvider
               .overrideWithValue(RemoteConfigService(FakeConfigFetcher({}))),
         ],
@@ -95,6 +107,13 @@ void main() {
       await pump(tester);
 
       await tester.tap(find.byKey(MerchantApp.shopTabKey));
+      await tester.pumpAndSettle();
+      // The feedback list sits above it, so on a test-sized screen it is below the fold.
+      await tester.scrollUntilVisible(
+        find.byKey(ShopScreen.signOutKey),
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(ShopScreen.signOutKey));
       await tester.pumpAndSettle();
@@ -145,6 +164,17 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byType(BusyToggle), findsOneWidget);
+    });
+
+    // Private to this merchant: it is how somebody finds out the food arrives cold
+    // before the rating that says so becomes public.
+    testWidgets('shows what customers wrote', (tester) async {
+      await pump(tester);
+
+      await tester.tap(find.byKey(MerchantApp.shopTabKey));
+      await tester.pumpAndSettle();
+
+      expect(find.text('الأكل وصل بارد'), findsOneWidget);
     });
 
     testWidgets('says which shop this account is for', (tester) async {

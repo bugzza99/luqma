@@ -43,6 +43,10 @@ class ShopScreen extends ConsumerWidget {
                 if (merchant != null) _Identity(merchant: merchant),
                 const SizedBox(height: Space.lg),
                 if (merchant != null) _Rating(merchant: merchant),
+                if (staff.merchantId != null) ...[
+                  const SizedBox(height: Space.lg),
+                  _Feedback(merchantId: staff.merchantId!),
+                ],
                 const SizedBox(height: Space.xl),
                 Text(
                   staff.email ?? '',
@@ -138,6 +142,98 @@ class _Identity extends StatelessWidget {
               ],
             ),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+/// The words, as opposed to the stars.
+///
+/// Private to this merchant until the public-comments flag is turned on. Somebody who
+/// reads honest criticism in private fixes it; in public they argue with it.
+class _Feedback extends ConsumerWidget {
+  const _Feedback({required this.merchantId});
+
+  final String merchantId;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
+    final colors = theme.luqma;
+    final feedback = ref.watch(merchantFeedbackProvider(merchantId));
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text('اللي العملاء قالوه', style: theme.textTheme.titleLarge),
+        const SizedBox(height: Space.sm),
+        switch (feedback) {
+          // First, and on `hasError`: a stream that fails before it has ever emitted
+          // stays AsyncLoading with the error hanging off it.
+          AsyncValue(hasError: true) => Text(
+              'مش قادرين نجيب التقييمات دلوقتي.',
+              style: theme.textTheme.bodyMedium
+                  ?.copyWith(color: colors.textSecondary),
+            ),
+          AsyncValue(hasValue: true, :final value?) when value.isEmpty => Text(
+              'لسه محدش قيّم طلب.',
+              style: theme.textTheme.bodyMedium
+                  ?.copyWith(color: colors.textSecondary),
+            ),
+          AsyncValue(hasValue: true, :final value?) => Column(
+              children: [
+                for (final one in value.take(20))
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: Space.sm),
+                    child: _FeedbackRow(feedback: one),
+                  ),
+              ],
+            ),
+          _ => const Center(child: CircularProgressIndicator()),
+        },
+      ],
+    );
+  }
+}
+
+class _FeedbackRow extends StatelessWidget {
+  const _FeedbackRow({required this.feedback});
+
+  final CustomerRating feedback;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = theme.luqma;
+
+    return Container(
+      padding: const EdgeInsets.all(Space.md),
+      decoration: BoxDecoration(
+        color: colors.card,
+        borderRadius: Radii.cardAll,
+        border: Border.all(color: colors.hairline),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              for (var i = 1; i <= 5; i++)
+                Icon(
+                  i <= feedback.stars ? Icons.star_rounded : Icons.star_border_rounded,
+                  size: Sizes.iconSm,
+                  color: i <= feedback.stars ? colors.accent : colors.border,
+                ),
+            ],
+          ),
+          // Most people rate without typing, and those ratings still belong here — a
+          // list of comments alone would read as nothing but complaints, because
+          // complaints are what people bother to write.
+          if (feedback.comment != null && feedback.comment!.isNotEmpty) ...[
+            const SizedBox(height: Space.xs),
+            Text(feedback.comment!, style: theme.textTheme.bodyMedium),
+          ],
         ],
       ),
     );

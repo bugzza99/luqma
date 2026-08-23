@@ -14,6 +14,7 @@ import '../models/menu_item.dart';
 import '../models/merchant.dart';
 import '../models/order.dart';
 import '../repositories/address_repository.dart';
+import '../repositories/feedback_repository.dart';
 import '../repositories/geography_repository.dart';
 import '../repositories/home_section_repository.dart';
 import '../repositories/media_repository.dart';
@@ -141,6 +142,15 @@ StaffIdentity staffIdentity(Ref ref) => switch (ref.watch(currentIdentityProvide
       AsyncData(:final value) => StaffIdentity.from(value),
       _ => StaffIdentity.none,
     };
+
+@Riverpod(keepAlive: true)
+FeedbackRepository feedbackRepository(Ref ref) =>
+    FirestoreFeedbackRepository(ref.watch(firestoreProvider));
+
+/// What customers said about one merchant. Live.
+@riverpod
+Stream<List<CustomerRating>> merchantFeedback(Ref ref, String merchantId) =>
+    ref.watch(feedbackRepositoryProvider).watchFeedback(merchantId);
 
 @Riverpod(keepAlive: true)
 MerchantOrderRepository merchantOrderRepository(Ref ref) =>
