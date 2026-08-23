@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../models/home_section.dart';
@@ -78,13 +80,34 @@ class FakeHomeSectionRepository implements HomeSectionRepository {
   final List<HomeSection> _sections;
   final Failure? failure;
 
+  final _changed = StreamController<void>.broadcast();
+
+  /// Everything held right now. A widget test runs on a fake clock and cannot await the
+  /// stream below, so this is what lets a test assert on what a screen wrote.
+  List<HomeSection> get all => List.unmodifiable(_sections);
+
+  HomeSection? operator [](String key) =>
+      _sections.where((s) => s.key == key).firstOrNull;
+
+  void _notify() {
+    if (!_changed.isClosed) _changed.add(null);
+  }
+
+  void dispose() => _changed.close();
+
   @override
   Stream<List<HomeSection>> watchSections({required String cityId}) {
     if (failure != null) return Stream.error(failure!);
-    return Stream.value(
-      _sections.where((s) => s.cityId == null || s.cityId == cityId).toList()
-        ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder)),
-    );
+    // Live, like Firestore's: a builder that hides a section has to see it change.
+    return Stream.multi((listener) {
+      List<HomeSection> read() =>
+          _sections.where((s) => s.cityId == null || s.cityId == cityId).toList()
+            ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
+
+      listener.add(read());
+      final sub = _changed.stream.listen((_) => listener.add(read()));
+      listener.onCancel = sub.cancel;
+    });
   }
 
   @override
@@ -93,6 +116,7 @@ class FakeHomeSectionRepository implements HomeSectionRepository {
     _sections
       ..removeWhere((s) => s.key == section.key)
       ..add(section);
+    _notify();
     return const Result.ok(null);
   }
 
@@ -102,6 +126,7 @@ class FakeHomeSectionRepository implements HomeSectionRepository {
     final i = _sections.indexWhere((s) => s.key == key);
     if (i < 0) return const Result.err(NotFoundFailure());
     _sections[i] = _sections[i].copyWith(isVisible: isVisible);
+    _notify();
     return const Result.ok(null);
   }
 
@@ -112,6 +137,7 @@ class FakeHomeSectionRepository implements HomeSectionRepository {
       final index = _sections.indexWhere((s) => s.key == keysInOrder[i]);
       if (index >= 0) _sections[index] = _sections[index].copyWith(sortOrder: i);
     }
+    _notify();
     return const Result.ok(null);
   }
 }

@@ -16,6 +16,8 @@ abstract final class Routes {
   static const merchants = '/merchants';
   static const zones = '/zones';
   static const media = '/media';
+  static const promotions = '/promotions';
+  static const home = '/home-builder';
   static const staff = '/staff';
 }
 

@@ -6,9 +6,11 @@ import '../auth/admin_access.dart';
 import '../auth/gate_screens.dart';
 import '../auth/identity_provider.dart';
 import '../dashboard/dashboard_screen.dart';
+import '../home_builder/home_builder_screen.dart';
 import '../media/media_screen.dart';
 import '../merchants/merchants_screen.dart';
 import '../places/places_screen.dart';
+import '../promotions/promotions_screen.dart';
 import '../shell/layout.dart';
 
 part 'router.g.dart';
@@ -18,6 +20,12 @@ const _destinations = [
   AdminDestination(label: 'المطاعم', icon: Icons.storefront, route: Routes.merchants),
   AdminDestination(label: 'الأماكن', icon: Icons.place, route: Routes.zones),
   AdminDestination(label: 'الصور', icon: Icons.photo_library, route: Routes.media),
+  AdminDestination(
+    label: 'الإعلانات',
+    icon: Icons.campaign,
+    route: Routes.promotions,
+  ),
+  AdminDestination(label: 'الرئيسية', icon: Icons.dashboard, route: Routes.home),
 ];
 
 @Riverpod(keepAlive: true)
@@ -51,6 +59,11 @@ GoRouter router(Ref ref) {
           GoRoute(path: Routes.merchants, builder: (_, _) => const MerchantsScreen()),
           GoRoute(path: Routes.zones, builder: (_, _) => const PlacesScreen()),
           GoRoute(path: Routes.media, builder: (_, _) => const MediaScreen()),
+          GoRoute(
+            path: Routes.promotions,
+            builder: (_, _) => const PromotionsScreen(),
+          ),
+          GoRoute(path: Routes.home, builder: (_, _) => const HomeBuilderScreen()),
         ],
       ),
     ],

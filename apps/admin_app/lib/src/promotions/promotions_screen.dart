@@ -1,0 +1,315 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:luqma_core/luqma_core.dart';
+
+import '../shell/layout.dart';
+
+/// Where a merchant's request becomes a placement, or does not.
+///
+/// The one asymmetry the whole promotions design rests on: a merchant may ask, and only
+/// an admin may approve. Letting a merchant publish their own push is the fastest way to
+/// make customers disable notifications — and every operational alert goes with it.
+class PromotionsScreen extends ConsumerWidget {
+  const PromotionsScreen({super.key});
+
+  static const emptyKey = Key('promotions.empty');
+  static const errorKey = Key('promotions.error');
+  static const reasonKey = Key('promotions.reason');
+  static const confirmRejectKey = Key('promotions.confirmReject');
+
+  static Key cardKey(String id) => Key('promotions.card.$id');
+  static Key approveKey(String id) => Key('promotions.approve.$id');
+  static Key rejectKey(String id) => Key('promotions.reject.$id');
+  static Key pushWarningKey(String id) => Key('promotions.push.$id');
+
+  static const channelNames = {
+    PromotionChannel.homeBanner: 'بانر في الرئيسية',
+    PromotionChannel.categoryBanner: 'بانر في قسم',
+    PromotionChannel.boost: 'رفع في الترتيب',
+    PromotionChannel.push: 'إشعار للعملاء',
+  };
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final colors = Theme.of(context).luqma;
+    // Watched, not read at the moment of a decision: every approval is stamped with who
+    // made it, so the session has to be live before any of this runs.
+    ref.watch(currentIdentityProvider);
+
+    return Scaffold(
+      backgroundColor: colors.background,
+      appBar: AppBar(title: const Text('طلبات الإعلانات')),
+      body: AdminContent(
+        child: switch (ref.watch(promotionQueueProvider)) {
+          // First, and on `hasError`: a stream that fails before it has ever emitted
+          // stays AsyncLoading with the error hanging off it, and an admin reading that
+          // as an empty queue stops checking.
+          AsyncValue(hasError: true, :final error?) => _Error(failure: error),
+          AsyncValue(hasValue: true, :final value?) when value.isEmpty => const _Empty(),
+          AsyncValue(hasValue: true, :final value?) => ListView.separated(
+              padding: const EdgeInsets.all(Space.gutter),
+              itemCount: value.length,
+              separatorBuilder: (_, _) => const SizedBox(height: Space.md),
+              itemBuilder: (context, i) => _Request(promotion: value[i]),
+            ),
+          _ => const Center(child: CircularProgressIndicator()),
+        },
+      ),
+    );
+  }
+}
+
+class _Request extends ConsumerWidget {
+  const _Request({required this.promotion});
+
+  final Promotion promotion;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
+    final colors = theme.luqma;
+    final strings = LuqmaStrings.of(context);
+    final merchant = ref.watch(merchantProvider(promotion.merchantId)).value;
+
+    return Container(
+      key: PromotionsScreen.cardKey(promotion.id),
+      padding: const EdgeInsets.all(Space.md),
+      decoration: BoxDecoration(
+        color: colors.card,
+        borderRadius: Radii.cardAll,
+        border: Border.all(color: colors.hairline),
+        boxShadow: Elevations.card,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  merchant?.name ?? promotion.merchantId,
+                  style: theme.textTheme.titleMedium,
+                ),
+              ),
+              Text(
+                PromotionsScreen.channelNames[promotion.channel]!,
+                style: LuqmaType.caption.copyWith(color: colors.textSecondary),
+              ),
+            ],
+          ),
+          if (promotion.channel == PromotionChannel.push) ...[
+            const SizedBox(height: Space.sm),
+            Container(
+              key: PromotionsScreen.pushWarningKey(promotion.id),
+              padding: const EdgeInsets.all(Space.sm),
+              decoration: BoxDecoration(
+                color: colors.accent,
+                borderRadius: Radii.cardAll,
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.campaign_outlined,
+                    size: Sizes.iconSm,
+                    // Dark on the orange, never white: white on it is 3.03:1.
+                    color: colors.onAccent,
+                  ),
+                  const SizedBox(width: Space.sm),
+                  Expanded(
+                    child: Text(
+                      // The one channel that reaches somebody not looking at the app,
+                      // and the one that can cost every other notification we send.
+                      'ده إشعار هيوصل لكل العملاء. اقرا النص كويس.',
+                      style: LuqmaType.bodySmall.copyWith(color: colors.onAccent),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+          const SizedBox(height: Space.sm),
+          Text(promotion.title, style: theme.textTheme.titleLarge),
+          if (promotion.body.isNotEmpty) ...[
+            const SizedBox(height: Space.xs),
+            Text(promotion.body, style: theme.textTheme.bodyMedium),
+          ],
+          const SizedBox(height: Space.sm),
+          Text(
+            'من ${_day(promotion.startAt)} لـ ${_day(promotion.endAt)}'
+            '${promotion.price > 0 ? ' · ${strings.price(promotion.price)}' : ''}',
+            style: LuqmaType.caption.copyWith(color: colors.textSecondary),
+          ),
+          const SizedBox(height: Space.md),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton(
+                  key: PromotionsScreen.rejectKey(promotion.id),
+                  onPressed: () => _reject(context, ref),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: colors.danger,
+                    minimumSize: const Size.fromHeight(Sizes.minTarget),
+                  ),
+                  child: const Text('رفض'),
+                ),
+              ),
+              const SizedBox(width: Sizes.targetGap),
+              Expanded(
+                flex: 2,
+                child: FilledButton(
+                  key: PromotionsScreen.approveKey(promotion.id),
+                  onPressed: () => _approve(ref),
+                  style: FilledButton.styleFrom(
+                    minimumSize: const Size.fromHeight(Sizes.minTarget),
+                  ),
+                  child: const Text('موافقة'),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  static String _day(DateTime date) =>
+      '${date.day}/${date.month}';
+
+  Future<void> _approve(WidgetRef ref) async {
+    final by = ref.read(currentIdentityProvider).value?.uid;
+    if (by == null) return;
+
+    // Approved, never active: the campaign starts on its own date. Making it live here
+    // would put next week's offer in front of customers today.
+    await ref.read(promotionRepositoryProvider).approve(promotion.id, approvedBy: by);
+  }
+
+  Future<void> _reject(BuildContext context, WidgetRef ref) async {
+    final reason = await showDialog<String>(
+      context: context,
+      builder: (_) => const _ReasonDialog(),
+    );
+
+    if (reason == null || !context.mounted) return;
+
+    final by = ref.read(currentIdentityProvider).value?.uid;
+    if (by == null) return;
+
+    await ref
+        .read(promotionRepositoryProvider)
+        .reject(promotion.id, reason: reason, by: by);
+  }
+}
+
+/// Refusing costs a sentence.
+///
+/// Without one the merchant has nothing to fix and will ask again with the same thing,
+/// which costs the admin the same minute twice.
+class _ReasonDialog extends StatefulWidget {
+  const _ReasonDialog();
+
+  @override
+  State<_ReasonDialog> createState() => _ReasonDialogState();
+}
+
+class _ReasonDialogState extends State<_ReasonDialog> {
+  final _reason = TextEditingController();
+
+  @override
+  void dispose() {
+    _reason.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('سبب الرفض'),
+      content: TextField(
+        key: PromotionsScreen.reasonKey,
+        controller: _reason,
+        maxLines: 2,
+        autofocus: true,
+        decoration: const InputDecoration(
+          hintText: 'الصورة مش واضحة، النص فيه مبالغة…',
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('إلغاء'),
+        ),
+        FilledButton(
+          key: PromotionsScreen.confirmRejectKey,
+          onPressed: () {
+            final text = _reason.text.trim();
+            if (text.isEmpty) return;
+            Navigator.of(context).pop(text);
+          },
+          child: const Text('ارفض'),
+        ),
+      ],
+    );
+  }
+}
+
+class _Empty extends StatelessWidget {
+  const _Empty();
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Center(
+      key: PromotionsScreen.emptyKey,
+      child: Padding(
+        padding: const EdgeInsets.all(Space.xxl),
+        child: Text(
+          'مفيش طلبات إعلانات مستنية.',
+          style: theme.textTheme.titleLarge,
+          textAlign: TextAlign.center,
+        ),
+      ),
+    );
+  }
+}
+
+class _Error extends StatelessWidget {
+  const _Error({required this.failure});
+
+  final Object failure;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Center(
+      key: PromotionsScreen.errorKey,
+      child: Padding(
+        padding: const EdgeInsets.all(Space.xxl),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.cloud_off_rounded, size: 56, color: theme.luqma.danger),
+            const SizedBox(height: Space.lg),
+            Text(
+              'مش قادرين نجيب الطلبات',
+              style: theme.textTheme.titleLarge,
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: Space.sm),
+            Text(
+              switch (failure) {
+                OfflineFailure() => 'شوف النت. ممكن يكون في طلبات مستنية.',
+                _ => 'حصل خطأ. جرّب تاني بعد شوية.',
+              },
+              style: theme.textTheme.bodyMedium
+                  ?.copyWith(color: theme.luqma.textSecondary),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
