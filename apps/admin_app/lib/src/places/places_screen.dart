@@ -64,7 +64,6 @@ class _PlacesScreenState extends ConsumerState<PlacesScreen> {
                         zones: value.zones,
                       ),
                   },
-                _ => const SizedBox.shrink(),
               },
             ),
           ],
@@ -185,7 +184,7 @@ class _Zones extends ConsumerWidget {
     return ListView.separated(
       padding: const EdgeInsets.symmetric(horizontal: Space.gutter),
       itemCount: zones.length,
-      separatorBuilder: (_, __) => const SizedBox(height: Space.sm),
+      separatorBuilder: (_, _) => const SizedBox(height: Space.sm),
       itemBuilder: (context, i) {
         final zone = zones[i];
         return _Row(
@@ -262,7 +261,7 @@ class _Suggestions extends ConsumerWidget {
     return ListView.separated(
       padding: const EdgeInsets.symmetric(horizontal: Space.gutter),
       itemCount: suggestions.length,
-      separatorBuilder: (_, __) => const SizedBox(height: Space.sm),
+      separatorBuilder: (_, _) => const SizedBox(height: Space.sm),
       itemBuilder: (context, i) {
         final suggestion = suggestions[i];
         final zone = zones.where((z) => z.id == suggestion.zoneId).firstOrNull;
@@ -325,7 +324,7 @@ class _Row extends StatelessWidget {
                 ],
               ),
             ),
-            if (trailing != null) trailing!,
+            ?trailing,
           ],
         ),
       ),
