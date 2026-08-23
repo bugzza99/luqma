@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:luqma_core/luqma_core.dart';
 
+import '../billing/merchant_billing_screen.dart';
 import '../shell/layout.dart';
 import 'merchants_controller.dart';
 
@@ -17,6 +18,7 @@ class MerchantsScreen extends ConsumerWidget {
   static const addKey = Key('merchants.add');
   static const emptyKey = Key('merchants.empty');
   static const detailKey = Key('merchants.detail');
+  static const billingKey = Key('merchants.billing');
   static const approveKey = Key('merchants.approve');
   static const suspendKey = Key('merchants.suspend');
   static const nameFieldKey = Key('merchants.name');
@@ -244,6 +246,16 @@ class _Detail extends ConsumerWidget {
             ? null
             : IconButton(icon: const Icon(Icons.arrow_forward), onPressed: onBack),
         actions: [
+          IconButton(
+            key: MerchantsScreen.billingKey,
+            tooltip: 'الحساب والاشتراك',
+            icon: Icon(Icons.receipt_long_outlined, color: colors.onBrand),
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => MerchantBillingScreen(merchantId: merchant.id),
+              ),
+            ),
+          ),
           if (merchant.status != MerchantStatus.approved)
             TextButton(
               key: MerchantsScreen.approveKey,

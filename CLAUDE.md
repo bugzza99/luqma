@@ -119,7 +119,21 @@ same moment is a race no client can settle, so the count is the server's — the
 refuse a client write of either quantity, and `OrderDraft` carries `dailyMealId` for the
 function to act on. The screen already says the right thing when it loses that race.
 
-**Next: Phase 7 — Monetization.**
+**Phase 7 is done**, on branch `phase-7-monetization`. All three revenue models, per
+merchant, driven by a snapshot frozen at order time. Plans and subscriptions, the admin's
+billing screen, the merchant's read-only view of it, and the `RevenueEngine` and
+`dailyMaintenance` in TypeScript. 738 Dart tests, 33 function tests, 56 rules tests.
+
+**`prepaid` shipped filled in, not as a stub** — the owner's call, taken at the start of
+this phase. Wallet, top-up recording, per-order deduction, and intake suspension when the
+credit runs out.
+
+The engine exists twice on purpose: `Revenue` in Dart and `engine.ts` in TypeScript. The
+phone *shows* the figure and the server *decides* it, and the server's answer is the one
+that counts. Both are tested against the same numbers, so a disagreement fails a test
+rather than turning up in somebody's till.
+
+**Next: Phase 8 — Promotions and the dynamic home.**
 
 ### Infrastructure
 
@@ -148,6 +162,7 @@ is not usage, it is a function that calls itself.
 
 ```
 cd packages/luqma_core && flutter analyze && flutter test
+npm --prefix functions test
 ```
 
 `kotlin.incremental=false` is set in both apps' `android/gradle.properties`. Kotlin's

@@ -15,6 +15,8 @@ class ShopScreen extends ConsumerWidget {
   static const signOutKey = Key('shop.signOut');
   static const confirmSignOutKey = Key('shop.confirmSignOut');
   static const feedbackKey = Key('shop.feedback');
+  static const billingKey = Key('shop.billing');
+  static const walletKey = Key('shop.wallet');
   static const noFeedbackKey = Key('shop.noFeedback');
 
   @override
@@ -43,6 +45,10 @@ class ShopScreen extends ConsumerWidget {
                 if (merchant != null) _Identity(merchant: merchant),
                 const SizedBox(height: Space.lg),
                 if (merchant != null) _Rating(merchant: merchant),
+                if (merchant != null) ...[
+                  const SizedBox(height: Space.lg),
+                  _Billing(merchant: merchant),
+                ],
                 if (staff.merchantId != null) ...[
                   const SizedBox(height: Space.lg),
                   _Feedback(merchantId: staff.merchantId!),
@@ -142,6 +148,105 @@ class _Identity extends StatelessWidget {
               ],
             ),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+/// What this merchant is paying, and — under prepaid — what is left.
+///
+/// Read-only. Money is settled in cash with the owner, so a merchant changing their own
+/// terms from their phone is not a feature, it is a hole. What they need from this screen
+/// is to know where they stand before somebody arrives to collect.
+class _Billing extends ConsumerWidget {
+  const _Billing({required this.merchant});
+
+  final Merchant merchant;
+
+  static const _modelNames = {
+    RevenueModel.subscription: 'اشتراك شهري',
+    RevenueModel.commission: 'عمولة على كل أوردر',
+    RevenueModel.prepaid: 'رصيد مدفوع مقدماً',
+  };
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
+    final colors = theme.luqma;
+    final strings = LuqmaStrings.of(context);
+
+    final subscription = ref.watch(subscriptionProvider(merchant.id)).value;
+    final plans = ref.watch(plansProvider).value ?? const <Plan>[];
+    final plan = plans.where((p) => p.id == merchant.planId).firstOrNull;
+    final now = DateTime.now();
+    final canAfford = Revenue.canAffordAnOrder(merchant);
+
+    return Container(
+      key: ShopScreen.billingKey,
+      padding: const EdgeInsets.all(Space.md),
+      decoration: BoxDecoration(
+        color: colors.card,
+        borderRadius: Radii.cardAll,
+        border: Border.all(color: colors.hairline),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.receipt_long_outlined, color: colors.brand, size: Sizes.iconMd),
+              const SizedBox(width: Space.md),
+              Expanded(
+                child: Text(
+                  plan?.name ?? _modelNames[merchant.revenueModel]!,
+                  style: theme.textTheme.titleMedium,
+                ),
+              ),
+            ],
+          ),
+          if (merchant.revenueModel == RevenueModel.prepaid) ...[
+            const SizedBox(height: Space.sm),
+            Row(
+              key: ShopScreen.walletKey,
+              children: [
+                Expanded(
+                  child: Text(
+                    'الرصيد',
+                    style: theme.textTheme.bodyMedium
+                        ?.copyWith(color: colors.textSecondary),
+                  ),
+                ),
+                Text(
+                  strings.price(merchant.walletBalance),
+                  style: LuqmaType.priceSmall.copyWith(
+                    color: canAfford ? colors.price : colors.danger,
+                  ),
+                ),
+              ],
+            ),
+            if (!canAfford) ...[
+              const SizedBox(height: Space.xs),
+              Text(
+                // The one thing on this card that changes what happens next: with no
+                // credit the shop stops receiving orders at all.
+                'الرصيد خلص — مش هتوصلك طلبات لحد ما يتشحن.',
+                style: LuqmaType.bodySmall.copyWith(color: colors.danger),
+              ),
+            ],
+          ] else if (subscription != null) ...[
+            const SizedBox(height: Space.xs),
+            Text(
+              subscription.isActiveAt(now)
+                  ? 'الاشتراك ساري ${subscription.daysLeftAt(now)} يوم كمان'
+                  : 'الاشتراك خلص',
+              style: LuqmaType.bodySmall.copyWith(
+                color: subscription.isActiveAt(now)
+                    ? colors.textSecondary
+                    : colors.danger,
+              ),
+            ),
+          ],
         ],
       ),
     );

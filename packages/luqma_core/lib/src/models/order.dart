@@ -168,12 +168,28 @@ abstract class OrderPricing with _$OrderPricing {
 abstract class RevenueSnapshot with _$RevenueSnapshot {
   const factory RevenueSnapshot({
     required RevenueModel model,
+
+    /// The rate or fee in force: basis points under commission, piastres per order
+    /// under prepaid, and meaningless under a subscription.
     @Default(0) int value,
+
+    /// What was actually taken, once the order was delivered. Zero until then.
     @Default(0) int amount,
   }) = _RevenueSnapshot;
 
+  const RevenueSnapshot._();
+
   factory RevenueSnapshot.fromJson(Map<String, dynamic> json) =>
       _$RevenueSnapshotFromJson(json);
+
+  /// The terms in force for [merchant] right now.
+  ///
+  /// Taken once, at order creation, and never read from the merchant again. That is what
+  /// makes the model switchable at runtime without rewriting history.
+  factory RevenueSnapshot.of(Merchant merchant) => RevenueSnapshot(
+        model: merchant.revenueModel,
+        value: merchant.revenueValue,
+      );
 }
 
 @freezed
