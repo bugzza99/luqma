@@ -39,7 +39,13 @@ abstract interface class AuthService {
   AuthState get state;
   LuqmaIdentity? get identity;
 
-  /// Emits on every change, including the first resolution.
+  /// Emits the identity as it stands the moment somebody subscribes, then every change
+  /// after that.
+  ///
+  /// The replay is the point: a screen opened after sign-in has to be able to find out
+  /// who it is looking at. A plain broadcast buffers nothing, so such a screen would
+  /// render as signed out until the next change — which, for somebody who stays signed
+  /// in, is never.
   Stream<LuqmaIdentity?> get changes;
 
   /// Waits for the session to resolve one way or the other.
@@ -87,7 +93,21 @@ class FirebaseAuthService implements AuthService {
   LuqmaIdentity? get identity => _identity;
 
   @override
-  Stream<LuqmaIdentity?> get changes => _controller.stream;
+  Stream<LuqmaIdentity?> get changes => _replaying();
+
+  /// Hands the current identity to each new subscriber before forwarding the rest.
+  ///
+  /// The subscription to the underlying controller is attached inside the same
+  /// synchronous callback that emits the replay, so nothing can slip through the gap.
+  Stream<LuqmaIdentity?> _replaying() => Stream.multi((listener) {
+        listener.add(_identity);
+        final sub = _controller.stream.listen(
+          listener.add,
+          onError: listener.addError,
+          onDone: listener.close,
+        );
+        listener.onCancel = sub.cancel;
+      });
 
   @override
   Future<void> restore() => _resolved.future;
@@ -149,7 +169,21 @@ class FakeAuthService implements AuthService {
   LuqmaIdentity? get identity => _identity;
 
   @override
-  Stream<LuqmaIdentity?> get changes => _controller.stream;
+  Stream<LuqmaIdentity?> get changes => _replaying();
+
+  /// Hands the current identity to each new subscriber before forwarding the rest.
+  ///
+  /// The subscription to the underlying controller is attached inside the same
+  /// synchronous callback that emits the replay, so nothing can slip through the gap.
+  Stream<LuqmaIdentity?> _replaying() => Stream.multi((listener) {
+        listener.add(_identity);
+        final sub = _controller.stream.listen(
+          listener.add,
+          onError: listener.addError,
+          onDone: listener.close,
+        );
+        listener.onCancel = sub.cancel;
+      });
 
   @override
   Future<void> restore() async {

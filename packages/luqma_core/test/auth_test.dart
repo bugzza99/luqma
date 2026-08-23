@@ -60,6 +60,18 @@ void main() {
       expect(seen.last?.uid, isNotEmpty);
     });
 
+    // A screen that opens after somebody signed in has to be able to find out who they
+    // are. Without this, the account tab would render as signed out until the next
+    // change — which, for somebody who stays signed in, is never.
+    test('a listener attaching afterwards still learns who it is', () async {
+      final auth = FakeAuthService();
+      await auth.signInWithGoogle();
+
+      final first = await auth.changes.first.timeout(const Duration(seconds: 1));
+
+      expect(first?.uid, 'fake-uid');
+    });
+
     // Somebody dismissing the Google sheet is not an error to apologise for. It has to
     // be distinguishable from a failure, or the app shows a red banner for a shrug.
     test('a cancelled sign-in is not a failure', () async {
