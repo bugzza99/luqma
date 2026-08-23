@@ -6,9 +6,11 @@ import 'package:riverpod_annotation/riverpod_annotation.dart';
 import '../config/luqma_config.dart';
 import '../config/remote_config_service.dart';
 import '../models/geography.dart';
+import '../models/home_section.dart';
 import '../models/menu_item.dart';
 import '../models/merchant.dart';
 import '../repositories/geography_repository.dart';
+import '../repositories/home_section_repository.dart';
 import '../repositories/media_repository.dart';
 import '../repositories/menu_repository.dart';
 import '../repositories/merchant_repository.dart';
@@ -52,6 +54,16 @@ Future<List<Landmark>> landmarks(Ref ref) async {
       );
   return result.valueOrThrow;
 }
+
+@Riverpod(keepAlive: true)
+HomeSectionRepository homeSectionRepository(Ref ref) =>
+    FirestoreHomeSectionRepository(ref.watch(firestoreProvider));
+
+/// The customer home screen's arrangement, live.
+@riverpod
+Stream<List<HomeSection>> homeSections(Ref ref) => ref
+    .watch(homeSectionRepositoryProvider)
+    .watchSections(cityId: ref.watch(currentCityProvider));
 
 @Riverpod(keepAlive: true)
 MediaRepository mediaRepository(Ref ref) =>

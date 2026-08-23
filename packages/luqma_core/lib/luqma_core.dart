@@ -20,6 +20,7 @@ export 'src/models/money.dart';
 export 'src/models/order.dart';
 export 'src/providers/providers.dart';
 export 'src/repositories/geography_repository.dart';
+export 'src/repositories/home_section_repository.dart';
 export 'src/repositories/media_repository.dart';
 export 'src/repositories/menu_repository.dart';
 export 'src/repositories/merchant_repository.dart';
