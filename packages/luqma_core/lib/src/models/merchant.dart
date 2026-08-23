@@ -1,6 +1,7 @@
 import 'package:freezed_annotation/freezed_annotation.dart';
 
 import 'converters.dart';
+import 'revenue.dart';
 
 part 'merchant.freezed.dart';
 part 'merchant.g.dart';
@@ -93,9 +94,14 @@ abstract class Merchant with _$Merchant {
     String? planId,
     @Default(RevenueModel.subscription) RevenueModel revenueModel,
 
-    /// Commission rate in basis points, or the prepaid balance in piastres, depending
-    /// on [revenueModel]. Meaningless under a subscription.
+    /// The rate or fee in force: **basis points** under commission, **piastres per
+    /// order** under prepaid, and meaningless under a subscription.
+    ///
+    /// Not the prepaid balance, which the data-model note once said — that is
+    /// [walletBalance]. Two fields meaning the same thing is how they come to disagree.
     @Default(0) int revenueValue,
+
+    /// Remaining prepaid credit, in piastres. Only ever moved by the server.
     @Default(0) int walletBalance,
 
     /// Overrides the zone's default delivery fee, in piastres. Clamped server-side to
@@ -115,6 +121,10 @@ abstract class Merchant with _$Merchant {
   bool acceptsOrdersAt(DateTime now) {
     if (status != MerchantStatus.approved) return false;
     if (pausedUntil != null && now.isBefore(pausedUntil!)) return false;
+    // A prepaid merchant whose wallet has run out stops appearing as open, exactly like
+    // one outside its hours. Letting orders through would mean the platform carries
+    // them for nothing and then argues about it afterwards.
+    if (!Revenue.canAffordAnOrder(this)) return false;
     return openingHours.any((window) => window.contains(now));
   }
 }
