@@ -34,10 +34,14 @@ class MediaScreen extends ConsumerWidget {
       appBar: AppBar(title: const Text('الصور')),
       body: AdminContent(
         child: switch (pending) {
-          AsyncLoading() => const Center(child: CircularProgressIndicator()),
-          AsyncError(:final error) => _Error(failure: error),
-          AsyncData(:final value) when value.isEmpty => const _Empty(),
-          AsyncData(:final value) => GridView.builder(
+          // An error arm comes first, and matches on `hasError` rather than on the
+          // `AsyncError` type: a stream that fails before it has ever emitted stays
+          // `AsyncLoading` with the error hanging off it, so a type match never fires
+          // and the screen spins for ever on a dropped connection.
+          AsyncValue(hasError: true, :final error?) => _Error(failure: error),
+          AsyncValue(hasValue: true, :final value?) when value.isEmpty =>
+            const _Empty(),
+          AsyncValue(hasValue: true, :final value?) => GridView.builder(
               padding: const EdgeInsets.all(Space.gutter),
               gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
                 // Wide enough that a photo can actually be judged. A grid of thumbnails
@@ -50,7 +54,8 @@ class MediaScreen extends ConsumerWidget {
               itemCount: value.length,
               itemBuilder: (context, i) => _Card(media: value[i]),
             ),
-        },
+                  _ => const Center(child: CircularProgressIndicator()),
+},
       ),
     );
   }

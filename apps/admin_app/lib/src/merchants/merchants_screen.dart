@@ -80,9 +80,12 @@ class _List extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return switch (merchants) {
-      AsyncLoading() => const Center(child: CircularProgressIndicator()),
-      AsyncError(:final error) => _Error(failure: error),
-      AsyncData(:final value) when value.isEmpty => Center(
+      // An error arm comes first, and matches on `hasError` rather than on the
+      // `AsyncError` type: a stream that fails before it has ever emitted stays
+      // `AsyncLoading` with the error hanging off it, so a type match never fires
+      // and the screen spins for ever on a dropped connection.
+      AsyncValue(hasError: true, :final error?) => _Error(failure: error),
+      AsyncValue(hasValue: true, :final value?) when value.isEmpty => Center(
           key: MerchantsScreen.emptyKey,
           child: Padding(
             padding: const EdgeInsets.all(Space.xl),
@@ -95,7 +98,7 @@ class _List extends ConsumerWidget {
             ),
           ),
         ),
-      AsyncData(:final value) => ListView.separated(
+      AsyncValue(hasValue: true, :final value?) => ListView.separated(
           padding: const EdgeInsets.all(Space.gutter),
           itemCount: value.length,
           separatorBuilder: (_, _) => const SizedBox(height: Space.sm),
@@ -107,7 +110,8 @@ class _List extends ConsumerWidget {
                 .select(value[i].id),
           ),
         ),
-    };
+          _ => const Center(child: CircularProgressIndicator()),
+};
   }
 }
 

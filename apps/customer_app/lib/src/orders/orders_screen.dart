@@ -29,13 +29,17 @@ class OrdersScreen extends ConsumerWidget {
       body: identity == null
           ? _SignedOut(onSignIn: onSignIn)
           : switch (ref.watch(ordersForProvider(identity.uid))) {
-              AsyncLoading() => const Center(child: CircularProgressIndicator()),
               // A failed read shown as an empty list tells the customer they never
-              // ordered anything, which is a lie they may act on.
-              AsyncError(:final error) => _Error(failure: error),
-              AsyncData(:final value) when value.isEmpty => const _Empty(),
-              AsyncData(:final value) => _List(orders: value),
-            },
+              // ordered anything, which is a lie they may act on. It comes first and
+              // matches on `hasError`, not on the `AsyncError` type: a stream that
+              // fails before it has ever emitted stays `AsyncLoading` with the error
+              // hanging off it, so a type match never fires.
+              AsyncValue(hasError: true, :final error?) => _Error(failure: error),
+              AsyncValue(hasValue: true, :final value?) when value.isEmpty =>
+                const _Empty(),
+              AsyncValue(hasValue: true, :final value?) => _List(orders: value),
+                          _ => const Center(child: CircularProgressIndicator()),
+},
     );
   }
 }

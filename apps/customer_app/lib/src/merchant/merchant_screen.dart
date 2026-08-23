@@ -33,20 +33,22 @@ class MerchantScreen extends ConsumerWidget {
     final cart = ref.watch(cartProvider);
 
     return switch (merchant) {
-      AsyncLoading() => const Scaffold(
-          body: Center(child: CircularProgressIndicator()),
-        ),
-      AsyncError(:final error) => Scaffold(
+      // An error arm comes first, and matches on `hasError` rather than on the
+      // `AsyncError` type: a stream that fails before it has ever emitted stays
+      // `AsyncLoading` with the error hanging off it, so a type match never fires
+      // and the screen spins for ever on a dropped connection.
+      AsyncValue(hasError: true, :final error?) => Scaffold(
           appBar: AppBar(),
           body: _Error(failure: error),
         ),
-      AsyncData(:final value) => _Loaded(
+      AsyncValue(hasValue: true, :final value?) => _Loaded(
           merchant: value,
           categories: categories,
           items: items,
           cart: cart,
         ),
-    };
+          _ => const Scaffold(body: Center(child: CircularProgressIndicator())),
+};
   }
 }
 

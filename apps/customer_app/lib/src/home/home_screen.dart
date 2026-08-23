@@ -33,12 +33,16 @@ class HomeScreen extends ConsumerWidget {
             const SliverToBoxAdapter(child: _SearchField()),
             const SliverToBoxAdapter(child: SizedBox(height: Space.xl - 4)),
             switch (sections) {
-              AsyncLoading() => const SliverToBoxAdapter(child: _Loading()),
               // One failed read of the arrangement should not hide the search field or
-              // the bar — the customer can still look for what they wanted.
-              AsyncError(:final error) =>
+              // the bar — the customer can still look for what they wanted. It comes
+              // first and matches on `hasError`, not on the `AsyncError` type: a stream
+              // that fails before it has ever emitted stays `AsyncLoading` with the
+              // error hanging off it, so a type match never fires.
+              AsyncValue(hasError: true, :final error?) =>
                 SliverToBoxAdapter(child: _Error(failure: error)),
-              AsyncData(:final value) => _Sections(sections: value),
+              AsyncValue(hasValue: true, :final value?) =>
+                _Sections(sections: value),
+              _ => const SliverToBoxAdapter(child: _Loading()),
             },
             const SliverToBoxAdapter(child: SizedBox(height: Space.xl)),
           ],

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 // `Order` here would be Firestore's index-definition enum, not ours.
 import 'package:cloud_firestore/cloud_firestore.dart' hide Order;
 
@@ -39,7 +41,8 @@ abstract interface class MerchantOrderRepository {
 /// merchant who comes back to their phone has to be able to deal with it.
 const _needsAnswer = [OrderStatus.placed, OrderStatus.needsAttention];
 
-const _live = [
+/// What is already being cooked or carried. The "live orders" board.
+const _onTheStove = [
   OrderStatus.accepted,
   OrderStatus.preparing,
   OrderStatus.outForDelivery,
@@ -71,7 +74,7 @@ class FirestoreMerchantOrderRepository implements MerchantOrderRepository {
 
   @override
   Stream<List<Order>> watchLive(String merchantId) {
-    return _byStatus(merchantId, _live).map(
+    return _byStatus(merchantId, _onTheStove).map(
       (orders) => orders..sort((a, b) => a.orderNumber.compareTo(b.orderNumber)),
     );
   }
@@ -162,8 +165,13 @@ class FirestoreMerchantOrderRepository implements MerchantOrderRepository {
 }
 
 /// In-memory orders for the kitchen, for tests and for building screens without a
-/// backend. It re-applies the same transition rules — a fake that is more permissive
-/// than production hides exactly the bugs it exists to catch.
+/// backend.
+///
+/// It re-applies the same transition rules as the real one, and its streams are live the
+/// way Firestore's are: accepting an order pushes a new list to whoever is watching. A
+/// fake that emits once and stops would let a screen pass its tests while leaving an
+/// answered order sitting on the inbox — which is precisely the bug the fake exists to
+/// catch.
 class FakeMerchantOrderRepository implements MerchantOrderRepository {
   FakeMerchantOrderRepository({List<Order> seed = const [], this.failure})
       : _orders = {for (final o in seed) o.id: o};
@@ -171,17 +179,42 @@ class FakeMerchantOrderRepository implements MerchantOrderRepository {
   final Map<String, Order> _orders;
   final Failure? failure;
 
+  final _changed = StreamController<void>.broadcast();
+
+  /// Everything this repository holds, right now.
+  ///
+  /// A widget test cannot await one of the streams above — it runs on a fake clock, and
+  /// the future never completes — so a synchronous view is what lets a test assert on
+  /// what a screen actually wrote rather than on what it drew.
+  List<Order> get all => List.unmodifiable(_orders.values);
+
+  Order? operator [](String orderId) => _orders[orderId];
+
+  /// Emits now and after every change, with the subscription attached in the same
+  /// synchronous callback so nothing can slip through the gap.
+  Stream<T> _live<T>(T Function() read) => Stream.multi((listener) {
+        listener.add(read());
+        final sub = _changed.stream.listen((_) => listener.add(read()));
+        listener.onCancel = sub.cancel;
+      });
+
+  void _notify() {
+    if (!_changed.isClosed) _changed.add(null);
+  }
+
+  void dispose() => _changed.close();
+
   @override
   Stream<List<Order>> watchIncoming(String merchantId) =>
       _stream(merchantId, _needsAnswer);
 
   @override
-  Stream<List<Order>> watchLive(String merchantId) => _stream(merchantId, _live);
+  Stream<List<Order>> watchLive(String merchantId) => _stream(merchantId, _onTheStove);
 
   Stream<List<Order>> _stream(String merchantId, List<OrderStatus> statuses) {
     if (failure != null) return Stream.error(failure!);
-    return Stream.value(
-      _orders.values
+    return _live(
+      () => _orders.values
           .where((o) => o.merchantId == merchantId && statuses.contains(o.status))
           .toList()
         ..sort((a, b) => a.orderNumber.compareTo(b.orderNumber)),
@@ -191,9 +224,10 @@ class FakeMerchantOrderRepository implements MerchantOrderRepository {
   @override
   Stream<Order> watchOrder(String orderId) {
     if (failure != null) return Stream.error(failure!);
-    final order = _orders[orderId];
-    if (order == null) return Stream.error(const NotFoundFailure());
-    return Stream.value(order);
+    if (!_orders.containsKey(orderId)) {
+      return Stream.error(const NotFoundFailure());
+    }
+    return _live(() => _orders[orderId]!);
   }
 
   @override
@@ -211,6 +245,7 @@ class FakeMerchantOrderRepository implements MerchantOrderRepository {
       status: OrderStatus.accepted,
       prepMinutes: prepMinutes,
     );
+    _notify();
     return const Result.ok(null);
   }
 
@@ -230,6 +265,7 @@ class FakeMerchantOrderRepository implements MerchantOrderRepository {
       cancelReason: reason.trim(),
       cancelledBy: OrderActor.merchant,
     );
+    _notify();
     return const Result.ok(null);
   }
 
@@ -244,6 +280,7 @@ class FakeMerchantOrderRepository implements MerchantOrderRepository {
     }
 
     _orders[orderId] = order.copyWith(status: to);
+    _notify();
     return const Result.ok(null);
   }
 }
