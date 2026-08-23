@@ -92,7 +92,24 @@ Two things wait on Blaze, and both are server work by nature:
 - **Rejection counting and auto-block.** `users.rejectedOrdersCount` has to be written
   by a server — a client that can increment its own refusal count can also reset it.
 
-**Next: Phase 5 — Courier mode.**
+**Phase 5 is done**, on branch `phase-5-courier`. Courier mode is a second face of
+MerchantApp chosen by the role on the token — no driver app, no second APK. The delivery
+screen carries four things and nothing else: where to go, who to call, how much cash to
+collect, and the one button that is next. Navigation is handed to whatever maps app is
+already on the phone.
+
+Two things Phase 5 turned up before a line of courier UI existed, both now fixed:
+
+- The order carries a **copy** of the address and of `deliveryBy`. A courier cannot read
+  another person's address collection, so a reference would have rendered as nothing in
+  the street; and an address corrected next month must not rewrite where last week's
+  order went.
+- A merchant's courier carries the **same `merchantId` claim as the owner**, and every
+  merchant rule was written on `ownsMerchant()` alone — so a courier could accept
+  orders, rewrite prices and close the shop. Acting for a merchant now requires
+  `role == 'owner'`.
+
+**Next: Phase 6 — Home kitchens.**
 
 ### Infrastructure
 
@@ -155,7 +172,7 @@ JAVA_HOME="C:\Program Files\Android\Android Studio\jbr" firebase emulators:exec 
 | `brand/src/build_alarm.py` | The new-order alarm, and why every number in it is what it is |
 | `packages/luqma_core/` | Models, repositories, config, theme, l10n, brand widgets, Firebase options |
 | `apps/customer_app/` | CustomerApp — home, merchant, basket, checkout, orders, account |
-| `apps/merchant_app/` | MerchantApp — inbox, live board, menu, shop |
+| `apps/merchant_app/` | MerchantApp — inbox, live board, menu, shop, courier mode |
 | `apps/admin_app/` | AdminApp — merchants, menus, places, media queue |
 | `firebase/firestore.rules` | The real security boundary — read its tests beside it |
 | `firebase/test/` | Rules tests, run against the emulator |
@@ -198,6 +215,11 @@ JAVA_HOME="C:\Program Files\Android\Android Studio\jbr" firebase emulators:exec 
   merchant inbox that bug reads as a quiet evening.
 - The merchant is derived from the **`merchantId` custom claim**, never from a Firestore
   field — that is what `firestore.rules` checks, and only a server can issue a claim.
+- **`ownsMerchant()` is not "runs this merchant".** An owner and their courier carry the
+  same claim. Anything that acts for a merchant uses `isMerchantOwner()`.
+- Rules read claims with **`token.get('x', default)`**. A bare `token.admin` errors on a
+  token with no custom claims — every customer — and fails the branch it sits in for a
+  reason unrelated to access.
 
 ## Coupons
 

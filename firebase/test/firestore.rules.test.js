@@ -28,7 +28,9 @@ beforeEach(() => env.clearFirestore());
 
 const customer = (uid = 'cust1') => env.authenticatedContext(uid).firestore();
 const merchantOwner = (uid = 'owner1') =>
-  env.authenticatedContext(uid, { merchantId: 'm1' }).firestore();
+  env
+    .authenticatedContext(uid, { merchantId: 'm1', role: 'owner', scope: 'merchant' })
+    .firestore();
 const admin = () => env.authenticatedContext('admin1', { admin: true }).firestore();
 const anonymous = () => env.unauthenticatedContext().firestore();
 
@@ -247,4 +249,173 @@ describe('the audit log', () => {
   it('a customer cannot read it', async () => {
     await assertFails(getDoc(doc(customer(), 'auditLog/e1')));
   });
+});
+
+describe('couriers', () => {
+  // A courier who belongs to one merchant carries that merchant on their token, exactly
+  // like the owner does. A platform courier carries no merchant at all.
+  const merchantCourier = (uid = 'courier1') =>
+    env.authenticatedContext(uid, { merchantId: 'm1', role: 'courier', scope: 'merchant' })
+      .firestore();
+  const platformCourier = (uid = 'courier9') =>
+    env.authenticatedContext(uid, { role: 'courier', scope: 'platform' }).firestore();
+
+  const order = (extra = {}) => ({
+    cityId: 'edku',
+    orderNumber: 101,
+    customerUid: 'cust1',
+    merchantId: 'm1',
+    zoneId: 'z1',
+    status: 'preparing',
+    deliveryBy: 'merchant',
+    pricing: { total: 13000 },
+    ...extra,
+  });
+
+  beforeEach(() =>
+    seed(async (db) => {
+      await setDoc(doc(db, 'orders/own'), order());
+      await setDoc(doc(db, 'orders/platform'), order({ deliveryBy: 'platform', merchantId: 'm2' }));
+      await setDoc(doc(db, 'orders/other'), order({ merchantId: 'm2' }));
+      await setDoc(doc(db, 'orders/mine'), order({ merchantId: 'm2', courierUid: 'courier9' }));
+    }),
+  );
+
+  it("a merchant's courier reads that merchant's orders", () =>
+    assertSucceeds(getDoc(doc(merchantCourier(), 'orders/own'))));
+
+  it("a merchant's courier cannot read another merchant's", () =>
+    assertFails(getDoc(doc(merchantCourier(), 'orders/other'))));
+
+  // Without this the platform courier cannot find the work at all: they are not assigned
+  // to an order until they pick it up, and they cannot pick up what they cannot see.
+  it('the platform courier reads orders the platform delivers', () =>
+    assertSucceeds(getDoc(doc(platformCourier(), 'orders/platform'))));
+
+  it("the platform courier cannot read a merchant's own deliveries", () =>
+    assertFails(getDoc(doc(platformCourier(), 'orders/other'))));
+
+  it('an order already assigned to them stays readable', () =>
+    assertSucceeds(getDoc(doc(platformCourier(), 'orders/mine'))));
+
+  it('a customer is not a courier', () =>
+    assertFails(getDoc(doc(customer('cust2'), 'orders/platform'))));
+
+  describe('taking an order out', () => {
+    it('a courier may take it and put their own name on it', () =>
+      assertSucceeds(
+        updateDoc(doc(merchantCourier(), 'orders/own'), {
+          status: 'outForDelivery',
+          courierUid: 'courier1',
+        }),
+      ));
+
+    // Otherwise one courier could hand another's phone a delivery, or take an order off
+    // somebody who is already carrying it.
+    it('a courier may not put somebody else\'s name on it', () =>
+      assertFails(
+        updateDoc(doc(merchantCourier(), 'orders/own'), {
+          status: 'outForDelivery',
+          courierUid: 'someone-else',
+        }),
+      ));
+
+    it('a courier may not touch the price on the way out', () =>
+      assertFails(
+        updateDoc(doc(merchantCourier(), 'orders/own'), {
+          status: 'outForDelivery',
+          courierUid: 'courier1',
+          pricing: { total: 1 },
+        }),
+      ));
+  });
+
+  describe('finishing', () => {
+    beforeEach(() =>
+      seed(async (db) => {
+        await setDoc(
+          doc(db, 'orders/carrying'),
+          order({ status: 'outForDelivery', courierUid: 'courier1' }),
+        );
+      }),
+    );
+
+    it('the courier carrying it marks it delivered', () =>
+      assertSucceeds(
+        updateDoc(doc(merchantCourier(), 'orders/carrying'), {
+          status: 'delivered',
+          deliveredAt: new Date(),
+        }),
+      ));
+
+    it('a courier records why a delivery failed', () =>
+      assertSucceeds(
+        updateDoc(doc(merchantCourier(), 'orders/carrying'), {
+          status: 'cancelled',
+          cancelReason: 'العميل مش موجود',
+          cancelledBy: 'courier',
+        }),
+      ));
+
+    // Cash: whoever marks it delivered is saying the money changed hands.
+    it('another courier cannot mark it delivered', () =>
+      assertFails(
+        updateDoc(doc(merchantCourier('courier2'), 'orders/carrying'), {
+          status: 'delivered',
+        }),
+      ));
+  });
+});
+
+// A courier and their owner carry the same merchantId. Everything below is something a
+// courier must not be able to do with it — and could, before the rules told the two
+// apart by role.
+describe('a courier is not an owner', () => {
+  const merchantCourier = () =>
+    env
+      .authenticatedContext('courier1', {
+        merchantId: 'm1',
+        role: 'courier',
+        scope: 'merchant',
+      })
+      .firestore();
+
+  beforeEach(() =>
+    seed(async (db) => {
+      await setDoc(doc(db, 'merchants/m1'), {
+        cityId: 'edku',
+        status: 'approved',
+        name: 'مطعم',
+        ownerUid: 'owner1',
+      });
+      await setDoc(doc(db, 'menuItems/i1'), { merchantId: 'm1', name: 'فراخ', price: 12000 });
+      await setDoc(doc(db, 'orders/waiting'), {
+        cityId: 'edku',
+        orderNumber: 101,
+        customerUid: 'cust1',
+        merchantId: 'm1',
+        zoneId: 'z1',
+        status: 'placed',
+        deliveryBy: 'merchant',
+      });
+    }),
+  );
+
+  it('cannot close the shop', () =>
+    assertFails(updateDoc(doc(merchantCourier(), 'merchants/m1'), { pausedUntil: new Date() })));
+
+  it('cannot change a price', () =>
+    assertFails(updateDoc(doc(merchantCourier(), 'menuItems/i1'), { price: 1 })));
+
+  // Accepting is a promise to cook something, made by whoever runs the kitchen.
+  it('cannot accept an order', () =>
+    assertFails(
+      updateDoc(doc(merchantCourier(), 'orders/waiting'), {
+        status: 'accepted',
+        prepMinutes: 20,
+      }),
+    ));
+
+  it('can still read the orders it will have to carry', () =>
+    assertSucceeds(getDoc(doc(merchantCourier(), 'orders/waiting'))));
 });
