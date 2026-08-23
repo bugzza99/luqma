@@ -11,6 +11,7 @@ export 'src/l10n/money.dart';
 export 'src/models/converters.dart';
 export 'src/models/coupon.dart';
 export 'src/models/geography.dart';
+export 'src/models/home_section.dart';
 export 'src/models/landmark_suggestion.dart';
 export 'src/models/merchant.dart';
 export 'src/models/media.dart';

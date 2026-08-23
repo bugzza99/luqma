@@ -1,0 +1,68 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;900&family=Lemonada:wght@700&display=swap">
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: Cairo, system-ui, sans-serif; }
+    a { color: #995A1D; } a:hover { color: #761812; }
+    .scroll::-webkit-scrollbar { width: 0; }
+  </style>
+</helmet>
+
+<div dir="rtl" style="width: 390px; height: 844px; background: #F5EBE2; display: flex; flex-direction: column; overflow: hidden; color: #130B07;">
+  <div style="background: #761812; padding: 14px 16px; display: flex; align-items: center; gap: 12px;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#F5EBE2" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg><span style="flex: 1; font-size: 17px; font-weight: 600; color: #FFFFFF;">تأكيد الطلب</span></div>
+
+  <div class="scroll" style="flex: 1; overflow-y: auto; padding: 14px 16px; display: flex; flex-direction: column; gap: 12px;">
+
+    <div style="background: #FFFFFF; border: 1px solid #D6BFA9; border-radius: 12px; padding: 13px; box-shadow: 0 2px 8px rgba(19,11,7,.06), 0 12px 32px rgba(19,11,7,.05);"><div style="display: flex; gap: 11px;">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#761812" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex: 0 0 auto; margin-top: 2px;"><path d="M12 21s7-6.3 7-11a7 7 0 1 0-14 0c0 4.7 7 11 7 11Z"/><circle cx="12" cy="10" r="2.5"/></svg>
+      <div style="flex: 1; display: flex; flex-direction: column; gap: 3px;">
+        <span style="font-size: 15px; font-weight: 600;">المعمورة · جنب صيدلية النور</span>
+        <span style="font-size: 12.5px; color: #5A452B; line-height: 1.6;">شارع البحر · عمارة 12 · الدور 3 · شقة 5</span>
+      </div>
+      <span style="font-size: 12.5px; font-weight: 600; color: #995A1D;">تغيير</span>
+    </div></div>
+
+    <div style="background: #FFFFFF; border: 1px solid #D6BFA9; border-radius: 12px; padding: 12px; box-shadow: 0 2px 8px rgba(19,11,7,.06), 0 12px 32px rgba(19,11,7,.05);"><div style="display: flex; align-items: center; gap: 11px;">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#995A1D" stroke-width="2" stroke-linecap="round"><path d="M20 12v6a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-6"/><path d="M2 8h20v4H2z"/><path d="M12 8v12"/></svg>
+      <div style="flex: 1; display: flex; flex-direction: column; gap: 2px;">
+        <span style="font-size: 14px; font-weight: 600; color: #1E7A43;">كود AHLAN اتطبق</span>
+        <span style="font-size: 12px; color: #5A452B;">خصم 15٪ على الأصناف</span>
+      </div>
+      <span style="font-size: 13px; color: #C0342B; font-weight: 600;">شيل</span>
+    </div></div>
+
+    <div style="background: #FFFFFF; border: 1px solid #D6BFA9; border-radius: 12px; padding: 13px; box-shadow: 0 2px 8px rgba(19,11,7,.06), 0 12px 32px rgba(19,11,7,.05);"><div style="display: flex; flex-direction: column; gap: 10px;">
+      <div style="display: flex; justify-content: space-between; align-items: baseline;"><span style="font-size: 14px; font-weight: 400;">الأصناف</span><span style="font-size: 14px; font-weight: 400; color: #130B07; font-variant-numeric: tabular-nums;">210 ج</span></div>
+      <div style="display: flex; justify-content: space-between; align-items: baseline;"><span style="font-size: 14px; font-weight: 400;">خصم AHLAN</span><span style="font-size: 14px; font-weight: 400; color: #1E7A43; font-variant-numeric: tabular-nums;">− 30 ج</span></div>
+      <div style="display: flex; justify-content: space-between; align-items: baseline;"><span style="font-size: 14px; font-weight: 400;">التوصيل — المعمورة</span><span style="font-size: 14px; font-weight: 400; color: #130B07; font-variant-numeric: tabular-nums;">10 ج</span></div>
+      <div style="height: 1px; background: #D6BFA9;"></div>
+      <div style="display: flex; justify-content: space-between; align-items: baseline;">
+        <span style="font-size: 17px; font-weight: 700;">المطلوب دفعه كاش</span>
+        <span style="font-size: 22px; font-weight: 900; color: #995A1D; font-variant-numeric: tabular-nums;">190 ج</span>
+      </div>
+    </div></div>
+
+    <div style="background: #E5D3C1; border-radius: 10px; padding: 11px 13px; display: flex; gap: 9px; align-items: flex-start;">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#5A452B" stroke-width="2" stroke-linecap="round" style="flex: 0 0 auto; margin-top: 1px;"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16h.01"/></svg>
+      <span style="font-size: 12.5px; color: #5A452B; line-height: 1.6;">جهّز المبلغ كاش للمندوب. المطعم بيأكد الطلب خلال 5 دقايق.</span>
+    </div>
+  </div>
+  <div style="background: #FFFFFF; border-top: 1px solid #D6BFA9; padding: 13px 16px 20px;"><div style="background: #761812; color: #FFFFFF; height: 50px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 16px; font-weight: 600;">اطلب دلوقتي · 190 ج</div></div>
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>
