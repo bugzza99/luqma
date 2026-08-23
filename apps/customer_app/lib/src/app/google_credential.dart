@@ -34,9 +34,18 @@ Future<AuthCredential?> googleCredential() async {
   // resources and has to be handed over.
   await google.initialize(serverClientId: LuqmaFirebase.googleServerClientId);
 
-  final account = await google.authenticate();
-  final auth = account.authentication;
-  final idToken = auth.idToken;
+  final GoogleSignInAccount account;
+  try {
+    account = await google.authenticate();
+  } on GoogleSignInException catch (e) {
+    // Backing out of the sheet is a decision, not a fault. The plugin reports it as an
+    // exception like any other, so it is separated here — everything above this line
+    // treats null as "changed their mind" and a thrown error as "something broke".
+    if (e.code == GoogleSignInExceptionCode.canceled) return null;
+    rethrow;
+  }
+
+  final idToken = account.authentication.idToken;
   if (idToken == null) return null;
 
   return GoogleAuthProvider.credential(idToken: idToken);

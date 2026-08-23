@@ -34,7 +34,8 @@ abstract final class LuqmaFirebase {
   ///
   /// Not a secret. It identifies the project's OAuth client and grants nothing on its
   /// own — it is in the `google-services.json` of every Firebase Android app there is.
-  static const googleServerClientId = '';
+  static const googleServerClientId =
+      '718707520076-enjui4vckuunk2e2nbsnuu8kgaok3tho.apps.googleusercontent.com';
 
   static const _android = FirebaseOptions(
     apiKey: _androidApiKey,
