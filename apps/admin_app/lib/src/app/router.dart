@@ -6,6 +6,7 @@ import '../auth/admin_access.dart';
 import '../auth/gate_screens.dart';
 import '../auth/identity_provider.dart';
 import '../dashboard/dashboard_screen.dart';
+import '../media/media_screen.dart';
 import '../merchants/merchants_screen.dart';
 import '../places/places_screen.dart';
 import '../shell/layout.dart';
@@ -49,23 +50,9 @@ GoRouter router(Ref ref) {
           GoRoute(path: Routes.dashboard, builder: (_, _) => const DashboardScreen()),
           GoRoute(path: Routes.merchants, builder: (_, _) => const MerchantsScreen()),
           GoRoute(path: Routes.zones, builder: (_, _) => const PlacesScreen()),
-          GoRoute(path: Routes.media, builder: (_, _) => const _Placeholder('الصور')),
+          GoRoute(path: Routes.media, builder: (_, _) => const MediaScreen()),
         ],
       ),
     ],
   );
-}
-
-/// Stands in for a screen that lands later in this phase, so the navigation is complete
-/// and walkable now rather than half of it leading nowhere.
-class _Placeholder extends StatelessWidget {
-  const _Placeholder(this.title);
-
-  final String title;
-
-  @override
-  Widget build(BuildContext context) => Scaffold(
-        appBar: AppBar(title: Text(title)),
-        body: const Center(child: Text('قريب')),
-      );
 }
