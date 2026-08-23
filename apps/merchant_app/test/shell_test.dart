@@ -5,6 +5,7 @@ import 'package:luqma_core/luqma_core.dart';
 import 'package:merchant_app/src/app/merchant_app.dart';
 import 'package:merchant_app/src/auth/sign_in_screen.dart';
 import 'package:merchant_app/src/courier/courier_screen.dart';
+import 'package:merchant_app/src/meals/meals_screen.dart';
 import 'package:merchant_app/src/menu/menu_screen.dart';
 import 'package:merchant_app/src/orders/inbox_screen.dart';
 import 'package:merchant_app/src/orders/live_board_screen.dart';
@@ -46,6 +47,7 @@ void main() {
   Future<void> pump(
     WidgetTester tester, {
     LuqmaIdentity? signedInAs = owner,
+    Merchant shopIs = shop,
   }) async {
     auth = FakeAuthService(restoring: signedInAs);
 
@@ -54,7 +56,9 @@ void main() {
         overrides: [
           authServiceProvider.overrideWithValue(auth),
           merchantRepositoryProvider
-              .overrideWithValue(FakeMerchantRepository(seed: const [shop])),
+              .overrideWithValue(FakeMerchantRepository(seed: [shopIs])),
+          dailyMealRepositoryProvider
+              .overrideWithValue(FakeDailyMealRepository()),
           merchantOrderRepositoryProvider
               .overrideWithValue(FakeMerchantOrderRepository()),
           courierOrderRepositoryProvider
@@ -185,6 +189,31 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byType(InboxScreen), findsOneWidget);
+    });
+  });
+
+  // A cook has no standing menu — what they sell is today's meal and a count of
+  // portions — so the third tab is the one that matches the business.
+  group('a home kitchen', () {
+    testWidgets('gets the meals tab instead of the menu', (tester) async {
+      await pump(
+        tester,
+        shopIs: shop.copyWith(type: MerchantType.homeKitchen),
+      );
+
+      expect(find.byKey(MerchantApp.mealsTabKey), findsOneWidget);
+      expect(find.byKey(MerchantApp.menuTabKey), findsNothing);
+
+      await tester.tap(find.byKey(MerchantApp.mealsTabKey));
+      await tester.pumpAndSettle();
+      expect(find.byType(MealsScreen), findsOneWidget);
+    });
+
+    testWidgets('a restaurant keeps the menu', (tester) async {
+      await pump(tester);
+
+      expect(find.byKey(MerchantApp.menuTabKey), findsOneWidget);
+      expect(find.byKey(MerchantApp.mealsTabKey), findsNothing);
     });
   });
 

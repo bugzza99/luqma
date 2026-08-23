@@ -5,6 +5,7 @@ import 'package:luqma_core/luqma_core.dart';
 
 import '../auth/sign_in_screen.dart';
 import '../courier/courier_screen.dart';
+import '../meals/meals_screen.dart';
 import '../menu/menu_screen.dart';
 import '../orders/inbox_screen.dart';
 import '../orders/live_board_screen.dart';
@@ -30,6 +31,7 @@ class MerchantApp extends ConsumerWidget {
   static const inboxTabKey = Key('app.tab.inbox');
   static const liveTabKey = Key('app.tab.live');
   static const menuTabKey = Key('app.tab.menu');
+  static const mealsTabKey = Key('app.tab.meals');
   static const shopTabKey = Key('app.tab.shop');
   static const noAccessKey = Key('app.noAccess');
 
@@ -68,7 +70,7 @@ class _Gate extends ConsumerWidget {
           // A platform courier belongs to no merchant, so `ownsAMerchant` is false for
           // them and the role is what decides.
           StaffIdentity(role: StaffRole.courier) => const CourierScreen(),
-          StaffIdentity(ownsAMerchant: true) => const _Shell(),
+            StaffIdentity(ownsAMerchant: true) => const _Shell(),
           _ => const _NoAccess(),
         },
       // Being unable to read the session means nobody is signed in, never that
@@ -79,19 +81,27 @@ class _Gate extends ConsumerWidget {
   }
 }
 
-class _Shell extends StatefulWidget {
+class _Shell extends ConsumerStatefulWidget {
   const _Shell();
 
   @override
-  State<_Shell> createState() => _ShellState();
+  ConsumerState<_Shell> createState() => _ShellState();
 }
 
-class _ShellState extends State<_Shell> {
+class _ShellState extends ConsumerState<_Shell> {
   int _tab = 0;
 
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).luqma;
+
+    // A home kitchen has no standing menu — what it sells is today's meal and a count of
+    // portions. So the third tab is the one that matches the business, rather than a
+    // menu editor a cook would never open.
+    final merchantId = ref.watch(staffIdentityProvider).merchantId;
+    final isHomeKitchen = merchantId != null &&
+        ref.watch(merchantProvider(merchantId)).value?.type ==
+            MerchantType.homeKitchen;
 
     return Scaffold(
       backgroundColor: colors.background,
@@ -99,38 +109,46 @@ class _ShellState extends State<_Shell> {
       // live subscription and re-load it.
       body: IndexedStack(
         index: _tab,
-        children: const [
-          InboxScreen(),
-          LiveBoardScreen(),
-          MenuScreen(),
-          ShopScreen(),
+        children: [
+          const InboxScreen(),
+          const LiveBoardScreen(),
+          if (isHomeKitchen) const MealsScreen() else const MenuScreen(),
+          const ShopScreen(),
         ],
       ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _tab,
         onDestinationSelected: (i) => setState(() => _tab = i),
-        destinations: const [
+        destinations: [
           // First, always. Whatever else a merchant is doing, getting back to an
           // unanswered order has to be one tap.
-          NavigationDestination(
+          const NavigationDestination(
             key: MerchantApp.inboxTabKey,
             icon: Icon(Icons.notifications_active_outlined),
             selectedIcon: Icon(Icons.notifications_active),
             label: 'الجديد',
           ),
-          NavigationDestination(
+          const NavigationDestination(
             key: MerchantApp.liveTabKey,
             icon: Icon(Icons.local_fire_department_outlined),
             selectedIcon: Icon(Icons.local_fire_department),
             label: 'الجاري',
           ),
-          NavigationDestination(
-            key: MerchantApp.menuTabKey,
-            icon: Icon(Icons.restaurant_menu_outlined),
-            selectedIcon: Icon(Icons.restaurant_menu),
-            label: 'المنيو',
-          ),
-          NavigationDestination(
+          if (isHomeKitchen)
+            const NavigationDestination(
+              key: MerchantApp.mealsTabKey,
+              icon: Icon(Icons.soup_kitchen_outlined),
+              selectedIcon: Icon(Icons.soup_kitchen),
+              label: 'أكل النهارده',
+            )
+          else
+            const NavigationDestination(
+              key: MerchantApp.menuTabKey,
+              icon: Icon(Icons.restaurant_menu_outlined),
+              selectedIcon: Icon(Icons.restaurant_menu),
+              label: 'المنيو',
+            ),
+          const NavigationDestination(
             key: MerchantApp.shopTabKey,
             icon: Icon(Icons.storefront_outlined),
             selectedIcon: Icon(Icons.storefront),

@@ -109,7 +109,17 @@ Two things Phase 5 turned up before a line of courier UI existed, both now fixed
   orders, rewrite prices and close the shop. Acting for a merchant now requires
   `role == 'owner'`.
 
-**Next: Phase 6 — Home kitchens.**
+**Phase 6 is done**, on branch `phase-6-home-kitchens`. `dailyMeals`, the section on the
+customer's home, the meal screen, pre-order checkout, and the cook's own publish screen.
+685 Dart tests, 56 rules tests.
+
+One thing waits on Blaze, and it is the reason this collection exists at all: **the
+transactional decrement of `remainingQty`**. Two people tapping the last portion at the
+same moment is a race no client can settle, so the count is the server's — the rules
+refuse a client write of either quantity, and `OrderDraft` carries `dailyMealId` for the
+function to act on. The screen already says the right thing when it loses that race.
+
+**Next: Phase 7 — Monetization.**
 
 ### Infrastructure
 
@@ -171,7 +181,7 @@ JAVA_HOME="C:\Program Files\Android\Android Studio\jbr" firebase emulators:exec 
 | `firebase/scripts/staff.js` | Creates merchant, courier and admin accounts. No Blaze needed |
 | `brand/src/build_alarm.py` | The new-order alarm, and why every number in it is what it is |
 | `packages/luqma_core/` | Models, repositories, config, theme, l10n, brand widgets, Firebase options |
-| `apps/customer_app/` | CustomerApp — home, merchant, basket, checkout, orders, account |
+| `apps/customer_app/` | CustomerApp — home, merchant, basket, checkout, orders, account, أكل بيتي |
 | `apps/merchant_app/` | MerchantApp — inbox, live board, menu, shop, courier mode |
 | `apps/admin_app/` | AdminApp — merchants, menus, places, media queue |
 | `firebase/firestore.rules` | The real security boundary — read its tests beside it |
@@ -209,6 +219,14 @@ JAVA_HOME="C:\Program Files\Android\Android Studio\jbr" firebase emulators:exec 
 - Whether a merchant can take an order is **derived** from `workingHours` + `pausedUntil`.
   Never store it.
 - The merchant's accept countdown is shown on **instant orders only**. Pre-orders have no deadline.
+- A pre-order **never goes in the basket**. The basket is one restaurant's food to be
+  cooked now; a daily meal is dated and collected in a window, and mixing them produces
+  an order nobody can fulfil.
+- `dailyMeals.date` is a **`yyyy-MM-dd` day key**, not a timestamp: "today's meals" is an
+  equality query, and equality against a timestamp matches one microsecond.
+- Time comes from `clockProvider`, never `DateTime.now()` in a widget. Whether a meal can
+  still be reserved depends on the day *and* the collection window, and a test that
+  cannot move the clock can only be written by waiting for a Tuesday afternoon.
 - **Never match `AsyncError()` after `AsyncLoading()`.** A stream that fails before it has
   ever emitted stays `AsyncLoading` with the error hanging off it, so the error arm never
   fires and the screen spins for ever. Every switch tests `hasError` first. On the
