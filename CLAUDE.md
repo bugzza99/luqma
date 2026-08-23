@@ -64,9 +64,15 @@ Two things are outstanding and both are the owner's to do:
 
 - **Google Sign-In has no OAuth client.** The code is wired and every screen above it is
   tested through `AuthService`, but `firebase apps:sdkconfig` reports `oauth_client: []`
-  for all three apps. On a real phone sign-in fails until Google is enabled as a provider
-  in Firebase Auth *and* the signing key's SHA-1 is registered against `com.luqma.customer`.
-  Debug and release keys are different fingerprints; both need registering.
+  for all three apps. Three console steps, in this order:
+  1. Authentication → Sign-in method → enable **Google**.
+  2. Project settings → the `com.luqma.customer` app → add the signing key **SHA-1**.
+     Debug and release are different fingerprints; both need registering. The debug one
+     on the owner's machine is `75:86:90:59:D0:05:81:C6:46:58:6D:EE:E6:14:51:BA:80:CA:BA:DF`.
+  3. Copy the **Web client id** Firebase creates into `LuqmaFirebase.googleServerClientId`.
+     This project does not ship `google-services.json`, so the plugin cannot read it from
+     resources — it is passed explicitly. Empty, sign-in throws with these instructions
+     rather than the plugin's own "serverClientId must be provided on Android".
 - **Placing an order needs Blaze.** `OrderRepository.placeOrder` calls a Cloud Function
   that does not exist yet. Everything else about orders — watching, cancelling, issues,
   ratings — is ordinary Firestore and works on Spark today.

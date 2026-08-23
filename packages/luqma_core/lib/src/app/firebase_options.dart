@@ -21,6 +21,21 @@ abstract final class LuqmaFirebase {
   /// One key for all three Android apps — that is how Firebase issues it.
   static const _androidApiKey = 'AIzaSyDNRBrTJYXXKs0yyskVw9omWKgEMjAspOk';
 
+  /// The **web** OAuth client id, which Google Sign-In on Android needs in order to ask
+  /// for an ID token Firebase will accept.
+  ///
+  /// Normally the plugin reads this out of `google-services.json` as
+  /// `default_web_client_id`. This project does not ship that file — see the note at the
+  /// top of this class — so it is passed explicitly instead.
+  ///
+  /// Firebase creates it the moment Google is enabled as a sign-in provider. Until then
+  /// it is empty and sign-in fails on a real device with a clear message; see
+  /// `googleCredential()` in CustomerApp.
+  ///
+  /// Not a secret. It identifies the project's OAuth client and grants nothing on its
+  /// own — it is in the `google-services.json` of every Firebase Android app there is.
+  static const googleServerClientId = '';
+
   static const _android = FirebaseOptions(
     apiKey: _androidApiKey,
     appId: '1:718707520076:android:7f8b0bee40fcc31bc8fae9',
