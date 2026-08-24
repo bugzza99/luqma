@@ -319,6 +319,13 @@ begin
     execute format('alter table %I enable row level security', t);
     execute format('alter table %I force row level security', t);
     execute format('revoke all on %I from anon, authenticated', t);
+
+    -- The server, explicitly. `service_role` already bypasses RLS, but bypassing a
+    -- policy is not the same as holding a privilege: without this it is refused at the
+    -- grant, and the order function, the nightly pass and every Edge Function with it.
+    -- Granted here rather than left to default privileges, which are a setting somewhere
+    -- else that this file cannot see.
+    execute format('grant all on %I to service_role', t);
   end loop;
 end;
 $$;

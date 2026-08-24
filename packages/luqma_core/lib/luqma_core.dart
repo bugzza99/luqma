@@ -49,6 +49,7 @@ export 'src/theme/typography.dart';
 export 'src/util/arabic_digits.dart';
 export 'src/util/arabic_text.dart';
 export 'src/util/contrast.dart';
+export 'src/data/column_names.dart';
 export 'src/widgets/address_picker.dart';
 export 'src/widgets/error_view.dart';
 export 'src/widgets/luqma_lockup.dart';

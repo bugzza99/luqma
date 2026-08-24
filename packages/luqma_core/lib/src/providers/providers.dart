@@ -29,14 +29,24 @@ import '../repositories/merchant_order_repository.dart';
 import '../repositories/merchant_repository.dart';
 import '../repositories/order_repository.dart';
 import '../repositories/promotion_repository.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+
 import '../result.dart';
 
 part 'providers.g.dart';
 
 /// The Firestore instance. Overridden in tests and in the emulator harness, which is why
 /// it is a provider rather than a static reference reached for from wherever.
+///
+/// Being replaced, one repository at a time. When the last thing reading it has moved,
+/// this and the package behind it go with it.
 @Riverpod(keepAlive: true)
 FirebaseFirestore firestore(Ref ref) => FirebaseFirestore.instance;
+
+/// The Supabase client. A provider for the same reason: the live tests hand it a client
+/// pointed at the local stack, and nothing below has to know which one it got.
+@Riverpod(keepAlive: true)
+SupabaseClient supabase(Ref ref) => Supabase.instance.client;
 
 /// The city this build is serving.
 ///
@@ -51,7 +61,7 @@ MerchantRepository merchantRepository(Ref ref) =>
 
 @Riverpod(keepAlive: true)
 GeographyRepository geographyRepository(Ref ref) =>
-    FirestoreGeographyRepository(ref.watch(firestoreProvider));
+    SupabaseGeographyRepository(ref.watch(supabaseProvider));
 
 /// The city's zones. Kept alive because they change about once a month and every address
 /// screen needs them.
