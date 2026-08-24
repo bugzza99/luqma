@@ -1,7 +1,9 @@
 import 'dart:async';
 
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../data/column_names.dart';
+import '../data/live_query.dart';
 import '../models/daily_meal.dart';
 import '../result.dart';
 
@@ -33,77 +35,97 @@ abstract interface class DailyMealRepository {
   Future<Result<void>> setStatus(String mealId, DailyMealStatus status);
 }
 
-class FirestoreDailyMealRepository implements DailyMealRepository {
-  FirestoreDailyMealRepository(this._firestore);
+class SupabaseDailyMealRepository implements DailyMealRepository {
+  SupabaseDailyMealRepository(this._db);
 
-  final FirebaseFirestore _firestore;
+  final SupabaseClient _db;
 
-  CollectionReference<Map<String, dynamic>> get _meals =>
-      _firestore.collection('dailyMeals');
+  /// An empty id means "none" everywhere else in this codebase, and an empty string is
+  /// not a uuid — the column would refuse it before any policy had spoken.
+  static String? _uuidOrNull(String? id) =>
+      (id == null || id.isEmpty) ? null : id;
 
   @override
   Stream<List<DailyMeal>> watchToday({
     required String cityId,
     required String day,
   }) {
-    return _meals
-        .where('cityId', isEqualTo: cityId)
-        .where('date', isEqualTo: day)
-        .where('status', isEqualTo: DailyMealStatus.published.name)
-        .snapshots()
-        .map((snapshot) => snapshot.docs.map(_toMeal).toList()
-          // What is still available first: a screen that leads with four sold-out cards
-          // reads as a section not worth scrolling.
-          ..sort((a, b) {
-            if (a.isSoldOut != b.isSoldOut) return a.isSoldOut ? 1 : -1;
-            return a.name.compareTo(b.name);
-          }));
+    return watchRows(
+      db: _db,
+      table: 'daily_meals',
+      map: _toMeal,
+      filters: [
+        RowFilter('city_id', cityId),
+        RowFilter('date', day),
+        RowFilter('status', DailyMealStatus.published.name),
+      ],
+      // What is still available first: a screen that leads with four sold-out cards
+      // reads as a section not worth scrolling.
+    ).map((meals) => meals..sort((a, b) {
+        if (a.isSoldOut != b.isSoldOut) return a.isSoldOut ? 1 : -1;
+        return a.name.compareTo(b.name);
+      }));
   }
 
   @override
   Stream<List<DailyMeal>> watchForMerchant(String merchantId) {
-    return _meals
-        .where('merchantId', isEqualTo: merchantId)
-        .snapshots()
-        .map((snapshot) => snapshot.docs.map(_toMeal).toList()
-          // Newest day first: a cook opens this to deal with today, not with last week.
-          ..sort((a, b) => b.date.compareTo(a.date)));
+    return watchRows(
+      db: _db,
+      table: 'daily_meals',
+      map: _toMeal,
+      filters: [RowFilter('merchant_id', merchantId)],
+      // Newest day first: a cook opens this to deal with today, not with last week.
+      orderBy: 'date',
+      ascending: false,
+    );
   }
 
   @override
   Future<Result<DailyMeal>> saveMeal(DailyMeal meal) {
     return Result.guard(() async {
-      final isNew = meal.id.isEmpty;
-      final doc = isNew ? _meals.doc() : _meals.doc(meal.id);
-      final saved = meal.copyWith(id: doc.id);
-
-      final json = saved.toJson()..remove('id');
-      if (!isNew) {
-        // Stripped rather than refused, so editing a name never becomes an argument
-        // about a field the caller did not mean to send. The security rules refuse the
-        // same write; this is what stops the app offering it in the first place.
-        json
-          ..remove('remainingQty')
-          ..remove('totalQty');
-      }
-
-      await doc.set(json, SetOptions(merge: true));
-      return isNew ? saved : _toMeal(await doc.get());
+      // The count is decided once, at creation. An edit carries everything but it —
+      // stripped rather than refused, so editing a name never becomes an argument about
+      // a field the caller did not mean to send.
+      final row = {
+        'merchant_id': meal.merchantId,
+        'city_id': meal.cityId,
+        'name': meal.name,
+        'description': meal.description,
+        'media_id': _uuidOrNull(meal.mediaId),
+        'price': meal.price,
+        'date': meal.date,
+        'pickup_window_start': meal.pickupWindowStart,
+        'pickup_window_end': meal.pickupWindowEnd,
+        'delivery_option': meal.deliveryOption.name,
+        'status': meal.status.name,
+        if (meal.id.isEmpty) ...{
+          'total_qty': meal.totalQty,
+          'remaining_qty': meal.remainingQty,
+        },
+      };
+      final saved = meal.id.isEmpty
+          ? await _db.from('daily_meals').insert(row).select().single()
+          : await _db
+              .from('daily_meals')
+              .update(row)
+              .eq('id', meal.id)
+              .select()
+              .single();
+      return _toMeal(saved);
     });
   }
 
   @override
   Future<Result<void>> setStatus(String mealId, DailyMealStatus status) {
     return Result.guard(
-      () => _meals.doc(mealId).update({
+      () => _db.from('daily_meals').update({
         'status': status.name,
-        'updatedAt': FieldValue.serverTimestamp(),
-      }),
+      }).eq('id', mealId),
     );
   }
 
-  DailyMeal _toMeal(DocumentSnapshot<Map<String, dynamic>> doc) =>
-      DailyMeal.fromJson({...doc.data()!, 'id': doc.id});
+  DailyMeal _toMeal(Map<String, dynamic> row) =>
+      DailyMeal.fromJson(ColumnNames.toModel(row));
 }
 
 /// In-memory meals, for tests and for building the screens before the backend exists.

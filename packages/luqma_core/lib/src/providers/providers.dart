@@ -250,7 +250,7 @@ Stream<List<Order>> platformDeliveries(Ref ref, String cityId) =>
 
 @Riverpod(keepAlive: true)
 DailyMealRepository dailyMealRepository(Ref ref) =>
-    FirestoreDailyMealRepository(ref.watch(firestoreProvider));
+    SupabaseDailyMealRepository(ref.watch(supabaseProvider));
 
 /// What time it is.
 ///
