@@ -234,6 +234,7 @@ is not usage, it is a function that calls itself.
 ```
 cd packages/luqma_core && flutter gen-l10n && flutter analyze && flutter test
 npm --prefix functions test
+npm --prefix supabase test
 ```
 
 `gen-l10n` first on a fresh clone, and after any change to `lib/l10n/app_ar.arb`.
@@ -284,6 +285,8 @@ JAVA_HOME="C:\Program Files\Android\Android Studio\jbr" firebase emulators:exec 
 | `apps/admin_app/` | AdminApp — merchants, menus, places, media, billing, promotions, home builder |
 | `firebase/firestore.rules` | The real security boundary — read its tests beside it |
 | `firebase/test/` | Rules tests, run against the emulator |
+| `supabase/migrations/` | **The Postgres schema.** Applied and argued with by `supabase/test/` |
+| `supabase/seed.mjs` | Edku into Postgres, from the same `edku.json` the Firestore seed reads |
 
 ## Decisions that are settled — do not relitigate
 
