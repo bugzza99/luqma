@@ -1,3 +1,4 @@
+import 'package:flutter_test/flutter_test.dart' show fail;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 /// A client against the local stack, signed in as nobody in particular.
@@ -80,5 +81,21 @@ class LiveDatabase {
       await client.from(table).delete().eq('city_id', cityId);
     }
     await client.from('cities').delete().eq('id', cityId);
+  }
+}
+
+/// Polls until [condition] holds or [timeout] passes, then fails the test.
+///
+/// For live streams, whose second emission arrives over a websocket on no schedule a
+/// test can await deterministically.
+Future<void> waitFor(
+  bool Function() condition, {
+  Duration timeout = const Duration(seconds: 10),
+  String because = 'the stream never reached the expected state',
+}) async {
+  final end = DateTime.now().add(timeout);
+  while (!condition()) {
+    if (DateTime.now().isAfter(end)) fail(because);
+    await Future<void>.delayed(const Duration(milliseconds: 50));
   }
 }

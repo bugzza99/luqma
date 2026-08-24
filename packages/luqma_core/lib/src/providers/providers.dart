@@ -83,7 +83,7 @@ Future<List<Landmark>> landmarks(Ref ref) async {
 
 @Riverpod(keepAlive: true)
 HomeSectionRepository homeSectionRepository(Ref ref) =>
-    FirestoreHomeSectionRepository(ref.watch(firestoreProvider));
+    SupabaseHomeSectionRepository(ref.watch(supabaseProvider));
 
 /// The customer home screen's arrangement, live.
 @riverpod

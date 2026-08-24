@@ -1,7 +1,9 @@
 import 'dart:async';
 
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../data/column_names.dart';
+import '../data/live_query.dart';
 import '../models/home_section.dart';
 import '../result.dart';
 
@@ -23,31 +25,31 @@ abstract interface class HomeSectionRepository {
   Future<Result<void>> reorder(List<String> keysInOrder);
 }
 
-class FirestoreHomeSectionRepository implements HomeSectionRepository {
-  FirestoreHomeSectionRepository(this._firestore);
+class SupabaseHomeSectionRepository implements HomeSectionRepository {
+  SupabaseHomeSectionRepository(this._db);
 
-  final FirebaseFirestore _firestore;
-
-  CollectionReference<Map<String, dynamic>> get _sections =>
-      _firestore.collection('homeSections');
+  final SupabaseClient _db;
 
   @override
   Stream<List<HomeSection>> watchSections({required String cityId}) {
-    return _sections
-        .where('cityId', isEqualTo: cityId)
-        .snapshots()
-        .map((snapshot) => snapshot.docs
-            .map((doc) => HomeSection.fromJson({...doc.data(), 'key': doc.id}))
-            .toList()
-          ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder)));
+    return watchRows(
+      db: _db,
+      table: 'home_sections',
+      filters: [RowFilter('city_id', cityId)],
+      orderBy: 'sort_order',
+      map: (row) => HomeSection.fromJson(ColumnNames.toModel(row)),
+    );
   }
 
   @override
   Future<Result<void>> save(HomeSection section) {
     return Result.guard(() async {
-      await _sections.doc(section.key).set(
-            section.toJson()..remove('key'),
-            SetOptions(merge: true),
+      // Upsert on the composite primary key: saving is create-or-replace, as it always
+      // was. A section names its city — the key demands it — so the model's nullable
+      // `cityId` must be filled before this is called, exactly as the table says.
+      await _db.from('home_sections').upsert(
+            ColumnNames.toRow(section.toJson()),
+            onConflict: 'key,city_id',
           );
     });
   }
@@ -55,21 +57,19 @@ class FirestoreHomeSectionRepository implements HomeSectionRepository {
   @override
   Future<Result<void>> setVisible(String key, bool isVisible) {
     return Result.guard(
-      () => _sections.doc(key).update({'isVisible': isVisible}),
+      () => _db.from('home_sections').update({
+        'is_visible': isVisible,
+      }).eq('key', key),
     );
   }
 
   @override
   Future<Result<void>> reorder(List<String> keysInOrder) {
-    return Result.guard(() async {
-      // One batch: a half-applied reorder would leave two sections claiming the same
-      // position, and the screen would settle on whichever loaded first.
-      final batch = _firestore.batch();
-      for (var i = 0; i < keysInOrder.length; i++) {
-        batch.update(_sections.doc(keysInOrder[i]), {'sortOrder': i});
-      }
-      await batch.commit();
-    });
+    return Result.guard(
+      () => _db.rpc('reorder_home_sections', params: {
+        'p_keys': keysInOrder,
+      }),
+    );
   }
 }
 
