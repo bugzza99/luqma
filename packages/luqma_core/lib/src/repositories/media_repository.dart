@@ -1,5 +1,7 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../data/column_names.dart';
+import '../data/live_query.dart';
 import '../models/media.dart';
 import '../result.dart';
 
@@ -19,34 +21,45 @@ abstract interface class MediaRepository {
   });
 }
 
-class FirestoreMediaRepository implements MediaRepository {
-  FirestoreMediaRepository(this._firestore);
+class SupabaseMediaRepository implements MediaRepository {
+  SupabaseMediaRepository(this._db);
 
-  final FirebaseFirestore _firestore;
+  final SupabaseClient _db;
 
-  CollectionReference<Map<String, dynamic>> get _media =>
-      _firestore.collection('media');
+  /// An empty id means "none" everywhere else in this codebase, and an empty string is
+  /// not a uuid — the column would refuse it before any policy had spoken.
+  static String? _uuidOrNull(String? id) =>
+      (id == null || id.isEmpty) ? null : id;
+
+  Media _toMedia(Map<String, dynamic> row) {
+    final model = ColumnNames.toModel(row);
+    // Local, like Firestore's Timestamp.toDate() handed back: Dart's DateTime equality
+    // insists on the same zone, not merely the same moment.
+    if (model['createdAt'] is String) {
+      model['createdAt'] = DateTime.parse(model['createdAt'] as String).toLocal();
+    }
+    return Media.fromJson(model);
+  }
 
   @override
   Stream<List<Media>> watchPending() {
-    return _media
-        .where('status', isEqualTo: MediaStatus.pending.name)
-        .snapshots()
-        .map((snapshot) => snapshot.docs.map(_toMedia).toList()
-          ..sort((a, b) {
-            final left = a.createdAt;
-            final right = b.createdAt;
-            if (left == null || right == null) return 0;
-            return left.compareTo(right);
-          }));
+    return watchRows(
+      db: _db,
+      table: 'media',
+      map: _toMedia,
+      filters: [RowFilter('status', MediaStatus.pending.name)],
+      // Oldest first: a photo that has been waiting three days is the one holding a
+      // merchant up.
+      orderBy: 'created_at',
+    );
   }
 
   @override
   Future<Result<Media>> get(String id) {
     return Result.guard(() async {
-      final doc = await _media.doc(id).get();
-      if (!doc.exists) throw const NotFoundFailure();
-      return _toMedia(doc);
+      final row = await _db.from('media').select().eq('id', id).maybeSingle();
+      if (row == null) throw const NotFoundFailure();
+      return _toMedia(row);
     });
   }
 
@@ -57,25 +70,21 @@ class FirestoreMediaRepository implements MediaRepository {
     String? reviewedBy,
     String? note,
   }) {
-      return Result.guard(
-        () {
-          // Recorded even when there is no note: knowing a decision was made, and by
-          // whom, is what separates "reviewed and refused" from "nobody has looked yet".
-          // An empty note is no note.
-          final reviewNote = (note == null || note.isEmpty) ? null : note;
-          return _media.doc(id).update({
-            'status': status.name,
-            'reviewedBy': ?reviewedBy,
-            'reviewNote': ?reviewNote,
-          });
-        },
-      );
+    return Result.guard(() {
+      // Recorded even when there is no note: knowing a decision was made, and by whom,
+      // is what separates "reviewed and refused" from "nobody has looked yet". An empty
+      // note is no note.
+      final reviewNote = (note == null || note.isEmpty) ? null : note;
+      return _db.from('media').update({
+        'status': status.name,
+        'reviewed_by': _uuidOrNull(reviewedBy),
+        'review_note': reviewNote,
+      }).eq('id', id);
+    });
   }
-
-  Media _toMedia(DocumentSnapshot<Map<String, dynamic>> doc) =>
-      Media.fromJson({...doc.data()!, 'id': doc.id});
 }
 
+/// In-memory media, for tests and for building screens before anyone uploads anything.
 class FakeMediaRepository implements MediaRepository {
   FakeMediaRepository({List<Media> seed = const [], this.failure})
       : _media = {for (final m in seed) m.id: m};

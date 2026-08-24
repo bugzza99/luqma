@@ -1,11 +1,12 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../data/column_names.dart';
+import '../data/live_query.dart';
 import '../models/menu_item.dart';
 import '../models/merchant.dart';
 import '../result.dart';
 
-/// A merchant's menu: the categories that live inline on the merchant document, and the
-/// items that live in their own collection.
+/// A merchant's menu: the categories that order it, and the items that sell from it.
 abstract interface class MenuRepository {
   Stream<List<MenuCategory>> watchCategories(String merchantId);
   Stream<List<MenuItem>> watchItems(String merchantId);
@@ -16,58 +17,96 @@ abstract interface class MenuRepository {
   Future<Result<void>> saveCategories(String merchantId, List<MenuCategory> categories);
 }
 
-class FirestoreMenuRepository implements MenuRepository {
-  FirestoreMenuRepository(this._firestore);
+class SupabaseMenuRepository implements MenuRepository {
+  SupabaseMenuRepository(this._db);
 
-  final FirebaseFirestore _firestore;
+  final SupabaseClient _db;
+
+  /// An empty id means "none" everywhere else in this codebase, and an empty string is
+  /// not a uuid — the column would refuse it before any policy had spoken.
+  static String? _uuidOrNull(String? id) =>
+      (id == null || id.isEmpty) ? null : id;
 
   @override
   Stream<List<MenuCategory>> watchCategories(String merchantId) {
-    return _firestore.collection('merchants').doc(merchantId).snapshots().map((doc) {
-      final raw = (doc.data()?['menuCategories'] as List?) ?? const [];
-      return raw
-          .map((e) => MenuCategory.fromJson(Map<String, dynamic>.from(e as Map)))
-          .toList()
-        ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
-    });
+    return watchRows(
+      db: _db,
+      table: 'menu_categories',
+      map: (row) => MenuCategory.fromJson(ColumnNames.toModel(row)),
+      filters: [RowFilter('merchant_id', merchantId)],
+      orderBy: 'sort_order',
+    );
   }
 
   @override
   Stream<List<MenuItem>> watchItems(String merchantId) {
-    return _firestore
-        .collection('menuItems')
-        .where('merchantId', isEqualTo: merchantId)
-        .snapshots()
-        .map((snapshot) => snapshot.docs
-            .map((doc) => MenuItem.fromJson({...doc.data(), 'id': doc.id}))
-            .toList()
-          ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder)));
+    return watchRows(
+      db: _db,
+      table: 'menu_items',
+      map: _toItem,
+      filters: [RowFilter('merchant_id', merchantId)],
+      orderBy: 'sort_order',
+    );
   }
 
   @override
   Future<Result<MenuItem>> saveItem(MenuItem item) {
     return Result.guard(() async {
-      final items = _firestore.collection('menuItems');
-      final doc = item.id.isEmpty ? items.doc() : items.doc(item.id);
-      final saved = item.copyWith(id: doc.id);
-      await doc.set(saved.toJson()..remove('id'), SetOptions(merge: true));
-      return saved;
+      final row = {
+        'merchant_id': item.merchantId,
+        // An item can outlive its category: the column allows null, the model carries
+        // an empty string for it.
+        'category_id': _uuidOrNull(item.categoryId),
+        'name': item.name,
+        'description': item.description,
+        'price': item.price,
+        'media_id': _uuidOrNull(item.mediaId),
+        'is_available': item.isAvailable,
+        // jsonb whose inner keys the app itself wrote, already camelCase.
+        'options': [for (final o in item.options) o.toJson()],
+        'sort_order': item.sortOrder,
+      };
+      final saved = item.id.isEmpty
+          ? await _db.from('menu_items').insert(row).select().single()
+          : await _db
+              .from('menu_items')
+              .update(row)
+              .eq('id', item.id)
+              .select()
+              .single();
+      return _toItem(saved);
     });
   }
 
   @override
   Future<Result<void>> deleteItem(String itemId) {
-    return Result.guard(() => _firestore.collection('menuItems').doc(itemId).delete());
+    return Result.guard(
+      () => _db.from('menu_items').delete().eq('id', itemId),
+    );
   }
 
   @override
-  Future<Result<void>> saveCategories(String merchantId, List<MenuCategory> categories) {
-    return Result.guard(() async {
-      await _firestore.collection('merchants').doc(merchantId).update({
-        'menuCategories': categories.map((c) => c.toJson()).toList(),
-      });
-    });
+  Future<Result<void>> saveCategories(
+    String merchantId,
+    List<MenuCategory> categories,
+  ) {
+    return Result.guard(
+      () => _db.rpc('save_menu_categories', params: {
+        'p_merchant_id': merchantId,
+        'p_categories': [
+          for (final c in categories)
+            {'id': c.id, 'name': c.name, 'sort_order': c.sortOrder},
+        ],
+      }),
+    );
   }
+}
+
+MenuItem _toItem(Map<String, dynamic> row) {
+  final model = ColumnNames.toModel(row);
+  if (model['categoryId'] == null) model['categoryId'] = '';
+  if (model['options'] == null) model['options'] = <dynamic>[];
+  return MenuItem.fromJson(model);
 }
 
 /// In-memory menu, for tests and for entering data before the backend exists.

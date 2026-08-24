@@ -93,11 +93,11 @@ Stream<List<HomeSection>> homeSections(Ref ref) => ref
 
 @Riverpod(keepAlive: true)
 MediaRepository mediaRepository(Ref ref) =>
-    FirestoreMediaRepository(ref.watch(firestoreProvider));
+    SupabaseMediaRepository(ref.watch(supabaseProvider));
 
 @Riverpod(keepAlive: true)
 MenuRepository menuRepository(Ref ref) =>
-    FirestoreMenuRepository(ref.watch(firestoreProvider));
+    SupabaseMenuRepository(ref.watch(supabaseProvider));
 
 @riverpod
 Stream<List<MenuCategory>> menuCategories(Ref ref, String merchantId) =>
