@@ -1,16 +1,18 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../data/column_names.dart';
 import '../models/geography.dart';
 import '../result.dart';
 
 /// A customer's saved addresses.
 ///
-/// They live under the customer's own user document — `users/{uid}/addresses` — which is
-/// what lets the security rule be a single ownership check instead of a per-document one.
+/// They live in one `addresses` table carrying `user_id`, which is what lets the RLS
+/// policy be a single ownership check instead of a per-row one.
 ///
-/// The default address lives on the user document rather than as a flag on each address:
+/// The default address lives on the user's row rather than as a flag on each address:
 /// a flag can be true on two of them at once, and then the app has to pick one and hide
-/// the disagreement. One field can only ever name one.
+/// the disagreement. One column can only ever name one. The customer may move it —
+/// `users_guard_columns` allows exactly that — and nothing else on their row.
 abstract interface class AddressRepository {
   Future<Result<List<Address>>> addresses(String uid);
 
@@ -27,64 +29,95 @@ abstract interface class AddressRepository {
   Future<Result<void>> setDefaultAddress(String uid, String addressId);
 }
 
-class FirestoreAddressRepository implements AddressRepository {
-  FirestoreAddressRepository(this._firestore);
+class SupabaseAddressRepository implements AddressRepository {
+  SupabaseAddressRepository(this._db);
 
-  final FirebaseFirestore _firestore;
+  final SupabaseClient _db;
 
-  DocumentReference<Map<String, dynamic>> _user(String uid) =>
-      _firestore.collection('users').doc(uid);
+  /// The fields of [Address] that have a column behind them.
+  ///
+  /// The model carries `lat`/`lng` for an order's frozen copy of an address; a saved
+  /// address is zone, landmark and words, so sending keys no column has would fail the
+  /// write rather than quietly dropping them.
+  static const _saved = [
+    'zoneId', 'landmarkId', 'landmarkName', 'landmarkNote',
+    'street', 'building', 'floor', 'apartment', 'label',
+  ];
 
-  CollectionReference<Map<String, dynamic>> _addresses(String uid) =>
-      _user(uid).collection('addresses');
+  Address _address(Map<String, dynamic> row) =>
+      Address.fromJson(ColumnNames.toModel(row));
+
+  Map<String, dynamic> _row(Address address) {
+    final json = address.toJson();
+    final row = ColumnNames.toRow({for (final f in _saved) f: json[f]});
+    // An empty landmark id means "none" everywhere else in this codebase, and an empty
+    // string is not a uuid — the column would refuse it before the policy ever spoke.
+    if (row['landmark_id'] == '') row['landmark_id'] = null;
+    return row;
+  }
 
   @override
   Future<Result<List<Address>>> addresses(String uid) {
     return Result.guard(() async {
-      final snapshot = await _addresses(uid).get();
-      return snapshot.docs
-          .map((doc) => Address.fromJson({...doc.data(), 'id': doc.id}))
-          .toList();
+      final rows =
+          await _db.from('addresses').select().eq('user_id', uid).order('created_at');
+      return rows.map(_address).toList();
     });
   }
 
   @override
   Future<Result<Address>> saveAddress(String uid, Address address) {
     return Result.guard(() async {
-      final collection = _addresses(uid);
-      final isNew = address.id.isEmpty;
-      final doc = isNew ? collection.doc() : collection.doc(address.id);
-      final saved = address.copyWith(id: doc.id);
+      final row = _row(address);
+      final saved = address.id.isEmpty
+          ? await _db
+              .from('addresses')
+              .insert({...row, 'user_id': uid})
+              .select()
+              .single()
+          : await _db
+              .from('addresses')
+              .update(row)
+              // Scoped by owner even under a client that bypasses the boundary: a
+              // repository that edits by id alone would move another person's address
+              // wherever the key is held.
+              .eq('id', address.id)
+              .eq('user_id', uid)
+              .select()
+              .single();
+      final savedAddress = _address(saved);
 
-      await doc.set(saved.toJson()..remove('id'), SetOptions(merge: true));
-
-      if (isNew) {
+      if (address.id.isEmpty) {
         final existing = await defaultAddressId(uid);
         if (existing.valueOrNull == null) {
-          await setDefaultAddress(uid, doc.id);
+          await setDefaultAddress(uid, savedAddress.id);
         }
       }
 
-      return saved;
+      return savedAddress;
     });
   }
 
   @override
   Future<Result<void>> deleteAddress(String uid, String addressId) {
     return Result.guard(() async {
-      await _addresses(uid).doc(addressId).delete();
-
-      // A default pointing at a deleted address renders as nothing at checkout, with
-      // no way for the customer to tell what went wrong. A survivor takes over rather
-      // than the default being cleared — being dropped back to "no address chosen"
-      // because one of three was deleted makes them redo a choice already made.
+      // Read before the delete, not after: the column's foreign key is `on delete set
+      // null`, so losing the default is the database's doing before this code ever
+      // looks. A survivor takes over rather than the default being cleared — being
+      // dropped back to "no address chosen" because one of three was deleted makes
+      // them redo a choice already made.
       final current = await defaultAddressId(uid);
+      await _db
+          .from('addresses')
+          .delete()
+          .eq('id', addressId)
+          .eq('user_id', uid);
+
       if (current.valueOrNull == addressId) {
         final remaining = await addresses(uid);
-        await _user(uid).set(
-          {'defaultAddressId': remaining.valueOrNull?.firstOrNull?.id},
-          SetOptions(merge: true),
-        );
+        await _db.from('users').update({
+          'default_address_id': remaining.valueOrNull?.firstOrNull?.id,
+        }).eq('id', uid);
       }
     });
   }
@@ -92,18 +125,22 @@ class FirestoreAddressRepository implements AddressRepository {
   @override
   Future<Result<String?>> defaultAddressId(String uid) {
     return Result.guard(() async {
-      final doc = await _user(uid).get();
-      return doc.data()?['defaultAddressId'] as String?;
+      final row = await _db
+          .from('users')
+          .select('default_address_id')
+          .eq('id', uid)
+          .maybeSingle();
+      return row?['default_address_id'] as String?;
     });
   }
 
   @override
   Future<Result<void>> setDefaultAddress(String uid, String addressId) {
     return Result.guard(
-      () => _user(uid).set(
-        {'defaultAddressId': addressId},
-        SetOptions(merge: true),
-      ),
+      () => _db
+          .from('users')
+          .update({'default_address_id': addressId})
+          .eq('id', uid),
     );
   }
 }

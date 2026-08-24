@@ -309,7 +309,7 @@ Stream<Order> merchantOrder(Ref ref, String orderId) =>
 
 @Riverpod(keepAlive: true)
 AddressRepository addressRepository(Ref ref) =>
-    FirestoreAddressRepository(ref.watch(firestoreProvider));
+    SupabaseAddressRepository(ref.watch(supabaseProvider));
 
 @Riverpod(keepAlive: true)
 OrderRepository orderRepository(Ref ref) =>
