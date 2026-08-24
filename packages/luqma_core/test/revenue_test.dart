@@ -54,7 +54,7 @@ void main() {
     test('takes nothing from an order', () {
       final snapshot = RevenueSnapshot.of(merchant());
 
-      expect(Revenue.takeFrom(snapshot, orderTotal: 25000), 0);
+      expect(Revenue.takeFrom(snapshot, basis: 25000), 0);
     });
   });
 
@@ -65,7 +65,7 @@ void main() {
       );
 
       // 10% of 250 EGP.
-      expect(Revenue.takeFrom(snapshot, orderTotal: 25000), 2500);
+      expect(Revenue.takeFrom(snapshot, basis: 25000), 2500);
     });
 
     // Money is integer piastres, and the platform rounds in the merchant's favour. Taking
@@ -77,7 +77,7 @@ void main() {
       );
 
       // 12.34% of 999 piastres is 123.27…
-      expect(Revenue.takeFrom(snapshot, orderTotal: 999), 123);
+      expect(Revenue.takeFrom(snapshot, basis: 999), 123);
     });
 
     test('a free order costs nothing', () {
@@ -85,7 +85,7 @@ void main() {
         merchant(model: RevenueModel.commission, value: 1000),
       );
 
-      expect(Revenue.takeFrom(snapshot, orderTotal: 0), 0);
+      expect(Revenue.takeFrom(snapshot, basis: 0), 0);
     });
 
     // A rate above 100% would mean the platform takes more than the customer paid.
@@ -94,7 +94,7 @@ void main() {
         merchant(model: RevenueModel.commission, value: 50000),
       );
 
-      expect(Revenue.takeFrom(snapshot, orderTotal: 25000), 25000);
+      expect(Revenue.takeFrom(snapshot, basis: 25000), 25000);
     });
   });
 
@@ -106,7 +106,7 @@ void main() {
         merchant(model: RevenueModel.prepaid, value: 500),
       );
 
-      expect(Revenue.takeFrom(snapshot, orderTotal: 25000), 500);
+      expect(Revenue.takeFrom(snapshot, basis: 25000), 500);
     });
 
     // The fee is what it costs to carry an order; an order worth less than the fee is
@@ -117,7 +117,60 @@ void main() {
         merchant(model: RevenueModel.prepaid, value: 500),
       );
 
-      expect(Revenue.takeFrom(snapshot, orderTotal: 300), 300);
+      expect(Revenue.takeFrom(snapshot, basis: 300), 300);
+    });
+  });
+
+  // The commission is charged on the food, not on the bill.
+  //
+  // It used to come off the order total, which carries the delivery fee. When the
+  // platform does the delivering that is money the merchant never sees — the courier
+  // keeps the fee — and the merchant was charged a percentage of it as well. There is no
+  // answer to a merchant who asks why, and in a cash market the answer matters more than
+  // the piastres.
+  //
+  // The mirror of the same group in `functions/test/revenue.test.ts`, pinned to the same
+  // figures: a disagreement between the two engines fails here rather than showing a
+  // merchant one number while the ledger records another.
+  group('what the commission is charged on', () {
+    OrderPricing pricing(int subtotal, int deliveryFee) => OrderPricing(
+          subtotal: subtotal,
+          deliveryFee: deliveryFee,
+          total: subtotal + deliveryFee,
+        );
+
+    test('is the food, not the food plus the delivery', () {
+      // 100 EGP of food, 15 EGP delivery, 10%. Ten pounds, not eleven fifty.
+      expect(Revenue.basisFor(pricing(10000, 1500)), 10000);
+    });
+
+    test('an order with no food is charged nothing', () {
+      expect(Revenue.basisFor(pricing(0, 1500)), 0);
+    });
+
+    test('a delivery-free order is charged on all of it', () {
+      expect(Revenue.basisFor(pricing(25000, 0)), 25000);
+    });
+
+    test('a bigger delivery fee does not make the commission bigger', () {
+      const snapshot = RevenueSnapshot(model: RevenueModel.commission, value: 1000);
+
+      final near = Revenue.takeFrom(snapshot, basis: Revenue.basisFor(pricing(10000, 500)));
+      final far = Revenue.takeFrom(snapshot, basis: Revenue.basisFor(pricing(10000, 4000)));
+
+      expect(near, far);
+      expect(near, 1000);
+    });
+
+    // Same rule for the flat fee: it comes out of what the merchant sold, and never
+    // exceeds it.
+    test('the prepaid fee is capped by the food too', () {
+      const snapshot = RevenueSnapshot(model: RevenueModel.prepaid, value: 500);
+
+      expect(
+        Revenue.takeFrom(snapshot, basis: Revenue.basisFor(pricing(300, 1500))),
+        300,
+      );
     });
   });
 

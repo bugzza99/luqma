@@ -44,8 +44,12 @@ export const onOrderDelivered = onDocumentUpdated(
     // spends money — so it has to be safe to run twice.
     if (snapshot.amount > 0) return;
 
-    const total = (after.pricing?.total as number | undefined) ?? 0;
-    const effect = applyRevenue(snapshot, total);
+    // Handed over whole. Which part of it the platform charges on is `engine.ts`'s
+    // decision, not this file's — this one reads and writes and nothing else.
+    const effect = applyRevenue(snapshot, {
+      subtotal: (after.pricing?.subtotal as number | undefined) ?? 0,
+      deliveryFee: (after.pricing?.deliveryFee as number | undefined) ?? 0,
+    });
     if (effect.amount === 0) return;
 
     const db = getFirestore();
@@ -82,16 +86,31 @@ export const dailyMaintenance = onSchedule(
   { region: REGION, schedule: '0 5 * * *', timeZone: 'Africa/Cairo' },
   async () => {
     const db = getFirestore();
+    // Read whole, deliberately. Narrowing this to expired rows would be wrong rather
+    // than merely bounded: whether a term counts depends on whether a *later* one
+    // exists for the same merchant, and a query for expired rows cannot see the
+    // renewal that makes them irrelevant. Bounding this properly means putting the
+    // term's end date on the merchant document; until then, this is a few dozen rows.
     const snapshot = await db.collection('subscriptions').get();
 
-    const terms: TermRow[] = snapshot.docs.map((doc) => {
+    const terms: TermRow[] = [];
+    for (const doc of snapshot.docs) {
       const data = doc.data();
-      return {
+      const expiresAt = data.expiresAt;
+      // One unreadable row must not take the night with it. `planExpiry` refuses a bad
+      // date too, but the cast below is where it used to throw, before the loop began.
+      if (!(expiresAt instanceof Timestamp)) {
+        logger.warn('subscription row has no usable expiry, skipped', { id: doc.id });
+        continue;
+      }
+      terms.push({
+        id: doc.id,
         merchantId: data.merchantId as string,
         planId: data.planId as string,
-        expiresAt: (data.expiresAt as Timestamp).toDate(),
-      };
-    });
+        expiresAt: expiresAt.toDate(),
+        settled: data.settledAt != null,
+      });
+    }
 
     const plan = planExpiry(terms, new Date());
     if (plan.downgrade.length === 0) {
@@ -112,6 +131,14 @@ export const dailyMaintenance = onSchedule(
         by: 'system',
         merchantId,
         at: FieldValue.serverTimestamp(),
+      });
+    }
+
+    // The pass's memory of itself, in the same batch as the downgrade it records — so
+    // it can never mark a row settled for a downgrade that did not commit.
+    for (const subscriptionId of plan.settle) {
+      batch.update(db.collection('subscriptions').doc(subscriptionId), {
+        settledAt: FieldValue.serverTimestamp(),
       });
     }
 

@@ -200,6 +200,41 @@ void main() {
     });
   });
 
+  // A coupon is typed into AdminApp by a person, and a minus sign is one keystroke away
+  // from a comma. Left unchecked, a negative discount is arithmetic that *raises* the
+  // total, and the courier collects the higher figure at the door.
+  group('a coupon that would add to the bill', () {
+    test('a negative fixed amount is refused, not applied', () {
+      final result = check(coupon(type: CouponType.fixedAmount, value: -2000));
+
+      expect(result, isA<CouponRejected>());
+      expect((result as CouponRejected).reason, CouponRejection.malformed);
+    });
+
+    test('a negative percentage is refused', () {
+      final result = check(coupon(value: -1500));
+
+      expect(result, isA<CouponRejected>());
+      expect((result as CouponRejected).reason, CouponRejection.malformed);
+    });
+
+    test('a negative cap is refused', () {
+      final result = check(coupon(maxDiscount: -500));
+
+      expect(result, isA<CouponRejected>());
+      expect((result as CouponRejected).reason, CouponRejection.malformed);
+    });
+
+    // Zero is not an error, just a coupon that does nothing — an admin winding a
+    // campaign down should not have to delete it to stop it.
+    test('a zero discount is allowed, and takes nothing off', () {
+      final result = check(coupon(type: CouponType.fixedAmount, value: 0));
+
+      expect(result, isA<CouponAccepted>());
+      expect((result as CouponAccepted).total, 0);
+    });
+  });
+
   group('who pays', () {
     test('a merchant-funded discount owes the merchant nothing', () {
       final result = check(coupon(fundedBy: CouponFunder.merchant));

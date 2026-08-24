@@ -32,16 +32,40 @@ export interface RevenueSnapshot {
 /** One hundred per cent, in basis points. */
 const WHOLE_ORDER = 10_000;
 
+/** The parts of an order's pricing the platform's cut is decided from. */
+export interface PricingBasis {
+  /** The food, in piastres. */
+  subtotal: number;
+  /** What the delivery costs, in piastres. Deliberately not part of the basis below. */
+  deliveryFee: number;
+}
+
 /**
- * What the platform takes from an order worth `orderTotal` piastres.
+ * What the platform's cut is charged on: **the food, never the bill.**
  *
- * Never more than the order was worth. Under commission that clamps a rate somebody
+ * The delivery fee is not the platform's to take a share of. When the platform does the
+ * delivering the fee is already the platform's and the merchant never sees it, so
+ * charging a percentage of it as well is charging a merchant for money they did not
+ * receive — and there is no answer to a merchant who asks why. When the merchant
+ * delivers, the fee is fuel and a driver rather than a margin.
+ *
+ * The rule fits in one sentence, which in a cash market is worth more than the piastres:
+ * commission is on the food, and the delivery is not ours to take from.
+ */
+export function commissionBasis(pricing: PricingBasis): number {
+  return pricing.subtotal;
+}
+
+/**
+ * What the platform takes from a sale worth `basis` piastres.
+ *
+ * Never more than the merchant sold. Under commission that clamps a rate somebody
  * mistyped; under prepaid it is the honest answer for an order smaller than the flat fee
  * — the merchant made a sale, and a fee that puts them in the red on it is a fee that
  * stops them accepting small orders at all.
  */
-export function takeFrom(snapshot: RevenueSnapshot, orderTotal: number): number {
-  if (orderTotal <= 0) return 0;
+export function takeFrom(snapshot: RevenueSnapshot, basis: number): number {
+  if (basis <= 0) return 0;
 
   let take: number;
   switch (snapshot.model) {
@@ -53,7 +77,7 @@ export function takeFrom(snapshot: RevenueSnapshot, orderTotal: number): number 
     case RevenueModel.commission:
       // Rounded down, always. Taking one piastre more than the stated rate is the sort
       // of thing that gets argued about in a shop, and it can only be argued downwards.
-      take = Math.floor((orderTotal * snapshot.value) / WHOLE_ORDER);
+      take = Math.floor((basis * snapshot.value) / WHOLE_ORDER);
       break;
     case RevenueModel.prepaid:
       take = snapshot.value;
@@ -61,7 +85,7 @@ export function takeFrom(snapshot: RevenueSnapshot, orderTotal: number): number 
   }
 
   if (take < 0) return 0;
-  return Math.min(take, orderTotal);
+  return Math.min(take, basis);
 }
 
 export interface RevenueEffect {
@@ -87,9 +111,12 @@ export interface RevenueEffect {
  */
 export function applyRevenue(
   snapshot: RevenueSnapshot,
-  orderTotal: number,
+  pricing: PricingBasis,
 ): RevenueEffect {
-  const amount = takeFrom(snapshot, orderTotal);
+  // The basis is decided here rather than by the caller. What the platform charges on is
+  // a rule about money, and every rule about money in this product lives in this file
+  // where it is tested without a database.
+  const amount = takeFrom(snapshot, commissionBasis(pricing));
 
   return {
     amount,
@@ -102,14 +129,27 @@ export function applyRevenue(
 }
 
 export interface TermRow {
+  /** The subscription document, so the pass can mark the row it acted on. */
+  id?: string;
   merchantId: string;
   planId: string;
   expiresAt: Date;
+  /**
+   * Whether a previous night already acted on this term.
+   *
+   * Without it the pass has no memory: downgrading writes `planId` onto the *merchant*
+   * and never touches the subscription row, so the same expired row came back every
+   * night — one merchant write and one `auditLog` document per merchant per night, for
+   * ever, until the log nobody could read was the log somebody needed.
+   */
+  settled?: boolean;
 }
 
 export interface ExpiryPlan {
   /** Merchants whose paid term has run out and who go back to Free. */
   downgrade: string[];
+  /** The subscription rows behind those, to be marked so tomorrow skips them. */
+  settle: string[];
   /** Merchants whose term ends soon enough to go and ask for the money. */
   expiringSoon: string[];
 }
@@ -130,15 +170,24 @@ export function planExpiry(terms: TermRow[], now: Date): ExpiryPlan {
   // Reading an older one would downgrade somebody who has just paid.
   const latest = new Map<string, TermRow>();
   for (const term of terms) {
+    // One row written by hand, or by a version that did not know about this field, must
+    // not take the whole night's billing with it. Thrown from inside the loop, a single
+    // bad date meant no merchant in the city was expired that night — and silently.
+    if (!isReadableDate(term.expiresAt)) continue;
+
     const held = latest.get(term.merchantId);
     if (!held || term.expiresAt > held.expiresAt) latest.set(term.merchantId, term);
   }
 
   const downgrade: string[] = [];
+  const settle: string[] = [];
   const expiringSoon: string[] = [];
   const warnBefore = new Date(now.getTime() + WARN_WITHIN_DAYS * 86_400_000);
 
   for (const term of latest.values()) {
+    // Already dealt with on an earlier night. This is the pass's only memory of itself.
+    if (term.settled) continue;
+
     // The Free plan is permanent and there is nothing below it. Writing a downgrade
     // every night for a merchant already there would be one write per merchant per day
     // for no change at all.
@@ -146,10 +195,16 @@ export function planExpiry(terms: TermRow[], now: Date): ExpiryPlan {
 
     if (term.expiresAt <= now) {
       downgrade.push(term.merchantId);
+      if (term.id) settle.push(term.id);
     } else if (term.expiresAt <= warnBefore) {
       expiringSoon.push(term.merchantId);
     }
   }
 
-  return { downgrade, expiringSoon };
+  return { downgrade, settle, expiringSoon };
+}
+
+/** A `Date` that survived whatever wrote it. `new Date('nonsense')` is still a Date. */
+function isReadableDate(value: unknown): value is Date {
+  return value instanceof Date && !Number.isNaN(value.getTime());
 }

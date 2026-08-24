@@ -4,6 +4,7 @@ import { describe, it } from 'node:test';
 import {
   RevenueModel,
   applyRevenue,
+  commissionBasis,
   planExpiry,
   takeFrom,
   type RevenueSnapshot,
@@ -64,7 +65,7 @@ describe('what the platform takes', () => {
 
 describe('what it does about it', () => {
   it('a subscription touches nothing', () => {
-    const effect = applyRevenue(snapshot(RevenueModel.subscription), 25000);
+    const effect = applyRevenue(snapshot(RevenueModel.subscription), { subtotal: 25000, deliveryFee: 0 });
 
     assert.equal(effect.amount, 0);
     assert.equal(effect.walletDelta, 0);
@@ -74,7 +75,7 @@ describe('what it does about it', () => {
   // Accrued, not collected. The money is in the merchant's hand; this is a running
   // total of what they owe, settled in cash later.
   it('commission accrues against the merchant', () => {
-    const effect = applyRevenue(snapshot(RevenueModel.commission, 1000), 25000);
+    const effect = applyRevenue(snapshot(RevenueModel.commission, 1000), { subtotal: 25000, deliveryFee: 0 });
 
     assert.equal(effect.amount, 2500);
     assert.equal(effect.commissionDelta, 2500);
@@ -84,7 +85,7 @@ describe('what it does about it', () => {
   // Already collected. This is what makes prepaid different: the platform is spending
   // credit that was handed over in advance rather than writing down a debt.
   it('prepaid comes out of the wallet', () => {
-    const effect = applyRevenue(snapshot(RevenueModel.prepaid, 500), 25000);
+    const effect = applyRevenue(snapshot(RevenueModel.prepaid, 500), { subtotal: 25000, deliveryFee: 0 });
 
     assert.equal(effect.amount, 500);
     assert.equal(effect.walletDelta, -500);
@@ -95,11 +96,79 @@ describe('what it does about it', () => {
   // its own accounting and nothing has to be recomputed from a merchant that has since
   // changed.
   it('writes the amount back onto the snapshot', () => {
-    const effect = applyRevenue(snapshot(RevenueModel.commission, 1000), 25000);
+    const effect = applyRevenue(snapshot(RevenueModel.commission, 1000), { subtotal: 25000, deliveryFee: 0 });
 
     assert.equal(effect.snapshot.amount, 2500);
     assert.equal(effect.snapshot.model, RevenueModel.commission);
     assert.equal(effect.snapshot.value, 1000);
+  });
+});
+
+// The commission is charged on the food, not on the bill.
+//
+// It used to come off `pricing.total`, which carries the delivery fee. When the platform
+// does the delivering that is money the merchant never sees: the courier keeps the fee,
+// and the merchant was then charged a percentage of it as well. There is no answer to a
+// merchant who asks why — and in a cash market the answer matters more than the piastres.
+//
+// The rule that replaced it fits in one sentence, which is the point:
+// **commission is on the food; the delivery is not ours to take from.**
+describe('what the commission is charged on', () => {
+  const pricing = (subtotal: number, deliveryFee: number, extra = {}) => ({
+    subtotal,
+    deliveryFee,
+    total: subtotal + deliveryFee,
+    ...extra,
+  });
+
+  it('is the food, not the food plus the delivery', () => {
+    // 100 EGP of food, 15 EGP delivery, 10%. Ten pounds, not eleven fifty.
+    const effect = applyRevenue(snapshot(RevenueModel.commission, 1000),
+                                pricing(10000, 1500));
+
+    assert.equal(effect.amount, 1000);
+    assert.equal(effect.commissionDelta, 1000);
+  });
+
+  it('a bigger delivery fee does not make the commission bigger', () => {
+    const near = applyRevenue(snapshot(RevenueModel.commission, 1000),
+                              pricing(10000, 500));
+    const far = applyRevenue(snapshot(RevenueModel.commission, 1000),
+                             pricing(10000, 4000));
+
+    assert.equal(near.amount, far.amount);
+  });
+
+  // An order that is delivery and nothing else is not a sale.
+  it('an order with no food is charged nothing', () => {
+    const effect = applyRevenue(snapshot(RevenueModel.commission, 1000),
+                                pricing(0, 1500));
+
+    assert.equal(effect.amount, 0);
+  });
+
+  // Same rule for the flat fee: it comes out of what the merchant sold, and never
+  // exceeds it. A fee that puts a merchant in the red on a small sale stops them
+  // accepting small sales.
+  it('the prepaid fee is capped by the food too', () => {
+    const effect = applyRevenue(snapshot(RevenueModel.prepaid, 500), pricing(300, 1500));
+
+    assert.equal(effect.amount, 300);
+    assert.equal(effect.walletDelta, -300);
+  });
+
+  it('a subscription is still charged nothing at all', () => {
+    const effect = applyRevenue(snapshot(RevenueModel.subscription), pricing(10000, 1500));
+
+    assert.equal(effect.amount, 0);
+  });
+
+  // The Dart side is pinned to these same figures. A disagreement is a failing test
+  // here rather than two different numbers in front of a merchant.
+  it('agrees with the Dart engine on the basis', () => {
+    assert.equal(commissionBasis(pricing(10000, 1500)), 10000);
+    assert.equal(commissionBasis(pricing(0, 1500)), 0);
+    assert.equal(commissionBasis(pricing(25000, 0)), 25000);
   });
 });
 
@@ -166,6 +235,105 @@ describe('the daily pass over subscriptions', () => {
   it('does not warn about a term that is weeks away', () => {
     const plan = planExpiry(
       [{ merchantId: 'm1', planId: 'basic', expiresAt: day('2026-09-30') }],
+      day('2026-08-24'),
+    );
+
+    assert.deepEqual(plan.expiringSoon, []);
+  });
+});
+
+// Everything below was written after a pre-launch audit. Each failed before the change
+// beside it.
+describe('the nightly pass, once it has already run', () => {
+  const day = (iso: string) => new Date(iso);
+
+  // The one the old guard was reaching for and missing. Downgrading writes `planId` onto
+  // the *merchant*; the subscription row keeps saying `basic` for ever. So the row came
+  // back every night — another write, and another `auditLog` document, per merchant per
+  // night, until somebody noticed the log was unreadable.
+  it('does not downgrade the same merchant a second night', () => {
+    const plan = planExpiry(
+      [
+        {
+          merchantId: 'm1',
+          planId: 'basic',
+          expiresAt: day('2026-08-01'),
+          settled: true,
+        },
+      ],
+      day('2026-08-24'),
+    );
+
+    assert.deepEqual(plan.downgrade, []);
+  });
+
+  it('still downgrades one that has not been settled yet', () => {
+    const plan = planExpiry(
+      [{ merchantId: 'm1', planId: 'basic', expiresAt: day('2026-08-01') }],
+      day('2026-08-24'),
+    );
+
+    assert.deepEqual(plan.downgrade, ['m1']);
+  });
+
+  // A merchant who lapsed and then paid again. The settled row is history; the new term
+  // is the one that counts, and it must not be dragged down by the old one.
+  it('a merchant who paid again after lapsing is left alone', () => {
+    const plan = planExpiry(
+      [
+        {
+          merchantId: 'm1',
+          planId: 'basic',
+          expiresAt: day('2026-08-01'),
+          settled: true,
+        },
+        { merchantId: 'm1', planId: 'basic', expiresAt: day('2026-09-30') },
+      ],
+      day('2026-08-24'),
+    );
+
+    assert.deepEqual(plan.downgrade, []);
+    assert.deepEqual(plan.expiringSoon, []);
+  });
+
+  // One row written by hand, or by an older version of the app, must not take the whole
+  // night's billing with it. Before this, a single missing date threw inside the loop
+  // and no merchant in the city was expired that night — silently.
+  it('a row with no date is skipped, and the rest still run', () => {
+    const plan = planExpiry(
+      [
+        { merchantId: 'broken', planId: 'basic', expiresAt: undefined as never },
+        { merchantId: 'm2', planId: 'basic', expiresAt: day('2026-08-01') },
+      ],
+      day('2026-08-24'),
+    );
+
+    assert.deepEqual(plan.downgrade, ['m2']);
+  });
+
+  it('a row with an unreadable date is skipped too', () => {
+    const plan = planExpiry(
+      [
+        { merchantId: 'broken', planId: 'basic', expiresAt: new Date('nonsense') },
+        { merchantId: 'm2', planId: 'basic', expiresAt: day('2026-08-01') },
+      ],
+      day('2026-08-24'),
+    );
+
+    assert.deepEqual(plan.downgrade, ['m2']);
+  });
+
+  // A settled row is finished business: it should not raise a warning either.
+  it('does not warn about a term that was already settled', () => {
+    const plan = planExpiry(
+      [
+        {
+          merchantId: 'm1',
+          planId: 'basic',
+          expiresAt: day('2026-08-26'),
+          settled: true,
+        },
+      ],
       day('2026-08-24'),
     );
 
