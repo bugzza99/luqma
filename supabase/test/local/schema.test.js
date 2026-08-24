@@ -1,9 +1,7 @@
 import { after, before, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
-import { dirname, join } from 'node:path';
-import { PGlite } from '@electric-sql/pglite';
+
+import { freshDatabase } from './harness.mjs';
 
 /**
  * The schema, applied to a real Postgres and then argued with.
@@ -25,19 +23,7 @@ let merchant;
 // One hook, not two: node:test starts a second top-level `before` without waiting for
 // the first, so anything the second needs from the first is undefined when it runs.
 before(async () => {
-  db = await new PGlite();
-
-  // Supabase provides `auth.users`; the schema references it and should keep doing so.
-  // This is the smallest stand-in that lets the real migration apply unchanged.
-  await db.exec(`
-    create schema if not exists auth;
-    create table auth.users (id uuid primary key default gen_random_uuid());
-  `);
-
-  const migration = join(
-    dirname(fileURLToPath(import.meta.url)), '..', 'migrations', '0001_schema.sql',
-  );
-  await db.exec(readFileSync(migration, 'utf8'));
+  db = await freshDatabase();
 
   // The fixtures every group below leans on: one city, one zone, one approved merchant.
   edku = 'edku';

@@ -1,17 +1,14 @@
 import { after, before, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
-import { dirname, join } from 'node:path';
-import { PGlite } from '@electric-sql/pglite';
 
-import { seed, edkuData } from '../seed.mjs';
+import { seed, edkuData } from '../../seed.mjs';
+import { freshDatabase } from './harness.mjs';
 
 /**
  * Edku, landing in Postgres.
  *
  * The interesting property is not that it inserts rows — it is that it reads the *same*
- * `edku.json` the Firestore seed reads. The zone and landmark names in that file are
+ * `data/edku.json` the Firestore seed reads. The zone and landmark names in it are
  * still placeholders, and a courier sent to the wrong part of town because one backend
  * was re-seeded and the other was not is the failure this is guarding against.
  */
@@ -19,15 +16,7 @@ import { seed, edkuData } from '../seed.mjs';
 let db;
 
 before(async () => {
-  db = await new PGlite();
-  await db.exec(`
-    create schema if not exists auth;
-    create table auth.users (id uuid primary key default gen_random_uuid());
-  `);
-  const migration = join(
-    dirname(fileURLToPath(import.meta.url)), '..', 'migrations', '0001_schema.sql',
-  );
-  await db.exec(readFileSync(migration, 'utf8'));
+  db = await freshDatabase();
 });
 
 after(() => db?.close());

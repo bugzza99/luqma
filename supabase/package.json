@@ -7,14 +7,18 @@
     "test": "test"
   },
   "scripts": {
-    "test": "node --test \"test/**/*.test.js\""
+    "test": "node --test \"test/local/*.test.js\"",
+    "test:stack": "node --test \"test/stack/*.test.js\"",
+    "test:all": "npm test && npm run test:stack",
+    "seed": "node seed-local.mjs"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "type": "module",
   "dependencies": {
-    "@electric-sql/pglite": "^0.5.7"
+    "@electric-sql/pglite": "^0.5.7",
+    "pg": "^8.23.0"
   },
   "private": true
 }

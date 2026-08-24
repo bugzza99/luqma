@@ -53,7 +53,7 @@ Two things are outstanding and both are deliberate:
   a Firebase Auth user and setting a custom claim are ordinary Admin SDK calls and cost
   nothing on Spark — only *deployed* functions need Blaze. `createStaffAccount` is still
   worth building later, so a merchant can add their own couriers without a terminal.
-- **The zone and landmark names in `firebase/seed/edku.json` are placeholders.** They are
+- **The zone and landmark names in `data/edku.json` are placeholders.** They are
   structurally correct but not local knowledge. The owner replaces them; a wrong zone name
   sends a courier to the wrong part of town.
 
@@ -234,8 +234,18 @@ is not usage, it is a function that calls itself.
 ```
 cd packages/luqma_core && flutter gen-l10n && flutter analyze && flutter test
 npm --prefix functions test
-npm --prefix supabase test
+npm --prefix supabase test          # schema and seed, on PGlite — no Docker needed
+npm --prefix supabase run test:stack # the boundary, against a running `supabase start`
 ```
+
+`supabase test` runs on **PGlite**, Postgres compiled to WebAssembly: the real migrations,
+the real constraint machinery, no container. `test:stack` needs `supabase start`, because
+policies, `auth.uid()` and the claims hook only exist in the real thing.
+
+**The local stack sits 1000 above the Supabase defaults** — 55321 for the API, 55322 for
+the database. Windows reserves 54084-54683 for Hyper-V on this machine and that swallows
+every one of them; check yours with
+`netsh interface ipv4 show excludedportrange protocol=tcp`.
 
 `gen-l10n` first on a fresh clone, and after any change to `lib/l10n/app_ar.arb`.
 The generated `app_localizations*.dart` are gitignored — generated code does not belong
@@ -285,8 +295,11 @@ JAVA_HOME="C:\Program Files\Android\Android Studio\jbr" firebase emulators:exec 
 | `apps/admin_app/` | AdminApp — merchants, menus, places, media, billing, promotions, home builder |
 | `firebase/firestore.rules` | The real security boundary — read its tests beside it |
 | `firebase/test/` | Rules tests, run against the emulator |
-| `supabase/migrations/` | **The Postgres schema.** Applied and argued with by `supabase/test/` |
-| `supabase/seed.mjs` | Edku into Postgres, from the same `edku.json` the Firestore seed reads |
+| `supabase/migrations/` | **The Postgres schema, and the boundary.** Argued with by `supabase/test/` |
+| `supabase/test/local/` | Schema and constraints, on PGlite. Fast, and needs nothing installed |
+| `supabase/test/stack/` | RLS, the claims hook and the order state machine, against the real stack |
+| `data/edku.json` | **Edku itself** — zones, landmarks, plans, home sections. Read by both seeds |
+| `supabase/seed.mjs` | Edku into Postgres, from that same file |
 
 ## Decisions that are settled — do not relitigate
 

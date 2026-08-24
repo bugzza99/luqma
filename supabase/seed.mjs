@@ -5,11 +5,15 @@ import { dirname, join } from 'node:path';
 /**
  * Edku, into Postgres.
  *
- * Reads `firebase/seed/edku.json` — the same file the Firestore seed reads, deliberately.
- * The zone and landmark names in it are still placeholders and the owner has to replace
- * them with local knowledge; one file means that happens once and both backends get it,
- * rather than the two drifting apart during the migration and a courier being sent to
- * the wrong part of town by whichever one was forgotten.
+ * Reads `data/edku.json` — the same file the Firestore seed reads, deliberately, and
+ * deliberately *outside* `firebase/`: that directory is deleted at the end of this
+ * migration, and the zone and landmark names in this file are the one thing in the whole
+ * backend that nobody can regenerate.
+ *
+ * Those names are still placeholders the owner has to replace with local knowledge. One
+ * file means that happens once and both backends get it, rather than the two drifting
+ * apart mid-migration and a courier being sent to the wrong part of town by whichever
+ * one was forgotten.
  *
  * Idempotent. Re-seeding corrects what is there instead of piling up duplicates, which
  * matters because the names above are expected to change.
@@ -22,7 +26,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 
 export function edkuData() {
   return JSON.parse(
-    readFileSync(join(here, '..', 'firebase', 'seed', 'edku.json'), 'utf8'),
+    readFileSync(join(here, '..', 'data', 'edku.json'), 'utf8'),
   );
 }
 

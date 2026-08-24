@@ -28,7 +28,7 @@ void main() {
 
   group('what the app is willing to draw', () {
     test('every type the seed uses is registered', () {
-      // These are the types firebase/seed/edku.json ships. A seeded home that renders
+      // These are the types data/edku.json ships. A seeded home that renders
       // nothing is the failure this catches.
       for (final type in [
         'categoryChips',

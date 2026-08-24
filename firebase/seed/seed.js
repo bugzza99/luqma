@@ -47,7 +47,9 @@ initializeApp({ projectId: PROJECT });
 const db = getFirestore();
 const auth = getAuth();
 
-const data = JSON.parse(readFileSync(join(HERE, 'edku.json'), 'utf8'));
+// Edku lives in `data/`, not here: this directory goes away with Firebase, and the
+// zone and landmark names in that file are the one thing in it nobody can regenerate.
+const data = JSON.parse(readFileSync(join(HERE, '..', '..', 'data', 'edku.json'), 'utf8'));
 
 /** Writes a batch, keyed by document id. */
 async function put(collection, docs, idOf = (d) => d.id) {
