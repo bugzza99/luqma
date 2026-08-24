@@ -15,6 +15,7 @@ import '../models/merchant.dart';
 import '../models/billing.dart';
 import '../models/daily_meal.dart';
 import '../models/order.dart';
+import '../models/promotion.dart';
 import '../repositories/address_repository.dart';
 import '../repositories/billing_repository.dart';
 import '../repositories/courier_order_repository.dart';
@@ -27,6 +28,7 @@ import '../repositories/menu_repository.dart';
 import '../repositories/merchant_order_repository.dart';
 import '../repositories/merchant_repository.dart';
 import '../repositories/order_repository.dart';
+import '../repositories/promotion_repository.dart';
 import '../result.dart';
 
 part 'providers.g.dart';
@@ -147,6 +149,62 @@ StaffIdentity staffIdentity(Ref ref) => switch (ref.watch(currentIdentityProvide
       AsyncData(:final value) => StaffIdentity.from(value),
       _ => StaffIdentity.none,
     };
+
+@Riverpod(keepAlive: true)
+PromotionRepository promotionRepository(Ref ref) =>
+    FirestorePromotionRepository(ref.watch(firestoreProvider));
+
+/// Placements that should be on screen right now, best first. Live.
+@riverpod
+Stream<List<Promotion>> livePromotions(Ref ref) =>
+    ref.watch(promotionRepositoryProvider).watchLive(
+          cityId: ref.watch(currentCityProvider),
+          now: ref.watch(clockProvider)(),
+        );
+
+/// Merchants who have paid for a lift right now.
+///
+/// Derived rather than stored on the merchant: a boost is a promotion with dates, and a
+/// flag on the merchant would be a second thing to expire and a second thing to forget.
+@riverpod
+Set<String> boostedMerchants(Ref ref) {
+  final live = ref.watch(livePromotionsProvider).value ?? const <Promotion>[];
+  return {
+    for (final promotion in live)
+      if (promotion.channel == PromotionChannel.boost) promotion.merchantId,
+  };
+}
+
+/// What is waiting for an admin decision. Live.
+@riverpod
+Stream<List<Promotion>> promotionQueue(Ref ref) =>
+    ref.watch(promotionRepositoryProvider).watchQueue(ref.watch(currentCityProvider));
+
+/// One merchant's own campaigns, whatever became of them. Live.
+@riverpod
+Stream<List<Promotion>> merchantPromotions(Ref ref, String merchantId) =>
+    ref.watch(promotionRepositoryProvider).watchForMerchant(merchantId);
+
+/// Whether the city has any marketing push left this week.
+///
+/// A cap on the *city*, not on one merchant. The thing being rationed is a customer's
+/// patience, and it does not care which shop the third notification came from — three
+/// pushes in a week from three merchants is still three notifications on one phone.
+@riverpod
+Future<bool> pushSlotAvailable(Ref ref) async {
+  final config = ref.watch(appConfigProvider);
+  final now = ref.watch(clockProvider)();
+
+  final sent = await ref.watch(promotionRepositoryProvider).pushesSentSince(
+        cityId: ref.watch(currentCityProvider),
+        since: now.subtract(const Duration(days: 7)),
+      );
+
+  // Unreadable means unknown, and unknown must not open the gate: the cost of one push
+  // too many is customers turning notifications off for good.
+  return (sent.valueOrNull ?? config.marketingPushPerWeek) <
+      config.marketingPushPerWeek;
+}
 
 @Riverpod(keepAlive: true)
 BillingRepository billingRepository(Ref ref) =>

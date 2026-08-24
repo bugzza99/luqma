@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:luqma_core/luqma_core.dart';
 
+import '../promotions/promotions_screen.dart';
 import 'busy_toggle.dart';
 
 /// The shop: whether it is open, what customers said about it, and the way out.
@@ -17,6 +18,7 @@ class ShopScreen extends ConsumerWidget {
   static const feedbackKey = Key('shop.feedback');
   static const billingKey = Key('shop.billing');
   static const walletKey = Key('shop.wallet');
+  static const promotionsKey = Key('shop.promotions');
   static const noFeedbackKey = Key('shop.noFeedback');
 
   @override
@@ -49,6 +51,18 @@ class ShopScreen extends ConsumerWidget {
                   const SizedBox(height: Space.lg),
                   _Billing(merchant: merchant),
                 ],
+                const SizedBox(height: Space.lg),
+                _Tile(
+                  tileKey: ShopScreen.promotionsKey,
+                  icon: Icons.campaign_outlined,
+                  title: 'الإعلانات',
+                  subtitle: 'اطلب بانر أو رفع في الترتيب',
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => const MerchantPromotionsScreen(),
+                    ),
+                  ),
+                ),
                 if (staff.merchantId != null) ...[
                   const SizedBox(height: Space.lg),
                   _Feedback(merchantId: staff.merchantId!),
@@ -401,6 +415,68 @@ class _Rating extends ConsumerWidget {
                   ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// A row that leads somewhere.
+class _Tile extends StatelessWidget {
+  const _Tile({
+    required this.tileKey,
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.onTap,
+  });
+
+  final Key tileKey;
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = theme.luqma;
+
+    return InkWell(
+      key: tileKey,
+      onTap: onTap,
+      borderRadius: Radii.cardAll,
+      child: Container(
+        padding: const EdgeInsets.all(Space.md),
+        constraints: const BoxConstraints(minHeight: Sizes.minTarget),
+        decoration: BoxDecoration(
+          color: colors.card,
+          borderRadius: Radii.cardAll,
+          border: Border.all(color: colors.hairline),
+        ),
+        child: Row(
+          children: [
+            Icon(icon, color: colors.brand, size: Sizes.iconMd),
+            const SizedBox(width: Space.md),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title, style: theme.textTheme.titleMedium),
+                  Text(
+                    subtitle,
+                    style: theme.textTheme.bodySmall
+                        ?.copyWith(color: colors.textSecondary),
+                  ),
+                ],
+              ),
+            ),
+            Icon(
+              Icons.chevron_left_rounded,
+              color: colors.textSecondary,
+              size: Sizes.iconMd,
+            ),
+          ],
+        ),
       ),
     );
   }

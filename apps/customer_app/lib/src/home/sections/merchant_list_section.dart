@@ -32,6 +32,9 @@ class MerchantListSection extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final merchants = ref.watch(merchantsProvider(ref.watch(currentCityProvider)));
+    // Nothing on the card says which merchant paid. Saying so would make the placement
+    // worth less than it cost.
+    final boosted = ref.watch(boostedMerchantsProvider);
 
     return switch (merchants) {
       // An error here costs this section, not the screen: the home is assembled from
@@ -49,7 +52,7 @@ class MerchantListSection extends ConsumerWidget {
               padding: const EdgeInsets.symmetric(horizontal: Space.gutter),
               child: Column(
                 children: [
-                  for (final merchant in _sorted(value)) ...[
+                  for (final merchant in _sorted(value, boosted)) ...[
                     MerchantRow(merchant: merchant),
                     const SizedBox(height: Space.sm),
                   ],
@@ -62,7 +65,7 @@ class MerchantListSection extends ConsumerWidget {
 };
   }
 
-  List<Merchant> _sorted(List<Merchant> merchants) {
+  List<Merchant> _sorted(List<Merchant> merchants, Set<String> boosted) {
     final list = [...merchants];
     if (topRated) {
       list.sort((a, b) => b.ratingAvg.compareTo(a.ratingAvg));
@@ -70,7 +73,9 @@ class MerchantListSection extends ConsumerWidget {
       // Standing in for an order count, which arrives with the first real orders.
       list.sort((a, b) => b.ratingCount.compareTo(a.ratingCount));
     }
-    return list;
+    // Applied last, on top of whatever order this section asked for. A boost lifts; it
+    // does not reshuffle — a merchant who bought nothing finds the list as they expect.
+    return Boost.apply(list, boosted: boosted);
   }
 }
 

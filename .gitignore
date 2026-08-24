@@ -37,3 +37,6 @@ graphify-out/.graphify_*
 *.iml
 .DS_Store
 Thumbs.db
+
+# Built APKs handed to the owner for testing. Rebuilt on demand, never reviewed.
+apks/
