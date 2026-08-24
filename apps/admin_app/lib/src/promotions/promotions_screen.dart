@@ -44,7 +44,7 @@ class PromotionsScreen extends ConsumerWidget {
           // First, and on `hasError`: a stream that fails before it has ever emitted
           // stays AsyncLoading with the error hanging off it, and an admin reading that
           // as an empty queue stops checking.
-          AsyncValue(hasError: true, :final error?) => _Error(failure: error),
+          AsyncValue(hasError: true, :final error?) => LuqmaErrorView(key: PromotionsScreen.errorKey, failure: error, onRetry: () => ref.invalidate(promotionQueueProvider)),
           AsyncValue(hasValue: true, :final value?) when value.isEmpty => const _Empty(),
           AsyncValue(hasValue: true, :final value?) => ListView.separated(
               padding: const EdgeInsets.all(Space.gutter),
@@ -274,42 +274,3 @@ class _Empty extends StatelessWidget {
   }
 }
 
-class _Error extends StatelessWidget {
-  const _Error({required this.failure});
-
-  final Object failure;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return Center(
-      key: PromotionsScreen.errorKey,
-      child: Padding(
-        padding: const EdgeInsets.all(Space.xxl),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.cloud_off_rounded, size: 56, color: theme.luqma.danger),
-            const SizedBox(height: Space.lg),
-            Text(
-              'مش قادرين نجيب الطلبات',
-              style: theme.textTheme.titleLarge,
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: Space.sm),
-            Text(
-              switch (failure) {
-                OfflineFailure() => 'شوف النت. ممكن يكون في طلبات مستنية.',
-                _ => 'حصل خطأ. جرّب تاني بعد شوية.',
-              },
-              style: theme.textTheme.bodyMedium
-                  ?.copyWith(color: theme.luqma.textSecondary),
-              textAlign: TextAlign.center,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}

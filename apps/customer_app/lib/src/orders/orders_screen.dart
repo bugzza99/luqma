@@ -34,7 +34,7 @@ class OrdersScreen extends ConsumerWidget {
               // matches on `hasError`, not on the `AsyncError` type: a stream that
               // fails before it has ever emitted stays `AsyncLoading` with the error
               // hanging off it, so a type match never fires.
-              AsyncValue(hasError: true, :final error?) => _Error(failure: error),
+              AsyncValue(hasError: true, :final error?) => LuqmaErrorView(key: OrdersScreen.errorKey, failure: error, onRetry: () => ref.invalidate(ordersForProvider(identity.uid))),
               AsyncValue(hasValue: true, :final value?) when value.isEmpty =>
                 const _Empty(),
               AsyncValue(hasValue: true, :final value?) => _List(orders: value),
@@ -248,28 +248,3 @@ class _Empty extends StatelessWidget {
   }
 }
 
-class _Error extends StatelessWidget {
-  const _Error({required this.failure});
-
-  final Object failure;
-
-  @override
-  Widget build(BuildContext context) {
-    final strings = LuqmaStrings.of(context);
-
-    return Center(
-      key: OrdersScreen.errorKey,
-      child: Padding(
-        padding: const EdgeInsets.all(Space.xxl),
-        child: Text(
-          switch (failure) {
-            OfflineFailure() => strings.errorOffline,
-            PermissionFailure() => strings.errorPermission,
-            _ => strings.errorUnknown,
-          },
-          textAlign: TextAlign.center,
-        ),
-      ),
-    );
-  }
-}

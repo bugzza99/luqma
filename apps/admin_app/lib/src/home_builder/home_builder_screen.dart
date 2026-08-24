@@ -63,7 +63,7 @@ class HomeBuilderScreen extends ConsumerWidget {
       appBar: AppBar(title: const Text('ترتيب الرئيسية')),
       body: AdminContent(
         child: switch (sections) {
-          AsyncValue(hasError: true, :final error?) => _Error(failure: error),
+          AsyncValue(hasError: true, :final error?) => LuqmaErrorView(key: HomeBuilderScreen.errorKey, failure: error, onRetry: () => ref.invalidate(homeSectionsProvider)),
           AsyncValue(hasValue: true, :final value?) when value.isEmpty => const _Empty(),
           AsyncValue(hasValue: true, :final value?) => ListView.separated(
               padding: const EdgeInsets.all(Space.gutter),
@@ -299,28 +299,3 @@ class _Empty extends StatelessWidget {
   }
 }
 
-class _Error extends StatelessWidget {
-  const _Error({required this.failure});
-
-  final Object failure;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return Center(
-      key: HomeBuilderScreen.errorKey,
-      child: Padding(
-        padding: const EdgeInsets.all(Space.xxl),
-        child: Text(
-          switch (failure) {
-            OfflineFailure() => 'مفيش اتصال بالإنترنت.',
-            _ => 'مقدرناش نجيب ترتيب الرئيسية.',
-          },
-          style: theme.textTheme.bodyMedium,
-          textAlign: TextAlign.center,
-        ),
-      ),
-    );
-  }
-}

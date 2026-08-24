@@ -74,7 +74,7 @@ class InboxScreen extends ConsumerWidget {
       // hanging off it, so an `AsyncError()` arm never fires and the screen spins for
       // ever on a dropped connection — which on this screen reads as a quiet evening.
       body: switch (incoming) {
-        AsyncValue(hasError: true, :final error?) => _Error(failure: error),
+        AsyncValue(hasError: true, :final error?) => LuqmaErrorView(key: InboxScreen.errorKey, failure: error, onRetry: () => ref.invalidate(incomingOrdersProvider(merchantId))),
         AsyncValue(hasValue: true, :final value?) when value.isEmpty => const _Empty(),
         AsyncValue(hasValue: true, :final value?) => ListView.separated(
             padding: const EdgeInsets.all(Space.gutter),
@@ -576,51 +576,6 @@ class _Empty extends StatelessWidget {
               'أول ما يجي طلب هتسمع صوت.',
               style: theme.textTheme.bodyMedium
                   ?.copyWith(color: theme.luqma.textSecondary),
-              textAlign: TextAlign.center,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _Error extends StatelessWidget {
-  const _Error({required this.failure});
-
-  final Object failure;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colors = theme.luqma;
-
-    return Center(
-      key: InboxScreen.errorKey,
-      child: Padding(
-        padding: const EdgeInsets.all(Space.xxl),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.cloud_off_rounded, size: 56, color: colors.danger),
-            const SizedBox(height: Space.lg),
-            // Never "no orders". A merchant who reads a dropped connection that way
-            // stops checking, and orders pile up unanswered.
-            Text(
-              'مش قادرين نوصل للطلبات',
-              style: theme.textTheme.titleLarge,
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: Space.sm),
-            Text(
-              switch (failure) {
-                OfflineFailure() =>
-                  'شوف النت. ممكن يكون في طلبات مستنية ومش ظاهرة.',
-                PermissionFailure() =>
-                  'الحساب ده مالوش صلاحية على المطعم ده.',
-                _ => 'حصل خطأ. جرّب تاني بعد شوية.',
-              },
-              style: theme.textTheme.bodyMedium?.copyWith(color: colors.textSecondary),
               textAlign: TextAlign.center,
             ),
           ],

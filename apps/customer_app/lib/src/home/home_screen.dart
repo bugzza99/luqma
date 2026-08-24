@@ -39,7 +39,7 @@ class HomeScreen extends ConsumerWidget {
               // that fails before it has ever emitted stays `AsyncLoading` with the
               // error hanging off it, so a type match never fires.
               AsyncValue(hasError: true, :final error?) =>
-                SliverToBoxAdapter(child: _Error(failure: error)),
+                SliverToBoxAdapter(child: LuqmaErrorView(failure: error, onRetry: () => ref.invalidate(homeSectionsProvider))),
               AsyncValue(hasValue: true, :final value?) =>
                 _Sections(sections: value),
               _ => const SliverToBoxAdapter(child: _Loading()),
@@ -195,30 +195,3 @@ class _Empty extends StatelessWidget {
   }
 }
 
-class _Error extends StatelessWidget {
-  const _Error({required this.failure});
-
-  final Object failure;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final strings = LuqmaStrings.of(context);
-
-    return Padding(
-      padding: const EdgeInsets.all(Space.xxl),
-      child: Center(
-        child: Text(
-          switch (failure) {
-            OfflineFailure() => strings.errorOffline,
-            PermissionFailure() => strings.errorPermission,
-            _ => strings.errorUnknown,
-          },
-          textAlign: TextAlign.center,
-          style: theme.textTheme.bodyMedium
-              ?.copyWith(color: theme.luqma.textSecondary),
-        ),
-      ),
-    );
-  }
-}

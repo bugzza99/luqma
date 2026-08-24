@@ -216,6 +216,7 @@ class _Stepper extends StatelessWidget {
         children: [
           IconButton(
             key: const Key('itemSheet.less'),
+            tooltip: 'واحد أقل',
             onPressed: quantity > 1 ? onLess : null,
             icon: const Icon(Icons.remove_rounded, size: Sizes.iconSm),
             constraints: const BoxConstraints(
@@ -230,6 +231,7 @@ class _Stepper extends StatelessWidget {
           ),
           IconButton(
             key: const Key('itemSheet.more'),
+            tooltip: 'واحد زيادة',
             onPressed: onMore,
             icon: const Icon(Icons.add_rounded, size: Sizes.iconSm),
             constraints: const BoxConstraints(

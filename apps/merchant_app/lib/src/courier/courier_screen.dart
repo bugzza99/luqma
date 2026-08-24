@@ -49,13 +49,23 @@ class CourierScreen extends ConsumerWidget {
             ? const AsyncValue<List<Order>>.data([])
             : ref.watch(merchantDeliveriesProvider(staff.merchantId!));
 
+    // Reads again whichever of the two this courier is actually on. Invalidating both
+    // would tear down a stream nobody on this screen is watching.
+    void retryDeliveries() {
+      if (staff.scope == StaffScope.platform) {
+        ref.invalidate(platformDeliveriesProvider(ref.read(currentCityProvider)));
+      } else if (staff.merchantId != null) {
+        ref.invalidate(merchantDeliveriesProvider(staff.merchantId!));
+      }
+    }
+
     return Scaffold(
       backgroundColor: colors.background,
       appBar: AppBar(title: const Text('التوصيل')),
       body: switch (deliveries) {
         // First, and on `hasError`: a stream that fails before it has ever emitted stays
         // AsyncLoading with the error hanging off it.
-        AsyncValue(hasError: true, :final error?) => _Error(failure: error),
+        AsyncValue(hasError: true, :final error?) => LuqmaErrorView(key: CourierScreen.errorKey, failure: error, onRetry: () => retryDeliveries()),
         AsyncValue(hasValue: true, :final value?) when value.isEmpty => const _Empty(),
         AsyncValue(hasValue: true, :final value?) => ListView.separated(
             padding: const EdgeInsets.all(Space.gutter),
@@ -376,45 +386,3 @@ class _Empty extends StatelessWidget {
   }
 }
 
-class _Error extends StatelessWidget {
-  const _Error({required this.failure});
-
-  final Object failure;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return Center(
-      key: CourierScreen.errorKey,
-      child: Padding(
-        padding: const EdgeInsets.all(Space.xxl),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.cloud_off_rounded, size: 56, color: theme.luqma.danger),
-            const SizedBox(height: Space.lg),
-            // Never "nothing to deliver". A courier who reads a dropped connection that
-            // way goes home.
-            Text(
-              'مش قادرين نوصل للطلبات',
-              style: theme.textTheme.titleLarge,
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: Space.sm),
-            Text(
-              switch (failure) {
-                OfflineFailure() => 'شوف النت. ممكن يكون في طلبات مستنية.',
-                PermissionFailure() => 'الحساب ده مالوش صلاحية توصيل.',
-                _ => 'حصل خطأ. جرّب تاني بعد شوية.',
-              },
-              style: theme.textTheme.bodyMedium
-                  ?.copyWith(color: theme.luqma.textSecondary),
-              textAlign: TextAlign.center,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}

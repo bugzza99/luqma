@@ -244,4 +244,60 @@ void main() {
       expect(banner.onPressed, isNotNull);
     });
   });
+
+  // Whether a campaign is running is a question about the calendar, not about which of
+  // two words the status field happens to hold. `approved` is the only one anything
+  // ever writes — nothing on the server promotes it to `active` — so a label keyed on
+  // the status told a merchant whose banner was live that it had merely been signed off.
+  group('is it running right now', () {
+    testWidgets('an approved campaign inside its dates says it is live', (tester) async {
+      await pump(tester, seed: [
+        promotion(
+          id: 'running',
+          status: PromotionStatus.approved,
+          startAt: DateTime(2026, 8, 20),
+          endAt: DateTime(2026, 9, 20),
+        ),
+      ]);
+
+      expect(find.text('شغال دلوقتي'), findsOneWidget);
+    });
+
+    // Approved is not live. A campaign signed off today for next week must not tell the
+    // merchant it is already running, or they will ask why it is not on their screen.
+    testWidgets('one approved for next week says it is approved, not live',
+        (tester) async {
+      await pump(tester, seed: [
+        promotion(
+          id: 'later',
+          status: PromotionStatus.approved,
+          startAt: DateTime(2026, 9, 1),
+          endAt: DateTime(2026, 9, 20),
+        ),
+      ]);
+
+      expect(find.text('اتوافق عليه'), findsOneWidget);
+      expect(find.text('شغال دلوقتي'), findsNothing);
+    });
+
+    testWidgets('one whose dates have passed does not claim to be live', (tester) async {
+      await pump(tester, seed: [
+        promotion(
+          id: 'over',
+          status: PromotionStatus.approved,
+          startAt: DateTime(2026, 7, 1),
+          endAt: DateTime(2026, 8, 1),
+        ),
+      ]);
+
+      expect(find.text('شغال دلوقتي'), findsNothing);
+    });
+
+    testWidgets('one still waiting is never live, whatever its dates', (tester) async {
+      await pump(tester, seed: [promotion(id: 'waiting')]);
+
+      expect(find.text('تحت المراجعة'), findsOneWidget);
+      expect(find.text('شغال دلوقتي'), findsNothing);
+    });
+  });
 }

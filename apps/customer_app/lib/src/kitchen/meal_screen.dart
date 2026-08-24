@@ -50,11 +50,15 @@ class _MealScreenState extends ConsumerState<MealScreen> {
       backgroundColor: colors.background,
       appBar: AppBar(title: const Text('أكل بيتي')),
       body: switch (meals) {
-        AsyncValue(hasError: true, :final error?) => _Error(failure: error),
+        AsyncValue(hasError: true, :final error?) => LuqmaErrorView(key: MealScreen.errorKey, failure: error, onRetry: () => ref.invalidate(todaysMealsProvider)),
         // A meal that is not in today's list is one the cook took down, or yesterday's
         // link. Far more common than a genuine error, and it needs its own sentence.
         AsyncValue(hasValue: true, :final value?) => _meal(value) == null
-            ? const _Error(failure: NotFoundFailure())
+            ? LuqmaErrorView(
+              key: MealScreen.errorKey,
+              failure: const NotFoundFailure(),
+              onRetry: () => ref.invalidate(todaysMealsProvider),
+            )
             : _Loaded(
                 meal: _meal(value)!,
                 quantity: _quantity,
@@ -334,6 +338,7 @@ class _Stepper extends StatelessWidget {
         children: [
           IconButton(
             key: MealScreen.lessKey,
+            tooltip: 'طبق أقل',
             onPressed: quantity > 1 ? onLess : null,
             icon: const Icon(Icons.remove_rounded, size: Sizes.iconSm),
             constraints: const BoxConstraints(
@@ -348,6 +353,7 @@ class _Stepper extends StatelessWidget {
           ),
           IconButton(
             key: MealScreen.moreKey,
+            tooltip: 'طبق زيادة',
             // Stops at what is left. Offering a fourth portion of three is an error
             // the customer only discovers after committing.
             onPressed: canAdd ? onMore : null,
@@ -363,30 +369,3 @@ class _Stepper extends StatelessWidget {
   }
 }
 
-class _Error extends StatelessWidget {
-  const _Error({required this.failure});
-
-  final Object failure;
-
-  @override
-  Widget build(BuildContext context) {
-    final strings = LuqmaStrings.of(context);
-
-    return Center(
-      key: MealScreen.errorKey,
-      child: Padding(
-        padding: const EdgeInsets.all(Space.xxl),
-        child: Text(
-          switch (failure) {
-            OfflineFailure() => strings.errorOffline,
-            // Far more likely than a genuine error: the meal finished and the cook took
-            // it down while somebody had the link open.
-            NotFoundFailure() => 'الأكلة دي مش متاحة دلوقتي.',
-            _ => strings.errorUnknown,
-          },
-          textAlign: TextAlign.center,
-        ),
-      ),
-    );
-  }
-}

@@ -49,7 +49,7 @@ class OrderScreen extends ConsumerWidget {
         // `AsyncError` type: a stream that fails before it has ever emitted stays
         // `AsyncLoading` with the error hanging off it, so a type match never fires
         // and the screen spins for ever on a dropped connection.
-        AsyncValue(hasError: true, :final error?) => _Error(failure: error),
+        AsyncValue(hasError: true, :final error?) => LuqmaErrorView(key: OrderScreen.errorKey, failure: error, onRetry: () => ref.invalidate(orderProvider(orderId))),
         AsyncValue(hasValue: true, :final value?) => _Loaded(order: value),
               _ => const Center(child: CircularProgressIndicator()),
 },
@@ -507,6 +507,9 @@ class _RatingCardState extends ConsumerState<_RatingCard> {
                     for (var i = 1; i <= 5; i++)
                       IconButton(
                         key: OrderScreen.starKey(i),
+                        // Five identical stars are five identical buttons to a
+                        // screen reader unless each says which one it is.
+                        tooltip: '$i من 5',
                         onPressed: () => setState(() => _stars = i),
                         icon: Icon(
                           i <= _stars ? Icons.star_rounded : Icons.star_border_rounded,
@@ -545,29 +548,3 @@ class _RatingCardState extends ConsumerState<_RatingCard> {
   }
 }
 
-class _Error extends StatelessWidget {
-  const _Error({required this.failure});
-
-  final Object failure;
-
-  @override
-  Widget build(BuildContext context) {
-    final strings = LuqmaStrings.of(context);
-
-    return Center(
-      key: OrderScreen.errorKey,
-      child: Padding(
-        padding: const EdgeInsets.all(Space.xxl),
-        child: Text(
-          switch (failure) {
-            OfflineFailure() => strings.errorOffline,
-            PermissionFailure() => strings.errorPermission,
-            NotFoundFailure() => 'الطلب ده مش موجود.',
-            _ => strings.errorUnknown,
-          },
-          textAlign: TextAlign.center,
-        ),
-      ),
-    );
-  }
-}

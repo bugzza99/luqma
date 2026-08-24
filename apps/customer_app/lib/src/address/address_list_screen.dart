@@ -39,7 +39,7 @@ class AddressListScreen extends ConsumerWidget {
               // `AsyncError` type: a stream that fails before it has ever emitted stays
               // `AsyncLoading` with the error hanging off it, so a type match never fires
               // and the screen spins for ever on a dropped connection.
-              AsyncValue(hasError: true, :final error?) => _Error(failure: error),
+              AsyncValue(hasError: true, :final error?) => LuqmaErrorView(failure: error, onRetry: () => ref.invalidate(myAddressesProvider)),
               AsyncValue(hasValue: true, :final value?) when value.isEmpty =>
                 const _Empty(),
               AsyncValue(hasValue: true, :final value?) => _List(
@@ -154,6 +154,7 @@ class _Row extends ConsumerWidget {
             ),
             IconButton(
               key: AddressListScreen.deleteKey(address.id),
+              tooltip: 'امسح العنوان',
               onPressed: () => _confirmDelete(context, ref),
               icon: Icon(Icons.delete_outline_rounded, color: colors.textSecondary),
               constraints: const BoxConstraints(
@@ -274,26 +275,3 @@ class _Empty extends StatelessWidget {
   }
 }
 
-class _Error extends StatelessWidget {
-  const _Error({required this.failure});
-
-  final Object failure;
-
-  @override
-  Widget build(BuildContext context) {
-    final strings = LuqmaStrings.of(context);
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(Space.xxl),
-        child: Text(
-          switch (failure) {
-            OfflineFailure() => strings.errorOffline,
-            PermissionFailure() => strings.errorPermission,
-            _ => strings.errorUnknown,
-          },
-          textAlign: TextAlign.center,
-        ),
-      ),
-    );
-  }
-}

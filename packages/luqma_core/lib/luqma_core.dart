@@ -50,6 +50,7 @@ export 'src/util/arabic_digits.dart';
 export 'src/util/arabic_text.dart';
 export 'src/util/contrast.dart';
 export 'src/widgets/address_picker.dart';
+export 'src/widgets/error_view.dart';
 export 'src/widgets/luqma_lockup.dart';
 export 'src/widgets/menu_editor.dart';
 export 'src/widgets/luqma_splash.dart';

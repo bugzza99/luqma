@@ -86,7 +86,7 @@ class _List extends ConsumerWidget {
       // `AsyncError` type: a stream that fails before it has ever emitted stays
       // `AsyncLoading` with the error hanging off it, so a type match never fires
       // and the screen spins for ever on a dropped connection.
-      AsyncValue(hasError: true, :final error?) => _Error(failure: error),
+      AsyncValue(hasError: true, :final error?) => LuqmaErrorView(failure: error, onRetry: () => ref.invalidate(allMerchantsProvider)),
       AsyncValue(hasValue: true, :final value?) when value.isEmpty => Center(
           key: MerchantsScreen.emptyKey,
           child: Padding(
@@ -244,7 +244,11 @@ class _Detail extends ConsumerWidget {
         title: Text(merchant.name),
         leading: onBack == null
             ? null
-            : IconButton(icon: const Icon(Icons.arrow_forward), onPressed: onBack),
+            : IconButton(
+                icon: const Icon(Icons.arrow_forward),
+                tooltip: 'رجوع',
+                onPressed: onBack,
+              ),
         actions: [
           IconButton(
             key: MerchantsScreen.billingKey,
@@ -290,24 +294,6 @@ class _Detail extends ConsumerWidget {
           Expanded(child: MenuEditor(merchantId: merchant.id)),
         ],
       ),
-    );
-  }
-}
-
-class _Error extends StatelessWidget {
-  const _Error({required this.failure});
-
-  final Object failure;
-
-  @override
-  Widget build(BuildContext context) {
-    final strings = LuqmaStrings.of(context);
-    return Center(
-      child: Text(switch (failure) {
-        OfflineFailure() => strings.errorOffline,
-        PermissionFailure() => strings.errorPermission,
-        _ => strings.errorUnknown,
-      }),
     );
   }
 }

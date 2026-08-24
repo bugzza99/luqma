@@ -151,6 +151,10 @@ class _Stepper extends ConsumerWidget {
         children: [
           IconButton(
             key: CartScreen.lessKey(line.id),
+            // The icon changes at one, so the name has to change with it: the
+            // control that says "one less" and the one that empties the line are
+            // not the same promise.
+            tooltip: line.quantity > 1 ? 'واحد أقل' : 'شيل الصنف',
             onPressed: () => step(-1),
             icon: Icon(
               line.quantity > 1
@@ -169,6 +173,7 @@ class _Stepper extends ConsumerWidget {
           ),
           IconButton(
             key: CartScreen.moreKey(line.id),
+            tooltip: 'واحد زيادة',
             onPressed: () => step(1),
             icon: const Icon(Icons.add_rounded, size: Sizes.iconSm),
             constraints: const BoxConstraints(

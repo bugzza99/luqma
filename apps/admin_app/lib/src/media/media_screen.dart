@@ -38,7 +38,7 @@ class MediaScreen extends ConsumerWidget {
           // `AsyncError` type: a stream that fails before it has ever emitted stays
           // `AsyncLoading` with the error hanging off it, so a type match never fires
           // and the screen spins for ever on a dropped connection.
-          AsyncValue(hasError: true, :final error?) => _Error(failure: error),
+          AsyncValue(hasError: true, :final error?) => LuqmaErrorView(failure: error, onRetry: () => ref.invalidate(pendingMediaProvider)),
           AsyncValue(hasValue: true, :final value?) when value.isEmpty =>
             const _Empty(),
           AsyncValue(hasValue: true, :final value?) => GridView.builder(
@@ -224,20 +224,3 @@ class _RejectDialogState extends State<_RejectDialog> {
   }
 }
 
-class _Error extends StatelessWidget {
-  const _Error({required this.failure});
-
-  final Object failure;
-
-  @override
-  Widget build(BuildContext context) {
-    final strings = LuqmaStrings.of(context);
-    return Center(
-      child: Text(switch (failure) {
-        OfflineFailure() => strings.errorOffline,
-        PermissionFailure() => strings.errorPermission,
-        _ => strings.errorUnknown,
-      }),
-    );
-  }
-}

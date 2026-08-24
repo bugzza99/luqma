@@ -47,7 +47,7 @@ class LiveBoardScreen extends ConsumerWidget {
       body: switch (ref.watch(liveOrdersProvider(merchantId))) {
         // First, and on `hasError`: a stream that fails before it has ever emitted
         // stays AsyncLoading with the error hanging off it.
-        AsyncValue(hasError: true, :final error?) => _Error(failure: error),
+        AsyncValue(hasError: true, :final error?) => LuqmaErrorView(key: LiveBoardScreen.errorKey, failure: error, onRetry: () => ref.invalidate(liveOrdersProvider(merchantId))),
         AsyncValue(hasValue: true, :final value?) when value.isEmpty => const _Empty(),
         AsyncValue(hasValue: true, :final value?) => ListView.separated(
             padding: const EdgeInsets.all(Space.gutter),
@@ -248,43 +248,3 @@ class _Empty extends StatelessWidget {
   }
 }
 
-class _Error extends StatelessWidget {
-  const _Error({required this.failure});
-
-  final Object failure;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return Center(
-      key: LiveBoardScreen.errorKey,
-      child: Padding(
-        padding: const EdgeInsets.all(Space.xxl),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.cloud_off_rounded, size: 56, color: theme.luqma.danger),
-            const SizedBox(height: Space.lg),
-            Text(
-              'مش قادرين نوصل للطلبات',
-              style: theme.textTheme.titleLarge,
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: Space.sm),
-            Text(
-              switch (failure) {
-                OfflineFailure() => 'شوف النت. في طلبات شغالة مش ظاهرة هنا.',
-                PermissionFailure() => 'الحساب ده مالوش صلاحية على المطعم ده.',
-                _ => 'حصل خطأ. جرّب تاني بعد شوية.',
-              },
-              style: theme.textTheme.bodyMedium
-                  ?.copyWith(color: theme.luqma.textSecondary),
-              textAlign: TextAlign.center,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}

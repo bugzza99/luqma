@@ -45,7 +45,7 @@ class MealsScreen extends ConsumerWidget {
         // First, and on `hasError`: a stream that fails before it has ever emitted stays
         // AsyncLoading with the error hanging off it, and a cook reading that as "no
         // meals" thinks nothing published.
-        AsyncValue(hasError: true, :final error?) => _Error(failure: error),
+        AsyncValue(hasError: true, :final error?) => LuqmaErrorView(key: MealsScreen.errorKey, failure: error, onRetry: () => ref.invalidate(merchantMealsProvider(merchantId))),
         AsyncValue(hasValue: true, :final value?) when value.isEmpty => const _Empty(),
         AsyncValue(hasValue: true, :final value?) => ListView.separated(
             padding: const EdgeInsets.fromLTRB(
@@ -493,42 +493,3 @@ class _Empty extends StatelessWidget {
   }
 }
 
-class _Error extends StatelessWidget {
-  const _Error({required this.failure});
-
-  final Object failure;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return Center(
-      key: MealsScreen.errorKey,
-      child: Padding(
-        padding: const EdgeInsets.all(Space.xxl),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.cloud_off_rounded, size: 56, color: theme.luqma.danger),
-            const SizedBox(height: Space.lg),
-            Text(
-              'مش قادرين نجيب أكلاتك',
-              style: theme.textTheme.titleLarge,
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: Space.sm),
-            Text(
-              switch (failure) {
-                OfflineFailure() => 'شوف النت. ممكن تكون في أكلة منشورة ومش ظاهرة.',
-                _ => 'حصل خطأ. جرّب تاني بعد شوية.',
-              },
-              style: theme.textTheme.bodyMedium
-                  ?.copyWith(color: theme.luqma.textSecondary),
-              textAlign: TextAlign.center,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}

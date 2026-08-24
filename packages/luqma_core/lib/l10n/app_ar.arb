@@ -157,6 +157,10 @@
 
   "errorUnknown": "حصل خطأ — جرّب تاني",
   "@errorUnknown": {},
+  "actionRetry": "حاول تاني",
+  "@actionRetry": {
+    "description": "The control on an error view that reads the failed thing again."
+  },
 
   "couponNotFound": "الكود ده مش موجود",
   "@couponNotFound": {},

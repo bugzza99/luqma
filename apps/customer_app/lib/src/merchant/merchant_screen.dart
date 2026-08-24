@@ -39,7 +39,7 @@ class MerchantScreen extends ConsumerWidget {
       // and the screen spins for ever on a dropped connection.
       AsyncValue(hasError: true, :final error?) => Scaffold(
           appBar: AppBar(),
-          body: _Error(failure: error),
+          body: LuqmaErrorView(failure: error, onRetry: () => ref.invalidate(merchantProvider(merchantId))),
         ),
       AsyncValue(hasValue: true, :final value?) => _Loaded(
           merchant: value,
@@ -423,20 +423,3 @@ class _CartBar extends StatelessWidget {
   }
 }
 
-class _Error extends StatelessWidget {
-  const _Error({required this.failure});
-
-  final Object failure;
-
-  @override
-  Widget build(BuildContext context) {
-    final strings = LuqmaStrings.of(context);
-    return Center(
-      child: Text(switch (failure) {
-        OfflineFailure() => strings.errorOffline,
-        NotFoundFailure() => strings.errorNotFound,
-        _ => strings.errorUnknown,
-      }),
-    );
-  }
-}

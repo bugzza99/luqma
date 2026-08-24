@@ -54,7 +54,7 @@ class MerchantPromotionsScreen extends ConsumerWidget {
       backgroundColor: colors.background,
       appBar: AppBar(title: const Text('الإعلانات')),
       body: switch (mine) {
-        AsyncValue(hasError: true, :final error?) => _Error(failure: error),
+        AsyncValue(hasError: true, :final error?) => LuqmaErrorView(key: MerchantPromotionsScreen.errorKey, failure: error, onRetry: () => ref.invalidate(merchantPromotionsProvider(merchantId))),
         AsyncValue(hasValue: true, :final value?) when value.isEmpty => const _Empty(),
         AsyncValue(hasValue: true, :final value?) => ListView.separated(
             padding: const EdgeInsets.fromLTRB(
@@ -115,20 +115,27 @@ class MerchantPromotionsScreen extends ConsumerWidget {
   }
 }
 
-class _Card extends StatelessWidget {
+class _Card extends ConsumerWidget {
   const _Card({required this.promotion});
 
   final Promotion promotion;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final colors = theme.luqma;
+    final now = ref.watch(clockProvider)();
 
+    // Whether it is running is a question about the calendar, not about which of two
+    // words the status holds. Nothing on the server ever writes `active` — `approve()`
+    // writes `approved` and `startAt` decides the rest — so a label keyed on the status
+    // alone told a merchant whose banner was live that it had merely been signed off.
     final (tone, label) = switch (promotion.status) {
       PromotionStatus.requested => (colors.textSecondary, 'تحت المراجعة'),
-      PromotionStatus.approved => (colors.success, 'اتوافق عليه'),
-      PromotionStatus.active => (colors.success, 'شغال دلوقتي'),
+      PromotionStatus.approved || PromotionStatus.active =>
+        promotion.isLiveAt(now)
+            ? (colors.success, 'شغال دلوقتي')
+            : (colors.success, 'اتوافق عليه'),
       PromotionStatus.rejected => (colors.danger, 'مرفوض'),
       PromotionStatus.ended => (colors.textSecondary, 'خلص'),
     };
@@ -408,28 +415,3 @@ class _Empty extends StatelessWidget {
   }
 }
 
-class _Error extends StatelessWidget {
-  const _Error({required this.failure});
-
-  final Object failure;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return Center(
-      key: MerchantPromotionsScreen.errorKey,
-      child: Padding(
-        padding: const EdgeInsets.all(Space.xxl),
-        child: Text(
-          switch (failure) {
-            OfflineFailure() => 'مفيش اتصال بالإنترنت.',
-            _ => 'مقدرناش نجيب إعلاناتك.',
-          },
-          style: theme.textTheme.bodyMedium,
-          textAlign: TextAlign.center,
-        ),
-      ),
-    );
-  }
-}
