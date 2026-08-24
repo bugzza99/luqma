@@ -5,7 +5,17 @@ import {
   assertSucceeds,
   initializeTestEnvironment,
 } from '@firebase/rules-unit-testing';
-import { doc, getDoc, setDoc, updateDoc, collection, getDocs } from 'firebase/firestore';
+import {
+  doc,
+  getDoc,
+  setDoc,
+  updateDoc,
+  deleteDoc,
+  collection,
+  getDocs,
+  query,
+  where,
+} from 'firebase/firestore';
 
 // The rules are the only thing standing between a customer's phone and everyone else's
 // data. Everything below is a rule someone would otherwise have to remember.
@@ -474,5 +484,388 @@ describe('daily meals', () => {
         ),
         { name: 'حاجة تانية' },
       ),
+    ));
+});
+
+// ---------------------------------------------------------------------------
+// Everything below was written after a pre-launch audit found the rule missing.
+// Each one failed before the rule beside it existed.
+// ---------------------------------------------------------------------------
+
+describe('promotions', () => {
+  const owner = (merchantId = 'm1') =>
+    env
+      .authenticatedContext(`owner-${merchantId}`, {
+        merchantId,
+        role: 'owner',
+        scope: 'merchant',
+      })
+      .firestore();
+
+  const promotion = (extra = {}) => ({
+    cityId: 'edku',
+    merchantId: 'm1',
+    channel: 'homeBanner',
+    status: 'approved',
+    title: 'خصم',
+    startAt: new Date('2026-08-01'),
+    endAt: new Date('2026-09-01'),
+    priority: 0,
+    requestedBy: 'owner-m1',
+    ...extra,
+  });
+
+  beforeEach(() =>
+    seed(async (db) => {
+      await setDoc(doc(db, 'promotions/approved1'), promotion());
+      await setDoc(doc(db, 'promotions/waiting1'), promotion({ status: 'requested' }));
+    }),
+  );
+
+  // The query the customer app actually makes. Reading one document is not the test:
+  // Firestore rejects a whole query it cannot prove is limited to readable documents,
+  // so a rule that allows less than the query asks for returns nothing at all.
+  it('a customer can run the live-promotions query the app runs', () =>
+    assertSucceeds(
+      getDocs(
+        query(
+          collection(customer(), 'promotions'),
+          where('status', 'in', ['approved', 'active']),
+        ),
+      ),
+    ));
+
+  it('an approved promotion is readable on its own too', () =>
+    assertSucceeds(getDoc(doc(customer(), 'promotions/approved1'))));
+
+  // Approval is what makes it public. Before that it is a request nobody has answered.
+  it('one still waiting for approval is not public', () =>
+    assertFails(getDoc(doc(customer(), 'promotions/waiting1'))));
+
+  it('the merchant who asked can see their own while it waits', () =>
+    assertSucceeds(getDoc(doc(owner(), 'promotions/waiting1'))));
+
+  it('a merchant may ask', () =>
+    assertSucceeds(
+      setDoc(doc(owner(), 'promotions/new1'), promotion({ status: 'requested' })),
+    ));
+
+  // The whole asymmetry of the feature: a merchant who could approve their own placement
+  // could put unmoderated push on every phone in the city.
+  it('a merchant may not approve their own', () =>
+    assertFails(setDoc(doc(owner(), 'promotions/new2'), promotion({ status: 'approved' }))));
+
+  it('a merchant may not approve one already requested', () =>
+    assertFails(updateDoc(doc(owner(), 'promotions/waiting1'), { status: 'approved' })));
+});
+
+describe('moving an order through its states', () => {
+  const merchantCourier = (uid = 'courier1') =>
+    env
+      .authenticatedContext(uid, { merchantId: 'm1', role: 'courier', scope: 'merchant' })
+      .firestore();
+
+  const order = (extra = {}) => ({
+    cityId: 'edku',
+    orderNumber: 101,
+    customerUid: 'cust1',
+    merchantId: 'm1',
+    zoneId: 'z1',
+    status: 'placed',
+    deliveryBy: 'merchant',
+    pricing: { total: 13000 },
+    ...extra,
+  });
+
+  beforeEach(() =>
+    seed(async (db) => {
+      await setDoc(doc(db, 'orders/placed1'), order());
+      await setDoc(doc(db, 'orders/accepted1'), order({ status: 'accepted' }));
+      await setDoc(doc(db, 'orders/preparing1'), order({ status: 'preparing' }));
+      await setDoc(doc(db, 'orders/done1'), order({ status: 'delivered' }));
+      await setDoc(doc(db, 'orders/gone1'), order({ status: 'cancelled' }));
+    }),
+  );
+
+  describe('the merchant', () => {
+    it('accepts an order that was just placed', () =>
+      assertSucceeds(updateDoc(doc(merchantOwner(), 'orders/placed1'), { status: 'accepted' })));
+
+    it('starts cooking one they accepted', () =>
+      assertSucceeds(
+        updateDoc(doc(merchantOwner(), 'orders/accepted1'), { status: 'preparing' }),
+      ));
+
+    it('sends out one that is cooked', () =>
+      assertSucceeds(
+        updateDoc(doc(merchantOwner(), 'orders/preparing1'), { status: 'outForDelivery' }),
+      ));
+
+    // The one that moves money. `onOrderDelivered` fires on this transition and spends
+    // a prepaid wallet or accrues a commission — so an order must reach it through a
+    // courier, not by a merchant writing the word.
+    it('cannot jump a fresh order straight to delivered', () =>
+      assertFails(updateDoc(doc(merchantOwner(), 'orders/placed1'), { status: 'delivered' })));
+
+    it('cannot mark one delivered at all', () =>
+      assertFails(
+        updateDoc(doc(merchantOwner(), 'orders/preparing1'), { status: 'delivered' }),
+      ));
+
+    it('cannot cancel one that is already on the road', () =>
+      assertFails(
+        updateDoc(doc(merchantOwner(), 'orders/preparing1'), {
+          status: 'cancelled',
+          cancelReason: 'مش عايزين',
+        }),
+      ));
+
+    // Delivered is final. An order that can be reopened is an order whose cash total can
+    // be changed after the money was handed over.
+    it('cannot reopen a delivered order', () =>
+      assertFails(updateDoc(doc(merchantOwner(), 'orders/done1'), { status: 'preparing' })));
+
+    it('cannot revive a cancelled one', () =>
+      assertFails(updateDoc(doc(merchantOwner(), 'orders/gone1'), { status: 'accepted' })));
+
+    // A merchant naming anyone they like as courier hands that person read and write on
+    // the order, and the cash that comes with it.
+    it('cannot hand the order to somebody who is not their courier', () =>
+      assertFails(
+        updateDoc(doc(merchantOwner(), 'orders/preparing1'), { courierUid: 'a-stranger' }),
+      ));
+  });
+
+  describe('the courier', () => {
+    it('takes out an order that is cooked', () =>
+      assertSucceeds(
+        updateDoc(doc(merchantCourier(), 'orders/preparing1'), {
+          status: 'outForDelivery',
+          courierUid: 'courier1',
+        }),
+      ));
+
+    // Nobody has cooked it. Marking it delivered would charge the merchant for an order
+    // that never left the kitchen.
+    it('cannot mark a freshly placed order delivered', () =>
+      assertFails(
+        updateDoc(doc(merchantCourier(), 'orders/placed1'), {
+          status: 'delivered',
+          courierUid: 'courier1',
+          deliveredAt: new Date(),
+        }),
+      ));
+
+    it('cannot accept an order on behalf of the merchant', () =>
+      assertFails(
+        updateDoc(doc(merchantCourier(), 'orders/placed1'), { status: 'accepted' }),
+      ));
+  });
+
+  describe('the customer', () => {
+    it('cancels while it is still unanswered', () =>
+      assertSucceeds(
+        updateDoc(doc(customer(), 'orders/placed1'), {
+          status: 'cancelled',
+          cancelReason: 'غيرت رأيي',
+        }),
+      ));
+
+    it('cannot cancel once the kitchen has started', () =>
+      assertFails(
+        updateDoc(doc(customer(), 'orders/preparing1'), { status: 'cancelled' }),
+      ));
+
+    it('cannot mark their own order delivered', () =>
+      assertFails(updateDoc(doc(customer(), 'orders/preparing1'), { status: 'delivered' })));
+  });
+});
+
+describe('menu items', () => {
+  const owner = (merchantId) =>
+    env
+      .authenticatedContext(`owner-${merchantId}`, {
+        merchantId,
+        role: 'owner',
+        scope: 'merchant',
+      })
+      .firestore();
+
+  beforeEach(() =>
+    seed(async (db) => {
+      await setDoc(doc(db, 'menuItems/i1'), { merchantId: 'm1', name: 'فراخ', price: 12000 });
+      await setDoc(doc(db, 'menuItems/i2'), { merchantId: 'm2', name: 'كبدة', price: 9000 });
+    }),
+  );
+
+  it('a merchant edits their own item', () =>
+    assertSucceeds(updateDoc(doc(owner('m1'), 'menuItems/i1'), { price: 13000 })));
+
+  // The rule read the merchantId being written rather than the one already there, so
+  // rewriting it to your own turned somebody else's dish into yours.
+  it('a merchant cannot claim an item belonging to another', () =>
+    assertFails(updateDoc(doc(owner('m1'), 'menuItems/i2'), { merchantId: 'm1' })));
+
+  it('a merchant cannot edit an item belonging to another', () =>
+    assertFails(updateDoc(doc(owner('m1'), 'menuItems/i2'), { price: 1 })));
+
+  it('a merchant cannot give their own item away', () =>
+    assertFails(updateDoc(doc(owner('m1'), 'menuItems/i1'), { merchantId: 'm2' })));
+
+  // On a delete there is no incoming document, so a rule written on the incoming
+  // merchantId refused every merchant and let only the admin through.
+  it('a merchant deletes their own item', () =>
+    assertSucceeds(deleteDoc(doc(owner('m1'), 'menuItems/i1'))));
+
+  it('a merchant cannot delete an item belonging to another', () =>
+    assertFails(deleteDoc(doc(owner('m1'), 'menuItems/i2'))));
+});
+
+describe('deleting a daily meal', () => {
+  const kitchen = (merchantId = 'm1') =>
+    env
+      .authenticatedContext(`cook-${merchantId}`, {
+        merchantId,
+        role: 'owner',
+        scope: 'merchant',
+      })
+      .firestore();
+
+  beforeEach(() =>
+    seed(async (db) => {
+      await setDoc(doc(db, 'dailyMeals/d1'), {
+        merchantId: 'm1',
+        cityId: 'edku',
+        name: 'محشي',
+        date: '2026-08-23',
+        totalQty: 20,
+        remainingQty: 8,
+      });
+    }),
+  );
+
+  it('the kitchen deletes its own meal', () =>
+    assertSucceeds(deleteDoc(doc(kitchen(), 'dailyMeals/d1'))));
+
+  it('another kitchen cannot', () =>
+    assertFails(deleteDoc(doc(kitchen('m2'), 'dailyMeals/d1'))));
+});
+
+describe('ratings', () => {
+  beforeEach(() =>
+    seed(async (db) => {
+      await setDoc(doc(db, 'orders/done1'), {
+        cityId: 'edku',
+        customerUid: 'cust1',
+        merchantId: 'm1',
+        status: 'delivered',
+      });
+      await setDoc(doc(db, 'orders/cooking1'), {
+        cityId: 'edku',
+        customerUid: 'cust1',
+        merchantId: 'm1',
+        status: 'preparing',
+      });
+    }),
+  );
+
+  const rating = (extra = {}) => ({
+    orderId: 'done1',
+    customerUid: 'cust1',
+    merchantId: 'm1',
+    stars: 5,
+    ...extra,
+  });
+
+  it('a customer rates an order they received', () =>
+    assertSucceeds(setDoc(doc(customer(), 'ratings/done1'), rating())));
+
+  // Keyed by the order, so rating again corrects the first rather than adding a second.
+  it('rating again corrects the first', async () => {
+    await seed((db) => setDoc(doc(db, 'ratings/done1'), rating()));
+    await assertSucceeds(setDoc(doc(customer(), 'ratings/done1'), rating({ stars: 3 })));
+  });
+
+  // Without this a merchant's average is anybody's to move, from anywhere, for free.
+  it('cannot rate a merchant they never ordered from', () =>
+    assertFails(
+      setDoc(doc(customer('cust2'), 'ratings/done1'), rating({ customerUid: 'cust2' })),
+    ));
+
+  it('cannot rate an order that has not arrived', () =>
+    assertFails(
+      setDoc(doc(customer(), 'ratings/cooking1'), rating({ orderId: 'cooking1' })),
+    ));
+
+  // The document id is the order. A second document for the same order is a second vote.
+  it('cannot file a rating under an id that is not the order', () =>
+    assertFails(setDoc(doc(customer(), 'ratings/anything'), rating())));
+
+  it('cannot rate on behalf of somebody else', () =>
+    assertFails(setDoc(doc(customer('cust2'), 'ratings/done1'), rating())));
+});
+
+describe('uploading an image', () => {
+  it('the uploader is recorded as the person uploading', () =>
+    assertSucceeds(
+      setDoc(doc(customer(), 'media/up1'), {
+        status: 'pending',
+        uploadedBy: 'cust1',
+        path: 'uploads/up1.jpg',
+      }),
+    ));
+
+  // Otherwise an upload can be filed under somebody else's name, and read by them.
+  it('cannot be filed under another name', () =>
+    assertFails(
+      setDoc(doc(customer(), 'media/up2'), {
+        status: 'pending',
+        uploadedBy: 'someone-else',
+        path: 'uploads/up2.jpg',
+      }),
+    ));
+});
+
+describe('raising an issue', () => {
+  beforeEach(() =>
+    seed(async (db) => {
+      await setDoc(doc(db, 'orders/mine1'), {
+        cityId: 'edku',
+        customerUid: 'cust1',
+        merchantId: 'm1',
+        status: 'delivered',
+      });
+      await setDoc(doc(db, 'orders/theirs1'), {
+        cityId: 'edku',
+        customerUid: 'cust2',
+        merchantId: 'm1',
+        status: 'delivered',
+      });
+    }),
+  );
+
+  const issue = (extra = {}) => ({
+    orderId: 'mine1',
+    customerUid: 'cust1',
+    merchantId: 'm1',
+    reason: 'الأكل وصل بارد',
+    status: 'open',
+    ...extra,
+  });
+
+  it('a customer complains about their own order', () =>
+    assertSucceeds(setDoc(doc(customer(), 'orderIssues/x1'), issue())));
+
+  // A ticket against an order you were not part of is a complaint about a stranger's
+  // dinner, filed against a merchant who has no way to answer it.
+  it('cannot complain about somebody else’s order', () =>
+    assertFails(setDoc(doc(customer(), 'orderIssues/x2'), issue({ orderId: 'theirs1' }))));
+
+  it('cannot name a merchant the order was not from', () =>
+    assertFails(setDoc(doc(customer(), 'orderIssues/x3'), issue({ merchantId: 'm2' }))));
+
+  it('cannot file one in somebody else’s name', () =>
+    assertFails(
+      setDoc(doc(customer('cust2'), 'orderIssues/x4'), issue()),
     ));
 });

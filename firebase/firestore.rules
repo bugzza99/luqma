@@ -77,6 +77,50 @@ service cloud.firestore {
       return fee == 0 || (fee >= 500 && fee <= 2000);
     }
 
+    // ------------------------------------------------ the order state machine
+    // Mirrored from `OrderTransitions` in luqma_core. That copy hides a button; this
+    // one is what actually holds — a modified client ignores the first and not this.
+    //
+    // It exists because `delivered` is the transition `onOrderDelivered` fires on, and
+    // that function spends a prepaid wallet or accrues a commission. Whoever can write
+    // the word can move the money.
+    function movingStatus() {
+      return 'status' in changed();
+    }
+
+    function wasStatus() { return resource.data.status; }
+    function nowStatus() { return request.resource.data.status; }
+
+    function merchantMayMove() {
+      return (wasStatus() == 'placed'
+                && (nowStatus() == 'accepted' || nowStatus() == 'cancelled'))
+          || (wasStatus() == 'accepted'
+                && (nowStatus() == 'preparing' || nowStatus() == 'cancelled'))
+          || (wasStatus() == 'preparing' && nowStatus() == 'outForDelivery');
+    }
+
+    // A courier never accepts an order, and never marks one delivered that nobody cooked.
+    function courierMayMove() {
+      return (wasStatus() == 'preparing' && nowStatus() == 'outForDelivery')
+          || (wasStatus() == 'outForDelivery'
+                && (nowStatus() == 'delivered' || nowStatus() == 'cancelled'));
+    }
+
+    // A rating or a complaint has to be about an order this person actually had, from
+    // the merchant they are naming. Without it a merchant's average — and their
+    // complaint queue — is anybody's to fill, from anywhere, for nothing.
+    function theirOrder(orderId) {
+      let order = get(/databases/$(database)/documents/orders/$(orderId)).data;
+      return order.customerUid == request.auth.uid
+          && order.merchantId == request.resource.data.merchantId;
+    }
+
+    function theirDeliveredOrder(orderId) {
+      return theirOrder(orderId)
+          && get(/databases/$(database)/documents/orders/$(orderId)).data.status
+             == 'delivered';
+    }
+
     // ---------------------------------------------------------------- users
     match /users/{uid} {
       allow read: if isUser(uid) || isAdmin();
@@ -120,14 +164,29 @@ service cloud.firestore {
 
     match /menuItems/{itemId} {
       allow read: if true;
-      allow write: if isAdmin() || isMerchantOwner(request.resource.data.merchantId);
+      allow create: if isAdmin() || isMerchantOwner(request.resource.data.merchantId);
+
+      // On an update the owner is the one already on the document, and the item cannot
+      // change hands. Judging the *incoming* merchantId let one merchant rewrite
+      // another shop's dish into their own menu.
+      allow update: if isAdmin() || (
+        isMerchantOwner(resource.data.merchantId) &&
+        request.resource.data.merchantId == resource.data.merchantId
+      );
+
+      // A delete carries no incoming document at all, so it can only be judged on the
+      // one already there. Written as a single `write` this refused every merchant and
+      // let only the admin through — a menu nobody could take a dish out of.
+      allow delete: if isAdmin() || isMerchantOwner(resource.data.merchantId);
     }
 
     match /dailyMeals/{mealId} {
       allow read: if true;
       // remainingQty moves only through a Cloud Function, so a customer cannot reserve
       // a portion by writing the number down themselves.
-      allow create, delete: if isAdmin() || isMerchantOwner(request.resource.data.merchantId);
+      allow create: if isAdmin() || isMerchantOwner(request.resource.data.merchantId);
+      // Judged on the document already there: a delete carries no incoming one.
+      allow delete: if isAdmin() || isMerchantOwner(resource.data.merchantId);
       // Neither quantity moves from a client. `remainingQty` is the server's, decremented
       // in a transaction; and letting a kitchen raise `totalQty` alone would only skew
       // the meter, since they cannot raise what is left to match it.
@@ -146,7 +205,11 @@ service cloud.firestore {
                   || isAdmin()
                   || isUser(resource.data.uploadedBy);
 
-      allow create: if signedIn() && request.resource.data.status == 'pending';
+      // `uploadedBy` is checked, not trusted: it is what the read rule above lets the
+      // uploader see, so filing an upload under another name hands it to that person.
+      allow create: if signedIn()
+                    && request.resource.data.status == 'pending'
+                    && isUser(request.resource.data.uploadedBy);
 
       // Only an admin moves an image out of pending. An uploader approving their own
       // upload is the gate with a hole in it.
@@ -173,8 +236,12 @@ service cloud.firestore {
 
       allow update: if isAdmin() || (
         isMerchantOwner(resource.data.merchantId) &&
+        // `courierUid` is deliberately absent. Only a courier ever writes it, and only
+        // their own name — a merchant able to write it could hand any account on the
+        // platform read and write over an order, and the cash on it.
         onlyChanges(['status', 'prepMinutes', 'cancelReason', 'cancelledBy',
-                     'statusHistory', 'courierUid', 'updatedAt'])
+                     'statusHistory', 'updatedAt']) &&
+        (!movingStatus() || merchantMayMove())
       ) || (
         isUser(resource.data.customerUid) &&
         resource.data.status == 'placed' &&
@@ -193,6 +260,7 @@ service cloud.firestore {
              || (isPlatformCourier() && resource.data.deliveryBy == 'platform'))) &&
         onlyChanges(['status', 'statusHistory', 'courierUid', 'deliveredAt',
                      'cancelReason', 'cancelledBy', 'updatedAt']) &&
+        (!movingStatus() || courierMayMove()) &&
         // A courier may only ever write their own name, and only onto an order nobody
         // else is already carrying. Otherwise one could hand another's phone a delivery,
         // or take an order off somebody halfway to the door.
@@ -209,18 +277,25 @@ service cloud.firestore {
       allow read: if isAdmin()
                   || isUser(resource.data.customerUid)
                   || ownsMerchant(resource.data.merchantId);
-      allow create: if isUser(request.resource.data.customerUid);
+      allow create: if isUser(request.resource.data.customerUid)
+                    && theirOrder(request.resource.data.orderId);
       allow update, delete: if isAdmin();
     }
 
-    match /ratings/{ratingId} {
+    // Keyed by the order on purpose: one customer holds exactly one rating per order, so
+    // rating again corrects the first instead of moving the average a second time.
+    match /ratings/{orderId} {
       // Stars aggregate onto the merchant; the comment stays between the customer, the
       // merchant and the admin until the public-comments flag is turned on.
       allow read: if isAdmin()
                   || isUser(resource.data.customerUid)
                   || ownsMerchant(resource.data.merchantId);
-      allow create: if isUser(request.resource.data.customerUid);
-      allow update, delete: if isAdmin();
+      allow create, update: if isAdmin() || (
+        isUser(request.resource.data.customerUid) &&
+        request.resource.data.orderId == orderId &&
+        theirDeliveredOrder(orderId)
+      );
+      allow delete: if isAdmin();
     }
 
     // ---------------------------------------------------------------- coupons
@@ -261,7 +336,10 @@ service cloud.firestore {
     }
 
     match /promotions/{promotionId} {
-      allow read: if resource.data.status == 'active'
+      // Both live states, because that is what the app queries for. Firestore refuses a
+      // whole query it cannot prove is limited to readable documents, so allowing less
+      // than `watchLive` asks for returned nothing at all rather than returning less.
+      allow read: if resource.data.status in ['approved', 'active']
                   || isAdmin()
                   || ownsMerchant(resource.data.merchantId);
       // A merchant may ask for a placement; only an admin may approve one, which is what
