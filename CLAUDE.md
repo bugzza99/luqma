@@ -175,8 +175,36 @@ The full list, and the decisions already taken on it, are in
 **`docs/16-admin-completion.md`**. Read that file first — it is the agreement, not a wish
 list, and every decision in it was the owner's.
 
-**Next: AdminApp completion (`docs/16-admin-completion.md`), then Phase 9 — Hardening and
-launch.**
+**The backend is moving to Supabase.** Agreed 2026-08-24, before any code was written,
+and the whole plan is in **`docs/17-supabase-migration.md`** — read it before touching the
+data layer.
+
+Two reasons, both the owner's: **Blaze needs a credit card**, which has blocked five
+features since Phase 1, and the reporting in `docs/16` wants SQL rather than a counters
+collection maintained by a function. And **now**, because there is no production data and
+no live merchant — the cost of this migration only ever rises.
+
+What makes it survivable is the seam that already exists: **24 of 108 source files touch
+Firebase, and none of them is a screen.** Every screen speaks to one of thirteen
+repository interfaces, and those interfaces do not change. Roughly 700 of the 840 Dart
+tests never learn that anything happened, because they run against the fakes.
+
+Two things it is worth knowing without opening the file:
+
+- **Supabase has no offline cache and Firestore does.** The owner accepted that for the
+  customer, who orders from home on wi-fi. It is *not* accepted for the courier, who
+  stands in the street and takes cash — a tap on "delivered" that dies with the
+  connection is money collected against an order still showing as out. A write queue for
+  the courier's actions alone is in the plan from the start.
+- **Two Cloud Functions become database features rather than Edge Functions.**
+  `onOrderDelivered` becomes a Postgres trigger, running inside the same transaction as
+  the status change, so the idempotency guard is deleted rather than trusted. Order
+  creation becomes a Postgres function, which puts the `remaining_qty` decrement in that
+  same transaction — the race the entire `dailyMeals` design exists to prevent becomes
+  `UPDATE … WHERE remaining_qty >= n`.
+
+**Next: the Supabase migration (`docs/17-supabase-migration.md`), then AdminApp completion
+(`docs/16-admin-completion.md`), then Phase 9 — Hardening and launch.**
 
 ### Infrastructure
 
@@ -244,6 +272,7 @@ JAVA_HOME="C:\Program Files\Android\Android Studio\jbr" firebase emulators:exec 
 | `docs/14-design-system.md` | Colour, type, spacing, components |
 | `docs/15-simplifications.md` | What was merged or cut, and why |
 | `docs/16-admin-completion.md` | **AdminApp's unbuilt modules, and the owner's decisions on them** |
+| `docs/17-supabase-migration.md` | **Moving off Firebase — the plan, and every decision in it** |
 | `graphify-out/graph.html` | Dependency graph, open in a browser |
 | `brand/identity.html` | Logo, palette, type and screen mockups |
 | `brand/README.md` | How the logo assets are generated, and why |
