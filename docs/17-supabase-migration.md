@@ -184,14 +184,28 @@ already there, ratings tied to a delivered order.
 The 98 rules tests are rewritten here. This is the riskiest stage in the whole migration,
 which is exactly why it comes second and not last.
 
-### S2 — repositories, one at a time
+### S2 — repositories, one at a time, replaced rather than doubled
 
-`SupabaseMerchantRepository` beside `FirestoreMerchantRepository`. **Same interface, same
-tests** — the contract is already written down and already proven by the fakes.
+**Revised 2026-08-24, after S1.** The plan said to build each Supabase repository *beside*
+its Firestore one behind a per-repository switch, so the product would never be broken for
+a day. That is the right shape for a live system, and this is not one: no production data,
+no live merchant, no customer, nothing published. The switch would have been scaffolding
+written to be deleted, and the owner's standing instruction is the opposite — no Firebase
+left in the project.
 
-A per-repository switch decides which one the provider hands out. Something breaks, the
-switch goes back. Start with `geography` because it is read-mostly and proves the pattern
-cheaply; leave `orders` until the stream helper in S3 exists.
+So each repository is **replaced in place, and its Firestore implementation deleted with
+it**. Same interface, same tests; one file instead of two.
+
+Rolling back is `git revert`, not a flag. Every commit is a restore point, and a flag in
+the code cannot do anything git does not already do.
+
+Firebase therefore leaves **progressively** rather than all at S6: the packages, options
+and emulator wiring go when the last thing that imports them does. What still has to be
+ordered is dependency order — nothing can delete `firebase_options.dart` before the
+repositories above it have moved — and that is arithmetic, not caution.
+
+Start with `geography`: read-mostly, and it proves the shape cheaply. Leave `orders` until
+the stream helper in S3 exists.
 
 ### S3 — the 19 live streams
 
@@ -258,7 +272,11 @@ Named here so nobody is surprised by them later.
 
 ## Estimate
 
-Two to three weeks of focused work, plus about a week for the courier's write queue.
+About a week and a half of focused work, plus the courier's write queue.
+
+It was two to three weeks when S2 carried a parallel implementation and a switch. Dropping
+those changed the estimate and not the work: the ports themselves — nineteen streams, the
+order function, the triggers — are exactly what they were.
 
 It is a phase in its own right, not a change, and it should be measured against what it
 unblocks: five features stuck since Phase 1, the statistics screen in `docs/16`, and a

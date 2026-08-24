@@ -189,6 +189,12 @@ Firebase, and none of them is a screen.** Every screen speaks to one of thirteen
 repository interfaces, and those interfaces do not change. Roughly 700 of the 840 Dart
 tests never learn that anything happened, because they run against the fakes.
 
+**Each repository is replaced in place, not doubled.** The plan originally ran the two
+backends side by side behind a switch; that is the right shape for a live system, and
+this is not one — no production data, no live merchant, nothing published. Rolling back is
+`git revert`. Firebase leaves progressively, as the last thing importing each piece moves
+off it.
+
 Two things it is worth knowing without opening the file:
 
 - **Supabase has no offline cache and Firestore does.** The owner accepted that for the
