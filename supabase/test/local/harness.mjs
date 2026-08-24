@@ -35,8 +35,11 @@ export async function freshDatabase() {
       language sql stable as
       $fn$ select '{"app_metadata":{"admin":true}}'::jsonb $fn$;
 
+    -- The three roles the policies grant to. service_role is the server: it bypasses RLS
+    -- on the real stack, and here it only needs to exist for the grants to land.
     create role anon;
     create role authenticated;
+    create role service_role;
   `);
 
   // Every migration, in order — the same thing `supabase db reset` does, so one added
