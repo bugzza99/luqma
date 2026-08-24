@@ -1,14 +1,16 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../data/column_names.dart';
+import '../data/live_query.dart';
 import '../models/merchant.dart';
 import '../result.dart';
 
 /// Reading and writing merchants.
 ///
-/// An interface rather than direct Firestore calls, for one reason that shapes the whole
-/// project: it lets the screens above be built and tested without Firebase, an emulator
-/// or a network. Tests that need a running backend get written once and then stop
-/// getting written.
+/// An interface rather than direct backend calls, for one reason that shapes the whole
+/// project: it lets the screens above be built and tested without a database, an
+/// emulator or a network. Tests that need a running backend get written once and then
+/// stop getting written.
 abstract interface class MerchantRepository {
   /// Merchants a customer may see: approved, in this city. Live — the list updates
   /// itself when the admin approves or suspends someone.
@@ -43,73 +45,155 @@ int _byAttentionThenName(Merchant a, Merchant b) {
   return byStatus != 0 ? byStatus : a.name.compareTo(b.name);
 }
 
-class FirestoreMerchantRepository implements MerchantRepository {
-  FirestoreMerchantRepository(this._firestore);
+class SupabaseMerchantRepository implements MerchantRepository {
+  SupabaseMerchantRepository(this._db);
 
-  final FirebaseFirestore _firestore;
+  final SupabaseClient _db;
 
-  CollectionReference<Map<String, dynamic>> get _merchants =>
-      _firestore.collection('merchants');
+  /// Categories and served zones hang off their own tables, so they ride along on reads
+  /// as embedded rows rather than being queried per screen.
+  static const _readColumns =
+      '*, menu_categories(*), merchant_served_zones(zone_id)';
+
+  /// An empty id means "none" everywhere else in this codebase, and an empty string is
+  /// not a uuid — the column would refuse it before any policy had spoken.
+  static String? _uuidOrNull(String? id) =>
+      (id == null || id.isEmpty) ? null : id;
+
+  /// The columns a save carries.
+  ///
+  /// Written out rather than derived from the model's JSON, because three kinds of field
+  /// must never reach this statement:
+  ///
+  /// - **The server's money**: `wallet_balance`, `commission_owed`. A form built from a
+  ///   stale load would quietly zero a wallet the server has been moving all day. In
+  ///   Firestore the merged set had the same hazard; here it is answered instead of
+  ///   survived.
+  /// - **The customers' verdict**: `rating_avg`, `rating_count`. Same argument, less money.
+  /// - **Fields with a life of their own**: served zones and menu categories live in
+  ///   their own tables and move through their own paths, so a merchant edit neither
+  ///   reads nor rewrites them.
+  Map<String, dynamic> _row(Merchant m) => {
+        'city_id': m.cityId,
+        'type': m.type.name,
+        'name': m.name,
+        'zone_id': m.zoneId,
+        'phone': m.phone,
+        'status': m.status.name,
+        // jsonb whose inner keys the app itself wrote, already camelCase.
+        'opening_hours': [for (final w in m.openingHours) w.toJson()],
+        // UTC, spelled: Dart writes local times without a zone suffix, and timestamptz
+        // would read that as its own zone — the pause would come back an instant other
+        // than the one the merchant set.
+        'paused_until': m.pausedUntil?.toUtc().toIso8601String(),
+        'logo_media_id': _uuidOrNull(m.logoMediaId),
+        'cover_media_id': _uuidOrNull(m.coverMediaId),
+        'delivers_self': m.deliversSelf,
+        'owner_uid': _uuidOrNull(m.ownerUid),
+        'plan_id': m.planId,
+        'revenue_model': m.revenueModel.name,
+        'revenue_value': m.revenueValue,
+        'delivery_fee_override': m.deliveryFeeOverride,
+        'min_order': m.minOrder,
+      };
+
+  Merchant _toMerchant(Map<String, dynamic> row) {
+    final base = ColumnNames.toModel(row)
+      ..remove('menu_categories')
+      ..remove('merchant_served_zones');
+    // Local, like Firestore's Timestamp.toDate() handed back: screens compare this
+    // against clockProvider's local now, and Dart's DateTime equality insists on the
+    // same zone, not merely the same moment.
+    if (base['pausedUntil'] is String) {
+      base['pausedUntil'] = DateTime.parse(base['pausedUntil'] as String).toLocal();
+    }
+    return Merchant.fromJson({
+      ...base,
+      'menuCategories': [
+        for (final raw in (row['menu_categories'] as List? ?? const []))
+          ColumnNames.toModel(Map<String, dynamic>.from(raw as Map)),
+      ],
+      'servedZones': [
+        for (final raw in (row['merchant_served_zones'] as List? ?? const []))
+          (raw as Map)['zone_id'],
+      ],
+    });
+  }
 
   @override
   Stream<List<Merchant>> watchMerchants({required String cityId}) {
-    return _merchants
-        .where('cityId', isEqualTo: cityId)
-        .where('status', isEqualTo: MerchantStatus.approved.name)
-        .snapshots()
-        .map((snapshot) => snapshot.docs.map(_toMerchant).toList());
+    return watchRows(
+      db: _db,
+      table: 'merchants',
+      map: _toMerchant,
+      filters: [
+        RowFilter('city_id', cityId),
+        RowFilter('status', MerchantStatus.approved.name),
+      ],
+      orderBy: 'created_at',
+    );
   }
 
   @override
   Future<Result<Merchant>> getMerchant(String id) {
     return Result.guard(() async {
-      final doc = await _merchants.doc(id).get();
-      if (!doc.exists) throw const NotFoundFailure();
-      return _toMerchant(doc);
+      final row = await _db
+          .from('merchants')
+          .select(_readColumns)
+          .eq('id', id)
+          .maybeSingle();
+      if (row == null) throw const NotFoundFailure();
+      return _toMerchant(row);
     });
   }
 
   @override
   Future<Result<void>> setPausedUntil(String id, DateTime? until) {
-    return Result.guard(() async {
-      await _merchants.doc(id).update({
-        'pausedUntil': until == null ? FieldValue.delete() : Timestamp.fromDate(until),
-      });
-    });
+    return Result.guard(
+      () => _db.from('merchants').update({
+        'paused_until': until?.toUtc().toIso8601String(),
+      }).eq('id', id),
+    );
   }
 
   @override
   Stream<List<Merchant>> watchAllMerchants({required String cityId}) {
-    return _merchants
-        .where('cityId', isEqualTo: cityId)
-        .snapshots()
-        .map((snapshot) => snapshot.docs.map(_toMerchant).toList()
-          ..sort(_byAttentionThenName));
+    return watchRows(
+      db: _db,
+      table: 'merchants',
+      map: _toMerchant,
+      filters: [RowFilter('city_id', cityId)],
+      orderBy: 'created_at',
+      // Sorted in Dart: the attention order is a policy about people, not an index.
+    ).map((merchants) => merchants..sort(_byAttentionThenName));
   }
 
   @override
   Future<Result<Merchant>> saveMerchant(Merchant merchant) {
     return Result.guard(() async {
-      final doc = merchant.id.isEmpty ? _merchants.doc() : _merchants.doc(merchant.id);
-      final saved = merchant.copyWith(id: doc.id);
-      // Merged rather than replaced: fields the admin form does not carry — the rating,
-      // the wallet balance, the plan — must survive an edit to the name.
-      await doc.set(saved.toJson()..remove('id'), SetOptions(merge: true));
-      return saved;
+      final saved = merchant.id.isEmpty
+          ? await _db
+              .from('merchants')
+              .insert(_row(merchant))
+              .select(_readColumns)
+              .single()
+          : await _db
+              .from('merchants')
+              .update(_row(merchant))
+              .eq('id', merchant.id)
+              .select(_readColumns)
+              .single();
+      return _toMerchant(saved);
     });
   }
 
   @override
   Future<Result<void>> setStatus(String id, MerchantStatus status) {
     return Result.guard(
-      () => _merchants.doc(id).update({'status': status.name}),
+      () => _db.from('merchants').update({
+        'status': status.name,
+      }).eq('id', id),
     );
-  }
-
-  Merchant _toMerchant(DocumentSnapshot<Map<String, dynamic>> doc) {
-    // The document id wins over any `id` field, so a copied document can never claim to
-    // be the one it was copied from.
-    return Merchant.fromJson({...doc.data()!, 'id': doc.id});
   }
 }
 

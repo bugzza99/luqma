@@ -95,19 +95,30 @@ Stream<List<T>> watchRows<T>({
 
   void openChannel() {
     final ch = db.channel('luqma-watch-${_watchSerial++}-$table');
-    ch.onPostgresChanges(
-      event: PostgresChangeEvent.all,
-      schema: 'public',
-      table: table,
-      filters: filters
-          .map((f) => PostgresChangeFilter(
-                type: PostgresChangeFilterType.eq,
-                column: f.column,
-                value: f.value,
-              ))
-          .toList(),
-      callback: (_) => unawaited(fetchAndEmit()),
-    );
+    // One binding per filter. The dart client folds several filters of one binding into
+    // a single comma-joined string the server quietly refuses, so two constraints on one
+    // watch arrived as *no* events at all — verified against the local stack with a city
+    // plus status watch. Separate bindings are a union rather than an intersection,
+    // which is safe here by construction: a stray match costs one extra refetch, and a
+    // refetch always answers the query itself.
+    final bindings =
+        filters.isEmpty ? <RowFilter?>[null] : List<RowFilter?>.from(filters);
+    for (final f in bindings) {
+      ch.onPostgresChanges(
+        event: PostgresChangeEvent.all,
+        schema: 'public',
+        table: table,
+        filters: [
+          if (f != null)
+            PostgresChangeFilter(
+              type: PostgresChangeFilterType.eq,
+              column: f.column,
+              value: f.value,
+            ),
+        ],
+        callback: (_) => unawaited(fetchAndEmit()),
+      );
+    }
     ch.subscribe((status, _) {
       if (cancelled) return;
 

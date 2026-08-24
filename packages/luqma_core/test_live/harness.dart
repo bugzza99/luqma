@@ -38,6 +38,35 @@ class LiveDatabase {
     return LiveDatabase._(SupabaseClient(_url, _serviceKey));
   }
 
+  /// A second client signed in — for real, password and all — as a platform admin.
+  ///
+  /// AdminApp's writes (approving a merchant, setting its plan) are refused to everyone
+  /// but an admin by the column guards, and the service key is not an admin: its token
+  /// carries no such claim. So the tests that play AdminApp sign in as the staff account
+  /// they would run under in production, and the boundary evaluates exactly the token
+  /// production would hand it.
+  Future<SupabaseClient> openAsAdmin() async {
+    final unique = DateTime.now().microsecondsSinceEpoch;
+    final email = 'admin-$unique@luqma.test';
+    final created = await client.auth.admin.createUser(
+      AdminUserAttributes(
+        email: email,
+        password: 'luqma1234',
+        emailConfirm: true,
+      ),
+    );
+    await client.from('staff').insert({
+      'uid': created.user!.id,
+      'scope': 'platform',
+      'role': 'admin',
+    });
+
+    // Built on the same keys, but the sign-in swaps what every later request carries.
+    final admin = SupabaseClient(_url, _serviceKey);
+    await admin.auth.signInWithPassword(email: email, password: 'luqma1234');
+    return admin;
+  }
+
   Future<void> close() => client.dispose();
 
   /// A signed-up customer, with the `users` row the product expects beside it.

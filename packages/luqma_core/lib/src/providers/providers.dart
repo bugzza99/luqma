@@ -57,7 +57,7 @@ String currentCity(Ref ref) => 'edku';
 
 @Riverpod(keepAlive: true)
 MerchantRepository merchantRepository(Ref ref) =>
-    FirestoreMerchantRepository(ref.watch(firestoreProvider));
+    SupabaseMerchantRepository(ref.watch(supabaseProvider));
 
 @Riverpod(keepAlive: true)
 GeographyRepository geographyRepository(Ref ref) =>
