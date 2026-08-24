@@ -142,7 +142,41 @@ integration nobody can switch on — Google's network would serve competitor ads
 app, weakening the pitch to merchants paying for placement — is work with no reader. The
 flag exists; the decision stays reversible.
 
-**Next: Phase 9 — Hardening and launch.**
+**A pre-launch audit ran on 2026-08-24, and twelve of its fourteen findings are
+fixed.** Every fix was written test-first — the test failed, then the code changed. Two
+things it turned up are the reason the numbers below moved:
+
+- **The promotions feature was dead in production** and nothing said so. The rules let a
+  client read `status == 'active'`; `watchLive` queries for `['approved', 'active']`; and
+  nothing anywhere ever writes `active`. Firestore rejects a whole query it cannot prove
+  is limited to readable documents, so the ad slot and the boost ranking returned
+  *permission-denied*, silently, to every customer in the city. **There were zero rules
+  tests on `promotions`** — which is how a feature with 815 green tests behind it shipped
+  invisible.
+- **Order transitions were enforced only in Dart.** `OrderTransitions` carries the state
+  machine and its comment says it is "enforced again in the security rules". It was not:
+  the rules checked *which fields* changed, never the value. A courier could move any
+  order straight to `delivered`, and `onOrderDelivered` fires on that transition — under
+  `prepaid` that empties the merchant's wallet for orders that never existed.
+
+Both got through because **the fakes are more permissive than Firestore plus the rules**.
+`FakePromotionRepository.watchLive` happily returns what production refuses. The suite was
+testing the fake, not the system. That is the finding behind the finding.
+
+**AdminApp is not finished, and Phase 9 does not come first.**
+`docs/13-build-order.md` scheduled Phase 2 as *"AdminApp minimum"*, and four modules from
+`docs/06-admin-app.md` — **Customers, Issues, Config, Staff** — were never picked up by any
+later phase. The dashboard is still a placeholder, plans are read-only, and a merchant
+added by mistake cannot be removed. The owner also asked for a statistics screen and a
+**حول لقمة** page carrying their photo, social links and a description, all edited from
+AdminApp; and for **creating merchant accounts from AdminApp** rather than from a terminal.
+
+The full list, and the decisions already taken on it, are in
+**`docs/16-admin-completion.md`**. Read that file first — it is the agreement, not a wish
+list, and every decision in it was the owner's.
+
+**Next: AdminApp completion (`docs/16-admin-completion.md`), then Phase 9 — Hardening and
+launch.**
 
 ### Infrastructure
 
@@ -170,9 +204,19 @@ is not usage, it is a function that calls itself.
 ### Running the checks
 
 ```
-cd packages/luqma_core && flutter analyze && flutter test
+cd packages/luqma_core && flutter gen-l10n && flutter analyze && flutter test
 npm --prefix functions test
 ```
+
+`gen-l10n` first on a fresh clone, and after any change to `lib/l10n/app_ar.arb`.
+The generated `app_localizations*.dart` are gitignored — generated code does not belong
+in the repository — and `flutter test` on a *package* does not run the generator itself
+the way an app build does. Without it a new string is a compile error that points at the
+call site rather than at the missing step.
+
+**840 Dart tests · 45 function tests · 98 rules tests.** `flutter analyze` and `tsc`
+clean. The rules count nearly doubled in the audit: it was the thinnest layer in the
+project and the one carrying the most weight.
 
 `kotlin.incremental=false` is set in both apps' `android/gradle.properties`. Kotlin's
 incremental compiler cannot close its caches on this drive and fails every plugin module
@@ -199,6 +243,7 @@ JAVA_HOME="C:\Program Files\Android\Android Studio\jbr" firebase emulators:exec 
 | `docs/13-build-order.md` | **Nine phases — follow this order** |
 | `docs/14-design-system.md` | Colour, type, spacing, components |
 | `docs/15-simplifications.md` | What was merged or cut, and why |
+| `docs/16-admin-completion.md` | **AdminApp's unbuilt modules, and the owner's decisions on them** |
 | `graphify-out/graph.html` | Dependency graph, open in a browser |
 | `brand/identity.html` | Logo, palette, type and screen mockups |
 | `brand/README.md` | How the logo assets are generated, and why |
@@ -227,6 +272,22 @@ JAVA_HOME="C:\Program Files\Android\Android Studio\jbr" firebase emulators:exec 
 - **The brand name is never a text widget.** It is `LuqmaLockup`, backed by SVG. Lemonada is
   not a bundled font. Cairo renders everything else.
 - **The owner enters merchant menus and shoots photos personally.** Merchants never self-onboard.
+- **Commission is charged on the food, never on the bill.** `commissionBasis` in
+  `engine.ts` and `Revenue.basisFor` in Dart both return `pricing.subtotal`. The delivery
+  fee is not the platform's to take a share of: when the platform delivers, the fee is
+  already the platform's and the merchant never sees it, so charging a percentage of it
+  too is charging for money they did not receive. It survives one sentence in a shop —
+  *"العمولة على الأكل. التوصيل مش بناخد منه حاجة."* — which in a cash market is worth
+  more than the piastres.
+- **A merchant who delivers their own food needs a courier account.** Only `role ==
+  'courier'` may mark an order delivered, because that is the transition that moves money.
+  The merchant's live board never offered the control; since the audit the rules agree.
+- **Errors are never a dead end.** `LuqmaErrorView` in `luqma_core` is the only error
+  state in all three apps, and it takes an `onRetry`. It replaced seventeen private
+  `_Error` copies that had drifted into fifteen different versions, none with a way out.
+- **Every `IconButton` carries a `tooltip`.** It is the accessible name as well as the
+  long-press label. `packages/luqma_core/test/icon_labels_test.dart` scans the source and
+  fails the build otherwise.
 
 ## Rules that are easy to break by accident
 
@@ -267,6 +328,25 @@ JAVA_HOME="C:\Program Files\Android\Android Studio\jbr" firebase emulators:exec 
   field — that is what `firestore.rules` checks, and only a server can issue a claim.
 - **`ownsMerchant()` is not "runs this merchant".** An owner and their courier carry the
   same claim. Anything that acts for a merchant uses `isMerchantOwner()`.
+- **A rule that allows less than the query asks for returns nothing, not less.**
+  Firestore rejects a whole query it cannot prove is limited to readable documents. Every
+  query in a repository needs a rules test that runs *that query*, not a test that reads
+  one document — the two fail differently and only one of them resembles production.
+- **`allow write` covers delete, and on a delete `request.resource` is null.** A rule
+  written on `request.resource.data.merchantId` refuses every merchant and lets only the
+  admin through. Create and update are judged on what is arriving; delete can only be
+  judged on what is already there.
+- **On an update, check the owner already on the document.** `isMerchantOwner(request.
+  resource.data.merchantId)` reads the *incoming* value, so rewriting it to your own id
+  passes — one merchant could move another's menu item into their own shop.
+- **The fakes are not the system.** They are more permissive than Firestore plus the
+  rules, so a green suite proves the screens work against the fake and nothing more.
+  Anything that depends on a rule needs a rules test beside the widget test.
+- **Nothing writes `PromotionStatus.active`.** Whether a campaign is running is a
+  question about `startAt`/`endAt` — use `isLiveAt`, never the status alone.
+- The nightly billing pass has **no memory except `subscriptions.settledAt`**. Downgrading
+  writes `planId` onto the *merchant*; without marking the row, the same expired term
+  comes back every night, with a fresh `auditLog` entry each time.
 - Rules read claims with **`token.get('x', default)`**. A bare `token.admin` errors on a
   token with no custom claims — every customer — and fails the branch it sits in for a
   reason unrelated to access.
@@ -285,11 +365,25 @@ is a debt from the moment the order is placed, accrued as `pricing.platformOwesM
 Coupon documents are **unreadable by any client** — a readable collection is one anyone
 can enumerate. The app calls a function that returns the discount for one basket.
 
-## Open decision
+## Deferred, deliberately
 
-`prepaid` is the third revenue model. The switch and `revenueSnapshot` ship complete;
-whether the branch ships filled in or as a stub is the owner's call, due before Phase 7.
-See `docs/15-simplifications.md`.
+**The nightly billing pass reads the whole `subscriptions` collection.** The obvious fix —
+querying only expired rows — is *wrong*, not merely narrower: whether an expired term
+still counts depends on whether a **later** row exists for the same merchant, and a query
+for expired rows cannot see the renewal that makes them irrelevant. It would downgrade
+merchants who had just paid.
+
+The real fix belongs to Phase 9 and is a data-model change: put the term's end date on the
+merchant — `merchants.planExpiresAt` — so there is one current truth instead of N
+historical rows. Then `where('planExpiresAt', '<=', now)` is bounded *and* correct, and
+the downgrade **deletes the field**, which removes that merchant from the next night's
+query by itself: a document missing the field does not match a range filter. No flag, no
+memory. `subscriptions` goes back to being receipts, read when somebody asks about
+history rather than every night.
+
+Until then the code is correct and merely wasteful, and Edku is a few dozen rows.
+
+`prepaid` shipped filled in — that decision is closed. See `docs/15-simplifications.md`.
 
 ## Stack
 
