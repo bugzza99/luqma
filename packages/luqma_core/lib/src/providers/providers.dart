@@ -185,6 +185,27 @@ Stream<List<Promotion>> promotionQueue(Ref ref) =>
 Stream<List<Promotion>> merchantPromotions(Ref ref, String merchantId) =>
     ref.watch(promotionRepositoryProvider).watchForMerchant(merchantId);
 
+/// Whether the city has any marketing push left this week.
+///
+/// A cap on the *city*, not on one merchant. The thing being rationed is a customer's
+/// patience, and it does not care which shop the third notification came from — three
+/// pushes in a week from three merchants is still three notifications on one phone.
+@riverpod
+Future<bool> pushSlotAvailable(Ref ref) async {
+  final config = ref.watch(appConfigProvider);
+  final now = ref.watch(clockProvider)();
+
+  final sent = await ref.watch(promotionRepositoryProvider).pushesSentSince(
+        cityId: ref.watch(currentCityProvider),
+        since: now.subtract(const Duration(days: 7)),
+      );
+
+  // Unreadable means unknown, and unknown must not open the gate: the cost of one push
+  // too many is customers turning notifications off for good.
+  return (sent.valueOrNull ?? config.marketingPushPerWeek) <
+      config.marketingPushPerWeek;
+}
+
 @Riverpod(keepAlive: true)
 BillingRepository billingRepository(Ref ref) =>
     FirestoreBillingRepository(ref.watch(firestoreProvider));

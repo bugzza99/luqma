@@ -133,7 +133,16 @@ phone *shows* the figure and the server *decides* it, and the server's answer is
 that counts. Both are tested against the same numbers, so a disagreement fails a test
 rather than turning up in somebody's till.
 
-**Next: Phase 8 — Promotions and the dynamic home.**
+**Phase 8 is done**, on branch `phase-8-promotions`. `promotions` across all four
+channels, boost ranking, the AdminApp approval queue and home builder, the merchant's own
+request flow, and the weekly push cap. 815 Dart tests, 33 function tests, 56 rules tests.
+
+AdMob is **not built**. It ships off behind `admobEnabled` per the spec, and building an
+integration nobody can switch on — Google's network would serve competitor ads inside the
+app, weakening the pitch to merchants paying for placement — is work with no reader. The
+flag exists; the decision stays reversible.
+
+**Next: Phase 9 — Hardening and launch.**
 
 ### Infrastructure
 
@@ -198,7 +207,7 @@ JAVA_HOME="C:\Program Files\Android\Android Studio\jbr" firebase emulators:exec 
 | `packages/luqma_core/` | Models, repositories, config, theme, l10n, brand widgets, Firebase options |
 | `apps/customer_app/` | CustomerApp — home, merchant, basket, checkout, orders, account, أكل بيتي |
 | `apps/merchant_app/` | MerchantApp — inbox, live board, menu, shop, courier mode |
-| `apps/admin_app/` | AdminApp — merchants, menus, places, media queue |
+| `apps/admin_app/` | AdminApp — merchants, menus, places, media, billing, promotions, home builder |
 | `firebase/firestore.rules` | The real security boundary — read its tests beside it |
 | `firebase/test/` | Rules tests, run against the emulator |
 
@@ -246,6 +255,14 @@ JAVA_HOME="C:\Program Files\Android\Android Studio\jbr" firebase emulators:exec 
   ever emitted stays `AsyncLoading` with the error hanging off it, so the error arm never
   fires and the screen spins for ever. Every switch tests `hasError` first. On the
   merchant inbox that bug reads as a quiet evening.
+- **A merchant asks; only an admin approves.** `PromotionRepository.request()` forces the
+  status whatever the document says, and the rules refuse anything else.
+- **Approved is not live.** `startAt` decides that — a campaign signed off today for next
+  week must not appear the moment somebody approved it.
+- A promotion with **no zones reaches the whole city.** A merchant who did not narrow
+  their campaign meant everybody, not nobody.
+- The **push cap is on the city, not the merchant.** What is being rationed is a
+  customer's patience, and it does not care which shop the third notification came from.
 - The merchant is derived from the **`merchantId` custom claim**, never from a Firestore
   field — that is what `firestore.rules` checks, and only a server can issue a claim.
 - **`ownsMerchant()` is not "runs this merchant".** An owner and their courier carry the
