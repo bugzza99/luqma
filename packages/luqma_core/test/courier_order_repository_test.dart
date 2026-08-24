@@ -51,7 +51,7 @@ void main() {
         total: 13000,
       ).toJson(),
       'status': status.name,
-      if (courierUid != null) 'courierUid': courierUid,
+      'courierUid': ?courierUid,
     });
   }
 

@@ -43,7 +43,9 @@ void main() {
   /// Collects a stream's emissions so tests can wait for the one they care about.
   Future<List<List<HomeSection>>> collect(Stream<List<HomeSection>> stream) async {
     final emissions = <List<HomeSection>>[];
-    final sub = stream.listen(emissions.add);
+    // Never cancelled explicitly: a test that ends with its subscription open is the
+    // state being tested — a screen holds one for exactly as long as it is on screen.
+    stream.listen(emissions.add);
     await waitFor(() => emissions.isNotEmpty,
         because: 'the watch never produced its first emission');
     return emissions;

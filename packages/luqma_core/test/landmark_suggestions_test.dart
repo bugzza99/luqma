@@ -76,8 +76,11 @@ void main() {
 
     // Same landmark, spelled differently — still already on the map.
     test('a place already on the map, spelled differently', () {
-      final result = suggest([note('مسجد الفتح'), note('مسجد الفتح')]
-        ..addAll([note('مسجد الفتح')]));
+      final result = suggest([
+        note('مسجد الفتح'),
+        note('مسجد الفتح'),
+        note('مسجد الفتح'),
+      ]);
       expect(result, isEmpty);
     });
 

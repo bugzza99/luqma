@@ -186,6 +186,7 @@ class FakeAuthService implements AuthService {
     LuqmaIdentity? restoring,
     this.cancels = false,
     this.failure,
+    // ignore: prefer_initializing_formals
   }) : _restoring = restoring;
 
   final LuqmaIdentity? _restoring;

@@ -29,7 +29,7 @@ void main() {
       'customerUid': 'u1',
       'merchantId': merchantId,
       'stars': stars,
-      if (comment != null) 'comment': comment,
+      'comment': ?comment,
       'createdAt': at ?? DateTime(2026, 8, 20),
     });
   }

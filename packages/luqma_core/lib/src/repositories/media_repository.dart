@@ -57,15 +57,19 @@ class FirestoreMediaRepository implements MediaRepository {
     String? reviewedBy,
     String? note,
   }) {
-    return Result.guard(
-      () => _media.doc(id).update({
-        'status': status.name,
-        // Recorded even when there is no note: knowing a decision was made, and by whom,
-        // is what separates "reviewed and refused" from "nobody has looked yet".
-        if (reviewedBy != null) 'reviewedBy': reviewedBy,
-        if (note != null && note.isNotEmpty) 'reviewNote': note,
-      }),
-    );
+      return Result.guard(
+        () {
+          // Recorded even when there is no note: knowing a decision was made, and by
+          // whom, is what separates "reviewed and refused" from "nobody has looked yet".
+          // An empty note is no note.
+          final reviewNote = (note == null || note.isEmpty) ? null : note;
+          return _media.doc(id).update({
+            'status': status.name,
+            'reviewedBy': ?reviewedBy,
+            'reviewNote': ?reviewNote,
+          });
+        },
+      );
   }
 
   Media _toMedia(DocumentSnapshot<Map<String, dynamic>> doc) =>
