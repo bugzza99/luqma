@@ -1,15 +1,14 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:flutter/foundation.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
-import '../models/converters.dart';
+import '../data/column_names.dart';
+import '../data/live_query.dart';
 import '../result.dart';
 
 /// One customer's verdict on one order.
 ///
 /// Not a `freezed` model: it is read and never written by any client — the customer app
-/// writes the `ratings` document, and everything downstream of that only reads. A model
-/// with a `toJson` would invite somebody to write one back.
-@immutable
+/// writes the `ratings` row, and everything downstream of that only reads. A model with
+/// a `toJson` would invite somebody to write one back.
 class CustomerRating {
   const CustomerRating({
     required this.orderId,
@@ -35,7 +34,12 @@ class CustomerRating {
     merchantId: json['merchantId'] as String,
     stars: (json['stars'] as num).toInt(),
     comment: json['comment'] as String?,
-    createdAt: const TimestampConverter().fromJson(json['createdAt']),
+    // Local, as Firestore's Timestamp.toDate() always handed back.
+    createdAt: switch (json['createdAt']) {
+      null => null,
+      String s => DateTime.tryParse(s)?.toLocal(),
+      _ => null,
+    },
   );
 }
 
@@ -49,28 +53,26 @@ abstract interface class FeedbackRepository {
   Stream<List<CustomerRating>> watchFeedback(String merchantId);
 }
 
-class FirestoreFeedbackRepository implements FeedbackRepository {
-  FirestoreFeedbackRepository(this._firestore);
+class SupabaseFeedbackRepository implements FeedbackRepository {
+  SupabaseFeedbackRepository(this._db);
 
-  final FirebaseFirestore _firestore;
+  final SupabaseClient _db;
 
   @override
   Stream<List<CustomerRating>> watchFeedback(String merchantId) {
-    return _firestore
-        .collection('ratings')
-        .where('merchantId', isEqualTo: merchantId)
-        .snapshots()
-        .map(
-          (snapshot) =>
-              snapshot.docs.map((d) => CustomerRating.fromJson(d.data())).toList()
-                // Sorted here rather than in the query: ordering by a field would need a
-                // composite index, and this list is a few dozen documents at most.
-                ..sort((a, b) {
-                  final at = b.createdAt ?? DateTime(0);
-                  final bt = a.createdAt ?? DateTime(0);
-                  return at.compareTo(bt);
-                }),
-        );
+    return watchRows(
+      db: _db,
+      table: 'ratings',
+      map: (row) => CustomerRating.fromJson(ColumnNames.toModel(row)),
+      filters: [RowFilter('merchant_id', merchantId)],
+      // Sorted here rather than trusting an order: this list is a few dozen rows at most.
+    ).map(
+      (ratings) => ratings..sort((a, b) {
+        final at = a.createdAt ?? DateTime(0);
+        final bt = b.createdAt ?? DateTime(0);
+        return bt.compareTo(at);
+      }),
+    );
   }
 }
 

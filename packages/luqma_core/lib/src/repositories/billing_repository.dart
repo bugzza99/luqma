@@ -1,7 +1,9 @@
-import 'dart:async';
+﻿import 'dart:async';
 
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../data/column_names.dart';
+import '../data/live_query.dart';
 import '../models/billing.dart';
 import '../result.dart';
 
@@ -36,44 +38,35 @@ abstract interface class BillingRepository {
   });
 }
 
-/// A month, for billing purposes.
-///
-/// Thirty days rather than a calendar month, deliberately: a merchant who pays on the
-/// 31st and a merchant who pays on the 1st should get the same number of days, and
-/// nobody in a shop is going to argue about the difference in their favour.
-const _daysPerMonth = 30;
+class SupabaseBillingRepository implements BillingRepository {
+  SupabaseBillingRepository(this._db);
 
-class FirestoreBillingRepository implements BillingRepository {
-  FirestoreBillingRepository(this._firestore);
-
-  final FirebaseFirestore _firestore;
+  final SupabaseClient _db;
 
   @override
   Future<Result<List<Plan>>> plans({bool includeInactive = false}) {
     return Result.guard(() async {
-      final snapshot = await _firestore.collection('plans').get();
-      return snapshot.docs
-          .map((doc) => Plan.fromJson({...doc.data(), 'id': doc.id}))
+      // `ascending` spelled out, as everywhere: the default is false.
+      final rows =
+          await _db.from('plans').select().order('sort_order', ascending: true);
+      return rows
+          .map((row) => Plan.fromJson(ColumnNames.toModel(row)))
           .where((plan) => includeInactive || plan.isActive)
-          .toList()
-        ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
+          .toList();
     });
   }
 
   @override
   Stream<Subscription?> watchSubscription(String merchantId) {
-    return _firestore
-        .collection('subscriptions')
-        .where('merchantId', isEqualTo: merchantId)
-        .snapshots()
-        .map((snapshot) {
-      if (snapshot.docs.isEmpty) return null;
-      final terms = snapshot.docs
-          .map((doc) => Subscription.fromJson({...doc.data(), 'id': doc.id}))
-          .toList()
-        ..sort((a, b) => b.expiresAt.compareTo(a.expiresAt));
-      return terms.first;
-    });
+    return watchRows(
+      db: _db,
+      table: 'subscriptions',
+      map: _toSubscription,
+      filters: [RowFilter('merchant_id', merchantId)],
+      // Newest expiry first; the caller takes the first.
+      orderBy: 'expires_at',
+      ascending: false,
+    ).map((terms) => terms.isEmpty ? null : terms.first);
   }
 
   @override
@@ -85,48 +78,14 @@ class FirestoreBillingRepository implements BillingRepository {
     required String recordedBy,
   }) {
     return Result.guard(() async {
-      if (months < 1 || amount < 0) throw const ConflictFailure();
-
-      final now = DateTime.now();
-      final existing = await watchSubscription(merchantId).first;
-
-      // Renewing before the old term runs out adds to it. Restarting from today would
-      // quietly throw away the days already paid for, which is the kind of thing a
-      // merchant notices once and never forgets.
-      final from = existing != null && existing.isActiveAt(now)
-          ? existing.expiresAt
-          : now;
-
-      final doc = _firestore.collection('subscriptions').doc();
-      final subscription = Subscription(
-        id: doc.id,
-        merchantId: merchantId,
-        planId: planId,
-        amount: amount,
-        startedAt: now,
-        expiresAt: from.add(Duration(days: _daysPerMonth * months)),
-        recordedBy: recordedBy,
-      );
-
-      await doc.set(subscription.toJson()..remove('id'));
-      // The plan moves onto the merchant as well, because that is what every feature
-      // check reads. The subscription is the receipt; this is the state.
-      await _firestore.collection('merchants').doc(merchantId).set(
-        {'planId': planId, 'updatedAt': FieldValue.serverTimestamp()},
-        SetOptions(merge: true),
-      );
-      await _audit(
-        action: 'recordSubscriptionPayment',
-        by: recordedBy,
-        details: {
-          'merchantId': merchantId,
-          'planId': planId,
-          'amount': amount,
-          'months': months,
-        },
-      );
-
-      return subscription;
+      final row = await _db.rpc('record_subscription_payment', params: {
+        'p_merchant_id': merchantId,
+        'p_plan_id': planId,
+        'p_amount': amount,
+        'p_months': months,
+        'p_recorded_by': recordedBy,
+      });
+      return _toSubscription(Map<String, dynamic>.from(row as Map));
     });
   }
 
@@ -136,39 +95,25 @@ class FirestoreBillingRepository implements BillingRepository {
     required int amount,
     required String recordedBy,
   }) {
-    return Result.guard(() async {
-      // Cash does not move backwards at a counter, and a negative top-up is a typo that
-      // would quietly cancel somebody's credit.
-      if (amount <= 0) throw const ConflictFailure();
-
-      await _firestore.collection('merchants').doc(merchantId).set(
-        {
-          'walletBalance': FieldValue.increment(amount),
-          'updatedAt': FieldValue.serverTimestamp(),
-        },
-        SetOptions(merge: true),
-      );
-      await _audit(
-        action: 'topUpWallet',
-        by: recordedBy,
-        details: {'merchantId': merchantId, 'amount': amount},
-      );
-    });
+    return Result.guard(
+      () => _db.rpc('top_up_wallet', params: {
+        'p_merchant_id': merchantId,
+        'p_amount': amount,
+        'p_recorded_by': recordedBy,
+      }),
+    );
   }
 
-  Future<void> _audit({
-    required String action,
-    required String by,
-    required Map<String, Object?> details,
-  }) {
-    return _firestore.collection('auditLog').add({
-      'action': action,
-      'by': by,
-      ...details,
-      'at': FieldValue.serverTimestamp(),
-    });
-  }
+  Subscription _toSubscription(Map<String, dynamic> row) =>
+      Subscription.fromJson(ColumnNames.toModel(row));
 }
+
+/// A month, for billing purposes.
+///
+/// Thirty days rather than a calendar month, deliberately: a merchant who pays on the
+/// 31st and a merchant who pays on the 1st should get the same number of days, and
+/// nobody in a shop is going to argue about the difference in their favour.
+const _daysPerMonth = 30;
 
 /// In-memory billing, for tests and for the screens above it.
 class FakeBillingRepository implements BillingRepository {

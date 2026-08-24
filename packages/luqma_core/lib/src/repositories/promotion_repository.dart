@@ -1,7 +1,9 @@
 import 'dart:async';
 
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../data/column_names.dart';
+import '../data/live_query.dart';
 import '../models/promotion.dart';
 import '../result.dart';
 
@@ -43,38 +45,75 @@ abstract interface class PromotionRepository {
   });
 }
 
-class FirestorePromotionRepository implements PromotionRepository {
-  FirestorePromotionRepository(this._firestore);
+class SupabasePromotionRepository implements PromotionRepository {
+  SupabasePromotionRepository(this._db);
 
-  final FirebaseFirestore _firestore;
+  final SupabaseClient _db;
 
-  CollectionReference<Map<String, dynamic>> get _promotions =>
-      _firestore.collection('promotions');
+  /// An empty id means "none" everywhere else in this codebase, and an empty string is
+  /// not a uuid — the column would refuse it before any policy had spoken.
+  static String? _uuidOrNull(String? id) =>
+      (id == null || id.isEmpty) ? null : id;
+
+  Promotion _toPromotion(Map<String, dynamic> row) {
+    final model = ColumnNames.toModel(row)
+      ..update('zoneIds', (zones) => [for (final z in zones as List) z],
+          ifAbsent: () => <String>[]);
+    // Local, like Firestore's Timestamp.toDate() handed back: `isLiveAt` compares
+    // against the device's clock.
+    for (final key in ['startAt', 'endAt']) {
+      if (model[key] is String) {
+        model[key] = DateTime.parse(model[key] as String).toLocal();
+      }
+    }
+    return Promotion.fromJson(model);
+  }
 
   @override
   Future<Result<Promotion>> request(Promotion promotion) {
     return Result.guard(() async {
-      final doc = _promotions.doc();
+      // A merchant may ask; only an admin may approve. The status is forced here and
+      // the policy refuses anything else — this is what stops the app offering a write
+      // that is about to be rejected.
       final asked = promotion.copyWith(
-        id: doc.id,
         status: PromotionStatus.requested,
         approvedBy: null,
         rejectionReason: null,
       );
-
-      await doc.set(asked.toJson()..remove('id'));
-      return asked;
+      final saved = await _db.from('promotions').insert({
+        'city_id': asked.cityId,
+        'merchant_id': asked.merchantId,
+        'channel': asked.channel.name,
+        'render_mode': asked.renderMode.name,
+        'title': asked.title,
+        'body': asked.body,
+        'media_id': _uuidOrNull(asked.mediaId),
+        'section_key': asked.sectionKey,
+        'category_id': _uuidOrNull(asked.categoryId),
+        'zone_ids': asked.zoneIds,
+        'start_at': asked.startAt.toUtc().toIso8601String(),
+        'end_at': asked.endAt.toUtc().toIso8601String(),
+        'priority': asked.priority,
+        'price': asked.price,
+        'requested_by': asked.requestedBy,
+        'status': asked.status.name,
+      }).select().single();
+      return _toPromotion(saved);
     });
   }
 
   @override
   Stream<List<Promotion>> watchQueue(String cityId) {
-    return _promotions
-        .where('cityId', isEqualTo: cityId)
-        .where('status', isEqualTo: PromotionStatus.requested.name)
-        .snapshots()
-        .map((snapshot) => snapshot.docs.map(_toPromotion).toList()
-          ..sort((a, b) => a.startAt.compareTo(b.startAt)));
+    return watchRows(
+      db: _db,
+      table: 'promotions',
+      map: _toPromotion,
+      filters: [
+        RowFilter('city_id', cityId),
+        RowFilter('status', PromotionStatus.requested.name),
+      ],
+      orderBy: 'start_at',
+    );
   }
 
   @override
@@ -82,44 +121,41 @@ class FirestorePromotionRepository implements PromotionRepository {
     required String cityId,
     required DateTime now,
   }) {
-    return _promotions
-        .where('cityId', isEqualTo: cityId)
-        .where('status', whereIn: [
-          PromotionStatus.approved.name,
-          PromotionStatus.active.name,
-        ])
-        .snapshots()
-        .map((snapshot) => snapshot.docs
-            .map(_toPromotion)
-            // Filtered here rather than in the query: a date range plus an `in` on
-            // status plus a city needs a composite index for a handful of documents.
-            .where((p) => p.isLiveAt(now))
-            .toList()
-          // Whoever paid more for the slot gets it. Without an order a contested slot
-          // shows whichever document Firestore happened to return first.
-          ..sort((a, b) => b.priority.compareTo(a.priority)));
+    return watchRows(
+      db: _db,
+      table: 'promotions',
+      map: _toPromotion,
+      filters: [RowFilter('city_id', cityId)],
+      // Live-ness is a date range plus a status pair — filtered here rather than in the
+      // query, because a handful of documents does not buy an OR clause its complexity.
+    ).map((promotions) => promotions
+        .where((p) => p.isLiveAt(now))
+        .toList()
+      // Whoever paid more for the slot gets it. Without an order a contested slot
+      // shows whichever row happened to come back first.
+      ..sort((a, b) => b.priority.compareTo(a.priority)));
   }
 
   @override
   Stream<List<Promotion>> watchForMerchant(String merchantId) {
-    return _promotions
-        .where('merchantId', isEqualTo: merchantId)
-        .snapshots()
-        .map((snapshot) => snapshot.docs.map(_toPromotion).toList()
-          ..sort((a, b) => b.startAt.compareTo(a.startAt)));
+    return watchRows(
+      db: _db,
+      table: 'promotions',
+      map: _toPromotion,
+      filters: [RowFilter('merchant_id', merchantId)],
+    ).map((promotions) => promotions..sort((a, b) => b.startAt.compareTo(a.startAt)));
   }
 
   @override
   Future<Result<void>> approve(String promotionId, {required String approvedBy}) {
     return Result.guard(
-      () => _promotions.doc(promotionId).update({
+      () => _db.from('promotions').update({
         // Approved, not active. `startAt` decides when it runs — a campaign signed off
         // today for next week must not appear the moment somebody approved it.
         'status': PromotionStatus.approved.name,
-        'approvedBy': approvedBy,
-        'rejectionReason': null,
-        'updatedAt': FieldValue.serverTimestamp(),
-      }),
+        'approved_by': _uuidOrNull(approvedBy),
+        'rejection_reason': null,
+      }).eq('id', promotionId),
     );
   }
 
@@ -133,12 +169,11 @@ class FirestorePromotionRepository implements PromotionRepository {
       final trimmed = reason.trim();
       if (trimmed.isEmpty) throw const ConflictFailure();
 
-      await _promotions.doc(promotionId).update({
+      await _db.from('promotions').update({
         'status': PromotionStatus.rejected.name,
-        'rejectionReason': trimmed,
-        'approvedBy': by,
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
+        'rejection_reason': trimmed,
+        'approved_by': _uuidOrNull(by),
+      }).eq('id', promotionId);
     });
   }
 
@@ -148,23 +183,18 @@ class FirestorePromotionRepository implements PromotionRepository {
     required DateTime since,
   }) {
     return Result.guard(() async {
-      final snapshot = await _promotions
-          .where('cityId', isEqualTo: cityId)
-          .where('channel', isEqualTo: PromotionChannel.push.name)
-          .get();
-
-      // Counted from what was *sent*, not what was approved. An approved campaign that
-      // never went out has not spent anybody's attention.
-      return snapshot.docs
-          .map(_toPromotion)
-          .where((p) =>
-              p.status == PromotionStatus.ended && !p.startAt.isBefore(since))
-          .length;
+      final rows = await _db
+          .from('promotions')
+          .select('id')
+          .eq('city_id', cityId)
+          .eq('channel', PromotionChannel.push.name)
+          .eq('status', PromotionStatus.ended.name)
+          // Counted from what was *sent*, not what was approved. An approved campaign
+          // that never went out has not spent anybody's attention.
+          .gte('start_at', since.toUtc().toIso8601String());
+      return rows.length;
     });
   }
-
-  Promotion _toPromotion(DocumentSnapshot<Map<String, dynamic>> doc) =>
-      Promotion.fromJson({...doc.data()!, 'id': doc.id});
 }
 
 /// In-memory promotions, for tests and for the screens above them.

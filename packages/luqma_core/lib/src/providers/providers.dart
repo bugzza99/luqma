@@ -162,7 +162,7 @@ StaffIdentity staffIdentity(Ref ref) => switch (ref.watch(currentIdentityProvide
 
 @Riverpod(keepAlive: true)
 PromotionRepository promotionRepository(Ref ref) =>
-    FirestorePromotionRepository(ref.watch(firestoreProvider));
+    SupabasePromotionRepository(ref.watch(supabaseProvider));
 
 /// Placements that should be on screen right now, best first. Live.
 @riverpod
@@ -218,7 +218,7 @@ Future<bool> pushSlotAvailable(Ref ref) async {
 
 @Riverpod(keepAlive: true)
 BillingRepository billingRepository(Ref ref) =>
-    FirestoreBillingRepository(ref.watch(firestoreProvider));
+    SupabaseBillingRepository(ref.watch(supabaseProvider));
 
 /// The plans on offer. Kept alive: three documents that change a few times a year, and
 /// every merchant screen wants them.
@@ -281,7 +281,7 @@ Stream<List<DailyMeal>> merchantMeals(Ref ref, String merchantId) =>
 
 @Riverpod(keepAlive: true)
 FeedbackRepository feedbackRepository(Ref ref) =>
-    FirestoreFeedbackRepository(ref.watch(firestoreProvider));
+    SupabaseFeedbackRepository(ref.watch(supabaseProvider));
 
 /// What customers said about one merchant. Live.
 @riverpod
