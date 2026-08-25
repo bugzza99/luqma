@@ -235,7 +235,7 @@ Stream<Subscription?> subscription(Ref ref, String merchantId) =>
 
 @Riverpod(keepAlive: true)
 CourierOrderRepository courierOrderRepository(Ref ref) =>
-    FirestoreCourierOrderRepository(ref.watch(firestoreProvider));
+    SupabaseCourierOrderRepository(ref.watch(supabaseProvider));
 
 /// What one merchant's own courier has to take out. Live.
 @riverpod
@@ -290,7 +290,7 @@ Stream<List<CustomerRating>> merchantFeedback(Ref ref, String merchantId) =>
 
 @Riverpod(keepAlive: true)
 MerchantOrderRepository merchantOrderRepository(Ref ref) =>
-    FirestoreMerchantOrderRepository(ref.watch(firestoreProvider));
+    SupabaseMerchantOrderRepository(ref.watch(supabaseProvider));
 
 /// Orders waiting for this kitchen to answer. Live, oldest first.
 @riverpod
@@ -313,7 +313,7 @@ AddressRepository addressRepository(Ref ref) =>
 
 @Riverpod(keepAlive: true)
 OrderRepository orderRepository(Ref ref) =>
-    FirestoreOrderRepository(ref.watch(firestoreProvider));
+    SupabaseOrderRepository(ref.watch(supabaseProvider));
 
 /// The signed-in customer's addresses.
 ///

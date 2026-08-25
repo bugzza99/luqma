@@ -1,8 +1,9 @@
-import 'dart:async';
+﻿import 'dart:async';
 
-// `Order` here would be Firestore's index-definition enum, not ours.
-import 'package:cloud_firestore/cloud_firestore.dart' hide Order;
+import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../data/column_names.dart';
+import '../data/live_query.dart';
 import '../models/order.dart';
 import '../result.dart';
 
@@ -55,63 +56,74 @@ const _onTheStove = [
 const _minPrepMinutes = 3;
 const _maxPrepMinutes = 180;
 
-class FirestoreMerchantOrderRepository implements MerchantOrderRepository {
-  FirestoreMerchantOrderRepository(this._firestore);
+class SupabaseMerchantOrderRepository implements MerchantOrderRepository {
+  SupabaseMerchantOrderRepository(this._db);
 
-  final FirebaseFirestore _firestore;
+  final SupabaseClient _db;
 
-  CollectionReference<Map<String, dynamic>> get _orders =>
-      _firestore.collection('orders');
-
-  @override
-  Stream<List<Order>> watchIncoming(String merchantId) {
-    return _byStatus(merchantId, _needsAnswer).map(
-      // Ascending: the order that has been waiting longest is the one about to time out,
-      // and it belongs at the top of the screen.
-      (orders) => orders..sort((a, b) => a.orderNumber.compareTo(b.orderNumber)),
-    );
-  }
-
-  @override
-  Stream<List<Order>> watchLive(String merchantId) {
-    return _byStatus(merchantId, _onTheStove).map(
-      (orders) => orders..sort((a, b) => a.orderNumber.compareTo(b.orderNumber)),
-    );
+  Order _toOrder(Map<String, dynamic> row) {
+    final model = ColumnNames.toModel(row);
+    // Local, as Firestore's Timestamp.toDate() always handed back.
+    for (final key in ['placedAt', 'acceptDeadlineAt', 'deliveredAt']) {
+      if (model[key] is String) {
+        model[key] = DateTime.parse(model[key] as String).toLocal();
+      }
+    }
+    return Order.fromJson(model);
   }
 
   Stream<List<Order>> _byStatus(String merchantId, List<OrderStatus> statuses) {
-    return _orders
-        .where('merchantId', isEqualTo: merchantId)
-        .where('status', whereIn: [for (final s in statuses) s.name])
-        .snapshots()
-        .map((snapshot) => snapshot.docs.map(_toOrder).toList());
+    return watchRows(
+      db: _db,
+      table: 'orders',
+      map: _toOrder,
+      filters: [RowFilter('merchant_id', merchantId)],
+      ins: [RowIn('status', [for (final s in statuses) s.name])],
+    ).map(
+      // Ascending: the order that has been waiting longest is the one about to time
+      // out, and it belongs at the top of the screen.
+      (orders) => orders..sort((a, b) => a.orderNumber.compareTo(b.orderNumber)),
+    );
   }
 
   @override
+  Stream<List<Order>> watchIncoming(String merchantId) =>
+      _byStatus(merchantId, _needsAnswer);
+
+  @override
+  Stream<List<Order>> watchLive(String merchantId) =>
+      _byStatus(merchantId, _onTheStove);
+
+  @override
   Stream<Order> watchOrder(String orderId) {
-    return _orders.doc(orderId).snapshots().map((doc) {
-      if (!doc.exists) throw const NotFoundFailure();
-      return _toOrder(doc);
+    return watchRows(
+      db: _db,
+      table: 'orders',
+      map: _toOrder,
+      filters: [RowFilter('id', orderId)],
+    ).map((orders) {
+      if (orders.isEmpty) throw const NotFoundFailure();
+      return orders.single;
     });
   }
+
+  Future<Map<String, dynamic>?> _rowOf(String orderId) async =>
+      await _db.from('orders').select().eq('id', orderId).maybeSingle();
 
   @override
   Future<Result<void>> accept(String orderId, {required int prepMinutes}) {
     return Result.guard(() async {
-      if (prepMinutes < _minPrepMinutes || prepMinutes > _maxPrepMinutes) {
-        throw const ConflictFailure();
-      }
-
-      final order = await _require(orderId);
-      // A merchant tapping accept on an order the customer cancelled a second ago would
-      // otherwise start cooking food nobody is coming for.
+      // The count checks come first; a merchant tapping accept on an order the customer
+      // cancelled a second ago would otherwise start cooking food nobody is coming for.
+      final row = await _rowOf(orderId);
+      if (row == null) throw const NotFoundFailure();
+      final order = _toOrder(row);
       if (!_needsAnswer.contains(order.status)) throw const ConflictFailure();
 
-      await _orders.doc(orderId).update({
+      await _db.from('orders').update({
         'status': OrderStatus.accepted.name,
-        'prepMinutes': prepMinutes,
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
+        'prep_minutes': prepMinutes,
+      }).eq('id', orderId);
     });
   }
 
@@ -121,57 +133,42 @@ class FirestoreMerchantOrderRepository implements MerchantOrderRepository {
       final trimmed = reason.trim();
       if (trimmed.isEmpty) throw const ConflictFailure();
 
-      final order = await _require(orderId);
+      final row = await _rowOf(orderId);
+      if (row == null) throw const NotFoundFailure();
+      final order = _toOrder(row);
       if (!order.status.canMoveTo(OrderStatus.cancelled, by: OrderActor.merchant)) {
         throw const ConflictFailure();
       }
 
-      await _orders.doc(orderId).update({
+      await _db.from('orders').update({
         'status': OrderStatus.cancelled.name,
-        'cancelReason': trimmed,
-        'cancelledBy': OrderActor.merchant.name,
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
+        'cancel_reason': trimmed,
+        'cancelled_by': OrderActor.merchant.name,
+      }).eq('id', orderId);
     });
   }
 
   @override
   Future<Result<void>> advance(String orderId, {required OrderStatus to}) {
     return Result.guard(() async {
-      final order = await _require(orderId);
-      // Asked here as well as in the rules, so the app can hide a button rather than
-      // offer an action that is about to be refused. Delivery is not on this list: the
-      // courier marks it, because the courier is the one standing at the door with the
-      // cash, and a merchant marking it from the kitchen is a guess.
+      final row = await _rowOf(orderId);
+      if (row == null) throw const NotFoundFailure();
+      final order = _toOrder(row);
       if (!order.status.canMoveTo(to, by: OrderActor.merchant)) {
         throw const ConflictFailure();
       }
 
-      await _orders.doc(orderId).update({
-        'status': to.name,
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
+      await _db.from('orders').update({'status': to.name}).eq('id', orderId);
     });
   }
-
-  Future<Order> _require(String orderId) async {
-    final doc = await _orders.doc(orderId).get();
-    if (!doc.exists) throw const NotFoundFailure();
-    return _toOrder(doc);
-  }
-
-  Order _toOrder(DocumentSnapshot<Map<String, dynamic>> doc) =>
-      Order.fromJson({...doc.data()!, 'id': doc.id});
 }
 
-/// In-memory orders for the kitchen, for tests and for building screens without a
-/// backend.
+/// In-memory orders, for tests and for building the kitchen screens without a backend.
 ///
-/// It re-applies the same transition rules as the real one, and its streams are live the
-/// way Firestore's are: accepting an order pushes a new list to whoever is watching. A
-/// fake that emits once and stops would let a screen pass its tests while leaving an
-/// answered order sitting on the inbox — which is precisely the bug the fake exists to
-/// catch.
+/// Its streams are live the way Firestore's are: accepting an order pushes a new list to
+/// whoever is watching. A fake that emits once and stops would let a screen pass its
+/// tests while leaving an answered order sitting on the inbox — which is precisely the
+/// bug the fake exists to catch.
 class FakeMerchantOrderRepository implements MerchantOrderRepository {
   FakeMerchantOrderRepository({List<Order> seed = const [], this.failure})
       : _orders = {for (final o in seed) o.id: o};
@@ -181,35 +178,12 @@ class FakeMerchantOrderRepository implements MerchantOrderRepository {
 
   final _changed = StreamController<void>.broadcast();
 
-  /// Everything this repository holds, right now.
-  ///
-  /// A widget test cannot await one of the streams above — it runs on a fake clock, and
-  /// the future never completes — so a synchronous view is what lets a test assert on
-  /// what a screen actually wrote rather than on what it drew.
+  /// Everything held right now. A widget test runs on a fake clock and cannot await one
+  /// of the streams below.
   List<Order> get all => List.unmodifiable(_orders.values);
 
   Order? operator [](String orderId) => _orders[orderId];
 
-  /// Puts an order in and tells everyone watching — a new order landing, as Firestore
-  /// would deliver it.
-  Future<void> add(Order order) async {
-    _orders[order.id] = order;
-    _notify();
-    await Future<void>.delayed(Duration.zero);
-  }
-
-  /// Re-emits without changing anything.
-  ///
-  /// Firestore does this: a snapshot fires for reasons of its own — a field written by
-  /// a function, a metadata change — and anything downstream that treats every emission
-  /// as news will act twice on one event.
-  Future<void> touch() async {
-    _notify();
-    await Future<void>.delayed(Duration.zero);
-  }
-
-  /// Emits now and after every change, with the subscription attached in the same
-  /// synchronous callback so nothing can slip through the gap.
   Stream<T> _live<T>(T Function() read) => Stream.multi((listener) {
         listener.add(read());
         final sub = _changed.stream.listen((_) => listener.add(read()));
@@ -222,12 +196,25 @@ class FakeMerchantOrderRepository implements MerchantOrderRepository {
 
   void dispose() => _changed.close();
 
+  /// Puts an order in and tells everyone watching — a new order landing, as Firestore
+  /// delivered it.
+  Future<void> add(Order order) async {
+    _orders[order.id] = order;
+    _notify();
+  }
+
+  /// Re-emits every watch without changing anything. Firestore does this: a snapshot
+  /// fires for reasons of its own — a field written by another client still counts as
+  /// a reason to deliver the list again.
+  Future<void> touch() async => _notify();
+
   @override
   Stream<List<Order>> watchIncoming(String merchantId) =>
       _stream(merchantId, _needsAnswer);
 
   @override
-  Stream<List<Order>> watchLive(String merchantId) => _stream(merchantId, _onTheStove);
+  Stream<List<Order>> watchLive(String merchantId) =>
+      _stream(merchantId, _onTheStove);
 
   Stream<List<Order>> _stream(String merchantId, List<OrderStatus> statuses) {
     if (failure != null) return Stream.error(failure!);

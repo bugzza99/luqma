@@ -1,10 +1,10 @@
-// Both Firebase packages export a name we already use: cloud_firestore has an `Order`
-// enum for index definitions, and cloud_functions has its own `Result`. Neither is
-// wanted here, and letting either through would shadow the model this file is about.
-import 'package:cloud_firestore/cloud_firestore.dart' hide Order;
-import 'package:cloud_functions/cloud_functions.dart' show FirebaseFunctions;
+// The backend exports names this file already uses; neither is wanted here, and letting
+// either through would shadow the model this file is about.
 import 'package:flutter/foundation.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../data/column_names.dart';
+import '../data/live_query.dart';
 import '../models/order.dart';
 import '../result.dart';
 
@@ -92,72 +92,82 @@ abstract interface class OrderRepository {
 /// Sends the draft to the server and returns the id of the order it created.
 typedef PlaceOrderCall = Future<String> Function(OrderDraft draft);
 
-class FirestoreOrderRepository implements OrderRepository {
-  FirestoreOrderRepository(this._firestore, {PlaceOrderCall? placeOrderCall})
-      : _placeOrderCall = placeOrderCall ?? _callable;
+class SupabaseOrderRepository implements OrderRepository {
+  SupabaseOrderRepository(this._db);
 
-  final FirebaseFirestore _firestore;
-  final PlaceOrderCall _placeOrderCall;
+  final SupabaseClient _db;
 
-  CollectionReference<Map<String, dynamic>> get _orders =>
-      _firestore.collection('orders');
-
-  static Future<String> _callable(OrderDraft draft) async {
-    final result = await FirebaseFunctions.instanceFor(region: 'europe-west3')
-        .httpsCallable('placeOrder')
-        .call<Map<String, dynamic>>(draft.toJson());
-    return result.data['orderId'] as String;
+  Order _toOrder(Map<String, dynamic> row) {
+    final model = ColumnNames.toModel(row);
+    // Local, as Firestore's Timestamp.toDate() always handed back.
+    for (final key in ['placedAt', 'acceptDeadlineAt', 'deliveredAt']) {
+      if (model[key] is String) {
+        model[key] = DateTime.parse(model[key] as String).toLocal();
+      }
+    }
+    return Order.fromJson(model);
   }
 
   @override
   Future<Result<Order>> placeOrder(OrderDraft draft) {
     return Result.guard(() async {
-      final orderId = await _placeOrderCall(draft);
-      final doc = await _orders.doc(orderId).get();
-      if (!doc.exists) throw const NotFoundFailure();
-      return _toOrder(doc);
+      // One function owns the whole act: prices read from the menu, the coupon judged
+      // against its own counters, the portion taken inside the same transaction. What
+      // comes back is the order as the server wrote it.
+      final row = await _db.rpc('place_order', params: {'p_draft': draft.toJson()});
+      return _toOrder(Map<String, dynamic>.from(row as Map));
     });
   }
 
   @override
   Stream<Order> watchOrder(String orderId) {
-    return _orders.doc(orderId).snapshots().map((doc) {
-      if (!doc.exists) throw const NotFoundFailure();
-      return _toOrder(doc);
+    return watchRows(
+      db: _db,
+      table: 'orders',
+      map: _toOrder,
+      filters: [RowFilter('id', orderId)],
+      // The tracking screen holds one order; when it disappears so does the watch,
+      // and NotFound is what arrives.
+    ).map((orders) {
+      if (orders.isEmpty) throw const NotFoundFailure();
+      return orders.single;
     });
   }
 
   @override
   Stream<List<Order>> watchMyOrders(String uid) {
-    return _orders
-        .where('customerUid', isEqualTo: uid)
-        .snapshots()
-        .map((snapshot) => snapshot.docs.map(_toOrder).toList()
-          // By order number rather than by timestamp: the number is assigned by the
-          // server in sequence, while `placedAt` is null for the moment between the
-          // write landing and the server timestamp resolving.
-          ..sort((a, b) => b.orderNumber.compareTo(a.orderNumber)));
+    return watchRows(
+      db: _db,
+      table: 'orders',
+      map: _toOrder,
+      filters: [RowFilter('customer_uid', uid)],
+      // By order number rather than by timestamp: the number is assigned by the server
+      // in sequence, while `placed_at` is null for the moment between the write landing
+      // and the clock resolving.
+      orderBy: 'order_number',
+      ascending: false,
+    );
   }
 
   @override
   Future<Result<void>> cancel(String orderId, {required String reason}) {
     return Result.guard(() async {
-      final doc = await _orders.doc(orderId).get();
-      if (!doc.exists) throw const NotFoundFailure();
+      final row =
+          await _db.from('orders').select().eq('id', orderId).maybeSingle();
+      if (row == null) throw const NotFoundFailure();
 
-      final order = _toOrder(doc);
-      // Asked here as well as in the rules, so the app can hide the button rather than
-      // offer an action that is about to be refused.
+      final order = _toOrder(row);
+      // Asked here as well as in the policies, so the app can hide the button rather
+      // than offer an action that is about to be refused.
       if (!order.status.canMoveTo(OrderStatus.cancelled, by: OrderActor.customer)) {
         throw const ConflictFailure();
       }
 
-      await _orders.doc(orderId).update({
+      await _db.from('orders').update({
         'status': OrderStatus.cancelled.name,
-        'cancelReason': reason,
-        'cancelledBy': OrderActor.customer.name,
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
+        'cancel_reason': reason,
+        'cancelled_by': OrderActor.customer.name,
+      }).eq('id', orderId);
     });
   }
 
@@ -169,13 +179,12 @@ class FirestoreOrderRepository implements OrderRepository {
     required String reason,
   }) {
     return Result.guard(
-      () => _firestore.collection('orderIssues').add({
-        'orderId': orderId,
-        'customerUid': customerUid,
-        'merchantId': merchantId,
+      () => _db.from('order_issues').insert({
+        'order_id': orderId,
+        'customer_uid': customerUid,
+        'merchant_id': merchantId,
         'reason': reason,
         'status': 'open',
-        'createdAt': FieldValue.serverTimestamp(),
       }),
     );
   }
@@ -191,19 +200,15 @@ class FirestoreOrderRepository implements OrderRepository {
     return Result.guard(
       // Keyed by the order, so rating again corrects the first rating instead of
       // letting one customer move a merchant's average as far as they like.
-      () => _firestore.collection('ratings').doc(orderId).set({
-        'orderId': orderId,
-        'customerUid': customerUid,
-        'merchantId': merchantId,
+      () => _db.from('ratings').upsert({
+        'order_id': orderId,
+        'customer_uid': customerUid,
+        'merchant_id': merchantId,
         'stars': stars,
-        if (comment != null && comment.isNotEmpty) 'comment': comment,
-        'createdAt': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true)),
+        'comment': (comment == null || comment.isEmpty) ? null : comment,
+      }, onConflict: 'order_id'),
     );
   }
-
-  Order _toOrder(DocumentSnapshot<Map<String, dynamic>> doc) =>
-      Order.fromJson({...doc.data()!, 'id': doc.id});
 }
 
 /// In-memory orders, for tests and for the screens above before the server exists.

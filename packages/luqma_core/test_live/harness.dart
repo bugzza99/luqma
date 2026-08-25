@@ -38,6 +38,61 @@ class LiveDatabase {
     return LiveDatabase._(SupabaseClient(_url, _serviceKey));
   }
 
+  /// A second client signed in as a customer, with their users row beside them.
+  ///
+  /// Returns the client and the uid: the client talks to the database exactly as the
+  /// app does, and the uid is what the tests seed against.
+  Future<(SupabaseClient, String)> openAsCustomer() async {
+    final unique = DateTime.now().microsecondsSinceEpoch;
+    final email = 'cust-$unique@luqma.test';
+    final created = await client.auth.admin.createUser(
+      AdminUserAttributes(
+        email: email,
+        password: 'luqma1234',
+        emailConfirm: true,
+      ),
+    );
+    final uid = created.user!.id;
+    await client.from('users').insert({'id': uid});
+
+    final signedIn = SupabaseClient(_url, _serviceKey);
+    await signedIn.auth.signInWithPassword(email: email, password: 'luqma1234');
+    return (signedIn, uid);
+  }
+
+  /// A client signed in as a staff account of [role] under [scope], bound to
+  /// [merchantId] when the scope is a merchant's.
+  ///
+  /// The kitchen and courier screens run under these identities in production, and the
+  /// order transition guards read exactly these claims out of the token.
+  /// Returns the signed-in client and the staff member's uid.
+  Future<(SupabaseClient, String)> openAsStaff({
+    required String scope,
+    required String role,
+    String? merchantId,
+  }) async {
+    final unique = DateTime.now().microsecondsSinceEpoch;
+    final email = 'staff-$unique@luqma.test';
+    final created = await client.auth.admin.createUser(
+      AdminUserAttributes(
+        email: email,
+        password: 'luqma1234',
+        emailConfirm: true,
+      ),
+    );
+    final uid = created.user!.id;
+    await client.from('staff').insert({
+      'uid': uid,
+      'scope': scope,
+      'role': role,
+      if (merchantId != null) 'merchant_id': merchantId,
+    });
+
+    final signedIn = SupabaseClient(_url, _serviceKey);
+    await signedIn.auth.signInWithPassword(email: email, password: 'luqma1234');
+    return (signedIn, uid);
+  }
+
   /// A second client signed in — for real, password and all — as a platform admin.
   ///
   /// AdminApp's writes (approving a merchant, setting its plan) are refused to everyone

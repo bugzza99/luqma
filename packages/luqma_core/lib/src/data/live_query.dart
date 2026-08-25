@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -9,6 +9,16 @@ final class RowFilter {
 
   final String column;
   final String value;
+}
+
+/// One inclusion constraint: this column may take any of these values. The fetch asks
+/// the database once with all of them; realtime binds each value separately, because
+/// events arrive per value anyway and a refetch answers the query itself.
+final class RowIn {
+  const RowIn(this.column, this.values);
+
+  final String column;
+  final List<String> values;
 }
 
 int _watchSerial = 0;
@@ -50,6 +60,7 @@ Stream<List<T>> watchRows<T>({
   required String table,
   required T Function(Map<String, dynamic> row) map,
   List<RowFilter> filters = const [],
+  List<RowIn> ins = const [],
   String? orderBy,
   bool ascending = true,
 }) {
@@ -73,6 +84,9 @@ Stream<List<T>> watchRows<T>({
         var query = db.from(table).select();
         for (final f in filters) {
           query = query.eq(f.column, f.value);
+        }
+        for (final i in ins) {
+          query = query.inFilter(i.column, i.values);
         }
         // `ascending` spelled out, again: postgrest-dart defaults it to false, the
         // opposite of what `order by` means in SQL. Left implicit, ordering flips.
@@ -101,21 +115,28 @@ Stream<List<T>> watchRows<T>({
     // plus status watch. Separate bindings are a union rather than an intersection,
     // which is safe here by construction: a stray match costs one extra refetch, and a
     // refetch always answers the query itself.
-    final bindings =
-        filters.isEmpty ? <RowFilter?>[null] : List<RowFilter?>.from(filters);
-    for (final f in bindings) {
+    final bindings = <PostgresChangeFilter?>[
+      for (final f in filters)
+        PostgresChangeFilter(
+          type: PostgresChangeFilterType.eq,
+          column: f.column,
+          value: f.value,
+        ),
+      for (final i in ins)
+        for (final v in i.values)
+          PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: i.column,
+            value: v,
+          ),
+    ];
+    if (bindings.isEmpty) bindings.add(null);
+    for (final b in bindings) {
       ch.onPostgresChanges(
         event: PostgresChangeEvent.all,
         schema: 'public',
         table: table,
-        filters: [
-          if (f != null)
-            PostgresChangeFilter(
-              type: PostgresChangeFilterType.eq,
-              column: f.column,
-              value: f.value,
-            ),
-        ],
+        filters: [?b],
         callback: (_) => unawaited(fetchAndEmit()),
       );
     }

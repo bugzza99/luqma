@@ -1,8 +1,9 @@
-import 'dart:async';
+﻿import 'dart:async';
 
-// `Order` here would be Firestore's index-definition enum, not ours.
-import 'package:cloud_firestore/cloud_firestore.dart' hide Order;
+import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../data/column_names.dart';
+import '../data/live_query.dart';
 import '../models/order.dart';
 import '../result.dart';
 
@@ -33,107 +34,134 @@ abstract interface class CourierOrderRepository {
 
 /// What a courier has on their hands: ready to collect, or already out.
 const _onTheRun = [OrderStatus.preparing, OrderStatus.outForDelivery];
+class SupabaseCourierOrderRepository implements CourierOrderRepository {
+  SupabaseCourierOrderRepository(this._db);
 
-class FirestoreCourierOrderRepository implements CourierOrderRepository {
-  FirestoreCourierOrderRepository(this._firestore);
+  final SupabaseClient _db;
 
-  final FirebaseFirestore _firestore;
+  Order _toOrder(Map<String, dynamic> row) {
+    final model = ColumnNames.toModel(row);
+    // Local, as Firestore's Timestamp.toDate() always handed back.
+    for (final key in ['placedAt', 'acceptDeadlineAt', 'deliveredAt']) {
+      if (model[key] is String) {
+        model[key] = DateTime.parse(model[key] as String).toLocal();
+      }
+    }
+    return Order.fromJson(model);
+  }
 
-  CollectionReference<Map<String, dynamic>> get _orders =>
-      _firestore.collection('orders');
+  Stream<List<Order>> _run(String column, String value) {
+    return watchRows(
+      db: _db,
+      table: 'orders',
+      map: _toOrder,
+      filters: [RowFilter(column, value)],
+      ins: [RowIn('status', [for (final s in _onTheRun) s.name])],
+    ).map(
+      // Oldest first: the order that has been sitting longest is the one whose food is
+      // going cold.
+      (orders) => orders..sort((a, b) => a.orderNumber.compareTo(b.orderNumber)),
+    );
+  }
 
   @override
-  Stream<List<Order>> watchForMerchant(String merchantId) => _sorted(
-        _orders
-            .where('merchantId', isEqualTo: merchantId)
-            .where('status', whereIn: [for (final s in _onTheRun) s.name]),
-      );
+  Stream<List<Order>> watchForMerchant(String merchantId) =>
+      _run('merchant_id', merchantId);
 
   @override
-  Stream<List<Order>> watchForPlatform(String cityId) => _sorted(
-        _orders
-            .where('cityId', isEqualTo: cityId)
-            // Frozen on the order, not looked up on the merchant: a merchant who stops
-            // delivering their own orders next week must not change who was answerable
-            // for last week's.
-            .where('deliveryBy', isEqualTo: DeliveryBy.platform.name)
-            .where('status', whereIn: [for (final s in _onTheRun) s.name]),
-      );
-
-  Stream<List<Order>> _sorted(Query<Map<String, dynamic>> query) {
-    return query.snapshots().map(
-          (snapshot) => snapshot.docs.map(_toOrder).toList()
-            // Oldest first: the order that has been sitting longest is the one whose
-            // food is going cold.
-            ..sort((a, b) => a.orderNumber.compareTo(b.orderNumber)),
-        );
+  Stream<List<Order>> watchForPlatform(String cityId) {
+    return watchRows(
+      db: _db,
+      table: 'orders',
+      map: _toOrder,
+      filters: [
+        RowFilter('city_id', cityId),
+        // Frozen on the order, not looked up on the merchant: a merchant who stops
+        // delivering their own orders next week must not change who was answerable for
+        // last week's.
+        RowFilter('delivery_by', DeliveryBy.platform.name),
+      ],
+      ins: [RowIn('status', [for (final s in _onTheRun) s.name])],
+    ).map(
+      (orders) => orders..sort((a, b) => a.orderNumber.compareTo(b.orderNumber)),
+    );
   }
 
   @override
   Stream<Order> watchOrder(String orderId) {
-    return _orders.doc(orderId).snapshots().map((doc) {
-      if (!doc.exists) throw const NotFoundFailure();
-      return _toOrder(doc);
+    return watchRows(
+      db: _db,
+      table: 'orders',
+      map: _toOrder,
+      filters: [RowFilter('id', orderId)],
+    ).map((orders) {
+      if (orders.isEmpty) throw const NotFoundFailure();
+      return orders.single;
     });
   }
 
+  Future<Map<String, dynamic>?> _rowOf(String orderId) async =>
+      await _db.from('orders').select().eq('id', orderId).maybeSingle();
+
+  /// Reads the order and checks the move as a courier would make it. The same rules are
+  /// enforced again in the policies; this copy exists so the app can hide a button
+  /// rather than offer an action that is about to be refused.
+  Future<Order> _checked(String orderId, OrderStatus to) async {
+    final row = await _rowOf(orderId);
+    if (row == null) throw const NotFoundFailure();
+
+    final order = _toOrder(row);
+    if (!order.status.canMoveTo(to, by: OrderActor.courier)) {
+      throw const ConflictFailure();
+    }
+    return order;
+  }
+
   @override
-  Future<Result<void>> markOnTheWay(String orderId, {required String courierUid}) {
-    return _move(orderId, OrderStatus.outForDelivery, (_) => {
-          // Written in the same breath as the status. It is what keeps a platform
-          // courier able to read the order afterwards, and what tells a customer who
-          // is holding their food.
-          'courierUid': courierUid,
-        });
+  Future<Result<void>> markOnTheWay(
+    String orderId, {
+    required String courierUid,
+  }) {
+    return Result.guard(() async {
+      await _checked(orderId, OrderStatus.outForDelivery);
+
+      // Written in the same breath as the status. It is what keeps a platform courier
+      // able to read the order afterwards, and what tells a customer who is holding
+      // their dinner.
+      await _db.from('orders').update({
+        'status': OrderStatus.outForDelivery.name,
+        'courier_uid': courierUid,
+      }).eq('id', orderId);
+    });
   }
 
   @override
   Future<Result<void>> markDelivered(String orderId) {
-    return _move(orderId, OrderStatus.delivered, (_) => {
-          // What the revenue engine and every report key off.
-          'deliveredAt': FieldValue.serverTimestamp(),
-        });
+    return Result.guard(() async {
+      await _checked(orderId, OrderStatus.delivered);
+
+      await _db.from('orders').update({
+        'status': OrderStatus.delivered.name,
+        'delivered_at': DateTime.now().toUtc().toIso8601String(),
+      }).eq('id', orderId);
+    });
   }
 
   @override
   Future<Result<void>> markFailed(String orderId, {required String reason}) {
-    final trimmed = reason.trim();
-    return _move(orderId, OrderStatus.cancelled, (_) {
-      if (trimmed.isEmpty) throw const ConflictFailure();
-      return {
-        'cancelReason': trimmed,
-        'cancelledBy': OrderActor.courier.name,
-      };
-    });
-  }
-
-  Future<Result<void>> _move(
-    String orderId,
-    OrderStatus to,
-    Map<String, Object?> Function(Order order) extra,
-  ) {
     return Result.guard(() async {
-      final doc = await _orders.doc(orderId).get();
-      if (!doc.exists) throw const NotFoundFailure();
+      final trimmed = reason.trim();
+      if (trimmed.isEmpty) throw const ConflictFailure();
 
-      final order = _toOrder(doc);
-      // Asked here as well as in the rules, so a screen can hide a button rather than
-      // offer an action about to be refused. Marking an order delivered before it left
-      // is how cash goes missing.
-      if (!order.status.canMoveTo(to, by: OrderActor.courier)) {
-        throw const ConflictFailure();
-      }
+      await _checked(orderId, OrderStatus.cancelled);
 
-      await _orders.doc(orderId).update({
-        'status': to.name,
-        ...extra(order),
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
+      await _db.from('orders').update({
+        'status': OrderStatus.cancelled.name,
+        'cancel_reason': trimmed,
+        'cancelled_by': OrderActor.courier.name,
+      }).eq('id', orderId);
     });
   }
-
-  Order _toOrder(DocumentSnapshot<Map<String, dynamic>> doc) =>
-      Order.fromJson({...doc.data()!, 'id': doc.id});
 }
 
 /// In-memory deliveries, for tests and for building the courier screens without a
