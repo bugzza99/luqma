@@ -1,6 +1,4 @@
-// `Order` here would be Firestore's index-definition enum, not ours.
-import 'package:cloud_firestore/cloud_firestore.dart' hide Order;
-import 'package:firebase_remote_config/firebase_remote_config.dart';
+﻿// `Order` here would be Firestore's index-definition enum, not ours.
 import 'package:flutter/foundation.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
@@ -34,14 +32,6 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../result.dart';
 
 part 'providers.g.dart';
-
-/// The Firestore instance. Overridden in tests and in the emulator harness, which is why
-/// it is a provider rather than a static reference reached for from wherever.
-///
-/// Being replaced, one repository at a time. When the last thing reading it has moved,
-/// this and the package behind it go with it.
-@Riverpod(keepAlive: true)
-FirebaseFirestore firestore(Ref ref) => FirebaseFirestore.instance;
 
 /// The Supabase client. A provider for the same reason: the live tests hand it a client
 /// pointed at the local stack, and nothing below has to know which one it got.
@@ -418,7 +408,7 @@ Stream<Order> order(Ref ref, String orderId) =>
 /// exactly one place a raw remote value becomes a value the app trusts.
 @Riverpod(keepAlive: true)
 RemoteConfigService remoteConfigService(Ref ref) =>
-    RemoteConfigService(FirebaseConfigFetcher(FirebaseRemoteConfig.instance));
+    RemoteConfigService(SupabaseConfigFetcher(Supabase.instance.client));
 
 /// The values the owner controls from AdminApp.
 ///
@@ -444,3 +434,6 @@ class AppConfig extends _$AppConfig {
   @visibleForTesting
   void applySource(ConfigSource source) => state = LuqmaConfig.from(source);
 }
+
+
+

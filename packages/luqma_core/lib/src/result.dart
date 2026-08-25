@@ -1,5 +1,5 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+﻿import 'package:postgrest/postgrest.dart' show PostgrestException;
+
 
 /// Why something failed, in the only granularity the interface actually acts on.
 ///
@@ -18,22 +18,26 @@ sealed class Failure {
   static Failure from(Object error, [StackTrace? stackTrace]) {
     if (error is Failure) return error;
 
-    final code = switch (error) {
-      FirebaseException(:final code) => code,
-      _ => null,
-    };
+    if (error is PostgrestException) {
+      // The reasons the order function raises by name: each one is a sentence a person
+      // is shown, so they are classified rather than collapsed.
+      switch (error.code) {
+        case '42501':
+          return const PermissionFailure();
+        case 'P0002':
+          return const NotFoundFailure();
+        case '23505':
+          return const ConflictFailure();
+      }
+      final message = error.message;
+      if (message.startsWith('coupon:') ||
+          message == 'sold out' ||
+          message.contains('not accepting orders')) {
+        return const ConflictFailure();
+      }
+    }
 
-    return switch (code) {
-      'unavailable' ||
-      'network-request-failed' ||
-      'deadline-exceeded' =>
-        const OfflineFailure(),
-      'permission-denied' || 'unauthenticated' => const PermissionFailure(),
-      'not-found' => const NotFoundFailure(),
-      'already-exists' || 'aborted' || 'failed-precondition' => const ConflictFailure(),
-      'resource-exhausted' => const RateLimitedFailure(),
-      _ => UnknownFailure(error, stackTrace),
-    };
+    return UnknownFailure(error, stackTrace);
   }
 }
 

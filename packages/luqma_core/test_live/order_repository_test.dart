@@ -14,7 +14,6 @@ import 'harness.dart';
 /// same way on both sides of the boundary.
 void main() {
   late LiveDatabase live;
-  late SupabaseOrderRepository repository;
   late SupabaseMerchantOrderRepository merchantRepository;
   late SupabaseCourierOrderRepository courierRepository;
   late SupabaseOrderRepository customerRepository;
@@ -28,7 +27,6 @@ void main() {
 
   setUpAll(() async {
     live = await LiveDatabase.open();
-    repository = SupabaseOrderRepository(live.client);
     courierRepository = SupabaseCourierOrderRepository(live.client);
   });
 
@@ -114,6 +112,8 @@ void main() {
       }
 
       final order = result.valueOrNull!;
+      // The customer comes from the token, not from the draft.
+      expect(order.customerUid, customerUid);
       // The name and price arrive from the menu; the phone's "1 piastre" was ignored.
       expect(order.items.single.name, 'سمك مشوي');
       expect(order.items.single.unitPrice, 12000);

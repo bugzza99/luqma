@@ -1,8 +1,5 @@
 import 'dart:async';
 
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:firebase_core/firebase_core.dart';
-import 'package:firebase_remote_config/firebase_remote_config.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -13,15 +10,12 @@ import 'src/shell/customer_shell.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp(options: LuqmaFirebase.customer);
-  await Emulators.connect();
+  final supabase = await LuqmaSupabase.initialize();
 
   // Pull the owner's settings before the first frame, but never wait on them: the app
   // ships with a full set of defaults, so a cold start with no network renders a correct
   // app rather than a blank one.
-  final config = RemoteConfigService(
-    FirebaseConfigFetcher(FirebaseRemoteConfig.instance),
-  );
+  final config = RemoteConfigService(SupabaseConfigFetcher(supabase));
   unawaited(config.refresh());
 
   runApp(
@@ -30,10 +24,7 @@ Future<void> main() async {
         remoteConfigServiceProvider.overrideWithValue(config),
         // The one place Google is named. Everything above talks to `AuthService`.
         authServiceProvider.overrideWithValue(
-          FirebaseAuthService(
-            FirebaseAuth.instance,
-            googleCredential: googleCredential,
-          ),
+          SupabaseAuthService(supabase, googleIdToken: googleIdToken),
         ),
       ],
       child: const CustomerApp(),

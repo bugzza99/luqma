@@ -1,4 +1,4 @@
-import 'package:flutter_test/flutter_test.dart' show fail;
+﻿import 'package:flutter_test/flutter_test.dart' show fail;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 /// A client against the local stack, signed in as nobody in particular.
@@ -85,7 +85,7 @@ class LiveDatabase {
       'uid': uid,
       'scope': scope,
       'role': role,
-      if (merchantId != null) 'merchant_id': merchantId,
+      'merchant_id': ?merchantId,
     });
 
     final signedIn = SupabaseClient(_url, _serviceKey);

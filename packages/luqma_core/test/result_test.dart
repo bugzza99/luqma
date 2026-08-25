@@ -1,6 +1,6 @@
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:flutter_test/flutter_test.dart';
+﻿import 'package:flutter_test/flutter_test.dart';
 import 'package:luqma_core/luqma_core.dart';
+import 'package:postgrest/postgrest.dart';
 
 /// The reason a typed failure exists at all: with cash on delivery and patchy mobile
 /// data, "you're offline", "you're not allowed to do that" and "that meal just sold out"
@@ -8,32 +8,34 @@ import 'package:luqma_core/luqma_core.dart';
 /// says "something went wrong" is what makes an app feel broken.
 void main() {
   group('Failure.from', () {
-    test('a Firestore unavailable error is an offline failure', () {
+    test('a Postgrest permission denial is a permission failure', () {
       final failure = Failure.from(
-        FirebaseException(plugin: 'cloud_firestore', code: 'unavailable'),
-      );
-      expect(failure, isA<OfflineFailure>());
-    });
-
-    test('a Firestore permission-denied error is a permission failure', () {
-      final failure = Failure.from(
-        FirebaseException(plugin: 'cloud_firestore', code: 'permission-denied'),
+        PostgrestException(code: '42501', message: 'permission denied'),
       );
       expect(failure, isA<PermissionFailure>());
     });
 
-    test('a Firestore not-found error is a not-found failure', () {
+    test('the order function raising P0002 is a not-found failure', () {
       final failure = Failure.from(
-        FirebaseException(plugin: 'cloud_firestore', code: 'not-found'),
+        PostgrestException(code: 'P0002', message: 'merchant not found'),
       );
       expect(failure, isA<NotFoundFailure>());
     });
 
-    test('a network-request-failed auth error is also an offline failure', () {
+    // Two people tapping the last portion at the same moment is a conflict — someone
+    // got there first — and that is the sentence the customer is shown.
+    test('sold out reads as a conflict', () {
       final failure = Failure.from(
-        FirebaseAuthException(code: 'network-request-failed'),
+        PostgrestException(code: 'P0001', message: 'sold out'),
       );
-      expect(failure, isA<OfflineFailure>());
+      expect(failure, isA<ConflictFailure>());
+    });
+
+    test('a refused coupon reads as a conflict too', () {
+      final failure = Failure.from(
+        PostgrestException(code: 'P0001', message: 'coupon: alreadyUsed'),
+      );
+      expect(failure, isA<ConflictFailure>());
     });
 
     test('an unrecognised error keeps the original for the crash report', () {
@@ -64,9 +66,9 @@ void main() {
       expect(result.isOk, isFalse);
     });
 
-    test('guard turns a thrown Firebase error into an err result', () async {
+    test('guard turns a thrown Postgrest error into an err result', () async {
       final result = await Result.guard<int>(() async {
-        throw FirebaseException(plugin: 'cloud_firestore', code: 'permission-denied');
+        throw const PostgrestException(code: '42501', message: 'permission denied');
       });
       expect(result.failureOrNull, isA<PermissionFailure>());
     });

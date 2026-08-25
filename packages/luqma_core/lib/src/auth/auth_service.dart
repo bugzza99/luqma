@@ -1,7 +1,7 @@
-import 'dart:async';
+﻿import 'dart:async';
 
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
+import 'package:supabase_flutter/supabase_flutter.dart' hide AuthState;
 
 import '../result.dart';
 
@@ -75,31 +75,36 @@ abstract interface class AuthService {
   Future<void> signOut();
 }
 
-/// The real one. Google's token goes to Firebase Auth, which issues the session the rest
-/// of the app — and every security rule — actually trusts.
-class FirebaseAuthService implements AuthService {
-  FirebaseAuthService(this._auth, {required this.googleCredential}) {
-    // Token changes, not just sign-in and sign-out: a claim granted while the app is
-    // open arrives on the next refresh, and a merchant whose account was set up a minute
-    // ago should get in then rather than at the next cold start.
-    _subscription = _auth.idTokenChanges().listen((user) async {
-      _identity = user == null ? null : await _toIdentity(user);
+/// The real one. The session comes from GoTrue, and every policy in the database reads
+/// the same token this service hands out.
+class SupabaseAuthService implements AuthService {
+  SupabaseAuthService(this._client, {required this.googleIdToken}) : _auth = _client.auth {
+    // Auth state changes, not just sign-in and sign-out: a claim granted while the app
+    // is open arrives when the token refreshes, and a merchant whose account was set up
+    // a minute ago should get in then rather than at the next cold start.
+    _subscription = _client.auth.onAuthStateChange.listen((event) async {
+      final user = event.session?.user;
+      _identity = user == null ? null : _toIdentity(user);
       _state = user == null ? AuthState.signedOut : AuthState.signedIn;
       _controller.add(_identity);
       if (!_resolved.isCompleted) _resolved.complete();
     });
   }
 
-  /// Obtains a Google credential, or null when the person backed out.
+  /// Obtains a Google id token, or null when the person backed out.
   ///
   /// Injected rather than called directly so that swapping Google for anything else —
   /// or adding a second provider — is a change here and nowhere above.
-  final Future<AuthCredential?> Function() googleCredential;
+  final Future<String?> Function() googleIdToken;
 
-  final FirebaseAuth _auth;
+  final GoTrueClient _auth;
+
+  final SupabaseClient _client;
   final _controller = StreamController<LuqmaIdentity?>.broadcast();
   final _resolved = Completer<void>();
-  late final StreamSubscription<User?> _subscription;
+  // Typed loosely: GoTrue's own `AuthState` shares a name with ours below, and the
+  // subscription never needs to spell it.
+  late final StreamSubscription<dynamic> _subscription;
 
   AuthState _state = AuthState.unknown;
   LuqmaIdentity? _identity;
@@ -133,12 +138,11 @@ class FirebaseAuthService implements AuthService {
   @override
   Future<Result<LuqmaIdentity?>> signInWithGoogle() async {
     return Result.guard(() async {
-      final credential = await googleCredential();
-      if (credential == null) return null;
+      final idToken = await googleIdToken();
+      if (idToken == null) return null;
 
-      final result = await _auth.signInWithCredential(credential);
-      final user = result.user;
-      return user == null ? null : await _toIdentity(user);
+      await _auth.signInWithIdToken(provider: OAuthProvider.google, idToken: idToken);
+      return _toIdentity(_client.auth.currentUser!);
     });
   }
 
@@ -148,7 +152,7 @@ class FirebaseAuthService implements AuthService {
     required String password,
   }) {
     return Result.guard(() async {
-      final result = await _auth.signInWithEmailAndPassword(
+      final result = await _auth.signInWithPassword(
         email: email.trim(),
         password: password,
       );
@@ -164,23 +168,17 @@ class FirebaseAuthService implements AuthService {
     _controller.close();
   }
 
-  static Future<LuqmaIdentity> _toIdentity(User user) async {
-    // Never forced: a forced refresh on every token change is a network round trip on
-    // every launch, and the claims in the cached token are the ones the rules will see
-    // for this request anyway.
-    final token = await user.getIdTokenResult();
-    return LuqmaIdentity(
-      uid: user.uid,
-      name: user.displayName,
-      email: user.email,
-      phone: user.phoneNumber,
-      photoUrl: user.photoURL,
-      claims: token.claims ?? const {},
-    );
-  }
+  static LuqmaIdentity _toIdentity(User user) => LuqmaIdentity(
+        uid: user.id,
+        name: user.userMetadata?['name'] as String?,
+        email: user.email,
+        phone: user.phone,
+        photoUrl: user.userMetadata?['avatar_url'] as String?,
+        claims: user.appMetadata,
+      );
 }
 
-/// An in-memory session, for tests and for running the app with no Firebase project.
+/// An in-memory session, for tests and for running the app with no backend at all.
 class FakeAuthService implements AuthService {
   FakeAuthService({
     LuqmaIdentity? restoring,

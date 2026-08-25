@@ -1,4 +1,4 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+﻿<manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <!-- A new order has to reach a merchant who is not looking at the phone. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
@@ -50,10 +50,8 @@
              one notification this product cannot afford to miss arrives silently. The
              id matches ORDERS_CHANNEL_ID in MainActivity, which is what creates it. -->
         <meta-data
-            android:name="com.google.firebase.messaging.default_notification_channel_id"
             android:value="orders_critical" />
         <meta-data
-            android:name="com.google.firebase.messaging.default_notification_icon"
             android:resource="@drawable/ic_splash_mark" />
     </application>
     <!-- Required to query activities that can process text, see:

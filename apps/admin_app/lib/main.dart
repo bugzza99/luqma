@@ -1,5 +1,3 @@
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -9,8 +7,7 @@ import 'src/app/router.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp(options: LuqmaFirebase.admin);
-  await Emulators.connect();
+  final supabase = await LuqmaSupabase.initialize();
 
   runApp(
     ProviderScope(
@@ -18,10 +15,7 @@ Future<void> main() async {
         // AdminApp has no Google Sign-In: staff accounts get an email and a password
         // from the owner, so there is no credential source to hand over.
         authServiceProvider.overrideWithValue(
-          FirebaseAuthService(
-            FirebaseAuth.instance,
-            googleCredential: () async => null,
-          ),
+          SupabaseAuthService(supabase, googleIdToken: () async => null),
         ),
       ],
       child: const AdminApp(),

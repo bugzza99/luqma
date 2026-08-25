@@ -1,8 +1,6 @@
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
-import 'package:luqma_core/luqma_core.dart';
 
-/// Asks Google for a credential, or returns null when the person backed out.
+/// Asks Google for an id token, or returns null when the person backed out.
 ///
 /// Null is not an error. Somebody who opens the Google sheet and changes their mind has
 /// made a decision, and an app that answers it with a red banner is apologising for
@@ -13,26 +11,25 @@ import 'package:luqma_core/luqma_core.dart';
 /// out, addresses following the session, checkout asking for an account — is tested
 /// without a device, an OAuth client, or a network.
 ///
-/// It needs three things that are not code, all in the Firebase console: Google enabled
-/// as a sign-in provider, the signing key's SHA-1 registered against `com.luqma.customer`,
-/// and the resulting **web** client id in [LuqmaFirebase.googleServerClientId]. Until
-/// then this throws with those instructions. See the Phase 3 note in CLAUDE.md.
-Future<AuthCredential?> googleCredential() async {
-  if (LuqmaFirebase.googleServerClientId.isEmpty) {
+/// It needs two things that are not code: Google configured as a sign-in provider in the
+/// Supabase dashboard, and the **web** client id handed to the build as
+/// `LUQMA_GOOGLE_WEB_CLIENT_ID`. Until then this throws with those instructions.
+Future<String?> googleIdToken() async {
+  const serverClientId = String.fromEnvironment('LUQMA_GOOGLE_WEB_CLIENT_ID');
+  if (serverClientId.isEmpty) {
     // Said plainly and early, because the failure it replaces — "serverClientId must be
     // provided on Android" — names a field nobody set rather than the step nobody did.
     throw StateError(
-      'Google Sign-In is not configured yet. In the Firebase console: enable Google '
-      'under Authentication → Sign-in method, add the signing key SHA-1 to the '
-      'com.luqma.customer app under Project settings, then put the Web client id in '
-      'LuqmaFirebase.googleServerClientId.',
+      'Google Sign-In is not configured yet. In the Supabase dashboard: enable Google '
+      'under Authentication → Providers and add the OAuth credentials; then build with '
+      '--dart-define=LUQMA_GOOGLE_WEB_CLIENT_ID=<the web client id>.',
     );
   }
 
   final google = GoogleSignIn.instance;
-  // Android has no google-services.json here, so the web client id cannot be read from
-  // resources and has to be handed over.
-  await google.initialize(serverClientId: LuqmaFirebase.googleServerClientId);
+  // Android cannot read the web client id from resources without a config file, so it
+  // is handed over here.
+  await google.initialize(serverClientId: serverClientId);
 
   final GoogleSignInAccount account;
   try {
@@ -48,5 +45,5 @@ Future<AuthCredential?> googleCredential() async {
   final idToken = account.authentication.idToken;
   if (idToken == null) return null;
 
-  return GoogleAuthProvider.credential(idToken: idToken);
+  return idToken;
 }

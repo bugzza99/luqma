@@ -1,4 +1,4 @@
-name: luqma_core
+﻿name: luqma_core
 description: Shared theme, brand assets and components for the Luqma apps.
 version: 0.1.0
 publish_to: none
@@ -26,15 +26,10 @@ dependencies:
   freezed_annotation: ^3.0.0
   json_annotation: ^4.9.0
 
-  firebase_core: ^4.0.0
-  firebase_auth: ^6.0.0
-  cloud_firestore: ^6.0.0
-  firebase_storage: ^13.0.0
-  firebase_remote_config: ^6.0.0
+  supabase_flutter: ^2.17.2
+  postgrest: ^2.9.1
 
   intl: any
-  cloud_functions: ^6.3.6
-  supabase_flutter: ^2.17.2
 
 dev_dependencies:
   flutter_test:
@@ -48,7 +43,6 @@ dev_dependencies:
   # An in-memory Firestore. This is not a mock of our own code — it is a real
   # implementation of the Firestore API, so the repository under test runs its actual
   # queries and mapping instead of being stubbed out.
-  fake_cloud_firestore: ^4.0.0
 
 flutter:
   # Turns on the l10n code generator configured in l10n.yaml.

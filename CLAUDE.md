@@ -1,7 +1,14 @@
 # لقمة (Luqma)
 
 Local food-ordering marketplace for the city of **Edku** (إدكو), Beheira, Egypt.
-Restaurants plus home kitchens. Three Flutter Android apps on one Firebase backend.
+Restaurants plus home kitchens. Three Flutter Android apps on one **Supabase** backend.
+
+> **The Firebase → Supabase migration is complete** (see `docs/17-supabase-migration.md`
+> and `supabase/migrations/`). Every repository, auth and remote config now run on
+> Postgres/GoTrue/Realtime; the `firebase/` and `functions/` directories are gone.
+> Google Sign-In additionally requires the OAuth web client id at build time:
+> `--dart-define=LUQMA_GOOGLE_WEB_CLIENT_ID=<id>` (and Google enabled as a provider in
+> the Supabase dashboard).
 
 **The design is finished and verified. Read `docs/` before changing anything.**
 Those documents are the specification, not notes — every decision in them was argued through
