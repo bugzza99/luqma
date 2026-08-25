@@ -10,6 +10,41 @@ Restaurants plus home kitchens. Three Flutter Android apps on one **Supabase** b
 > `--dart-define=LUQMA_GOOGLE_WEB_CLIENT_ID=<id>` (and Google enabled as a provider in
 > the Supabase dashboard).
 
+## The cloud project
+
+**Project `luqma-edku` — ref `vqcivwdoekyfqhfmnuos`, Frankfurt (eu-central-1), free tier.**
+Linked from `supabase/`; the dashboard is at
+`https://supabase.com/dashboard/project/vqcivwdoekyfqhfmnuos`. The database password is in
+`supabase/.temp/db-password.txt` (gitignored) — move it to a password manager.
+
+Production builds point the apps at it with dart-defines:
+
+```
+flutter build apk --dart-define=LUQMA_SUPABASE_URL=https://vqcivwdoekyfqhfmnuos.supabase.co \
+  --dart-define=LUQMA_SUPABASE_ANON_KEY=<anon key, supabase projects api-keys>
+```
+
+Three things the migrations alone cannot carry to a new project — each bit hard:
+
+- **The custom access token hook is config, not schema.**
+  `[auth.hook.custom_access_token]` in `supabase/config.toml` copies each staff record
+  into the JWT at sign-in; without it every policy that reads a role sees nothing and an
+  admin is an ordinary customer. Land it with `supabase --experimental config push`.
+- **Realtime publication**: `supabase db push` creates tables but the hosted Realtime
+  needs them in `supabase_realtime` (the realtime migrations do this).
+- **pg_cron schedules** land in `20260824130000_scheduled_jobs.sql` — verify with
+  `select jobname from cron.job` after any restore.
+
+The live repository suite runs against the cloud exactly as against the local stack:
+
+```
+flutter test test_live --dart-define=SUPABASE_URL=https://vqcivwdoekyfqhfmnuos.supabase.co \
+  --dart-define=SUPABASE_SERVICE_KEY=<service_role key>
+```
+
+All 125 passed against the hosted project on 2026-08-25.
+
+
 **The design is finished and verified. Read `docs/` before changing anything.**
 Those documents are the specification, not notes — every decision in them was argued through
 with the owner and cross-checked. If something here seems arbitrary, the reason is written down.
