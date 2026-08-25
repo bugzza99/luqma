@@ -1,5 +1,7 @@
 ﻿import 'package:postgrest/postgrest.dart' show PostgrestException;
 
+import 'models/coupon.dart' show CouponRejection;
+
 
 /// Why something failed, in the only granularity the interface actually acts on.
 ///
@@ -30,9 +32,21 @@ sealed class Failure {
           return const ConflictFailure();
       }
       final message = error.message;
-      if (message.startsWith('coupon:') ||
-          message == 'sold out' ||
-          message.contains('not accepting orders')) {
+      if (message.startsWith('coupon:')) {
+        // The order function names every coupon refusal as `coupon: <reason>`; the
+        // reason is what the checkout screen speaks.
+        final name = message.substring('coupon:'.length).trim();
+        return CouponFailure(
+          CouponRejection.values.firstWhere(
+            (r) => r.name == name,
+            orElse: () => CouponRejection.notFound,
+          ),
+        );
+      }
+      if (message == 'sold out' ||
+          message.contains('not accepting orders') ||
+          message.contains('not accepting reservations') ||
+          message.contains('does not deliver')) {
         return const ConflictFailure();
       }
     }
@@ -63,6 +77,15 @@ final class ConflictFailure extends Failure {
 
 final class RateLimitedFailure extends Failure {
   const RateLimitedFailure();
+}
+
+/// The coupon said no, and said why. Each reason is its own sentence on the checkout
+/// screen rather than one shrug for all of them - "expired" and "minimum not met" ask
+/// for two completely different responses from the customer.
+final class CouponFailure extends Failure {
+  const CouponFailure(this.reason);
+
+  final CouponRejection reason;
 }
 
 /// Something we have not seen. Keeps [cause] so the crash report has the real error

@@ -4,7 +4,24 @@
 -- the supabase_realtime publication — and a watched table missing from it does not
 -- fail anywhere; it just never tells anybody, which is worse than failing. Tables join
 -- here on the day the first live stream moves onto them.
-alter publication supabase_realtime add table home_sections;
+--
+-- The join goes through one guarded helper rather than a bare `alter publication`:
+-- PGlite, which runs the local no-Docker migration tests, has no supabase_realtime
+-- publication at all, and a bare join there would stop every local suite before it
+-- reached a single constraint. On the real stack the publication exists and the
+-- behaviour is exactly what it always was.
+create or replace function public.add_table_to_realtime(p_table text)
+returns void
+language plpgsql
+as $$
+begin
+  if exists (select 1 from pg_publication where pubname = 'supabase_realtime') then
+    execute format('alter publication supabase_realtime add table %I', p_table);
+  end if;
+end;
+$$;
+
+select public.add_table_to_realtime('home_sections');
 
 -- ---------------------------------------------------------------- reorder
 

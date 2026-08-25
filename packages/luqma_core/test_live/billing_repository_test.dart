@@ -67,8 +67,13 @@ void main() {
 
   group('plans', () {
     test('come back in the order the admin set', () async {
-      final plans = (await repository.plans()).valueOrNull!;
-      expect(plans.map((p) => p.id), ['free', 'basic']);
+      final ids = (await repository.plans()).valueOrNull!.map((p) => p.id).toList();
+
+      // Plans are global, so Edku's own seeded plans sit beside these. What this
+      // test owns is the two it upserted and their relative order - sort_order,
+      // not the whole list, is the contract.
+      expect(ids, containsAllInOrder(['free', 'basic']));
+      expect(ids, isNot(contains('retired')));
     });
 
     // A plan withdrawn from sale must not vanish for merchants already on it.

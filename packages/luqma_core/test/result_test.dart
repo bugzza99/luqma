@@ -31,11 +31,56 @@ void main() {
       expect(failure, isA<ConflictFailure>());
     });
 
-    test('a refused coupon reads as a conflict too', () {
+    // A refused coupon now carries its own reason rather than collapsing into a
+    // conflict - the checkout screen says which sentence to show.
+    test('a refused coupon carries its reason as a coupon failure', () {
       final failure = Failure.from(
         PostgrestException(code: 'P0001', message: 'coupon: alreadyUsed'),
       );
+      expect(failure, isA<CouponFailure>());
+      expect((failure as CouponFailure).reason, CouponRejection.alreadyUsed);
+    });
+
+    // A daily meal that is no longer published refuses a reservation the same way a
+    // sold-out one does: the customer is told somebody got there first, not shown a
+    // generic failure.
+    test('a closed or draft daily meal reads as a conflict', () {
+      final failure = Failure.from(
+        PostgrestException(
+          code: 'P0001',
+          message: 'meal not accepting reservations',
+        ),
+      );
       expect(failure, isA<ConflictFailure>());
+    });
+
+    // A merchant who does not serve the customer's zone refuses the order the same way
+    // any other "the world changed" refusal does.
+    test('an out-of-range zone reads as a conflict', () {
+      final failure = Failure.from(
+        PostgrestException(
+          code: 'P0001',
+          message: 'merchant does not deliver to this zone',
+        ),
+      );
+      expect(failure, isA<ConflictFailure>());
+    });
+
+    // A coupon refusal names its reason, and the failure carries it to whichever
+    // sentence the checkout screen shows.
+    test('a named coupon refusal carries its reason', () {
+      final failure = Failure.from(
+        PostgrestException(code: 'P0001', message: 'coupon: expired'),
+      );
+      expect(failure, isA<CouponFailure>());
+      expect((failure as CouponFailure).reason, CouponRejection.expired);
+    });
+
+    test('an unknown coupon reason falls back to notFound', () {
+      final failure = Failure.from(
+        PostgrestException(code: 'P0001', message: 'coupon: somethingNew'),
+      );
+      expect((failure as CouponFailure).reason, CouponRejection.notFound);
     });
 
     test('an unrecognised error keeps the original for the crash report', () {

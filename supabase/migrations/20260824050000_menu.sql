@@ -1,6 +1,6 @@
 -- The menu joins realtime: both of its tables are watched live.
-alter publication supabase_realtime add table menu_categories;
-alter publication supabase_realtime add table menu_items;
+select public.add_table_to_realtime('menu_categories');
+select public.add_table_to_realtime('menu_items');
 
 -- ---------------------------------------------------------------- categories
 

@@ -1,7 +1,7 @@
 -- Billing, feedback and promotions join realtime: each is watched live somewhere.
-alter publication supabase_realtime add table subscriptions;
-alter publication supabase_realtime add table ratings;
-alter publication supabase_realtime add table promotions;
+select public.add_table_to_realtime('subscriptions');
+select public.add_table_to_realtime('ratings');
+select public.add_table_to_realtime('promotions');
 
 -- ---------------------------------------------------------------- billing
 

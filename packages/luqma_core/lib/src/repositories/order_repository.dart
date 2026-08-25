@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../data/column_names.dart';
 import '../data/live_query.dart';
+import '../models/coupon.dart' show CouponAccepted, CouponEvaluation, CouponRejection, CouponRejected;
 import '../models/order.dart';
 import '../result.dart';
 
@@ -87,6 +88,16 @@ abstract interface class OrderRepository {
     required int stars,
     String? comment,
   });
+
+  /// Prices one coupon against one basket, placing nothing. The verdict is what the
+  /// server will enforce again at placement, so the total shown is a promise kept -
+  /// computed by the same arithmetic that will judge it at the door.
+  Future<Result<CouponEvaluation>> evaluateCoupon({
+    required String code,
+    required String merchantId,
+    required int subtotal,
+    required int deliveryFee,
+  });
 }
 
 /// Sends the draft to the server and returns the id of the order it created.
@@ -152,22 +163,29 @@ class SupabaseOrderRepository implements OrderRepository {
   @override
   Future<Result<void>> cancel(String orderId, {required String reason}) {
     return Result.guard(() async {
+      // One conditional statement rather than a read-then-write. The old shape read the
+      // order, decided it was cancellable, and wrote - and a merchant accepting inside
+      // that gap turned into a generic failure instead of a sentence about the world
+      // having moved on. Zero rows now means either of two things, named below.
+      final updated = await _db
+          .from('orders')
+          .update({
+            'status': OrderStatus.cancelled.name,
+            'cancel_reason': reason,
+            'cancelled_by': OrderActor.customer.name,
+          })
+          .eq('id', orderId)
+          // Only while nobody has answered. Once a kitchen has started, cancelling
+          // costs somebody food they already cooked.
+          .eq('status', OrderStatus.placed.name)
+          .select();
+      if (updated.isNotEmpty) return;
+
+      // Nothing moved: either the order never existed, or somebody got there first.
       final row =
-          await _db.from('orders').select().eq('id', orderId).maybeSingle();
+          await _db.from('orders').select('id').eq('id', orderId).maybeSingle();
       if (row == null) throw const NotFoundFailure();
-
-      final order = _toOrder(row);
-      // Asked here as well as in the policies, so the app can hide the button rather
-      // than offer an action that is about to be refused.
-      if (!order.status.canMoveTo(OrderStatus.cancelled, by: OrderActor.customer)) {
-        throw const ConflictFailure();
-      }
-
-      await _db.from('orders').update({
-        'status': OrderStatus.cancelled.name,
-        'cancel_reason': reason,
-        'cancelled_by': OrderActor.customer.name,
-      }).eq('id', orderId);
+      throw const ConflictFailure();
     });
   }
 
@@ -209,6 +227,38 @@ class SupabaseOrderRepository implements OrderRepository {
       }, onConflict: 'order_id'),
     );
   }
+  @override
+  Future<Result<CouponEvaluation>> evaluateCoupon({
+    required String code,
+    required String merchantId,
+    required int subtotal,
+    required int deliveryFee,
+  }) {
+    return Result.guard(() async {
+      // The same function place_order trusts; the preview cannot promise a discount
+      // the placement would refuse.
+      final row = await _db.rpc('evaluate_coupon', params: {
+        'p_code': code,
+        'p_merchant_id': merchantId,
+        'p_subtotal': subtotal,
+        'p_delivery_fee': deliveryFee,
+      });
+      final map = Map<String, dynamic>.from(row as Map);
+      if (map['status'] == 'accepted') {
+        return CouponAccepted(
+          subtotalDiscount: map['subtotalDiscount'] as int,
+          deliveryDiscount: map['deliveryDiscount'] as int,
+          platformOwesMerchant: map['platformOwesMerchant'] as int,
+        );
+      }
+      return CouponRejected(
+        CouponRejection.values.firstWhere(
+          (r) => r.name == map['reason'],
+          orElse: () => CouponRejection.notFound,
+        ),
+      );
+    });
+  }
 }
 
 /// In-memory orders, for tests and for the screens above before the server exists.
@@ -224,6 +274,20 @@ class FakeOrderRepository implements OrderRepository {
   final List<OrderDraft> drafts = [];
   final List<Map<String, dynamic>> issues = [];
   final List<Map<String, dynamic>> ratings = [];
+
+  /// What [evaluateCoupon] answers. Set by a test; a fake with no coupons on file
+  /// rejects everything as unknown.
+  CouponEvaluation couponEvaluation =
+      const CouponRejected(CouponRejection.notFound);
+
+  @override
+  Future<Result<CouponEvaluation>> evaluateCoupon({
+    required String code,
+    required String merchantId,
+    required int subtotal,
+    required int deliveryFee,
+  }) async =>
+      Result.ok(couponEvaluation);
 
   @override
   Future<Result<Order>> placeOrder(OrderDraft draft) async {

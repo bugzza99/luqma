@@ -251,7 +251,12 @@ void main() {
 
       // Lives at the bottom of a lazily built list, so it has to be scrolled into
       // existence before it can be typed into.
-      await tester.scrollUntilVisible(find.byKey(CheckoutScreen.noteKey), 200);
+      await tester.dragUntilVisible(
+        find.byKey(CheckoutScreen.noteKey),
+        find.byType(ListView),
+        const Offset(0, -250),
+      );
+      await tester.pumpAndSettle();
       await tester.enterText(
         find.byKey(CheckoutScreen.noteKey),
         'الشقة فوق الصيدلية',
@@ -289,6 +294,94 @@ void main() {
       expect(draft.items.single.name, 'فراخ مشوية');
       expect(draft.type, OrderType.instant);
       expect(draft.toJson().containsKey('total'), isFalse);
+    });
+  });
+
+  group('the coupon', () {
+    testWidgets('an accepted code discounts the bill and says so', (tester) async {
+      await pump(tester);
+      orders.couponEvaluation = const CouponAccepted(
+        subtotalDiscount: 2000,
+        deliveryDiscount: 0,
+        platformOwesMerchant: 0,
+      );
+
+      await tester.ensureVisible(find.byKey(CheckoutScreen.couponApplyKey));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(CheckoutScreen.couponInputKey), 'SAVE20');
+      await tester.tap(find.byKey(CheckoutScreen.couponApplyKey));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('وفرت'), findsOneWidget);
+      expect(find.byKey(CheckoutScreen.couponFeedbackKey), findsOneWidget);
+      // The discount line, then the new total: 130 - 20 = 110.
+      expect(find.text('-20 ج'), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byKey(CheckoutScreen.totalKey),
+          matching: find.text('110 ج'),
+        ),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('a rejected code says why and leaves the bill alone',
+        (tester) async {
+      await pump(tester);
+      orders.couponEvaluation = const CouponRejected(CouponRejection.expired);
+
+      await tester.ensureVisible(find.byKey(CheckoutScreen.couponApplyKey));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(CheckoutScreen.couponInputKey), 'OLD');
+      await tester.tap(find.byKey(CheckoutScreen.couponApplyKey));
+      await tester.pumpAndSettle();
+
+      expect(find.text('صلاحية الكود خلصت.'), findsOneWidget);
+      expect(find.byKey(CheckoutScreen.couponFeedbackKey), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byKey(CheckoutScreen.totalKey),
+          matching: find.text('130 ج'),
+        ),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('an accepted code rides on the draft; a rejected one does not',
+        (tester) async {
+      await pump(tester);
+      orders.couponEvaluation =
+          const CouponRejected(CouponRejection.minOrderNotMet);
+
+      await tester.ensureVisible(find.byKey(CheckoutScreen.couponApplyKey));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(CheckoutScreen.couponInputKey), 'SMALL');
+      await tester.tap(find.byKey(CheckoutScreen.couponApplyKey));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(CheckoutScreen.placeKey));
+      await tester.pumpAndSettle();
+
+      expect(orders.drafts.single.couponCode, isNull);
+    });
+
+    testWidgets('an accepted code is sent with the order', (tester) async {
+      await pump(tester);
+      orders.couponEvaluation = const CouponAccepted(
+        subtotalDiscount: 2000,
+        deliveryDiscount: 0,
+        platformOwesMerchant: 0,
+      );
+
+      await tester.ensureVisible(find.byKey(CheckoutScreen.couponApplyKey));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(CheckoutScreen.couponInputKey), 'SAVE20');
+      await tester.tap(find.byKey(CheckoutScreen.couponApplyKey));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(CheckoutScreen.placeKey));
+      await tester.pumpAndSettle();
+
+      expect(placedOrderId, isNotNull);
+      expect(orders.drafts.single.couponCode, 'SAVE20');
     });
   });
 }

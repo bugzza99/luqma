@@ -33,6 +33,10 @@ class CheckoutScreen extends ConsumerStatefulWidget {
   static const errorKey = Key('checkout.error');
   static const signInKey = Key('checkout.signIn');
   static const needsAddressKey = Key('checkout.needsAddress');
+  static const couponInputKey = Key('checkout.coupon');
+  static const couponApplyKey = Key('checkout.coupon.apply');
+  static const couponFeedbackKey = Key('checkout.coupon.feedback');
+  static const billDiscountKey = Key('checkout.bill.discount');
   static const outOfRangeKey = Key('checkout.outOfRange');
   static const changeAddressKey = Key('checkout.changeAddress');
 
@@ -42,14 +46,64 @@ class CheckoutScreen extends ConsumerStatefulWidget {
 
 class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
   final _note = TextEditingController();
+  final _coupon = TextEditingController();
 
   Failure? _failure;
   bool _sending = false;
 
+  /// The verdict the server returned for the typed code. An accepted one rides along
+  /// on the draft; a rejected one is said out loud under the field.
+  CouponEvaluation? _couponEvaluation;
+  String? _appliedCouponCode;
+  bool _checkingCoupon = false;
+
   @override
   void dispose() {
     _note.dispose();
+    _coupon.dispose();
     super.dispose();
+  }
+
+  /// One sentence per refusal, in the words a person answers to. "Expired" and "the
+  /// order is too small" ask for two different next steps from the same customer.
+  String _couponSentence(CouponRejection reason) => switch (reason) {
+        CouponRejection.notFound => 'الكود ده مش موجود.',
+        CouponRejection.inactive => 'الكود ده متوقف مؤقتًا.',
+        CouponRejection.notYetValid => 'الكود ده لسه ما بدأش.',
+        CouponRejection.expired => 'صلاحية الكود خلصت.',
+        CouponRejection.minOrderNotMet =>
+          'الطلب أقل من الحد الأدنى اللي الكود بيشتغل عليه.',
+        CouponRejection.wrongMerchant => 'الكود ده مش للمطعم ده.',
+        CouponRejection.firstOrderOnly => 'الكود ده لأول طلب بس.',
+        CouponRejection.alreadyUsed => 'استخدمت الكود ده قبل كده.',
+        CouponRejection.exhausted => 'خلص عدد استخدامات الكود.',
+        CouponRejection.malformed => 'فيه مشكلة في إعداد الكود.',
+      };
+
+  Future<void> _applyCoupon(Cart cart, int deliveryFee) async {
+    final code = _coupon.text.trim();
+    if (code.isEmpty || cart.merchantId == null) return;
+
+    setState(() => _checkingCoupon = true);
+
+    // Priced by the server, not by this screen - the same arithmetic that will judge
+    // the code again when the order is placed.
+    final result = await ref.read(orderRepositoryProvider).evaluateCoupon(
+          code: code,
+          merchantId: cart.merchantId!,
+          subtotal: cart.subtotal,
+          deliveryFee: deliveryFee,
+        );
+
+    if (!mounted) return;
+
+    final evaluation = result.valueOrNull;
+    setState(() {
+      _checkingCoupon = false;
+      _couponEvaluation = evaluation;
+      _appliedCouponCode =
+          evaluation is CouponAccepted ? code.toUpperCase() : null;
+    });
   }
 
   Future<void> _place(Cart cart, Address address) async {
@@ -65,6 +119,8 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
             addressId: address.id,
             items: cart.toOrderLines(),
             type: OrderType.instant,
+            // Only an accepted code rides along; the server judges it again regardless.
+            couponCode: _appliedCouponCode,
             note: note.isEmpty ? null : note,
           ),
         );
@@ -108,9 +164,12 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
         ? Delivery.feeFor(merchant: merchant, zone: zone, config: config)
         : 0;
 
+    final acceptedCoupon =
+        _couponEvaluation is CouponAccepted ? _couponEvaluation as CouponAccepted : null;
     final pricing = OrderPricing.compute(
       items: cart.toOrderLines(),
       deliveryFee: deliveryFee,
+      coupon: acceptedCoupon,
     );
 
     final ready = identity != null &&
@@ -173,6 +232,47 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
                 _Lines(cart: cart),
                 const SizedBox(height: Space.xl),
                 _Bill(pricing: pricing, hasAddress: address != null),
+                const SizedBox(height: Space.md),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        key: CheckoutScreen.couponInputKey,
+                        controller: _coupon,
+                        textCapitalization: TextCapitalization.characters,
+                        decoration: const InputDecoration(
+                          labelText: 'كود خصم (إن وجد)',
+                          hintText: 'مثلاً LAUNCH',
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: Space.sm),
+                    FilledButton.tonal(
+                      key: CheckoutScreen.couponApplyKey,
+                      onPressed:
+                          cart.isNotEmpty && !_checkingCoupon
+                              ? () => _applyCoupon(cart, deliveryFee)
+                              : null,
+                      child: Text(_checkingCoupon ? 'جاري الفحص…' : 'طبّق'),
+                    ),
+                  ],
+                ),
+                if (_couponEvaluation != null) ...[
+                  const SizedBox(height: Space.sm),
+                  Text(
+                    switch (_couponEvaluation!) {
+                      CouponAccepted(:final total) =>
+                        'تم تطبيق الخصم: وفرت ${LuqmaStrings.of(context).price(total)}.',
+                      CouponRejected(:final reason) => _couponSentence(reason),
+                    },
+                    key: CheckoutScreen.couponFeedbackKey,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: _couponEvaluation is CouponAccepted
+                              ? colors.brand
+                              : colors.danger,
+                        ),
+                  ),
+                ],
                 const SizedBox(height: Space.xl),
                 _CashNote(),
                 const SizedBox(height: Space.xl),
@@ -326,6 +426,23 @@ class _Bill extends StatelessWidget {
             // address has been chosen yet.
             value: hasAddress ? strings.price(pricing.deliveryFee) : '—',
           ),
+          if (pricing.subtotalDiscount > 0) ...[
+            const SizedBox(height: Space.sm),
+            _Line(
+              key: CheckoutScreen.billDiscountKey,
+              label: 'خصم الكود',
+              value: '-${strings.price(pricing.subtotalDiscount)}',
+              emphasis: true,
+            ),
+          ],
+          if (pricing.deliveryDiscount > 0) ...[
+            const SizedBox(height: Space.sm),
+            _Line(
+              label: 'خصم التوصيل',
+              value: '-${strings.price(pricing.deliveryDiscount)}',
+              emphasis: true,
+            ),
+          ],
           const Padding(
             padding: EdgeInsets.symmetric(vertical: Space.md),
             child: Divider(height: 1),
@@ -348,10 +465,16 @@ class _Bill extends StatelessWidget {
 }
 
 class _Line extends StatelessWidget {
-  const _Line({required this.label, required this.value});
+  const _Line({
+    super.key,
+    required this.label,
+    required this.value,
+    this.emphasis = false,
+  });
 
   final String label;
   final String value;
+  final bool emphasis;
 
   @override
   Widget build(BuildContext context) {
@@ -361,12 +484,16 @@ class _Line extends StatelessWidget {
       children: [
         Text(
           label,
-          style: theme.textTheme.bodyMedium
-              ?.copyWith(color: theme.luqma.textSecondary),
+          style: theme.textTheme.bodyMedium?.copyWith(
+            color: emphasis ? theme.luqma.brand : theme.luqma.textSecondary,
+          ),
         ),
-        Text(value, style: LuqmaType.priceSmall.copyWith(
-          color: theme.luqma.textPrimary,
-        )),
+        Text(
+          value,
+          style: LuqmaType.priceSmall.copyWith(
+            color: emphasis ? theme.luqma.brand : theme.luqma.textPrimary,
+          ),
+        ),
       ],
     );
   }

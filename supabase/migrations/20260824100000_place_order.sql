@@ -1,4 +1,4 @@
-﻿-- Placing an order: the one door every order comes through.
+-- Placing an order: the one door every order comes through.
 --
 -- SECURITY DEFINER on purpose. Everything here is the server deciding - prices read
 -- from the menu rather than believed from the phone, a coupon evaluated against its own
@@ -35,6 +35,13 @@ declare
   v_deadline   timestamptz;
   v_timeout    integer;
   v_order      public.orders;
+  v_meal       public.daily_meals;
+  -- Read once: every branch below asks the same question about this draft.
+  v_is_preorder boolean := p_draft ->> 'type' = 'preorder';
+  -- Kept beside the record on purpose: `v_coupon is not null` on a RECORD is false
+  -- when any field is null - an uncapped-free fixedAmount coupon has several - so the
+  -- redemption block would silently never run and every code would be endless.
+  v_coupon_id  uuid;
 begin
   if v_uid is null then
     raise exception 'sign in to place an order' using errcode = '42501';
@@ -54,19 +61,66 @@ begin
     raise exception 'merchant not accepting orders' using errcode = 'P0001';
   end if;
 
-  -- Recompute every line from the menu: the name and unit price are read, not believed.
-  -- The quantity and chosen extras are the customer's to say. Lines arrive as
-  -- {itemId, quantity, optionsTotal, note}; what comes back out carries the menu's own
-  -- name and price, frozen at order time.
-  for v_line in select * from jsonb_array_elements(v_items) loop
-    select name, price into strict v_menu
-      from public.menu_items
-     where id = (v_line ->> 'itemId')::uuid
-       and merchant_id = v_merchant.id;
+  -- Outside the posted hours, no order. The same question the phone asks through
+  -- Merchant.acceptsOrdersAt, asked again where a stale or hand-written request
+  -- cannot talk its way past it.
+  if not public.merchant_open_at(v_merchant.opening_hours, now()) then
+    raise exception 'merchant not accepting orders' using errcode = 'P0001';
+  end if;
 
-    v_subtotal := v_subtotal +
-      (v_menu.price + coalesce((v_line ->> 'optionsTotal')::int, 0))
-      * (v_line ->> 'quantity')::int;
+  -- Prepaid: the platform stops carrying a merchant who has run out, before the order
+  -- rather than after - one order going out unpaid for is one too many.
+  if v_merchant.revenue_model = 'prepaid'
+     and v_merchant.wallet_balance < v_merchant.revenue_value then
+    raise exception 'merchant not accepting orders' using errcode = 'P0001';
+  end if;
+
+  -- Recompute every line from its source of truth: the name and unit price are read,
+  -- not believed. The quantity is the customer's to say - but only ever as a positive
+  -- whole number, and extras can never cost less than nothing, because a negative figure
+  -- is arithmetic that *lowers* what the courier collects at the door.
+  --
+  -- The source differs by type. An instant order prices itself from the merchant's menu.
+  -- A pre-order prices itself from the day's meal: the app sends the daily_meals id in
+  -- itemId - a home kitchen's published meal has no menu_items row to be found under -
+  -- so reading the menu here would refuse every reservation the city ever tried to make.
+  if v_is_preorder then
+    if nullif(btrim(p_draft ->> 'dailyMealId'), '') is null then
+      raise exception 'a pre-order names its meal' using errcode = 'P0001';
+    end if;
+    select * into strict v_meal
+      from public.daily_meals
+     where id = (p_draft ->> 'dailyMealId')::uuid
+       and merchant_id = v_merchant.id;
+    -- A draft, or a day already closed, is not something to reserve against. Raised in
+    -- the sentence the phone classifies as "somebody got there first".
+    if v_meal.status <> 'published' then
+      raise exception 'meal not accepting reservations' using errcode = 'P0001';
+    end if;
+  end if;
+
+  for v_line in select * from jsonb_array_elements(v_items) loop
+    if coalesce((v_line ->> 'quantity')::int, 0) < 1 then
+      raise exception 'a line needs at least one item' using errcode = 'P0001';
+    end if;
+    if coalesce((v_line ->> 'optionsTotal')::int, 0) < 0 then
+      raise exception 'extras cannot cost less than nothing' using errcode = 'P0001';
+    end if;
+
+    if v_is_preorder then
+      -- A daily meal carries no extras. optionsTotal on a pre-order line is ignored
+      -- rather than priced in, so what gets stored cannot disagree with what was summed.
+      v_subtotal := v_subtotal + v_meal.price * (v_line ->> 'quantity')::int;
+    else
+      select name, price into strict v_menu
+        from public.menu_items
+       where id = (v_line ->> 'itemId')::uuid
+         and merchant_id = v_merchant.id;
+
+      v_subtotal := v_subtotal +
+        (v_menu.price + coalesce((v_line ->> 'optionsTotal')::int, 0))
+        * (v_line ->> 'quantity')::int;
+    end if;
   end loop;
   if v_subtotal <= 0 then
     raise exception 'an empty basket is not an order' using errcode = 'P0001';
@@ -76,6 +130,9 @@ begin
   -- pre-order without an address is collected by the customer who placed it.
   if p_draft ? 'addressId' then
     select jsonb_build_object(
+             -- The id rides along even in a frozen copy: the phone's Address model
+             -- requires it, and a courier's screen must not crash on a parse.
+             'id', a.id::text,
              'zoneId', a.zone_id::text,
              'landmarkId', a.landmark_id::text,
              'landmarkName', a.landmark_name,
@@ -97,6 +154,20 @@ begin
     v_delivery := coalesce(v_merchant.delivery_fee_override,
                            (select default_delivery_fee from public.zones
                              where id = v_zone_id));
+    -- The zone row itself has to be there: a missing zone falling through to a zero
+    -- fee would be free delivery invented by a deletion.
+    if v_delivery is null then
+      raise exception 'delivery zone unknown' using errcode = 'P0002';
+    end if;
+    -- And the merchant has to actually serve it. The phone checks this first and hides
+    -- the button; this check is what stops an order that dodged the phone.
+    if not exists (
+      select 1 from public.merchant_served_zones sz
+       where sz.merchant_id = v_merchant.id
+         and sz.zone_id = v_zone_id
+    ) then
+      raise exception 'merchant does not deliver to this zone' using errcode = 'P0001';
+    end if;
   else
     v_zone_id := v_merchant.zone_id;
     v_delivery := 0;
@@ -115,6 +186,7 @@ begin
     if not found then
       raise exception 'coupon: notFound' using errcode = 'P0001';
     end if;
+    v_coupon_id := v_coupon.id;
     if not v_coupon.is_active then
       raise exception 'coupon: inactive' using errcode = 'P0001';
     end if;
@@ -219,16 +291,32 @@ begin
      coalesce((select phone from public.users where id = v_uid), ''),
      v_merchant.id, v_merchant.name, v_zone_id, v_address, v_delivery_by,
      coalesce(p_draft ->> 'type', 'instant'),
-     (select jsonb_agg(
-               jsonb_build_object(
-                 'itemId', m.id::text, 'name', m.name,
-                 'unitPrice', m.price, 'quantity',
-                 (line ->> 'quantity')::int,
-                 'optionsTotal', coalesce((line ->> 'optionsTotal')::int, 0),
-                 'note', line ->> 'note')
-               order by (line ->> 'sortOrder')::int)
-        from jsonb_array_elements(v_items) with ordinality as t(line, ord)
-        join public.menu_items m on m.id = (line ->> 'itemId')::uuid),
+     case when v_is_preorder then
+       -- Frozen from the day's meal, the same source the subtotal was summed from. The
+       -- meal's id rides in itemId, and extras are stored as zero because that is what
+       -- was priced - never what arrived.
+       (select jsonb_agg(
+                  jsonb_build_object(
+                    'itemId', p_draft ->> 'dailyMealId',
+                    'name', v_meal.name,
+                    'unitPrice', v_meal.price,
+                    'quantity', (line ->> 'quantity')::int,
+                    'optionsTotal', 0,
+                    'note', line ->> 'note')
+                order by ord)
+          from jsonb_array_elements(v_items) with ordinality as t(line, ord))
+     else
+       (select jsonb_agg(
+                  jsonb_build_object(
+                    'itemId', m.id::text, 'name', m.name,
+                    'unitPrice', m.price, 'quantity',
+                    (line ->> 'quantity')::int,
+                    'optionsTotal', coalesce((line ->> 'optionsTotal')::int, 0),
+                    'note', line ->> 'note')
+                order by (line ->> 'sortOrder')::int)
+          from jsonb_array_elements(v_items) with ordinality as t(line, ord)
+          join public.menu_items m on m.id = (line ->> 'itemId')::uuid)
+     end,
      jsonb_build_object(
        'subtotal', v_subtotal,
        'deliveryFee', coalesce(v_delivery, 0),
@@ -244,12 +332,28 @@ begin
      v_deadline)
   returning * into v_order;
 
-  -- The coupon remembers it was used, and so does the code itself.
-  if v_coupon is not null then
+  -- The coupon remembers it was used, and so does the code itself. The increment is
+  -- conditional on the limit being unspent *at update time*: two concurrent orders can
+  -- both read used_count below the limit, and only the row-level update serialises
+  -- them. Zero rows means the code ran out between the check and here - the whole
+  -- transaction, order included, rolls back.
+  -- The coupon remembers it was used, and so does the code itself. The increment is
+  -- conditional on the limit being unspent *at update time*: two concurrent orders can
+  -- both read used_count below the total, and only the row-level update serialises
+  -- them. Zero rows means the code ran out between the check and here - the whole
+  -- transaction, order included, rolls back.
+  if v_coupon_id is not null then
+    update public.coupons
+       set used_count = used_count + 1
+     where id = v_coupon_id
+       and (v_coupon.total_limit = 0 or used_count < v_coupon.total_limit);
+    if not found then
+      raise exception 'coupon: exhausted' using errcode = 'P0001';
+    end if;
+
     insert into public.coupon_redemptions
       (coupon_id, order_id, customer_uid)
-    values (v_coupon.id, v_order.id, v_uid);
-    update public.coupons set used_count = used_count + 1 where id = v_coupon.id;
+    values (v_coupon_id, v_order.id, v_uid);
   end if;
 
   return to_jsonb(v_order);

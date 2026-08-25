@@ -131,6 +131,13 @@ begin
     return new;
   end if;
 
+  -- A trusted server function declares itself, exactly as the column guards do: the
+  -- deadline escalator moves orders nobody is holding a token for, and no HTTP client
+  -- can set the flag it reads.
+  if coalesce(current_setting('app.server_mode', true), '') = 'on' then
+    return new;
+  end if;
+
   if public.is_admin() then
     return new;
   end if;
@@ -264,6 +271,12 @@ declare
   allowed text[];
   touched text[];
 begin
+  -- Same declaration the other guards honour: the deadline escalator writes status and
+  -- status_history on orders nobody holds a token for.
+  if coalesce(current_setting('app.server_mode', true), '') = 'on' then
+    return new;
+  end if;
+
   if public.is_admin() then
     return new;
   end if;
@@ -422,7 +435,13 @@ create policy admin_menu_items on menu_items for all to authenticated
 -- ---------------------------------------------------------------- daily meals
 
 grant select on daily_meals to anon, authenticated;
-create policy read_daily_meals on daily_meals for select to anon, authenticated using (true);
+-- Drafts and not-yet-published days are kitchen secrets until they go live: a customer
+-- seeing tomorrow's menu early is a leak, not a convenience. The kitchen and the admin
+-- see their own rows regardless of state.
+create policy read_daily_meals on daily_meals for select to anon, authenticated
+  using (status = 'published'
+         or public.is_merchant_owner(merchant_id)
+         or public.is_admin());
 
 grant insert, update, delete on daily_meals to authenticated;
 

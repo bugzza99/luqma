@@ -140,12 +140,21 @@ void main() {
     test('a pre-order takes its portion inside the transaction', () async {
       final mealId = await seedMeal(5);
 
+      // Exactly what PreorderCheckoutScreen sends: the daily meal's own id rides in
+      // itemId, and the name and price are copies the server must not believe. A draft
+      // that priced itself from menu_items would find nothing - a home kitchen's daily
+      // meal has no menu_items row to be found under.
       final result = await customerRepository.placeOrder(OrderDraft(
         merchantId: merchantId,
         type: OrderType.preorder,
         dailyMealId: mealId,
         items: [
-          OrderLine(itemId: menuItemId, name: 'س', unitPrice: 1, quantity: 2),
+          OrderLine(
+            itemId: mealId,
+            name: 'وجبة اليوم',
+            unitPrice: 9000,
+            quantity: 2,
+          ),
         ],
       ));
       final pf = result.failureOrNull;
@@ -154,13 +163,330 @@ void main() {
         print('PO-DBG preorder=${pf.cause}');
       }
 
-      expect(result.valueOrNull, isNotNull);
+      final order = result.valueOrNull!;
+      // Priced from the day's meal, not from what the phone claimed.
+      expect(order.items.single.name, 'وجبة اليوم');
+      expect(order.items.single.unitPrice, 9000);
+      expect(order.items.single.quantity, 2);
+      expect(order.pricing.subtotal, 18000);
+      expect(order.pricing.total, 18000);
+
       final meal = await live.client
           .from('daily_meals')
           .select('remaining_qty')
           .eq('id', mealId)
           .single();
       expect(meal['remaining_qty'], 3);
+    });
+
+    test('a pre-order refuses an unpublished meal as a conflict', () async {
+      final mealId = await seedMeal(5);
+      await live.client
+          .from('daily_meals')
+          .update({'status': 'draft'})
+          .eq('id', mealId);
+
+      final result = await customerRepository.placeOrder(OrderDraft(
+        merchantId: merchantId,
+        type: OrderType.preorder,
+        dailyMealId: mealId,
+        items: [
+          OrderLine(
+            itemId: mealId,
+            name: 'وجبة اليوم',
+            unitPrice: 9000,
+            quantity: 1,
+          ),
+        ],
+      ));
+
+      expect(result.failureOrNull, isA<ConflictFailure>());
+    });
+
+    test('a pre-order refuses a line of zero or negative quantity', () async {
+      final mealId = await seedMeal(5);
+
+      for (final quantity in [0, -3]) {
+        final result = await customerRepository.placeOrder(OrderDraft(
+          merchantId: merchantId,
+          type: OrderType.preorder,
+          dailyMealId: mealId,
+          items: [
+            OrderLine(itemId: mealId, name: 'وجبة اليوم', unitPrice: 9000, quantity: quantity),
+          ],
+        ));
+        expect(result.failureOrNull, isNotNull, reason: 'quantity=$quantity');
+      }
+
+      // Nothing was taken from the counter by any refused draft.
+      final meal = await live.client
+          .from('daily_meals')
+          .select('remaining_qty')
+          .eq('id', mealId)
+          .single();
+      expect(meal['remaining_qty'], 5);
+    });
+
+    test('an instant order refuses negative extras on a line', () async {
+      final result = await customerRepository.placeOrder(OrderDraft(
+        merchantId: merchantId,
+        type: OrderType.instant,
+        items: [
+          // The menu says 12000; "extras" worth -11900 would leave one piastre on the
+          // bill if the function priced it in.
+          OrderLine(
+            itemId: menuItemId,
+            name: 'سمك مشوي',
+            unitPrice: 12000,
+            optionsTotal: -11900,
+            quantity: 1,
+          ),
+        ],
+      ));
+
+      expect(result.failureOrNull, isNotNull);
+    });
+
+    test('a merchant outside its posted hours refuses the order', () async {
+      // Seeded closed rather than updated into closure: the column guard rightly
+      // refuses to let anyone flip a merchant's hours from outside, including us.
+      final closedId = await live.client.from('merchants').insert({
+        'city_id': cityId,
+        'type': 'restaurant',
+        'name': 'مغلق',
+        'zone_id': zoneId,
+        'phone': '01000000001',
+        'status': 'approved',
+        'delivers_self': false,
+        'opening_hours': <dynamic>[],
+      }).select().single().then((row) => row['id'] as String);
+
+      final result = await customerRepository.placeOrder(OrderDraft(
+        merchantId: closedId,
+        type: OrderType.instant,
+        items: [
+          OrderLine(
+            itemId: menuItemId,
+            name: 'سمك مشوي',
+            unitPrice: 12000,
+            quantity: 1,
+          ),
+        ],
+      ));
+
+      expect(result.failureOrNull, isA<ConflictFailure>());
+    });
+
+    test('a prepaid wallet that cannot cover one more fee refuses', () async {
+      // Each kitchen gets its own dish: the function prices every line from a menu
+      // item belonging to the merchant being ordered from.
+      Future<String> prepaidMerchant(int wallet) async {
+        final id = await live.client.from('merchants').insert({
+          'city_id': cityId,
+          'type': 'restaurant',
+          'name': wallet >= 1000 ? 'ممول' : 'مفلس',
+          'zone_id': zoneId,
+          'phone': '01000000002',
+          'status': 'approved',
+          'delivers_self': false,
+          'revenue_model': 'prepaid',
+          'revenue_value': 1000,
+          'wallet_balance': wallet,
+          'opening_hours': [
+            for (var d = 1; d <= 7; d++)
+              {'weekday': d, 'openMinute': 0, 'closeMinute': 1441},
+          ],
+        }).select().single().then((row) => row['id'] as String);
+        await live.client.from('menu_items').insert({
+          'merchant_id': id,
+          'name': 'طبق التجار',
+          'price': 12000,
+        });
+        return id;
+      }
+
+      Future<String> dishOf(String merchantId) async => live.client
+          .from('menu_items')
+          .select('id')
+          .eq('merchant_id', merchantId)
+          .single()
+          .then((row) => row['id'] as String);
+
+      // Five hundred against a thousand-fee: the platform would carry this order free.
+      final brokeId = await prepaidMerchant(500);
+      final broke = await customerRepository.placeOrder(OrderDraft(
+        merchantId: brokeId,
+        type: OrderType.instant,
+        items: [
+          OrderLine(
+            itemId: await dishOf(brokeId),
+            name: 'طبق التجار',
+            unitPrice: 12000,
+            quantity: 1,
+          ),
+        ],
+      ));
+      expect(broke.failureOrNull, isA<ConflictFailure>());
+
+      // Exactly the fee in the wallet: carried.
+      final fundedId = await prepaidMerchant(1000);
+      final funded = await customerRepository.placeOrder(OrderDraft(
+        merchantId: fundedId,
+        type: OrderType.instant,
+        items: [
+          OrderLine(
+            itemId: await dishOf(fundedId),
+            name: 'طبق التجار',
+            unitPrice: 12000,
+            quantity: 1,
+          ),
+        ],
+      ));
+      expect(funded.valueOrNull, isNotNull);
+    });
+
+    test('an unserved zone is refused; a served one carries the fee', () async {
+      final addressId = await live.client.from('addresses').insert({
+        'user_id': customerUid,
+        'zone_id': zoneId,
+        'label': 'البيت',
+        'street': 'شارع الميناء',
+      }).select().single().then((row) => row['id'] as String);
+      // Addresses carry no city column, so the city teardown cannot remove them;
+      // leaving this one would block the zone delete with a foreign key.
+      addTearDown(() =>
+          live.client.from('addresses').delete().eq('id', addressId));
+
+      OrderDraft toAddress() => OrderDraft(
+            merchantId: merchantId,
+            type: OrderType.instant,
+            addressId: addressId,
+            items: [
+              OrderLine(
+                itemId: menuItemId,
+                name: 'سمك مشوي',
+                unitPrice: 12000,
+                quantity: 1,
+              ),
+            ],
+          );
+
+      // No served-zones row yet: this kitchen does not reach this street, whatever the
+      // phone chose to show.
+      final refused = await customerRepository.placeOrder(toAddress());
+      expect(refused.failureOrNull, isA<ConflictFailure>());
+
+      await live.client.from('merchant_served_zones').insert({
+        'merchant_id': merchantId,
+        'zone_id': zoneId,
+      });
+
+      final accepted = await customerRepository.placeOrder(toAddress());
+      expect(accepted.valueOrNull, isNotNull);
+      expect(accepted.valueOrNull!.pricing.deliveryFee, 1500);
+      expect(accepted.valueOrNull!.pricing.total, 13500);
+    });
+
+    test('the coupon preview prices like the placement will', () async {
+      await live.client.from('coupons').insert({
+        'city_id': cityId,
+        'code': 'PREVIEW10',
+        'type': 'percentage',
+        'value': 1000,
+        'max_discount': 5000,
+        'min_order': 20000,
+      });
+
+      // Under the coupon's floor: refused, with the reason said.
+      final tooSmall = await customerRepository.evaluateCoupon(
+        code: 'PREVIEW10',
+        merchantId: merchantId,
+        subtotal: 12000,
+        deliveryFee: 1500,
+      );
+      expect(
+        (tooSmall.valueOrNull as CouponRejected).reason,
+        CouponRejection.minOrderNotMet,
+      );
+
+      // Over it - and typed in lower case, like a person types. Ten percent of 24000.
+      final ok = await customerRepository.evaluateCoupon(
+        code: 'preview10',
+        merchantId: merchantId,
+        subtotal: 24000,
+        deliveryFee: 1500,
+      );
+      final accepted = ok.valueOrNull as CouponAccepted;
+      expect(accepted.subtotalDiscount, 2400);
+      expect(accepted.deliveryDiscount, 0);
+    });
+
+    test('the coupon preview says when a code has expired', () async {
+      await live.client.from('coupons').insert({
+        'city_id': cityId,
+        'code': 'LASTYEAR',
+        'type': 'fixedAmount',
+        'value': 5000,
+        'valid_until':
+            DateTime.now().subtract(const Duration(days: 1)).toIso8601String(),
+      });
+
+      final result = await customerRepository.evaluateCoupon(
+        code: 'LASTYEAR',
+        merchantId: merchantId,
+        subtotal: 24000,
+        deliveryFee: 1500,
+      );
+
+      expect((result.valueOrNull as CouponRejected).reason, CouponRejection.expired);
+    });
+
+    test('one coupon with one use lands on exactly one of two orders', () async {
+      await live.client.from('coupons').insert({
+        'city_id': cityId,
+        'code': 'LAUNCH',
+        'type': 'fixedAmount',
+        'value': 5000,
+        'total_limit': 1,
+      });
+
+      OrderDraft couponDraft() => OrderDraft(
+            merchantId: merchantId,
+            type: OrderType.instant,
+            items: [
+              OrderLine(
+                itemId: menuItemId,
+                name: 'سمك مشوي',
+                unitPrice: 12000,
+                quantity: 2,
+              ),
+            ],
+            couponCode: 'LAUNCH',
+          );
+
+      final results = await Future.wait([
+        customerRepository.placeOrder(couponDraft()),
+        customerRepository.placeOrder(couponDraft()),
+      ]);
+
+      // Both drafts read used_count = 0 below the limit; only the conditional update
+      // serialises them. Exactly one order exists, and the counter says so too.
+      for (final r in results) {
+        final f = r.failureOrNull;
+        // ignore: avoid_print
+        print('COUPON-DBG ok=${r.valueOrNull != null} '
+            'total=${r.valueOrNull?.pricing.total} '
+            'fail=${f is UnknownFailure ? f.cause : f}');
+      }
+      final wins = results.where((r) => r.valueOrNull != null).length;
+      expect(wins, 1);
+
+      final coupon = await live.client
+          .from('coupons')
+          .select('used_count')
+          .eq('code', 'LAUNCH')
+          .single();
+      expect(coupon['used_count'], 1);
     });
 
     // Two people tapping the last portion at the same moment is the one thing this
@@ -177,7 +503,14 @@ void main() {
             type: OrderType.preorder,
             dailyMealId: mealId,
             items: [
-              OrderLine(itemId: menuItemId, name: 'س', unitPrice: 1, quantity: 1),
+              // The app's own shape: the meal's id in itemId, the meal's price on the
+              // line - both ignored by the server, which reads the row it decrements.
+              OrderLine(
+                itemId: mealId,
+                name: 'وجبة اليوم',
+                unitPrice: 9000,
+                quantity: 1,
+              ),
             ],
           );
 
@@ -251,6 +584,15 @@ void main() {
           await customerRepository.cancel(order.id, reason: 'غيرت رأيي');
 
       expect(cancelled.failureOrNull, isA<ConflictFailure>());
+    });
+
+    test('cancelling an order that does not exist is a not-found', () async {
+      final cancelled = await customerRepository.cancel(
+        '00000000-0000-0000-0000-000000000000',
+        reason: 'غيرت رأيي',
+      );
+
+      expect(cancelled.failureOrNull, isA<NotFoundFailure>());
     });
   });
 }

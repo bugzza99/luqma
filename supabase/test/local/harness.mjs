@@ -40,6 +40,11 @@ export async function freshDatabase() {
     create role anon;
     create role authenticated;
     create role service_role;
+
+    -- The role GoTrue speaks as when it calls the access-token hook on sign-in.
+    -- Nothing here ever signs in, but the grant to it must still land for the
+    -- migrations to apply unchanged.
+    create role supabase_auth_admin;
   `);
 
   // Every migration, in order — the same thing `supabase db reset` does, so one added
