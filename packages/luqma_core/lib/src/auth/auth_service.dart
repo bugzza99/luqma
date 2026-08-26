@@ -1,4 +1,5 @@
 ﻿import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' hide AuthState;
@@ -168,14 +169,44 @@ class SupabaseAuthService implements AuthService {
     _controller.close();
   }
 
-  static LuqmaIdentity _toIdentity(User user) => LuqmaIdentity(
+  /// Who is signed in, and what the server says they may be.
+  ///
+  /// The claims come off the **access token**, never off `user.appMetadata`. The
+  /// access-token hook copies the staff record into the token at sign-in and does not
+  /// touch the user row, whose `raw_app_meta_data` stays `{provider: email}` for ever.
+  /// Reading the row therefore hands every gate in the product an ordinary customer —
+  /// which locked the owner out of AdminApp with "this account has no permission", and
+  /// every merchant out of their own shop.
+  ///
+  /// It is also the right place on principle: a claim is only worth anything because a
+  /// server signed it, and the token is the signed thing.
+  LuqmaIdentity _toIdentity(User user) => LuqmaIdentity(
         uid: user.id,
         name: user.userMetadata?['name'] as String?,
         email: user.email,
         phone: user.phone,
         photoUrl: user.userMetadata?['avatar_url'] as String?,
-        claims: user.appMetadata,
+        claims: _claimsOnToken(),
       );
+
+  /// `app_metadata` as the current access token states it.
+  ///
+  /// Empty when there is no session, and empty rather than throwing on a token this
+  /// build cannot read — an unreadable token is somebody with no claims, never a crash
+  /// on the launch path.
+  Map<String, Object?> _claimsOnToken() {
+    final token = _auth.currentSession?.accessToken;
+    if (token == null) return const {};
+
+    try {
+      final payload = token.split('.')[1];
+      final decoded = utf8.decode(base64Url.decode(base64Url.normalize(payload)));
+      final claims = jsonDecode(decoded) as Map<String, dynamic>;
+      return (claims['app_metadata'] as Map<String, dynamic>?) ?? const {};
+    } catch (_) {
+      return const {};
+    }
+  }
 }
 
 /// An in-memory session, for tests and for running the app with no backend at all.
