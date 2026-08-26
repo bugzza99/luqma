@@ -4,8 +4,16 @@
 
 ```
 supabase start
-flutter test test_live
+flutter test test_live -j 1
 ```
+
+**`-j 1` is not optional.** `flutter test` runs files concurrently, and every file here
+talks to the same database — so two suites racing produce a different failure each run
+and none of them is about the code. Serially the suite is green twice in a row; in
+parallel it is green nowhere twice.
+
+The alternative would be a database per file, which is a lot of machinery to avoid one
+flag on a suite that takes fifty seconds.
 
 ## Why they are separate
 

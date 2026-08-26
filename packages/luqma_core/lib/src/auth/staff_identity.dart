@@ -16,11 +16,12 @@ enum StaffScope { platform, merchant }
 
 /// What the signed-in account is allowed to be, as the token states it.
 ///
-/// Read off custom claims and never off a Firestore document. `firestore.rules` decides
-/// ownership with `request.auth.token.merchantId`, and only a server can issue a claim;
-/// a document field is something the client can attempt to write. Reading a document
-/// here would leave the app and the rules answering one question from two sources, and
-/// the disagreement would only ever surface as a permission error nobody can explain.
+/// Read off the token claims and never off a row a client can reach. The RLS policies
+/// decide ownership with `auth.jwt() -> app_metadata`, and only the access-token hook
+/// can put anything there; a column is something a client can attempt to write. Reading
+/// one here would leave the app and the policies answering the same question from two
+/// sources, and the disagreement would surface only as a permission error nobody can
+/// explain.
 @immutable
 class StaffIdentity {
   const StaffIdentity({

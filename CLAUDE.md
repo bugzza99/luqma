@@ -284,7 +284,12 @@ cd packages/luqma_core && flutter gen-l10n && flutter analyze && flutter test
 npm --prefix functions test
 npm --prefix supabase test          # schema and seed, on PGlite — no Docker needed
 npm --prefix supabase run test:stack # the boundary, against a running `supabase start`
+cd packages/luqma_core && flutter test test_live -j 1   # repositories, against the stack
 ```
+
+**`-j 1` on `test_live` is not optional.** Those files all talk to the same database, and
+`flutter test` runs files concurrently — so in parallel the suite fails somewhere
+different every run and none of it is about the code.
 
 `supabase test` runs on **PGlite**, Postgres compiled to WebAssembly: the real migrations,
 the real constraint machinery, no container. `test:stack` needs `supabase start`, because

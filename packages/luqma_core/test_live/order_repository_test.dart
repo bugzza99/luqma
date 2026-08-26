@@ -123,6 +123,29 @@ void main() {
       expect(order.pricing.total, 24000);
     });
 
+    // A blocked customer is the whole of the abuse defence, and `users.is_blocked` was
+    // written by the admin and read by nobody: nothing in `place_order`, no policy, and
+    // not the token hook. The block was a button that would have lied to whoever pressed
+    // it, and the customer it blocked would have kept ordering.
+    test('a blocked customer is refused', () async {
+      // Ordinary first, so the refusal below cannot be some unrelated door being shut.
+      expect((await customerRepository.placeOrder(draft())).valueOrNull, isNotNull);
+
+      // Blocked the way an admin blocks: through the production function, so the test
+      // proves the whole path rather than a column somebody set by hand.
+      final admin = await live.openAsAdmin();
+      await admin.rpc('admin_set_customer_blocked',
+          params: {'p_uid': customerUid, 'p_blocked': true});
+
+      final blocked = await customerRepository.placeOrder(draft());
+      expect(blocked.valueOrNull, isNull, reason: 'a blocked customer must not order');
+      expect(blocked.failureOrNull, isA<PermissionFailure>());
+
+      await admin.rpc('admin_set_customer_blocked',
+          params: {'p_uid': customerUid, 'p_blocked': false});
+      await admin.dispose();
+    });
+
     Future<String> seedMeal(int remaining) async =>
         await live.client.from('daily_meals').insert({
           'merchant_id': merchantId,

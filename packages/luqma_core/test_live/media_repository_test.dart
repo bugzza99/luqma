@@ -19,13 +19,25 @@ void main() {
   });
 
   setUp(() async {
-    // The queue is global — media carries no city — so every run clears what past runs
-    // left behind rather than inheriting their strays.
+    // The queue is global — media carries no city — so this clears what past runs of
+    // *this* suite left behind. It cannot clear what other suites leave, which is why
+    // `mine` below exists: an upload from the menu or boundary suites is a legitimate
+    // occupant of a queue the admin genuinely sees whole.
     await live.client.from('media').delete().like('url', 'https://example.com/%');
     uploaderUid = await live.makeCustomer();
   });
 
   tearDownAll(() => live.close());
+
+  /// The queue, narrowed to what this run put in it.
+  ///
+  /// `watchPending` returns the whole moderation queue on purpose — one collection, one
+  /// door, and the admin reads all of it. So a test that asserts on the whole list is
+  /// asserting on every other suite's leftovers, and fails for a reason that has nothing
+  /// to do with media.
+  Future<List<Media>> mine() async => (await repository.watchPending().first)
+      .where((m) => m.uploadedBy == uploaderUid)
+      .toList();
 
   Future<String> upload({
     MediaStatus status = MediaStatus.pending,
@@ -47,7 +59,7 @@ void main() {
         await upload(createdAt: DateTime.now().subtract(const Duration(hours: 1)));
     final newer = await upload();
 
-    final queue = await repository.watchPending().first;
+    final queue = await mine();
 
     expect(queue.map((m) => m.id), [older, newer]);
   });
@@ -57,7 +69,7 @@ void main() {
   test('says which kind of image each one is', () async {
     await upload(kind: MediaKind.promotion);
 
-    final pending = await repository.watchPending().first;
+    final pending = await mine();
 
     expect(pending.single.kind, MediaKind.promotion);
   });
@@ -65,7 +77,7 @@ void main() {
   test('approved uploads leave the queue', () async {
     await upload(status: MediaStatus.approved);
 
-    expect(await repository.watchPending().first, isEmpty);
+    expect(await mine(), isEmpty);
   });
 
   // Knowing a decision was made, and by whom, is what separates "reviewed and refused"
@@ -104,9 +116,16 @@ void main() {
 
   // The queue is watched live in AdminApp: an upload from a merchant's phone should
   // appear without anyone refreshing.
+  // Narrowed to this run's uploads for the same reason `mine` is: the queue is global,
+  // so "it was empty and then it was not" is a claim about every other suite as well.
   test('an upload arrives on an already-open queue', () async {
     final emissions = <List<Media>>[];
-    repository.watchPending().listen(emissions.add);
+    final sub = repository
+        .watchPending()
+        .map((queue) => queue.where((m) => m.uploadedBy == uploaderUid).toList())
+        .listen(emissions.add);
+    addTearDown(sub.cancel);
+
     await waitFor(() => emissions.isNotEmpty,
         because: 'the queue never produced its first emission');
     expect(emissions.first, isEmpty);

@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:luqma_core/luqma_core.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'harness.dart';
 
@@ -15,9 +16,16 @@ void main() {
   late String merchantId;
   late String adminUid;
 
+  late SupabaseClient adminClient;
+
   setUpAll(() async {
     live = await LiveDatabase.open();
-    repository = SupabaseBillingRepository(live.client);
+    // Signed in as an admin, because that is who calls these in production. Recording a
+    // payment and topping up a wallet stand every column guard down, so each now asks
+    // who is calling — and the service key is not an admin: its token carries no such
+    // claim. A test that reached them with it was testing an identity AdminApp never has.
+    adminClient = await live.openAsAdmin();
+    repository = SupabaseBillingRepository(adminClient);
   });
 
   setUp(() async {
