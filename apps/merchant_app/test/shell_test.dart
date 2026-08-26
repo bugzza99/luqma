@@ -88,7 +88,7 @@ void main() {
           remoteConfigServiceProvider
               .overrideWithValue(RemoteConfigService(FakeConfigFetcher({}))),
         ],
-        child: const MerchantApp(),
+        child: const MerchantApp(currentVersion: '1.0.0'),
       ),
     );
     await tester.pumpAndSettle();

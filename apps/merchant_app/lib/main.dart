@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:luqma_core/luqma_core.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 import 'src/app/merchant_app.dart';
 import 'src/courier/courier_write_store.dart';
@@ -10,6 +11,8 @@ import 'src/courier/courier_write_store.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final supabase = await LuqmaSupabase.initialize();
+  // The version this install runs as, against minSupportedVersion.
+  final info = await PackageInfo.fromPlatform();
 
   // Pull the owner's settings before the first frame, but never wait on them: the app
   // ships with a full set of defaults, so a cold start with no network renders a correct
@@ -32,7 +35,7 @@ Future<void> main() async {
           SharedPreferencesCourierWriteStore(),
         ),
       ],
-      child: const MerchantApp(),
+      child: MerchantApp(currentVersion: info.version),
     ),
   );
 }

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:luqma_core/luqma_core.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 import 'src/app/google_credential.dart';
 import 'src/shell/customer_shell.dart';
@@ -11,6 +12,9 @@ import 'src/shell/customer_shell.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final supabase = await LuqmaSupabase.initialize();
+  // The version this install runs as, against minSupportedVersion. Read once here so
+  // everything below it stays a plain widget.
+  final info = await PackageInfo.fromPlatform();
 
   // Pull the owner's settings before the first frame, but never wait on them: the app
   // ships with a full set of defaults, so a cold start with no network renders a correct
@@ -27,13 +31,16 @@ Future<void> main() async {
           SupabaseAuthService(supabase, googleIdToken: googleIdToken),
         ),
       ],
-      child: const CustomerApp(),
+      child: CustomerApp(currentVersion: info.version),
     ),
   );
 }
 
 class CustomerApp extends StatelessWidget {
-  const CustomerApp({super.key});
+  const CustomerApp({super.key, required this.currentVersion});
+
+  /// What [LuqmaForceUpdateGate] compares against the owner's floor.
+  final String currentVersion;
 
   @override
   Widget build(BuildContext context) {
@@ -52,7 +59,13 @@ class CustomerApp extends StatelessWidget {
         GlobalWidgetsLocalizations.delegate,
         GlobalCupertinoLocalizations.delegate,
       ],
-      home: const _Start(),
+      home: LuqmaForceUpdateGate(
+        currentVersion: currentVersion,
+        storeUrl: Uri.parse(
+          'https://play.google.com/store/apps/details?id=com.luqma.customer',
+        ),
+        child: const _Start(),
+      ),
     );
   }
 }

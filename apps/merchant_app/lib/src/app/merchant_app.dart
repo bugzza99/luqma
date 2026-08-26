@@ -26,7 +26,10 @@ import '../shop/shop_screen.dart';
 /// is *turned away*, not asked to sign in — they have a real account, just not one this
 /// app is for.
 class MerchantApp extends ConsumerWidget {
-  const MerchantApp({super.key});
+  const MerchantApp({super.key, required this.currentVersion});
+
+  /// What [LuqmaForceUpdateGate] compares against the owner's floor.
+  final String currentVersion;
 
   static const inboxTabKey = Key('app.tab.inbox');
   static const liveTabKey = Key('app.tab.live');
@@ -52,7 +55,13 @@ class MerchantApp extends ConsumerWidget {
         GlobalWidgetsLocalizations.delegate,
         GlobalCupertinoLocalizations.delegate,
       ],
-      home: const _Gate(),
+      home: LuqmaForceUpdateGate(
+        currentVersion: currentVersion,
+        storeUrl: Uri.parse(
+          'https://play.google.com/store/apps/details?id=com.luqma.merchant',
+        ),
+        child: const _Gate(),
+      ),
     );
   }
 }

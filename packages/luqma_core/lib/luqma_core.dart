@@ -1,4 +1,4 @@
-﻿/// Shared foundation for the three Luqma apps.
+/// Shared foundation for the three Luqma apps.
 ///
 /// Phase 0 ships the brand layer: colour, type, spacing, motion, the two themes, and the
 /// logo lockup. Models, repositories and `RemoteConfigService` land in Phase 1.
@@ -62,4 +62,5 @@ export 'src/widgets/address_picker.dart';
 export 'src/widgets/error_view.dart';
 export 'src/widgets/luqma_lockup.dart';
 export 'src/widgets/menu_editor.dart';
+export 'src/widgets/force_update_gate.dart';
 export 'src/widgets/luqma_splash.dart';

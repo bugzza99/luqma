@@ -58,7 +58,14 @@ void main() {
   Future<void> pump(
     WidgetTester tester, {
     Cart startingCart = Cart.empty,
-    LuqmaIdentity? signedInAs = const LuqmaIdentity(uid: 'u1', name: 'أحمد'),
+    // A phone on the identity, because the checkout now refuses to send an order the
+    // courier could not call about — a signed-in customer without one is asked for it
+    // there first.
+    LuqmaIdentity? signedInAs = const LuqmaIdentity(
+      uid: 'u1',
+      name: 'أحمد',
+      phone: '01000000000',
+    ),
     List<HomeSection> sections = const [],
   }) async {
     await tester.pumpWidget(

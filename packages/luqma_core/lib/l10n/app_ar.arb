@@ -195,5 +195,20 @@
   "currencySuffix": "ج",
   "@currencySuffix": {
     "description": "Short form of the Egyptian pound, written after the number."
+  },
+
+  "forceUpdateTitle": "إصدار جديد من لقمة جاهز",
+  "@forceUpdateTitle": {
+    "description": "Title of the screen that blocks an out-of-date app."
+  },
+
+  "forceUpdateBody": "النسخة اللي عندك قديمة على اللي الخدمة بتسمح بيه. حدّث التطبيق من المتجر وكمّل عادي — طلباتك وعناوينك محفوظة.",
+  "@forceUpdateBody": {
+    "description": "Why the update is required, and what carries over. The reassurance matters: a blocked screen reads as lost data unless it says otherwise."
+  },
+
+  "forceUpdateButton": "حدّث التطبيق",
+  "@forceUpdateButton": {
+    "description": "The one control on the force-update screen; opens the store listing."
   }
 }
