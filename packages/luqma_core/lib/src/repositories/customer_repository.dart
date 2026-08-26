@@ -21,6 +21,16 @@ abstract interface class CustomerRepository {
 
   /// Blocks or unblocks. Blocked customers fail at sign-in.
   Future<Result<void>> setBlocked(String uid, {required bool blocked});
+
+  /// Gives a customer a new password and returns it, once.
+  ///
+  /// A customer's account is keyed on a synthetic address with no mailbox and OTP is
+  /// off, so "email me a link" and "text me a code" both lead nowhere. Somebody who
+  /// forgets their password calls, and the admin reads them what this returns.
+  ///
+  /// It is never stored: the returned string is the only time it is readable, which is
+  /// why it comes back rather than being written anywhere.
+  Future<Result<String>> resetPassword(String uid);
 }
 
 class SupabaseCustomerRepository implements CustomerRepository {
@@ -80,6 +90,36 @@ class SupabaseCustomerRepository implements CustomerRepository {
       }),
     );
   }
+
+  @override
+  Future<Result<String>> resetPassword(String uid) {
+    return Result.guard(() async {
+      final response = await _db.functions.invoke(
+        'reset-customer-password',
+        body: {'uid': uid},
+      );
+
+      // The function names its refusals so the screen can say which sentence to show.
+      switch (response.status) {
+        case >= 200 && < 300:
+          break;
+        case 400:
+          // A staff account reached through the customers screen — the staff screen is
+          // where those are managed.
+          throw const ConflictFailure();
+        case 404:
+          throw const NotFoundFailure();
+        case 401 || 403:
+          throw const PermissionFailure();
+        default:
+          throw UnknownFailure(
+            'reset-customer-password: HTTP ${response.status}',
+          );
+      }
+
+      return (response.data as Map)['password'] as String;
+    });
+  }
 }
 
 /// In-memory customers, for tests and for building screens above it.
@@ -93,10 +133,16 @@ class FakeCustomerRepository implements CustomerRepository {
 
   final Map<String, CustomerSummary> _customers;
   final Map<String, List<Order>> _histories;
-  final Failure? failure;
+
+  /// Makes every call fail with this. Mutable so a test can let a search succeed and
+  /// then refuse what follows — which is the shape of most of the interesting cases.
+  Failure? failure;
 
   /// What [setBlocked] did, for assertions.
   final List<(String, bool)> blockCalls = [];
+
+  /// Who [resetPassword] was called for, for assertions.
+  final List<String> resetCalls = [];
 
   @override
   Future<Result<List<CustomerSummary>>> search(String query) async {
@@ -132,5 +178,16 @@ class FakeCustomerRepository implements CustomerRepository {
     );
     blockCalls.add((uid, blocked));
     return const Result.ok(null);
+  }
+
+  @override
+  Future<Result<String>> resetPassword(String uid) async {
+    if (failure != null) return Result.err(failure!);
+    if (!_customers.containsKey(uid)) return const Result.err(NotFoundFailure());
+
+    resetCalls.add(uid);
+    // Fixed rather than random: a test asserting on a password it cannot predict can
+    // only assert that a string came back, which is what the real one guarantees anyway.
+    return const Result.ok('demo-pass-42');
   }
 }

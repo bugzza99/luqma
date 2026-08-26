@@ -34,9 +34,33 @@ differentiator and must be seen without a tap.
   preferences (marketing only), WhatsApp support link.
 
 ## Auth
-Google Sign-In at launch. Phone number collected once at first checkout, stored unverified.
+**Phone number and a password.** The number is the identity — it is what the courier calls
+and what the admin searches — so it is what a customer types to sign in, plus a password of
+their own. Signing up asks for a name as well, and nothing else. There is no email field
+anywhere in CustomerApp, and no Google Sign-In: that was removed before launch rather than
+carried, because it made the first screen of the app depend on a Play Console account, an
+OAuth client keyed on a release fingerprint, and a Google account the customer may not have.
+
+GoTrue's *phone* identity is not what carries this. It requires an SMS provider — the CLI
+refuses to enable it without one, even where no code is ever sent — so the number is folded
+into a synthetic address (`01012345678@phone.luqma.app`, `Phone.toAccountEmail`) and GoTrue
+holds an ordinary email identity. That domain has no mailbox and nothing is ever sent to it.
+The real number travels in the signup metadata, and `ensure_user_profile` copies it onto the
+`users` row, where `place_order` reads it.
+
+Every spelling of one number has to fold to one address, or a customer with an Arabic
+keyboard gets a second account and loses their history. `Phone.normalize` is that one
+spelling, and is shared with validation and with the admin's customer search.
+
+**The number is captured, not verified.** Somebody can sign up with a number that is not
+theirs; the password is what protects the account. That is the accepted trade at launch.
 When `otpEnabled` flips on, OTP becomes a verification layer over the same account — no user
 loses their history or addresses.
+
+**A forgotten password has one way back: an admin.** There is no mailbox to send a link to
+and no SMS to send a code by, so a customer calls the number on حول لقمة and an admin issues
+a new password from the customers screen (`reset-customer-password`). It is generated rather
+than typed, out of an alphabet with no `l`/`1`/`O`/`0`, because it is read down a phone line.
 
 ## Promotions surface
 Renders `promotions` in `adSlot` sections and boosted merchants in listings, through one

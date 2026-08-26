@@ -38,11 +38,60 @@ void main() {
     });
   });
 
+  group('signing up', () {
+    test('produces an identity carrying the phone', () async {
+      final auth = FakeAuthService();
+
+      final result = await auth.signUpWithPhone(
+        phone: '01012345678',
+        password: 'a-real-password',
+        name: 'أحمد',
+      );
+
+      expect(result.valueOrNull?.uid, isNotEmpty);
+      expect(result.valueOrNull?.phone, '01012345678');
+      expect(auth.state, AuthState.signedIn);
+    });
+
+    // The phone is the identity. A second account on the same number is somebody
+    // signing up for an account that already has their history — sign in, not sign up.
+    test('the same phone twice is refused, not duplicated', () async {
+      final auth = FakeAuthService();
+      await auth.signUpWithPhone(
+        phone: '01012345678',
+        password: 'a-real-password',
+        name: 'أحمد',
+      );
+
+      final result = await auth.signUpWithPhone(
+        phone: '01012345678',
+        password: 'a-different-password',
+        name: 'شخص تاني',
+      );
+
+      expect(result.failureOrNull, isA<PhoneTakenFailure>());
+    });
+
+    test('a failed sign-up reports the failure and signs nobody in', () async {
+      final auth = FakeAuthService(failure: const OfflineFailure());
+
+      final result = await auth.signUpWithPhone(
+        phone: '01012345678',
+        password: 'a-real-password',
+        name: 'أحمد',
+      );
+
+      expect(result.failureOrNull, isA<OfflineFailure>());
+      expect(auth.state, AuthState.signedOut);
+    });
+  });
+
   group('signing in', () {
     test('produces an identity', () async {
       final auth = FakeAuthService();
 
-      final result = await auth.signInWithGoogle();
+      final result =
+          await auth.signInWithPhone(phone: '01012345678', password: 'x');
 
       expect(result.valueOrNull?.uid, isNotEmpty);
       expect(auth.state, AuthState.signedIn);
@@ -53,7 +102,7 @@ void main() {
       final seen = <LuqmaIdentity?>[];
       final sub = auth.changes.listen(seen.add);
 
-      await auth.signInWithGoogle();
+      await auth.signInWithPhone(phone: '01012345678', password: 'x');
       await Future<void>.delayed(Duration.zero);
       await sub.cancel();
 
@@ -65,29 +114,18 @@ void main() {
     // change — which, for somebody who stays signed in, is never.
     test('a listener attaching afterwards still learns who it is', () async {
       final auth = FakeAuthService();
-      await auth.signInWithGoogle();
+      await auth.signInWithPhone(phone: '01012345678', password: 'x');
 
       final first = await auth.changes.first.timeout(const Duration(seconds: 1));
 
       expect(first?.uid, 'fake-uid');
     });
 
-    // Somebody dismissing the Google sheet is not an error to apologise for. It has to
-    // be distinguishable from a failure, or the app shows a red banner for a shrug.
-    test('a cancelled sign-in is not a failure', () async {
-      final auth = FakeAuthService(cancels: true);
-
-      final result = await auth.signInWithGoogle();
-
-      expect(result.valueOrNull, isNull);
-      expect(result.failureOrNull, isNull);
-      expect(auth.state, AuthState.signedOut);
-    });
-
     test('a failed sign-in reports the failure and signs nobody in', () async {
       final auth = FakeAuthService(failure: const OfflineFailure());
 
-      final result = await auth.signInWithGoogle();
+      final result =
+          await auth.signInWithPhone(phone: '01012345678', password: 'x');
 
       expect(result.failureOrNull, isA<OfflineFailure>());
       expect(auth.state, AuthState.signedOut);
@@ -97,7 +135,7 @@ void main() {
   group('signing out', () {
     test('clears the identity and tells everyone watching', () async {
       final auth = FakeAuthService();
-      await auth.signInWithGoogle();
+      await auth.signInWithPhone(phone: '01012345678', password: 'x');
 
       final seen = <LuqmaIdentity?>[];
       final sub = auth.changes.listen(seen.add);

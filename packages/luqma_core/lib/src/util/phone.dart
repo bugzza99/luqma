@@ -11,10 +11,28 @@ abstract final class Phone {
 
   static final _egyptianMobile = RegExp(r'^01[0-9]{9}$');
 
-  static bool isValidEgyptianMobile(String raw) {
-    // Spaces and hyphens are how a number is read back down a phone line, so they are
-    // ignored — the same normalization the admin's customer search uses.
-    final normalized = ArabicDigits.fold(raw).replaceAll(RegExp(r'[\s-]'), '');
-    return _egyptianMobile.hasMatch(normalized);
-  }
+  /// One number, one spelling. Arabic-Indic digits folded, spaces and hyphens dropped —
+  /// the latter being how a number is read back down a phone line.
+  static String normalize(String raw) =>
+      ArabicDigits.fold(raw.trim()).replaceAll(RegExp(r'[\s-]'), '');
+
+  static bool isValidEgyptianMobile(String raw) =>
+      _egyptianMobile.hasMatch(normalize(raw));
+
+  /// The address GoTrue holds for a customer who signed up with a phone number.
+  ///
+  /// A customer's identity is their phone, but GoTrue's *phone* identity needs Twilio —
+  /// it refuses to enable without an SMS provider, even when no code is ever sent. So the
+  /// number is folded into an ordinary email identity, which needs no provider at all.
+  /// Nobody types this address and nobody is shown it.
+  ///
+  /// [normalize] first, and that is the whole point: two spellings of one number mapping
+  /// to two addresses is one person with two accounts and half their orders on each.
+  ///
+  /// The domain is reserved and holds no mailbox. Nothing is ever sent to it — email
+  /// confirmation is off, and a customer who forgets their password is reset by an admin
+  /// (there is no inbox to send a link to).
+  static String toAccountEmail(String raw) => '${normalize(raw)}@$accountDomain';
+
+  static const accountDomain = 'phone.luqma.app';
 }

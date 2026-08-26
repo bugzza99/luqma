@@ -59,7 +59,7 @@ const keys = await fetch(`https://api.supabase.com/v1/projects/${ref}/api-keys`,
 const serviceKey = keys.find((k) => k.id === 'service_role').api_key;
 
 /** Creates an account, or returns the one already there. */
-async function account(email, password) {
+async function account(email, password, meta = {}) {
   const made = await fetch(`${PROJECT}/auth/v1/admin/users`, {
     method: 'POST',
     headers: {
@@ -67,7 +67,9 @@ async function account(email, password) {
       Authorization: `Bearer ${serviceKey}`,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({ email, password, email_confirm: true }),
+    body: JSON.stringify({
+      email, password, email_confirm: true, user_metadata: meta,
+    }),
   }).then((r) => r.json());
 
   if (made.id) return made.id;
@@ -95,23 +97,31 @@ async function account(email, password) {
 }
 
 const PASSWORD = 'luqma2026';
+// The customer signs in with a phone number, not an address: CustomerApp has no email
+// field at all. The address below is only what that number folds into — see
+// `Phone.toAccountEmail` — and nobody ever types it.
+const CUSTOMER_PHONE = '01000000001';
 const people = {
   admin: 'admin@luqma.app',
   owner: 'merchant@luqma.app',
-  customer: 'customer@luqma.app',
+  customer: `${CUSTOMER_PHONE}@phone.luqma.app`,
 };
 
 console.log(`seeding ${PROJECT}\n`);
 
 const adminId = await account(people.admin, PASSWORD);
 const ownerId = await account(people.owner, PASSWORD);
-const customerId = await account(people.customer, PASSWORD);
+// The metadata is what `ensure_user_profile` copies onto the profile row, and that row
+// is where `place_order` reads the number the courier calls.
+const customerId = await account(people.customer, PASSWORD, {
+  name: 'العميل', phone: CUSTOMER_PHONE,
+});
 console.log('  accounts    3');
 
 // `ensure_user_profile` already made the users rows; this only fills in what a person
 // would have typed at their first checkout.
 await sql(`
-  update public.users set name = 'العميل', phone = '01000000001'
+  update public.users set name = 'العميل', phone = '${CUSTOMER_PHONE}'
    where id = '${customerId}';
 
   insert into public.staff (uid, scope, role, name, phone)
@@ -123,7 +133,7 @@ await sql(`
 // every screen has something on it, not that the data is realistic.
 const shop = await sql(`
   with z as (select id from public.zones where city_id = 'edku' order by sort_order limit 1),
-  -- Guarded by name rather than by `on conflict`: there is no unique index on a
+  -- Guarded by name rather than by ON CONFLICT: there is no unique index on a
   -- merchant's name, and there should not be — two shops in a city may share one. So the
   -- absence is checked here, where "the demo shop" is a thing this script owns.
   m as (
@@ -195,6 +205,6 @@ const counts = await sql(`
 console.log('  shop        مطعم البحر');
 console.log(`  menu        ${counts.at(-1)?.[0]?.items ?? '?'} items`);
 console.log(`\ndone — sign in with any of:\n`);
-for (const [role, email] of Object.entries(people)) {
-  console.log(`  ${role.padEnd(9)} ${email}   ${PASSWORD}`);
-}
+console.log(`  admin     ${people.admin}      ${PASSWORD}   AdminApp`);
+console.log(`  merchant  ${people.owner}   ${PASSWORD}   MerchantApp`);
+console.log(`  customer  ${CUSTOMER_PHONE}         ${PASSWORD}   CustomerApp — the number, not an address`);

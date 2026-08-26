@@ -19,6 +19,11 @@ class AccountScreen extends ConsumerWidget {
   static const addressesKey = Key('account.addresses');
   static const contactKey = Key('account.contact');
   static const aboutKey = Key('account.about');
+  static const nameKey = Key('account.name');
+  static const phoneKey = Key('account.phone');
+  static const passwordKey = Key('account.password');
+  static const toggleModeKey = Key('account.toggleMode');
+  static const errorKey = Key('account.error');
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -89,8 +94,8 @@ class AccountScreen extends ConsumerWidget {
   }
 
   Future<void> _confirmSignOut(BuildContext context, WidgetRef ref) async {
-    // Asked, because signing out on a shared phone is easy to do by accident and
-    // getting back in means another round-trip through Google.
+    // Asked, because signing out on a shared phone is easy to do by accident and getting
+    // back in means remembering a password.
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
@@ -140,7 +145,7 @@ class _Person extends StatelessWidget {
             radius: 26,
             backgroundColor: colors.surface,
             child: Text(
-              // The first letter of whatever Google gave us. An avatar image would be a
+              // The first letter of the name they typed. An avatar image would be a
               // network fetch on a screen that has nothing else to wait for.
               (identity.name?.trim().isNotEmpty ?? false)
                   ? identity.name!.trim().characters.first
@@ -157,9 +162,10 @@ class _Person extends StatelessWidget {
                   identity.name ?? 'عميل لقمة',
                   style: theme.textTheme.titleMedium,
                 ),
-                if (identity.email != null)
+                if (identity.phone != null)
                   Text(
-                    identity.email!,
+                    identity.phone!,
+                    textDirection: TextDirection.ltr,
                     style: theme.textTheme.bodySmall
                         ?.copyWith(color: colors.textSecondary),
                   ),
@@ -180,23 +186,55 @@ class _SignInCard extends ConsumerStatefulWidget {
 }
 
 class _SignInCardState extends ConsumerState<_SignInCard> {
-  Failure? _failure;
-  bool _busy = false;
+  final _formKey = GlobalKey<FormState>();
+  final _name = TextEditingController();
+  final _phone = TextEditingController();
+  final _password = TextEditingController();
 
-  Future<void> _signIn() async {
+  // Sign-in is the default: most people opening this card already have an account.
+  bool _signingUp = false;
+  bool _busy = false;
+  Failure? _failure;
+
+  @override
+  void dispose() {
+    _name.dispose();
+    _phone.dispose();
+    _password.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    if (!_formKey.currentState!.validate()) return;
+
     setState(() {
       _busy = true;
       _failure = null;
     });
 
-    final result = await ref.read(authServiceProvider).signInWithGoogle();
+    final auth = ref.read(authServiceProvider);
+    final result = _signingUp
+        ? await auth.signUpWithPhone(
+            phone: _phone.text.trim(),
+            password: _password.text,
+            name: _name.text.trim(),
+          )
+        : await auth.signInWithPhone(
+            phone: _phone.text.trim(),
+            password: _password.text,
+          );
     if (!mounted) return;
 
     setState(() {
       _busy = false;
-      // Backing out of Google's sheet comes back as Ok(null). Showing an error for it
-      // would be the app apologising for somebody's decision.
       _failure = result.failureOrNull;
+    });
+  }
+
+  void _toggleMode() {
+    setState(() {
+      _signingUp = !_signingUp;
+      _failure = null;
     });
   }
 
@@ -214,37 +252,98 @@ class _SignInCardState extends ConsumerState<_SignInCard> {
         border: Border.all(color: colors.hairline),
         boxShadow: Elevations.card,
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text('سجّل دخول', style: theme.textTheme.titleLarge),
-          const SizedBox(height: Space.sm),
-          Text(
-            'عشان تحفظ عنوانك، وتتابع طلباتك، ونعرف نرجعلك لو في مشكلة.',
-            style: theme.textTheme.bodyMedium
-                ?.copyWith(color: colors.textSecondary),
-          ),
-          if (_failure != null) ...[
-            const SizedBox(height: Space.md),
+      child: Form(
+        key: _formKey,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
             Text(
-              switch (_failure!) {
-                OfflineFailure() => strings.errorOffline,
-                _ => 'مقدرناش نسجّل دخولك. جرّب تاني.',
+              _signingUp ? 'حساب جديد' : 'سجّل دخول',
+              style: theme.textTheme.titleLarge,
+            ),
+            const SizedBox(height: Space.sm),
+            Text(
+              'عشان تحفظ عنوانك، وتتابع طلباتك، ونعرف نرجعلك لو في مشكلة.',
+              style: theme.textTheme.bodyMedium
+                  ?.copyWith(color: colors.textSecondary),
+            ),
+            const SizedBox(height: Space.lg),
+            if (_signingUp) ...[
+              TextFormField(
+                key: AccountScreen.nameKey,
+                controller: _name,
+                decoration: const InputDecoration(labelText: 'الاسم'),
+                validator: (v) =>
+                    (v ?? '').trim().isEmpty ? 'اكتب اسمك' : null,
+              ),
+              const SizedBox(height: Space.md),
+            ],
+            TextFormField(
+              key: AccountScreen.phoneKey,
+              controller: _phone,
+              keyboardType: TextInputType.phone,
+              textDirection: TextDirection.ltr,
+              decoration: const InputDecoration(
+                labelText: 'رقم الموبايل',
+                hintText: '01012345678',
+              ),
+              validator: (v) => Phone.isValidEgyptianMobile(v ?? '')
+                  ? null
+                  : 'اكتب رقم موبايل مصري صحيح — يبدأ بـ 01 ومكوّن من 11 رقم.',
+            ),
+            const SizedBox(height: Space.md),
+            TextFormField(
+              key: AccountScreen.passwordKey,
+              controller: _password,
+              obscureText: true,
+              textDirection: TextDirection.ltr,
+              decoration: const InputDecoration(labelText: 'كلمة السر'),
+              validator: (v) {
+                if ((v ?? '').isEmpty) return 'اكتب كلمة السر';
+                // Only enforced going in: an existing account's password was already
+                // accepted once, and a shorter minimum since then must not lock it out.
+                if (_signingUp && v!.length < 6) {
+                  return 'كلمة السر لازم تكون 6 حروف على الأقل';
+                }
+                return null;
               },
-              style: theme.textTheme.bodySmall?.copyWith(color: colors.danger),
+              onFieldSubmitted: (_) => _busy ? null : _submit(),
+            ),
+            if (_failure != null) ...[
+              const SizedBox(height: Space.md),
+              Text(
+                switch (_failure!) {
+                  OfflineFailure() => strings.errorOffline,
+                  PhoneTakenFailure() => strings.errorPhoneTaken,
+                  _ => _signingUp
+                      ? 'مقدرناش نعمل الحساب. جرّب تاني.'
+                      : 'رقم الموبايل أو كلمة السر غلط',
+                },
+                key: AccountScreen.errorKey,
+                style: theme.textTheme.bodySmall?.copyWith(color: colors.danger),
+              ),
+            ],
+            const SizedBox(height: Space.lg),
+            FilledButton(
+              key: AccountScreen.signInKey,
+              onPressed: _busy ? null : _submit,
+              style: FilledButton.styleFrom(
+                minimumSize: const Size.fromHeight(50),
+              ),
+              child: Text(
+                _busy ? 'لحظة…' : (_signingUp ? 'إنشاء الحساب' : 'دخول'),
+              ),
+            ),
+            const SizedBox(height: Space.sm),
+            TextButton(
+              key: AccountScreen.toggleModeKey,
+              onPressed: _busy ? null : _toggleMode,
+              child: Text(
+                _signingUp ? 'عندي حساب بالفعل' : 'معنديش حساب، عايز أعمل واحد',
+              ),
             ),
           ],
-          const SizedBox(height: Space.lg),
-          FilledButton.icon(
-            key: AccountScreen.signInKey,
-            onPressed: _busy ? null : _signIn,
-            icon: const Icon(Icons.account_circle_outlined, size: Sizes.iconSm),
-            label: Text(_busy ? 'لحظة…' : 'دخول بجوجل'),
-            style: FilledButton.styleFrom(
-              minimumSize: const Size.fromHeight(50),
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }

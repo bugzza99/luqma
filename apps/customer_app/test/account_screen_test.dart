@@ -13,10 +13,11 @@ void main() {
     LuqmaIdentity? signedInAs = const LuqmaIdentity(
       uid: 'u1',
       name: 'أحمد محمود',
-      email: 'ahmed@example.com',
+      phone: '01012345678',
     ),
+    Failure? failure,
   }) async {
-    auth = FakeAuthService(restoring: signedInAs);
+    auth = FakeAuthService(restoring: signedInAs, failure: failure);
 
     await tester.pumpWidget(
       ProviderScope(
@@ -43,12 +44,28 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  /// Fills the card in whichever mode it is currently showing.
+  Future<void> fillIn(
+    WidgetTester tester, {
+    String phone = '01012345678',
+    String password = 'a-real-password',
+    String? name,
+  }) async {
+    if (name != null) {
+      await tester.enterText(find.byKey(AccountScreen.nameKey), name);
+    }
+    await tester.enterText(find.byKey(AccountScreen.phoneKey), phone);
+    await tester.enterText(find.byKey(AccountScreen.passwordKey), password);
+  }
+
   group('signed in', () {
-    testWidgets('says who you are', (tester) async {
+    // The number, not an address: a customer's account has no email to show, and the
+    // number is the thing they recognise as theirs.
+    testWidgets('says who you are, by name and number', (tester) async {
       await pump(tester);
 
       expect(find.text('أحمد محمود'), findsOneWidget);
-      expect(find.text('ahmed@example.com'), findsOneWidget);
+      expect(find.text('01012345678'), findsOneWidget);
     });
 
     testWidgets('leads to the addresses', (tester) async {
@@ -95,14 +112,131 @@ void main() {
       expect(find.byKey(AccountScreen.signOutKey), findsNothing);
     });
 
+    // Signing in is the default face of the card: most people opening it already have
+    // an account, and the one who does not is one tap away.
+    testWidgets('asks for a number and a password, not a name', (tester) async {
+      await pump(tester, signedInAs: null);
+
+      expect(find.byKey(AccountScreen.phoneKey), findsOneWidget);
+      expect(find.byKey(AccountScreen.passwordKey), findsOneWidget);
+      expect(find.byKey(AccountScreen.nameKey), findsNothing);
+    });
+
     testWidgets('signing in shows the account', (tester) async {
       await pump(tester, signedInAs: null);
 
+      await fillIn(tester);
       await tester.tap(find.byKey(AccountScreen.signInKey));
       await tester.pumpAndSettle();
 
-      expect(find.text('عميل تجريبي'), findsOneWidget);
+      expect(auth.identity, isNotNull);
       expect(find.byKey(AccountScreen.signOutKey), findsOneWidget);
+    });
+
+    // Never "invalid credentials", and never which of the two was wrong: telling
+    // somebody the number exists but the password did not is a way to enumerate numbers.
+    testWidgets('a refused sign-in says so without saying which half',
+        (tester) async {
+      await pump(tester, signedInAs: null, failure: const PermissionFailure());
+
+      await fillIn(tester);
+      await tester.tap(find.byKey(AccountScreen.signInKey));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(AccountScreen.errorKey), findsOneWidget);
+      expect(find.text('رقم الموبايل أو كلمة السر غلط'), findsOneWidget);
+    });
+  });
+
+  group('making an account', () {
+    testWidgets('the card turns into a sign-up and asks for a name',
+        (tester) async {
+      await pump(tester, signedInAs: null);
+
+      await tester.tap(find.byKey(AccountScreen.toggleModeKey));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(AccountScreen.nameKey), findsOneWidget);
+    });
+
+    testWidgets('signing up signs you in, carrying the number you typed',
+        (tester) async {
+      await pump(tester, signedInAs: null);
+      await tester.tap(find.byKey(AccountScreen.toggleModeKey));
+      await tester.pumpAndSettle();
+
+      await fillIn(tester, name: 'سارة', phone: '01099887766');
+      await tester.tap(find.byKey(AccountScreen.signInKey));
+      await tester.pumpAndSettle();
+
+      expect(auth.identity?.name, 'سارة');
+      expect(auth.identity?.phone, '01099887766',
+          reason: 'the courier calls this, so it has to be what they typed');
+    });
+
+    // The number is the identity. A second account on it is somebody who already has
+    // history under that number — and should be signing in, not signing up.
+    testWidgets('a number that already has an account says to sign in instead',
+        (tester) async {
+      await pump(tester, signedInAs: null);
+      await tester.tap(find.byKey(AccountScreen.toggleModeKey));
+      await tester.pumpAndSettle();
+
+      await fillIn(tester, name: 'سارة');
+      await tester.tap(find.byKey(AccountScreen.signInKey));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(AccountScreen.signOutKey));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(AccountScreen.confirmSignOutKey));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(AccountScreen.toggleModeKey));
+      await tester.pumpAndSettle();
+      await fillIn(tester, name: 'شخص تاني');
+      await tester.tap(find.byKey(AccountScreen.signInKey));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(AccountScreen.errorKey), findsOneWidget);
+    });
+  });
+
+  group('what the form refuses before it asks the server', () {
+    testWidgets('a number that is not an Egyptian mobile', (tester) async {
+      await pump(tester, signedInAs: null);
+
+      await fillIn(tester, phone: '0201234');
+      await tester.tap(find.byKey(AccountScreen.signInKey));
+      await tester.pumpAndSettle();
+
+      expect(auth.identity, isNull, reason: 'nothing was sent');
+      expect(find.textContaining('رقم موبايل مصري صحيح'), findsOneWidget);
+    });
+
+    // Only on the way in: an existing account's password was accepted once already, and
+    // a minimum introduced afterwards must not lock it out.
+    testWidgets('a password too short to be one, when signing up',
+        (tester) async {
+      await pump(tester, signedInAs: null);
+      await tester.tap(find.byKey(AccountScreen.toggleModeKey));
+      await tester.pumpAndSettle();
+
+      await fillIn(tester, name: 'سارة', password: '123');
+      await tester.tap(find.byKey(AccountScreen.signInKey));
+      await tester.pumpAndSettle();
+
+      expect(auth.identity, isNull);
+      expect(find.textContaining('6 حروف على الأقل'), findsOneWidget);
+    });
+
+    testWidgets('a short password is not refused when signing in',
+        (tester) async {
+      await pump(tester, signedInAs: null);
+
+      await fillIn(tester, password: '123');
+      await tester.tap(find.byKey(AccountScreen.signInKey));
+      await tester.pumpAndSettle();
+
+      expect(auth.identity, isNotNull);
     });
   });
 

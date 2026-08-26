@@ -27,7 +27,7 @@ void main() {
     final admin = await live.openAsAdmin();
     addTearDown(admin.dispose);
 
-    final auth = SupabaseAuthService(admin, googleIdToken: () async => null);
+    final auth = SupabaseAuthService(admin);
     await auth.restore();
     final identity = auth.identity;
 
@@ -59,7 +59,7 @@ void main() {
     );
     addTearDown(client.dispose);
 
-    final auth = SupabaseAuthService(client, googleIdToken: () async => null);
+    final auth = SupabaseAuthService(client);
     await auth.restore();
     final staff = StaffIdentity.from(auth.identity);
 
@@ -75,7 +75,7 @@ void main() {
     final (client, _) = await live.openAsCustomer();
     addTearDown(client.dispose);
 
-    final auth = SupabaseAuthService(client, googleIdToken: () async => null);
+    final auth = SupabaseAuthService(client);
     await auth.restore();
     final staff = StaffIdentity.from(auth.identity);
 

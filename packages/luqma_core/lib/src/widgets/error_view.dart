@@ -43,6 +43,7 @@ class LuqmaErrorView extends StatelessWidget {
         NotFoundFailure() => strings.errorNotFound,
         ConflictFailure() => strings.errorConflict,
         EmailTakenFailure() => strings.errorEmailTaken,
+        PhoneTakenFailure() => strings.errorPhoneTaken,
         _ => strings.errorUnknown,
       };
 

@@ -28,4 +28,24 @@ void main() {
     test('letters', () => expect(Phone.isValidEgyptianMobile('0101234567x'), isFalse));
     test('empty', () => expect(Phone.isValidEgyptianMobile(''), isFalse));
   });
+
+  /// The address GoTrue holds for a customer who signed up with a phone number.
+  ///
+  /// Nobody ever types or sees it. What matters is that it is the *same* address every
+  /// time for the same number: two spellings mapping to two addresses is one person with
+  /// two accounts, half their orders on each.
+  group('toAccountEmail', () {
+    test('is the number at the reserved domain', () {
+      expect(Phone.toAccountEmail('01012345678'), '01012345678@phone.luqma.app');
+    });
+
+    test('every spelling of one number gives one address', () {
+      const canonical = '01012345678@phone.luqma.app';
+
+      expect(Phone.toAccountEmail('٠١٠١٢٣٤٥٦٧٨'), canonical);
+      expect(Phone.toAccountEmail('010 123 456 78'), canonical);
+      expect(Phone.toAccountEmail('010-1234-5678'), canonical);
+      expect(Phone.toAccountEmail('  01012345678  '), canonical);
+    });
+  });
 }

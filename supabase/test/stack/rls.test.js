@@ -767,3 +767,45 @@ describe('uploading an image', () => {
     assert.equal(byAdmin.rowCount, 1);
   });
 });
+
+/// The account a customer signs up with, and what the rest of the system learns from it.
+///
+/// A customer's identity is their phone number, but GoTrue's phone identity needs an SMS
+/// provider — so the number is folded into a synthetic address and the real one travels
+/// in the signup metadata. `ensure_user_profile` is what lands it on the `users` row,
+/// and `users.phone` is what `place_order` copies onto an order: get this wrong and the
+/// courier arrives at the right door with nobody to call.
+describe('a customer signing up with a phone number', () => {
+  /// Creates an auth account the way GoTrue does at sign-up, metadata and all.
+  const signUp = async (email, meta) => (await q(
+    "insert into auth.users (id, instance_id, aud, role, email, raw_user_meta_data) " +
+    "values (gen_random_uuid(), '00000000-0000-0000-0000-000000000000', 'authenticated', " +
+    "'authenticated', $1, $2) returning id",
+    [email, JSON.stringify(meta)],
+  )).rows[0].id;
+
+  // A fresh number per run: these rows are committed, not rolled back, and a fixed
+  // address would collide with its own previous run.
+  const someNumber = () =>
+    '010' + String(Date.now() % 100000000).padStart(8, '0');
+
+  it('arrives on the users row with their name and number', async () => {
+    const phone = someNumber();
+    const id = await signUp(`${phone}@phone.luqma.app`,
+                            { name: 'أحمد محمود', phone });
+
+    const row = (await q('select name, phone from users where id = $1', [id])).rows[0];
+    assert.equal(row.phone, phone,
+                 'the courier calls this number — it has to be the one they typed');
+    assert.equal(row.name, 'أحمد محمود');
+  });
+
+  // A staff account is made by an admin with neither, and must still get its row.
+  it('an account with no metadata still gets a row', async () => {
+    const id = await signUp(`staff-${Date.now()}@luqma.app`, {});
+
+    const row = (await q('select id, phone from users where id = $1', [id])).rows[0];
+    assert.ok(row, 'every account has a profile row, metadata or not');
+    assert.equal(row.phone, null);
+  });
+});

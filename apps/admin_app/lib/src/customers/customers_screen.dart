@@ -15,6 +15,8 @@ class CustomersScreen extends ConsumerStatefulWidget {
   static const searchKey = Key('customers.search');
   static const rowKey = Key('customers.row');
   static const blockKey = Key('customers.block');
+  static const resetKey = Key('customers.reset');
+  static const confirmResetKey = Key('customers.confirmReset');
 
   @override
   ConsumerState<CustomersScreen> createState() => _CustomersScreenState();
@@ -65,6 +67,65 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
       // Re-run the same search so the list reflects the new flag.
       await _search(_query.text);
     }
+  }
+
+  /// Gives a customer a new password, and shows it once.
+  ///
+  /// Asked first, because the old password stops working the moment this runs — doing it
+  /// to the wrong row on a mistyped tap locks somebody out of their own account.
+  Future<void> _resetPassword(CustomerSummary customer) async {
+    final name = customer.name.isEmpty ? 'العميل' : customer.name;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('كلمة سر جديدة؟'),
+        content: Text(
+          'هيتعمل لـ$name كلمة سر جديدة، والقديمة هتبطّل تشتغل على طول. '
+          'اقراها له في التليفون.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('لا'),
+          ),
+          FilledButton(
+            key: CustomersScreen.confirmResetKey,
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('اعملها'),
+          ),
+        ],
+      ),
+    );
+    if (!(confirmed ?? false) || !mounted) return;
+
+    final result =
+        await ref.read(customerRepositoryProvider).resetPassword(customer.id);
+    if (!mounted) return;
+
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(result is Ok ? 'كلمة السر الجديدة' : 'مقدرناش'),
+        content: switch (result) {
+          // Selectable, and in one big line: this is read down a phone line, and it is
+          // the only time anybody can see it.
+          Ok(:final value) => SelectableText(
+              value,
+              textDirection: TextDirection.ltr,
+              style: Theme.of(dialogContext).textTheme.headlineSmall,
+            ),
+          Err(failure: ConflictFailure()) =>
+            const Text('ده حساب موظف مش عميل — غيّرها من شاشة الموظفين.'),
+          Err() => const Text('حاول تاني.'),
+        },
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('تمام'),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _showHistory(CustomerSummary customer) async {
@@ -187,6 +248,7 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
         customer: results[i],
         onTap: () => _showHistory(results[i]),
         onToggleBlock: () => _toggleBlock(results[i]),
+        onResetPassword: () => _resetPassword(results[i]),
       ),
     );
   }
@@ -197,11 +259,13 @@ class _CustomerRow extends StatelessWidget {
     required this.customer,
     required this.onTap,
     required this.onToggleBlock,
+    required this.onResetPassword,
   });
 
   final CustomerSummary customer;
   final VoidCallback onTap;
   final VoidCallback onToggleBlock;
+  final VoidCallback onResetPassword;
 
   @override
   Widget build(BuildContext context) {
@@ -236,6 +300,12 @@ class _CustomerRow extends StatelessWidget {
                   ),
                 ],
               ),
+            ),
+            IconButton(
+              key: CustomersScreen.resetKey,
+              tooltip: 'كلمة سر جديدة',
+              icon: Icon(Icons.key_outlined, color: colors.textSecondary),
+              onPressed: onResetPassword,
             ),
             IconButton(
               key: CustomersScreen.blockKey,

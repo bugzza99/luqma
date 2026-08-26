@@ -161,6 +161,10 @@
   "@errorEmailTaken": {
     "description": "A staff account create hit an address GoTrue already has."
   },
+  "errorPhoneTaken": "الرقم ده متسجل بحساب قبل كده — سجّل دخول بدل ما تعمل حساب جديد",
+  "@errorPhoneTaken": {
+    "description": "A customer sign-up hit a phone number GoTrue already has."
+  },
   "actionRetry": "حاول تاني",
   "@actionRetry": {
     "description": "The control on an error view that reads the failed thing again."

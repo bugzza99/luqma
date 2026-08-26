@@ -17,11 +17,7 @@ Future<void> main() async {
   runApp(
     ProviderScope(
       overrides: [
-        // AdminApp has no Google Sign-In: staff accounts get an email and a password
-        // from the owner, so there is no credential source to hand over.
-        authServiceProvider.overrideWithValue(
-          SupabaseAuthService(supabase, googleIdToken: () async => null),
-        ),
+        authServiceProvider.overrideWithValue(SupabaseAuthService(supabase)),
       ],
       child: AdminApp(currentVersion: info.version),
     ),

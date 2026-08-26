@@ -263,7 +263,14 @@ otp_expiry = 3600
 # content_path = "./supabase/templates/password_changed_notification.html"
 
 [auth.sms]
-# Allow/disallow new user signups via SMS to your project.
+# Off, and it cannot be otherwise here: the CLI answers `enable_signup = true` with
+# "no SMS provider is enabled. Disabling phone login" and refuses to start. GoTrue's
+# *phone identity* needs Twilio even when no code is ever sent.
+#
+# Which is why a customer signing in with `01…` does not use it. The phone is folded to
+# a synthetic address (`Phone.toAccountEmail`) and GoTrue holds an ordinary email
+# identity — see `packages/luqma_core/lib/src/util/phone.dart`. The customer never sees
+# an address, the number stays unique per account, and none of it needs a provider.
 enable_signup = false
 # If enabled, users need to confirm their phone number before signing in.
 enable_confirmations = false

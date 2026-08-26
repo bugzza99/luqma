@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' hide AuthState;
 
 import '../result.dart';
+import '../util/phone.dart';
 
 /// Whoever is holding the phone.
 @immutable
@@ -60,11 +61,23 @@ abstract interface class AuthService {
   /// Waits for the session to resolve one way or the other.
   Future<void> restore();
 
-  /// Signs in, or returns `Ok(null)` when the person simply backed out.
+  /// Creates a brand-new customer account: the phone number is the identity, chosen and
+  /// held by whoever types it, and the password is theirs from the first keystroke —
+  /// there is no confirmation step to wait on.
   ///
-  /// Backing out is not a failure: showing a red banner because somebody dismissed a
-  /// sheet is the app apologising for their decision.
-  Future<Result<LuqmaIdentity?>> signInWithGoogle();
+  /// [phone] is Egyptian local format (`01…`); validate it with [Phone.isValidEgyptianMobile]
+  /// before calling this.
+  Future<Result<LuqmaIdentity>> signUpWithPhone({
+    required String phone,
+    required String password,
+    required String name,
+  });
+
+  /// Signs an existing customer back in by phone and password.
+  Future<Result<LuqmaIdentity>> signInWithPhone({
+    required String phone,
+    required String password,
+  });
 
   /// Signs in a staff account. Merchants and couriers get an email and a password from
   /// the owner; there is no self-service sign-up for either.
@@ -79,7 +92,7 @@ abstract interface class AuthService {
 /// The real one. The session comes from GoTrue, and every policy in the database reads
 /// the same token this service hands out.
 class SupabaseAuthService implements AuthService {
-  SupabaseAuthService(this._client, {required this.googleIdToken}) : _auth = _client.auth {
+  SupabaseAuthService(this._client) : _auth = _client.auth {
     // Auth state changes, not just sign-in and sign-out: a claim granted while the app
     // is open arrives when the token refreshes, and a merchant whose account was set up
     // a minute ago should get in then rather than at the next cold start.
@@ -91,12 +104,6 @@ class SupabaseAuthService implements AuthService {
       if (!_resolved.isCompleted) _resolved.complete();
     });
   }
-
-  /// Obtains a Google id token, or null when the person backed out.
-  ///
-  /// Injected rather than called directly so that swapping Google for anything else —
-  /// or adding a second provider — is a change here and nowhere above.
-  final Future<String?> Function() googleIdToken;
 
   final GoTrueClient _auth;
 
@@ -137,13 +144,45 @@ class SupabaseAuthService implements AuthService {
   Future<void> restore() => _resolved.future;
 
   @override
-  Future<Result<LuqmaIdentity?>> signInWithGoogle() async {
+  Future<Result<LuqmaIdentity>> signUpWithPhone({
+    required String phone,
+    required String password,
+    required String name,
+  }) {
     return Result.guard(() async {
-      final idToken = await googleIdToken();
-      if (idToken == null) return null;
+      try {
+        final result = await _auth.signUp(
+          email: Phone.toAccountEmail(phone),
+          password: password,
+          // The real number, kept beside the account so the courier has something to
+          // call and the admin has something to search. The address is only a key.
+          data: {'name': name, 'phone': Phone.normalize(phone)},
+        );
+        return _toIdentity(result.user!);
+      } on AuthException catch (e) {
+        // GoTrue names this a few different ways depending on version and path; none of
+        // them are worth telling apart from the sentence the person reads.
+        if (e.message.toLowerCase().contains('already') ||
+            e.code == 'email_exists' ||
+            e.code == 'user_already_exists') {
+          throw const PhoneTakenFailure();
+        }
+        rethrow;
+      }
+    });
+  }
 
-      await _auth.signInWithIdToken(provider: OAuthProvider.google, idToken: idToken);
-      return _toIdentity(_client.auth.currentUser!);
+  @override
+  Future<Result<LuqmaIdentity>> signInWithPhone({
+    required String phone,
+    required String password,
+  }) {
+    return Result.guard(() async {
+      final result = await _auth.signInWithPassword(
+        email: Phone.toAccountEmail(phone),
+        password: password,
+      );
+      return _toIdentity(result.user!);
     });
   }
 
@@ -180,14 +219,21 @@ class SupabaseAuthService implements AuthService {
   ///
   /// It is also the right place on principle: a claim is only worth anything because a
   /// server signed it, and the token is the signed thing.
-  LuqmaIdentity _toIdentity(User user) => LuqmaIdentity(
-        uid: user.id,
-        name: user.userMetadata?['name'] as String?,
-        email: user.email,
-        phone: user.phone,
-        photoUrl: user.userMetadata?['avatar_url'] as String?,
-        claims: _claimsOnToken(),
-      );
+  LuqmaIdentity _toIdentity(User user) {
+    // A customer's address is synthetic — `01…@phone.luqma.app`, derived from the number
+    // they typed — so it is never surfaced as an email. Their real number rides in the
+    // metadata instead. Staff sign in with a genuine address and carry no phone here.
+    final synthetic = user.email?.endsWith('@${Phone.accountDomain}') ?? false;
+
+    return LuqmaIdentity(
+      uid: user.id,
+      name: user.userMetadata?['name'] as String?,
+      email: synthetic ? null : user.email,
+      phone: user.userMetadata?['phone'] as String? ?? user.phone,
+      photoUrl: user.userMetadata?['avatar_url'] as String?,
+      claims: _claimsOnToken(),
+    );
+  }
 
   /// `app_metadata` as the current access token states it.
   ///
@@ -213,20 +259,20 @@ class SupabaseAuthService implements AuthService {
 class FakeAuthService implements AuthService {
   FakeAuthService({
     LuqmaIdentity? restoring,
-    this.cancels = false,
     this.failure,
     // ignore: prefer_initializing_formals
   }) : _restoring = restoring;
 
   final LuqmaIdentity? _restoring;
 
-  /// Makes sign-in behave as though the person dismissed the Google sheet.
-  final bool cancels;
-
-  /// Makes sign-in fail with this.
+  /// Makes sign-in or sign-up fail with this.
   final Failure? failure;
 
   final _controller = StreamController<LuqmaIdentity?>.broadcast();
+
+  /// Phone numbers this fake has already handed an account, so a second sign-up is
+  /// refused the way production refuses it.
+  final Set<String> _takenPhones = {};
 
   AuthState _state = AuthState.unknown;
   LuqmaIdentity? _identity;
@@ -262,24 +308,41 @@ class FakeAuthService implements AuthService {
   }
 
   @override
-  Future<Result<LuqmaIdentity?>> signInWithGoogle() async {
+  Future<Result<LuqmaIdentity>> signUpWithPhone({
+    required String phone,
+    required String password,
+    required String name,
+  }) async {
     if (failure != null) {
       _state = AuthState.signedOut;
       return Result.err(failure!);
     }
-    if (cancels) {
-      _state = AuthState.signedOut;
-      return const Result.ok(null);
+    if (_takenPhones.contains(phone)) {
+      return const Result.err(PhoneTakenFailure());
     }
 
-    _identity = const LuqmaIdentity(
-      uid: 'fake-uid',
-      name: 'عميل تجريبي',
-      email: 'test@example.com',
-    );
+    _takenPhones.add(phone);
+    _identity = LuqmaIdentity(uid: 'fake-uid', name: name, phone: phone);
     _state = AuthState.signedIn;
     _controller.add(_identity);
-    return Result.ok(_identity);
+    return Result.ok(_identity!);
+  }
+
+  @override
+  Future<Result<LuqmaIdentity>> signInWithPhone({
+    required String phone,
+    required String password,
+  }) async {
+    if (failure != null) {
+      _state = AuthState.signedOut;
+      return Result.err(failure!);
+    }
+
+    _identity = _restoring ??
+        LuqmaIdentity(uid: 'fake-uid', name: 'عميل تجريبي', phone: phone);
+    _state = AuthState.signedIn;
+    _controller.add(_identity);
+    return Result.ok(_identity!);
   }
 
   @override

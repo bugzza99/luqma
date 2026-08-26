@@ -6,9 +6,9 @@ Restaurants plus home kitchens. Three Flutter Android apps on one **Supabase** b
 > **The Firebase → Supabase migration is complete** (see `docs/17-supabase-migration.md`
 > and `supabase/migrations/`). Every repository, auth and remote config now run on
 > Postgres/GoTrue/Realtime; the `firebase/` and `functions/` directories are gone.
-> Google Sign-In additionally requires the OAuth web client id at build time:
-> `--dart-define=LUQMA_GOOGLE_WEB_CLIENT_ID=<id>` (and Google enabled as a provider in
-> the Supabase dashboard).
+> **Google Sign-In is gone too** — a customer signs in with a phone number and a password,
+> so there is no OAuth client, no web client id and no SHA-1 to register. See
+> "Customer accounts are a phone number" below.
 
 ## The cloud project
 
@@ -107,15 +107,12 @@ of them. 501 Dart tests across the workspace; both APKs build.
 
 Two things are outstanding and both are the owner's to do:
 
-- **Google Sign-In is configured, but has never run on a device.** Google is enabled as
-  a provider, the debug key's SHA-1 is registered against `com.luqma.customer`, and the
-  web client id is in `LuqmaFirebase.googleServerClientId`. `firebase apps:sdkconfig`
-  now reports a type-1 (Android) and a type-3 (web) client for that app. What has not
-  happened is a real sign-in on a real phone — that is the only thing that proves it.
-  AdminApp and MerchantApp sign in with email and password, so neither needs a
-  fingerprint. **The release keystore does not exist yet**; its SHA-1 is a different
-  fingerprint and must be registered before the first Play Store build. That belongs to
-  Phase 9.
+- ~~**Google Sign-In is configured, but has never run on a device.**~~ **Removed
+  2026-08-27**, and never did run on one. It was the last thing standing between a fresh
+  install and its first order, and it depended on a Play Console account, an OAuth client
+  keyed on a release fingerprint nobody had generated yet, and the customer having a
+  Google account at all. A phone number and a password need none of those. See
+  "Customer accounts are a phone number" below.
 - **Placing an order needs Blaze.** `OrderRepository.placeOrder` calls a Cloud Function
   that does not exist yet. Everything else about orders — watching, cancelling, issues,
   ratings — is ordinary Firestore and works on Spark today.
@@ -280,9 +277,38 @@ What Phase 9 has shipped so far:
 Still open, none of it code:
 
 - Play Console account, listings, and enrolling Play App Signing with this key.
-- Google Sign-In on a real device (new OAuth clients keyed on the SHA-1 above).
 - Onboarding the first 10–15 merchants at zero commission.
 - A Sentry project for the DSN dart-defines to point at.
+
+### Customer accounts are a phone number (2026-08-27)
+
+**Google Sign-In is removed from CustomerApp.** A customer signs up with a name, a phone
+number and a password, and signs back in with the number and the password. There is no
+email field anywhere in the app. The full reasoning is in `docs/04-customer-app.md`; what
+follows is what breaks if it is not known.
+
+- **GoTrue's phone identity is not what carries this, and cannot be.** It needs an SMS
+  provider: set `[auth.sms] enable_signup = true` with no Twilio and the CLI answers
+  *"no SMS provider is enabled. Disabling phone login"* and refuses to start. So the
+  number is folded into a synthetic address — `01012345678@phone.luqma.app`,
+  `Phone.toAccountEmail` — and GoTrue holds an ordinary **email** identity, which needs no
+  provider. That domain has no mailbox and nothing is ever sent to it.
+- **Every spelling of one number must fold to one address.** `Phone.normalize` is that
+  one spelling and is shared with validation and with the admin's search. An Arabic
+  keyboard produces `٠١٠…` where the account was made with `010…`; two spellings reaching
+  two accounts is one person with half their orders on each and no way to see the rest.
+- **The synthetic address is never shown.** `_toIdentity` returns a null `email` for one
+  ending in the reserved domain, so no screen can leak it by rendering `identity.email`.
+- **The real number rides in the signup metadata**, and `ensure_user_profile` copies it —
+  with the name — onto the `users` row. That row is where `place_order` reads the number
+  it stamps on the order, which is the number the courier calls. A trigger that only
+  inserts the id, as it did before, means a courier at the right door with nobody to ring.
+- **A forgotten password has exactly one way back, and it is a person.** No mailbox, no
+  SMS: the customer calls, and an admin issues a new password from the customers screen
+  (`reset-customer-password`, deployed). It is generated server-side from an alphabet with
+  no `l`/`1`/`O`/`0`, because it is read down a phone line — and returned once, never
+  stored. That function refuses a uid that has a `staff` row: a support call must not
+  become a way to reset another admin.
 
 ### Infrastructure
 
@@ -341,7 +367,7 @@ in the repository — and `flutter test` on a *package* does not run the generat
 the way an app build does. Without it a new string is a compile error that points at the
 call site rather than at the missing step.
 
-**779 Dart tests · 35 schema tests · 91 stack tests · 125 live-repository tests.**
+**799 Dart tests · 56 schema tests · 99 stack tests · 134 live-repository tests.**
 `flutter analyze` clean.
 
 There are no `function` tests and no `tsc`: the TypeScript Cloud Functions went with
@@ -381,6 +407,7 @@ JAVA_HOME="C:\Program Files\Android\Android Studio\jbr" firebase emulators:exec 
 | `brand/identity.html` | Logo, palette, type and screen mockups |
 | `brand/README.md` | How the logo assets are generated, and why |
 | `supabase/functions/create-staff-account/` | Creates merchant, courier and admin accounts, from AdminApp |
+| `supabase/functions/reset-customer-password/` | The only way back from a forgotten customer password |
 | `brand/src/build_alarm.py` | The new-order alarm, and why every number in it is what it is |
 | `packages/luqma_core/` | Models, repositories, config, theme, l10n, brand widgets, Firebase options |
 | `apps/customer_app/` | CustomerApp — home, merchant, basket, checkout, orders, account, أكل بيتي |
@@ -404,8 +431,9 @@ JAVA_HOME="C:\Program Files\Android\Android Studio\jbr" firebase emulators:exec 
 - **Dynamic means values plus home-screen composition** — never full server-driven UI.
   The section registry is a fixed map of widget builders; the server picks and orders them.
 - **AdMob ships off** behind `admobEnabled`. Merchant-sold promotions come first.
-- **OTP is built and off** behind `otpEnabled`. Google Sign-In at launch, phone captured
-  unverified at first checkout.
+- **A customer signs in with a phone number and a password.** No Google, no email field
+  anywhere in CustomerApp. OTP stays built and off behind `otpEnabled`, so the number is
+  captured rather than verified and the password is what protects the account.
 - **The brand name is never a text widget.** It is `LuqmaLockup`, backed by SVG. Lemonada is
   not a bundled font. Cairo renders everything else.
 - **The owner enters merchant menus and shoots photos personally.** Merchants never self-onboard.
@@ -489,12 +517,26 @@ JAVA_HOME="C:\Program Files\Android\Android Studio\jbr" firebase emulators:exec 
 - The nightly billing pass has **no memory except `subscriptions.settledAt`**. Downgrading
   writes `planId` onto the *merchant*; without marking the row, the same expired term
   comes back every night, with a fresh `auditLog` entry each time.
+- **Backticks inside a JavaScript template literal end it.** `tool/seed-demo.mjs` carried
+  a SQL comment reading ``-- Guarded by name rather than by `on conflict`:`` inside a
+  `` sql(`…`) `` template, and the file **had not parsed since that comment was written** —
+  it survived review because two backticks are balanced and the script was never re-run.
+  The same mistake broke `supabase/test/local/harness.mjs`. Prose in an embedded SQL
+  string quotes nothing: write `ON CONFLICT`, not `` `on conflict` ``. `node --check
+  <file>` catches it in a second and is worth running on any `.mjs` that embeds SQL.
 - **Two migrations must never share a version prefix.** The CLI records an applied
   migration by the timestamp in its filename, so two files starting `20260826020000`
   are one version to it — and the second silently never runs. It cost a whole Phase 9
   feature here: `plan_expires_at` and the push-cap fix sat unapplied and untested until
   the collision was found. `ls supabase/migrations | sed 's/_.*//' | sort | uniq -d`
   must print nothing.
+- **A PowerShell function cannot `+=` a variable in its caller's scope.** `$results +=`
+  inside `Invoke-Check` wrote to a *local* copy, so `tool/run_tests.ps1` finished with an
+  empty result table and printed **"All suites passed."** however many suites had failed —
+  and its `$root` pointed at `tool/` rather than the repository, so every path it built
+  was wrong. The documented entry point for the whole suite reported success
+  unconditionally. Both fixed 2026-08-27 (`$script:results`); if a runner ever claims a
+  pass, check that its summary table actually lists the suites.
 - **`ensure_user_profile` makes the `users` row.** It fires on every insert into
   `auth.users`, so a fixture that also inserts one collides on the primary key, and
   "no such customer" is unreachable through a real account.

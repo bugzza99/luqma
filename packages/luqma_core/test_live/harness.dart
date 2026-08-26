@@ -29,6 +29,28 @@ class LiveDatabase {
         'EGIM96RAZx35lJzdJsyH-qQwv8Hdp7fsn3W0YpN81IU',
   );
 
+  static const _anonKey = String.fromEnvironment(
+    'SUPABASE_ANON_KEY',
+    defaultValue: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.'
+        'eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.'
+        'CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0',
+  );
+
+  /// A client with no more privilege than a phone in somebody's hand.
+  ///
+  /// Signing up is a public act, and the service key would answer a different question:
+  /// whether an *administrator* can make an account, which nobody doubted.
+  ///
+  /// The storage is what keeps this on the app's own path. `Supabase.initialize` gives
+  /// the real client one and GoTrue then defaults to PKCE; a bare client has none, and
+  /// PKCE asserts rather than falling back — so without this the test would have to run
+  /// the implicit flow, and prove sign-up works down a road the app never takes.
+  SupabaseClient openAnonymously() => SupabaseClient(
+        _url,
+        _anonKey,
+        authOptions: AuthClientOptions(pkceAsyncStorage: _MemoryAuthStorage()),
+      );
+
   /// Opens a client that bypasses the boundary.
   ///
   /// Right for a repository test, which is asking whether the *query* is correct. Whether
@@ -187,5 +209,27 @@ Future<void> waitFor(
   while (!condition()) {
     if (DateTime.now().isAfter(end)) fail(because);
     await Future<void>.delayed(const Duration(milliseconds: 50));
+  }
+}
+
+/// Auth storage that lives as long as the test does.
+///
+/// PKCE needs somewhere to keep a code verifier between the request and the reply. On a
+/// phone that is shared_preferences; here it is a map, because a test that leaves files
+/// behind on disk is a test whose second run differs from its first.
+class _MemoryAuthStorage extends GotrueAsyncStorage {
+  final _items = <String, String>{};
+
+  @override
+  Future<String?> getItem({required String key}) async => _items[key];
+
+  @override
+  Future<void> setItem({required String key, required String value}) async {
+    _items[key] = value;
+  }
+
+  @override
+  Future<void> removeItem({required String key}) async {
+    _items.remove(key);
   }
 }

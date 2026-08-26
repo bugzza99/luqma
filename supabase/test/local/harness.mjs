@@ -20,7 +20,15 @@ export async function freshDatabase() {
 
   await db.exec(`
     create schema if not exists auth;
-    create table auth.users (id uuid primary key default gen_random_uuid());
+    -- raw_user_meta_data is here because ensure_user_profile reads it: a customer signs
+    -- up with their name and phone in the signup metadata, and the trigger copies both
+    -- onto the profile row. A stub without the column makes every insert into auth.users
+    -- fail with "record new has no field", which reads as a schema problem rather than
+    -- as a missing stub column.
+    create table auth.users (
+      id uuid primary key default gen_random_uuid(),
+      raw_user_meta_data jsonb not null default '{}'::jsonb
+    );
 
     -- The token here always says admin, deliberately.
     --

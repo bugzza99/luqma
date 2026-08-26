@@ -60,7 +60,7 @@ void main() {
       addTearDown(container.listen(currentIdentityProvider, (_, _) {}).close);
       await container.read(currentIdentityProvider.future);
 
-      await auth.signInWithGoogle();
+      await auth.signInWithPhone(phone: '01012345678', password: 'x');
       await Future<void>.delayed(Duration.zero);
 
       expect(container.read(currentIdentityProvider).value?.uid, 'fake-uid');

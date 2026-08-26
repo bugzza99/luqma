@@ -26,11 +26,7 @@ Future<void> main() async {
     ProviderScope(
       overrides: [
         remoteConfigServiceProvider.overrideWithValue(config),
-        // No Google Sign-In here: a merchant account is created for somebody by the
-        // owner, so there is no credential source to hand over.
-        authServiceProvider.overrideWithValue(
-          SupabaseAuthService(supabase, googleIdToken: () async => null),
-        ),
+        authServiceProvider.overrideWithValue(SupabaseAuthService(supabase)),
         // The courier's write queue survives an app being killed: shared_preferences,
         // not memory.
         courierWriteStoreProvider.overrideWithValue(

@@ -10,11 +10,16 @@
 
 $ErrorActionPreference = 'Continue'
 
-$root = Split-Path -Parent $MyInvocation.MyCommand.Path
+# The repository, not `tool/`: this script's own directory is one level down, and every
+# path below is built from here.
+$root = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
 $core = Join-Path $root 'packages\luqma_core'
 $apps = Join-Path $root 'apps'
 
-$results = @()
+# Script scope, and deliberately: `$results += …` inside a function writes to a *local*
+# copy, so a plain `$results` here stays empty for ever and the summary reports "all
+# passed" however many suites failed. It did exactly that.
+$script:results = @()
 
 function Invoke-Check {
     param(
@@ -33,7 +38,7 @@ function Invoke-Check {
         Pop-Location
     }
 
-    $results += [pscustomobject]@{ Suite = $Name; ExitCode = $code }
+    $script:results += [pscustomobject]@{ Suite = $Name; ExitCode = $code }
     if ($code -ne 0) {
         Write-Host "FAILED (exit $code)" -ForegroundColor Red
     } else {
@@ -60,9 +65,9 @@ Invoke-Check 'supabase test' (Join-Path $root 'supabase') { npm test }
 
 Write-Host ""
 Write-Host "===== summary =====" -ForegroundColor Cyan
-$results | Format-Table -AutoSize
+$script:results | Format-Table -AutoSize
 
-$failed = @($results | Where-Object { $_.ExitCode -ne 0 })
+$failed = @($script:results | Where-Object { $_.ExitCode -ne 0 })
 if ($failed.Count -gt 0) {
     Write-Host "$($failed.Count) suite(s) failed." -ForegroundColor Red
     exit 1

@@ -87,6 +87,12 @@ final class EmailTakenFailure extends Failure {
   const EmailTakenFailure();
 }
 
+/// The phone number already belongs to an account. Its own type for the same reason as
+/// [EmailTakenFailure] — "هذا الرقم مسجل بالفعل" asks for signing in, not retyping.
+final class PhoneTakenFailure extends Failure {
+  const PhoneTakenFailure();
+}
+
 final class RateLimitedFailure extends Failure {
   const RateLimitedFailure();
 }

@@ -6,7 +6,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:luqma_core/luqma_core.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
-import 'src/app/google_credential.dart';
 import 'src/shell/customer_shell.dart';
 
 Future<void> main() async {
@@ -28,10 +27,7 @@ Future<void> main() async {
     ProviderScope(
       overrides: [
         remoteConfigServiceProvider.overrideWithValue(config),
-        // The one place Google is named. Everything above talks to `AuthService`.
-        authServiceProvider.overrideWithValue(
-          SupabaseAuthService(supabase, googleIdToken: googleIdToken),
-        ),
+        authServiceProvider.overrideWithValue(SupabaseAuthService(supabase)),
       ],
       child: CustomerApp(currentVersion: info.version),
     ),

@@ -33,6 +33,25 @@ void main() {
       expect((await repo.search('أحمد')).valueOrNull!.first.isBlocked, isFalse);
     });
 
+    // A customer's account has no mailbox and no OTP behind it, so a forgotten password
+    // has exactly one way back: they call, and an admin does this.
+    test('resetting a password hands back one to read down the phone', () async {
+      final repo = FakeCustomerRepository(seed: [ahmed]);
+
+      final password = (await repo.resetPassword('u1')).valueOrNull;
+
+      expect(password, isNotNull);
+      expect(password, isNotEmpty);
+      expect(repo.resetCalls, ['u1']);
+    });
+
+    test('resetting nobody is a not-found', () async {
+      expect(
+        (await FakeCustomerRepository().resetPassword('x')).failureOrNull,
+        isA<NotFoundFailure>(),
+      );
+    });
+
     test('blocking nobody is a not-found, and failure passes through', () async {
       expect(
         (await FakeCustomerRepository().setBlocked('x', blocked: true))
