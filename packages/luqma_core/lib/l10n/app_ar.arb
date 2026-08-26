@@ -157,6 +157,10 @@
 
   "errorUnknown": "حصل خطأ — جرّب تاني",
   "@errorUnknown": {},
+  "errorEmailTaken": "الإيميل ده متسجل قبل كده — اكتب واحد تاني",
+  "@errorEmailTaken": {
+    "description": "A staff account create hit an address GoTrue already has."
+  },
   "actionRetry": "حاول تاني",
   "@actionRetry": {
     "description": "The control on an error view that reads the failed thing again."

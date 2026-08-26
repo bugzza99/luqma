@@ -80,6 +80,13 @@ final class ConflictFailure extends Failure {
   const ConflictFailure();
 }
 
+/// The e-mail already belongs to an account. Its own type rather than a conflict,
+/// because the sentence it earns — "this one is taken" — asks for a different fix than
+/// "something collided": retype the address, not retry the action.
+final class EmailTakenFailure extends Failure {
+  const EmailTakenFailure();
+}
+
 final class RateLimitedFailure extends Failure {
   const RateLimitedFailure();
 }
