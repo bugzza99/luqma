@@ -30,6 +30,11 @@ sealed class Failure {
           return const NotFoundFailure();
         case '23505':
           return const ConflictFailure();
+        case '23503':
+          // A foreign key said no: deleting a merchant that has taken orders is the
+          // case in point. Not a permission problem and not a race — history exists,
+          // and history wins.
+          return const ConflictFailure();
       }
       final message = error.message;
       if (message.startsWith('coupon:')) {

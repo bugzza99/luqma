@@ -36,6 +36,10 @@ abstract interface class BillingRepository {
     required int amount,
     required String recordedBy,
   });
+
+  /// Creates or replaces a plan — the edit that makes a price change an admin's
+  /// afternoon rather than a seed script.
+  Future<Result<void>> savePlan(Plan plan);
 }
 
 class SupabaseBillingRepository implements BillingRepository {
@@ -102,6 +106,15 @@ class SupabaseBillingRepository implements BillingRepository {
         'p_recorded_by': recordedBy,
       }),
     );
+  }
+
+  @override
+  Future<Result<void>> savePlan(Plan plan) {
+    return Result.guard(() async {
+      // Upsert: plans are keyed by fixed ids ('free', 'basic'), so saving an existing
+      // id replaces it rather than colliding with it.
+      await _db.from('plans').upsert(ColumnNames.toRow(plan.toJson()));
+    });
   }
 
   Subscription _toSubscription(Map<String, dynamic> row) =>
@@ -239,6 +252,20 @@ class FakeBillingRepository implements BillingRepository {
       'by': recordedBy,
       'merchantId': merchantId,
       'amount': amount,
+    });
+    _notify();
+    return const Result.ok(null);
+  }
+
+  @override
+  Future<Result<void>> savePlan(Plan plan) async {
+    if (failure != null) return Result.err(failure!);
+    _plans.removeWhere((p) => p.id == plan.id);
+    _plans.add(plan);
+    audit.add({
+      'action': 'savePlan',
+      'planId': plan.id,
+      'priceMonthly': plan.priceMonthly,
     });
     _notify();
     return const Result.ok(null);

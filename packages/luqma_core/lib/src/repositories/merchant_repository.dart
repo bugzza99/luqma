@@ -32,6 +32,15 @@ abstract interface class MerchantRepository {
   Future<Result<Merchant>> saveMerchant(Merchant merchant);
 
   Future<Result<void>> setStatus(String id, MerchantStatus status);
+
+  /// Removes a merchant that has never traded.
+  ///
+  /// The database owns the rule — `orders.merchant_id` is `on delete restrict`, so a
+  /// merchant with orders is refused by the foreign key and this returns a conflict.
+  /// A merchant added by mistake, before its first order, still deletes cleanly. The
+  /// screen offers delete only while the count is zero; the constraint is what makes
+  /// that promise keepable rather than remembered.
+  Future<Result<void>> deleteMerchant(String id);
 }
 
 /// Pending first, then approved, then suspended.
@@ -195,6 +204,13 @@ class SupabaseMerchantRepository implements MerchantRepository {
       }).eq('id', id),
     );
   }
+
+  @override
+  Future<Result<void>> deleteMerchant(String id) {
+    return Result.guard(
+      () => _db.from('merchants').delete().eq('id', id),
+    );
+  }
 }
 
 /// An in-memory merchant repository for tests and for building screens before the
@@ -204,10 +220,17 @@ class SupabaseMerchantRepository implements MerchantRepository {
 /// whatever it was given: a fake that is more permissive than production hides exactly
 /// the bugs it was meant to catch.
 class FakeMerchantRepository implements MerchantRepository {
-  FakeMerchantRepository({List<Merchant> seed = const [], this.failure})
-      : _merchants = {for (final m in seed) m.id: m};
+  FakeMerchantRepository({
+    List<Merchant> seed = const [],
+    Map<String, int> orderCounts = const {},
+    this.failure,
+  })  : _merchants = {for (final m in seed) m.id: m},
+        _orderCounts = Map.of(orderCounts);
 
   final Map<String, Merchant> _merchants;
+
+  /// Orders already taken, per merchant id — the thing the real delete is refused by.
+  final Map<String, int> _orderCounts;
 
   /// When set, every call fails with this — so the offline and permission paths can be
   /// exercised without unplugging anything.
@@ -265,6 +288,17 @@ class FakeMerchantRepository implements MerchantRepository {
     final merchant = _merchants[id];
     if (merchant == null) return const Result.err(NotFoundFailure());
     _merchants[id] = merchant.copyWith(status: status);
+    return const Result.ok(null);
+  }
+
+  @override
+  Future<Result<void>> deleteMerchant(String id) async {
+    if (failure != null) return Result.err(failure!);
+    if (!_merchants.containsKey(id)) return const Result.err(NotFoundFailure());
+    if ((_orderCounts[id] ?? 0) > 0) {
+      return const Result.err(ConflictFailure());
+    }
+    _merchants.remove(id);
     return const Result.ok(null);
   }
 }

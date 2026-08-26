@@ -1,5 +1,4 @@
-﻿// `Order` here would be Firestore's index-definition enum, not ours.
-import 'package:flutter/foundation.dart';
+﻿import 'package:flutter/foundation.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 import '../auth/auth_service.dart';
@@ -17,16 +16,19 @@ import '../models/promotion.dart';
 import '../repositories/address_repository.dart';
 import '../repositories/billing_repository.dart';
 import '../repositories/courier_order_repository.dart';
+import '../repositories/customer_repository.dart';
 import '../repositories/daily_meal_repository.dart';
 import '../repositories/feedback_repository.dart';
 import '../repositories/geography_repository.dart';
 import '../repositories/home_section_repository.dart';
+import '../repositories/issue_repository.dart';
 import '../repositories/media_repository.dart';
 import '../repositories/menu_repository.dart';
 import '../repositories/merchant_order_repository.dart';
 import '../repositories/merchant_repository.dart';
 import '../repositories/order_repository.dart';
 import '../repositories/promotion_repository.dart';
+import '../repositories/staff_repository.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../result.dart';
@@ -84,6 +86,18 @@ Stream<List<HomeSection>> homeSections(Ref ref) => ref
 @Riverpod(keepAlive: true)
 MediaRepository mediaRepository(Ref ref) =>
     SupabaseMediaRepository(ref.watch(supabaseProvider));
+
+@Riverpod(keepAlive: true)
+CustomerRepository customerRepository(Ref ref) =>
+    SupabaseCustomerRepository(ref.watch(supabaseProvider));
+
+@Riverpod(keepAlive: true)
+IssueRepository issueRepository(Ref ref) =>
+    SupabaseIssueRepository(ref.watch(supabaseProvider));
+
+@Riverpod(keepAlive: true)
+StaffRepository staffRepository(Ref ref) =>
+    SupabaseStaffRepository(ref.watch(supabaseProvider));
 
 @Riverpod(keepAlive: true)
 MenuRepository menuRepository(Ref ref) =>
