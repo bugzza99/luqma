@@ -45,14 +45,14 @@
             android:name="flutterEmbedding"
             android:value="2" />
 
-        <!-- Where a message that arrives with the app closed lands. Without this,
-             Android invents a channel with default importance and no sound, and the
-             one notification this product cannot afford to miss arrives silently. The
-             id matches ORDERS_CHANNEL_ID in MainActivity, which is what creates it. -->
-        <meta-data
-            android:value="orders_critical" />
-        <meta-data
-            android:resource="@drawable/ic_splash_mark" />
+        <!-- The orders channel itself is created in MainActivity, which is what gives it
+             the importance and the sound a missed order cannot afford to lose.
+
+             There is no <meta-data> naming it here on purpose. Those two entries were
+             Firebase Messaging' default-channel and default-icon keys, and the S6
+             cutover removed their android:name along with Firebase — leaving two
+             elements with a value and no name, which Android refuses outright. When push
+             is wired to whatever service replaces FCM, its own keys come back here. -->
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and
