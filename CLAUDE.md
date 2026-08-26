@@ -286,26 +286,20 @@ Still open, none of it code:
 
 ### Infrastructure
 
-Firebase project **`luqma-edku`**, Firestore in **`europe-west3`** — the location is
-permanent and cannot be changed. Three Android apps registered:
-`com.luqma.customer`, `com.luqma.merchant`, `com.luqma.admin`. Those are the Gradle
-`applicationId`s too — an application id is permanent once an app is published, and it
-is half of what an OAuth client is keyed on. The Flutter template's `_app` suffix was
-wrong and was corrected in Phase 3.
+**Supabase project `luqma-edku`, Frankfurt (`eu-central-1`).** Everything is there:
+schema, policies, the access-token hook, the scheduled jobs, Storage. The details, the
+dashboard link and the dart-defines are in "The cloud project" above.
 
-**Deliberately still on the Spark plan.** Cloud Functions and Cloud Storage both need
-Blaze, so neither is deployed. Everything is built and tested against the local emulator
-instead, which costs nothing and does not need a card.
+Three Android apps: `com.luqma.customer`, `com.luqma.merchant`, `com.luqma.admin`. Those
+are the Gradle `applicationId`s too — an application id is permanent once an app is
+published, and it is half of what an OAuth client is keyed on. The Flutter template's
+`_app` suffix was wrong and was corrected in Phase 3.
 
-That is a decision, not an oversight — Blaze gets enabled when there is something to ship
-to real merchants, not before. Two things are blocked until then, and both matter: an
-order's total must be computed server-side (a total computed on the phone is a total
-anyone can edit, and the courier collects whatever the screen says), and no image can be
-uploaded at all without Storage. Neither blocks development.
-
-When the time comes: enable Blaze, then Storage — in that order, because a new project's
-default bucket needs Blaze first. Set a small budget alert at the same time; the real risk
-is not usage, it is a function that calls itself.
+**Nothing is blocked on a credit card any more.** Five features waited on Blaze for eight
+phases — server-side order totals, the accept deadline, rejection counting, the
+`remaining_qty` decrement and image upload. All five are built: the first four as Postgres
+functions and `pg_cron`, and Storage is included in Supabase's free tier. That was the
+larger half of why the migration happened; see `docs/17-supabase-migration.md`.
 
 ### Running the checks
 
@@ -347,9 +341,14 @@ in the repository — and `flutter test` on a *package* does not run the generat
 the way an app build does. Without it a new string is a compile error that points at the
 call site rather than at the missing step.
 
-**840 Dart tests · 45 function tests · 98 rules tests.** `flutter analyze` and `tsc`
-clean. The rules count nearly doubled in the audit: it was the thinnest layer in the
-project and the one carrying the most weight.
+**779 Dart tests · 35 schema tests · 91 stack tests · 125 live-repository tests.**
+`flutter analyze` clean.
+
+There are no `function` tests and no `tsc`: the TypeScript Cloud Functions went with
+Firebase, and what they did is now Postgres functions covered by `supabase/test/stack`.
+The Dart count fell because roughly a hundred tests that existed only to argue with
+`fake_cloud_firestore` were replaced by `test_live`, which argues with a real database —
+fewer tests proving considerably more.
 
 `kotlin.incremental=false` is set in both apps' `android/gradle.properties`. Kotlin's
 incremental compiler cannot close its caches on this drive and fails every plugin module
@@ -381,14 +380,13 @@ JAVA_HOME="C:\Program Files\Android\Android Studio\jbr" firebase emulators:exec 
 | `graphify-out/graph.html` | Dependency graph, open in a browser |
 | `brand/identity.html` | Logo, palette, type and screen mockups |
 | `brand/README.md` | How the logo assets are generated, and why |
-| `firebase/scripts/staff.js` | Creates merchant, courier and admin accounts. No Blaze needed |
+| `supabase/functions/create-staff-account/` | Creates merchant, courier and admin accounts, from AdminApp |
 | `brand/src/build_alarm.py` | The new-order alarm, and why every number in it is what it is |
 | `packages/luqma_core/` | Models, repositories, config, theme, l10n, brand widgets, Firebase options |
 | `apps/customer_app/` | CustomerApp — home, merchant, basket, checkout, orders, account, أكل بيتي |
 | `apps/merchant_app/` | MerchantApp — inbox, live board, menu, shop, courier mode |
 | `apps/admin_app/` | AdminApp — merchants, menus, places, media, billing, promotions, home builder |
-| `firebase/firestore.rules` | The real security boundary — read its tests beside it |
-| `firebase/test/` | Rules tests, run against the emulator |
+| `supabase/migrations/*_rls.sql` | **The real security boundary** — read `supabase/test/stack` beside it |
 | `supabase/migrations/` | **The Postgres schema, and the boundary.** Argued with by `supabase/test/` |
 | `supabase/test/local/` | Schema and constraints, on PGlite. Fast, and needs nothing installed |
 | `supabase/test/stack/` | RLS, the claims hook and the order state machine, against the real stack |
@@ -411,6 +409,11 @@ JAVA_HOME="C:\Program Files\Android\Android Studio\jbr" firebase emulators:exec 
 - **The brand name is never a text widget.** It is `LuqmaLockup`, backed by SVG. Lemonada is
   not a bundled font. Cairo renders everything else.
 - **The owner enters merchant menus and shoots photos personally.** Merchants never self-onboard.
+- **Edku's zone and landmark names are entered from AdminApp, not from a file.** The names
+  in `data/edku.json` are structurally correct placeholders and were never meant to ship
+  as they are; the places screen edits both, and that is the path. So this is data entry
+  by somebody with local knowledge, not a code task and not a launch blocker — but it is
+  a real one: a wrong zone name sends a courier to the wrong part of town.
 - **Commission is charged on the food, never on the bill.** `commissionBasis` in
   `engine.ts` and `Revenue.basisFor` in Dart both return `pricing.subtotal`. The delivery
   fee is not the platform's to take a share of: when the platform delivers, the fee is
@@ -486,6 +489,15 @@ JAVA_HOME="C:\Program Files\Android\Android Studio\jbr" firebase emulators:exec 
 - The nightly billing pass has **no memory except `subscriptions.settledAt`**. Downgrading
   writes `planId` onto the *merchant*; without marking the row, the same expired term
   comes back every night, with a fresh `auditLog` entry each time.
+- **Two migrations must never share a version prefix.** The CLI records an applied
+  migration by the timestamp in its filename, so two files starting `20260826020000`
+  are one version to it — and the second silently never runs. It cost a whole Phase 9
+  feature here: `plan_expires_at` and the push-cap fix sat unapplied and untested until
+  the collision was found. `ls supabase/migrations | sed 's/_.*//' | sort | uniq -d`
+  must print nothing.
+- **`ensure_user_profile` makes the `users` row.** It fires on every insert into
+  `auth.users`, so a fixture that also inserts one collides on the primary key, and
+  "no such customer" is unreachable through a real account.
 - Rules read claims with **`token.get('x', default)`**. A bare `token.admin` errors on a
   token with no custom claims — every customer — and fails the branch it sits in for a
   reason unrelated to access.
@@ -515,9 +527,10 @@ choice against the risk of touching a live boundary without being able to prove 
 - **L3** — `markDelivered` stamps `delivered_at` from the client clock. Making it server
   time needs a `SECURITY DEFINER` RPC plus a repository and fake change; that is more
   than the finding is worth right now, and the client clock is the courier's own device.
-- **L5** — the staff read policy (courier sees only their own merchant) is not tightened
-  here. RLS cannot be argued with on PGlite, so a change would ship unverified against
-  the stack; it is noted for the next stack-backed pass.
+- **L5 — done, 2026-08-26.** The staff read policy tested `belongs_to_merchant`, which
+  is true for an owner *and* their courier: a rider could read every account under the
+  shop, the owner's phone number included. It reads `is_merchant_owner` now, and six
+  tests in `supabase/test/stack/rls.test.js` say so — the policy had none before.
 - **L1 / L4 / L6 / L8** — recorded, not fixed: low-severity findings whose only correct
   home is a stack or a design pass, not a PGlite-only change.
 

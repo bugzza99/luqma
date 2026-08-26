@@ -55,6 +55,22 @@ async function refused(identity, fn) {
 
 const q = (sql, params) => db.query(sql, params);
 
+/// A fixture write that the column guards would otherwise refuse.
+///
+/// `is_blocked` and `rejected_orders_count` belong to the server, which is the whole
+/// point of the tests below — so putting a customer *into* that state cannot be done as
+/// a customer. `app.server_mode` is the same declaration the real server functions make,
+/// and it is transaction-local, so it cannot leak into the assertion that follows.
+async function asServer(sql, params) {
+  await q('begin');
+  try {
+    await q("select set_config('app.server_mode', 'on', true)");
+    return await q(sql, params);
+  } finally {
+    await q('commit');
+  }
+}
+
 // --- the cast --------------------------------------------------------------
 let customer, otherCustomer, owner, otherOwner, courier, platformCourier, admin;
 let edku, zone, merchant, otherMerchant;
@@ -570,6 +586,74 @@ describe('ratings', () => {
   });
 });
 
+describe('who can read the staff list', () => {
+  // `belongs_to_merchant` is true for an owner *and* for their courier — they carry the
+  // same merchant. It is the distinction the first audit found in the order rules and
+  // the menu rules, and the staff policy still had it: a courier could read every
+  // account under their shop, names and phone numbers included.
+  //
+  // A courier manages nobody. Their own row is the whole of what they need.
+  before(async () => {
+    await q("insert into staff (uid, scope, role, merchant_id) " +
+            "values ($1, 'merchant', 'owner', $2) on conflict (uid) do nothing",
+            [owner.uid, merchant]);
+    await q("insert into staff (uid, scope, role, merchant_id) " +
+            "values ($1, 'merchant', 'courier', $2) on conflict (uid) do nothing",
+            [courier.uid, merchant]);
+    await q("insert into staff (uid, scope, role, merchant_id) " +
+            "values ($1, 'merchant', 'owner', $2) on conflict (uid) do nothing",
+            [otherOwner.uid, otherMerchant]);
+  });
+
+  // Named rather than counted: earlier groups in this file leave staff rows against the
+  // same merchant, and an exact total would fail for their reasons rather than this one.
+  it('an owner reads the accounts under their own shop', async () => {
+    const r = await as(owner, () => db.query(
+      'select uid from staff where merchant_id = $1', [merchant]));
+    const seen = r.rows.map((row) => row.uid);
+
+    assert.ok(seen.includes(owner.uid), 'their own row');
+    assert.ok(seen.includes(courier.uid), 'and the courier under them');
+  });
+
+  // The tightening. A courier reading the roster learns the owner's phone number and
+  // every other rider's, for a screen they do not have and a job that does not need it.
+  it('a courier reads only themselves', async () => {
+    const r = await as(courier, () => db.query(
+      'select uid from staff where merchant_id = $1', [merchant]));
+
+    assert.equal(r.rows.length, 1);
+    assert.equal(r.rows[0].uid, courier.uid);
+  });
+
+  it('an owner cannot read another shop\'s accounts', async () => {
+    const r = await as(owner, () => db.query(
+      'select uid from staff where merchant_id = $1', [otherMerchant]));
+    assert.equal(r.rows.length, 0);
+  });
+
+  it('a customer reads no staff at all', async () => {
+    const r = await as(customer, () => db.query('select uid from staff'));
+    assert.equal(r.rows.length, 0);
+  });
+
+  it('an admin reads all of it', async () => {
+    const r = await as(admin, () => db.query(
+      'select uid from staff where merchant_id is not null'));
+    assert.ok(r.rows.length >= 3);
+  });
+
+  // Only an admin issues an account, because a claim is what the policies read and a
+  // merchant able to write one could grant itself anything.
+  it('an owner cannot add an account to their own shop', async () => {
+    const stranger = await uid();
+    const error = await refused(owner, () => db.query(
+      "insert into staff (uid, scope, role, merchant_id) " +
+      "values ($1, 'merchant', 'courier', $2)", [stranger, merchant]));
+    assert.ok(error, 'accounts are the admin\'s to create');
+  });
+});
+
 describe('what is deliberately unreadable', () => {
   // A readable coupons table is one anybody can enumerate — every merchant-specific code
   // and every campaign that has not launched yet.
@@ -614,7 +698,9 @@ describe('users', () => {
   // asking whether `false` may be written over `false` proves nothing.
   it('a customer cannot unblock themselves', async () => {
     const blocked = { uid: await uid(), claims: {} };
-    await q('insert into users (id, is_blocked) values ($1, true)', [blocked.uid]);
+    // `ensure_user_profile` on auth.users already made the row, so this sets the state
+    // rather than creating it — and sets it as the server, because a client cannot.
+    await asServer('update users set is_blocked = true where id = $1', [blocked.uid]);
 
     const error = await refused(blocked,
       () => db.query('update users set is_blocked = false where id = $1', [blocked.uid]));
@@ -626,7 +712,8 @@ describe('users', () => {
 
   it('a customer cannot reset their own refusal count', async () => {
     const refuser = { uid: await uid(), claims: {} };
-    await q('insert into users (id, rejected_orders_count) values ($1, 3)', [refuser.uid]);
+    await asServer('update users set rejected_orders_count = 3 where id = $1',
+                   [refuser.uid]);
 
     const error = await refused(refuser,
       () => db.query('update users set rejected_orders_count = 0 where id = $1', [refuser.uid]));

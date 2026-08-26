@@ -79,7 +79,7 @@ describe('admin completion functions', () => {
     )).rows[0].id;
 
     customerUid = await uid();
-    await q('insert into users (id, name, phone) values ($1, $2, $3)',
+    await q('insert into users (id, name, phone) values ($1, $2, $3) on conflict (id) do nothing',
             [customerUid, 'عميل', '01000000000']);
     adminUid = await uid();
     await q(
@@ -141,17 +141,17 @@ describe('admin completion functions', () => {
       });
     });
 
-    it('names a missing customer as not-found', async () => {
-      const stranger = await uid();
-      try {
-        await as({ uid: adminUid, claims: ADMIN_CLAIMS }, () =>
-          q('select public.admin_set_customer_blocked($1, true)', [stranger]));
-        assert.fail('should have raised');
-      } catch (error) {
-        assert.match(error.message, /P0002|no such customer/);
-      } finally {
-        await q('delete from auth.users where id = $1', [stranger]);
-      }
+    // A uuid that was never an account, rather than a fresh auth user: since
+    // `ensure_user_profile` fires on every insert into auth.users, a real account always
+    // has a users row, and "no such customer" cannot be reached through one. What the
+    // function still has to answer for is an id that belongs to nobody at all.
+    it('names a customer who never existed as not-found', async () => {
+      const nobody = '00000000-0000-0000-0000-0000000000ff';
+      await assert.rejects(
+        as({ uid: adminUid, claims: ADMIN_CLAIMS }, () =>
+          q('select public.admin_set_customer_blocked($1, true)', [nobody])),
+        refusedAs('P0002'),
+      );
     });
   });
 

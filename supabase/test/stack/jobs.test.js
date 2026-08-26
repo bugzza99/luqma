@@ -157,11 +157,21 @@ describe('scheduled jobs', () => {
 
   describe('the nightly billing pass', () => {
     /** Seeds plan state through the same door the server itself uses. */
+    // Seeds both halves, because they mean different things now.
+    //
+    // `subscriptions` is the receipt — what was paid, and when. `merchants.plan_expires_at`
+    // is the state, and it is what the nightly pass reads: one current truth instead of N
+    // historical rows, so the query is bounded *and* correct. A fixture that wrote only
+    // the receipt left the pass nothing to find.
     async function seedPlanState(startedSql, expiresSql) {
       await q('begin');
       try {
         await q("select set_config('app.server_mode', 'on', true)");
-        await q('update merchants set plan_id = $1 where id = $2', [plan, merchant]);
+        await q(
+          `update merchants set plan_id = $1, plan_expires_at = ${expiresSql.replace(/\)$/, '')}
+            where id = $2`,
+          [plan, merchant],
+        );
         await q(
           `insert into subscriptions
              (merchant_id, plan_id, amount, started_at, expires_at)
@@ -224,7 +234,7 @@ describe('scheduled jobs', () => {
 
       // The kitchen's owner, exactly as their app signs in.
       ownerUid = await uid();
-      await q('insert into users (id) values ($1)', [ownerUid]);
+      await q('insert into users (id) values ($1) on conflict (id) do nothing', [ownerUid]);
       await q(
         `insert into staff (uid, scope, role, merchant_id)
          values ($1, 'merchant', 'owner', $2)`,

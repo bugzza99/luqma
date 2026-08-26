@@ -182,9 +182,13 @@ void main() {
         'ended',
         DateTime.now().subtract(const Duration(days: 3)),
       );
-      // Approved but not sent: it has not spent anybody's attention, so it does not
-      // count.
-      await push('approved', DateTime.now());
+      // Approved for next week, so not sent: it has spent nobody's attention yet.
+      //
+      // Approved and *started* does count — an approved push whose start date has passed
+      // has gone out, whatever its status still says. That is the H3 fix in
+      // `launch_fixes`, and it is the difference between a cap that works and one that
+      // never saw a single push.
+      await push('approved', DateTime.now().add(const Duration(days: 7)));
 
       // One sent push against a limit of two leaves the slot open; against a limit of
       // one it is spent.

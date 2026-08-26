@@ -53,7 +53,10 @@ class LiveDatabase {
       ),
     );
     final uid = created.user!.id;
-    await client.from('users').insert({'id': uid});
+    // `ensure_user_profile` fires on every insert into auth.users, so the row is already
+    // there. Upserting keeps this harness working either way rather than depending on
+    // which of the two got there first.
+    await client.from('users').upsert({'id': uid});
 
     final signedIn = SupabaseClient(_url, _serviceKey);
     await signedIn.auth.signInWithPassword(email: email, password: 'luqma1234');
@@ -139,7 +142,10 @@ class LiveDatabase {
     );
 
     final uid = created.user!.id;
-    await client.from('users').insert({'id': uid});
+    // `ensure_user_profile` fires on every insert into auth.users, so the row is already
+    // there. Upserting keeps this harness working either way rather than depending on
+    // which of the two got there first.
+    await client.from('users').upsert({'id': uid});
     return uid;
   }
 

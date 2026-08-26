@@ -74,7 +74,7 @@ describe('the functions that move money', () => {
     await q("insert into staff (uid,scope,role,merchant_id) values ($1,'merchant','owner',$2)",
             [owner, merchant]);
     customer = await uid();
-    await q('insert into users (id) values ($1)', [customer]);
+    await q('insert into users (id) values ($1) on conflict (id) do nothing', [customer]);
     admin = await uid();
     await q("insert into staff (uid,scope,role) values ($1,'platform','admin')", [admin]);
     someoneElse = await uid();
