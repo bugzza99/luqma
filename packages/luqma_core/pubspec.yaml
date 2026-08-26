@@ -1,4 +1,4 @@
-﻿name: luqma_core
+name: luqma_core
 description: Shared theme, brand assets and components for the Luqma apps.
 version: 0.1.0
 publish_to: none
@@ -37,6 +37,7 @@ dependencies:
   url_launcher: ^6.3.0
 
   intl: any
+  sentry_flutter: ^9.0.0
 
 dev_dependencies:
   flutter_test:

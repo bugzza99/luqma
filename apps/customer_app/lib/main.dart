@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -11,6 +11,8 @@ import 'src/shell/customer_shell.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // Crash reporting: silent without a DSN dart-define, so dev builds send nothing.
+  await LuqmaTelemetry.init();
   final supabase = await LuqmaSupabase.initialize();
   // The version this install runs as, against minSupportedVersion. Read once here so
   // everything below it stays a plain widget.

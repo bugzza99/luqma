@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:luqma_core/luqma_core.dart';
@@ -8,6 +8,8 @@ import 'src/app/router.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // Crash reporting: silent without a DSN dart-define, so dev builds send nothing.
+  await LuqmaTelemetry.init();
   final supabase = await LuqmaSupabase.initialize();
   // The version this install runs as, against minSupportedVersion.
   final info = await PackageInfo.fromPlatform();

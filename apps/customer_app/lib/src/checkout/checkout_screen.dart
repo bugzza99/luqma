@@ -167,11 +167,18 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
       // The basket survives a refusal. Emptying it would make the customer rebuild the
       // order from memory because the network dropped for two seconds.
       case Err(:final failure):
+        LuqmaTelemetry.event('order.failed', data: {
+          'failure': failure.runtimeType.toString(),
+        });
         setState(() {
           _sending = false;
           _failure = failure;
         });
       case Ok(:final value):
+        LuqmaTelemetry.event('order.placed', data: {
+          'type': value.type.name,
+          'items': cart.toOrderLines().length,
+        });
         // Emptied only once the order exists. Left full, the tracking screen would sit
         // above a basket offering to send the same order again.
         ref.read(cartProvider.notifier).clear();

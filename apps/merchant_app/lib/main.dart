@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -10,6 +10,8 @@ import 'src/courier/courier_write_store.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // Crash reporting: silent without a DSN dart-define, so dev builds send nothing.
+  await LuqmaTelemetry.init();
   final supabase = await LuqmaSupabase.initialize();
   // The version this install runs as, against minSupportedVersion.
   final info = await PackageInfo.fromPlatform();

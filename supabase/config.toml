@@ -272,6 +272,18 @@ template = "Your code is {{ .Code }}"
 # Controls the minimum amount of time that must pass before sending another sms otp.
 max_frequency = "5s"
 
+# ---------------------------------------------------------------- OTP, behind its flag
+#
+# Phase 9's "OTP behind its flag" — how it turns on when the owner has a Twilio account:
+#   1. Fill in `account_sid` and `message_service_sid` below and set SUPABASE_AUTH_SMS_
+#      TWILIO_AUTH_TOKEN in the environment; then set enabled = true here.
+#   2. `supabase config push` to land it on the hosted project.
+#   3. Flip `otp_enabled` from AdminApp's config screen. The flag already exists
+#      (`luqma_config.dart`) and the apps already read it; until this section changes,
+#      the flag being on only means the sign-in UI may offer phone auth, which the
+#      backend would refuse at the GoTrue boundary anyway. The flag gates the offer;
+#      this section gates the capability. Both move together or not at all.
+
 # Use pre-defined map of phone number to OTP for testing.
 # [auth.sms.test_otp]
 # 4152127777 = "123456"

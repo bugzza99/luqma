@@ -45,3 +45,8 @@ apks/
 # it is named or wherever it is dropped.
 *firebase-adminsdk*.json
 serviceAccount*.json
+
+# The release keystore and its passwords. Losing this file loses the Play Store
+# listing; leaking it loses the store listing to whoever else has it.
+signing/*.jks
+signing/key.properties

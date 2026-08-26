@@ -1,3 +1,13 @@
+﻿import java.io.FileInputStream
+import java.util.Properties
+
+// The release keystore lives once, at the repo root, and every app signs with it.
+// Guarded: a machine without signing/key.properties (CI, a fresh clone) still builds
+// release against debug keys, which is what `--release` smoke tests want.
+val keystoreProperties = Properties().apply {
+    val file = rootProject.file("../../../signing/key.properties")
+    if (file.exists()) load(FileInputStream(file))
+}
 plugins {
     id("com.android.application")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
@@ -27,11 +37,26 @@ android {
         versionName = flutter.versionName
     }
 
+    signingConfigs {
+        create("release") {
+            if (keystoreProperties.isNotEmpty()) {
+                keyAlias = keystoreProperties["keyAlias"] as String
+                keyPassword = keystoreProperties["keyPassword"] as String
+                storeFile = file(keystoreProperties["storeFile"] as String)
+                storePassword = keystoreProperties["storePassword"] as String
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            if (keystoreProperties.isNotEmpty()) {
+                signingConfig = signingConfigs.getByName("release")
+            } else {
+                // No keystore on this machine: sign with debug keys so lutter run
+                // --release still works. Never what ships.
+                signingConfig = signingConfigs.getByName("debug")
+            }
         }
     }
 }

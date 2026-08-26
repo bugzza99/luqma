@@ -254,6 +254,36 @@ Two things it is worth knowing without opening the file:
 **Next: the Supabase migration (`docs/17-supabase-migration.md`), then AdminApp completion
 (`docs/16-admin-completion.md`), then Phase 9 — Hardening and launch.**
 
+### Phase 9 in progress (2026-08-26)
+
+Both prerequisites are done: the Supabase cutover landed (S1–S6, Firebase gone) and
+AdminApp carries every module from `docs/16`. The cloud project `luqma-edku`
+(`vqcivwdoekyfqhfmnuos`) has all migrations, the token hook **verified live** — a real
+sign-in decoded through `StaffIdentity` rules (`tool/verify-hook.mjs`) — pg_cron jobs,
+realtime publications, and clean Edku seed data.
+
+What Phase 9 has shipped so far:
+
+- **Force-update** — `LuqmaForceUpdateGate` wired into all three apps; the owner raises
+  `min_supported_version` from AdminApp and out-of-date builds meet a wall, not a bug.
+- **Analytics + crash reporting** — Sentry behind `LUQMA_SENTRY_DSN`; empty means off,
+  so dev builds send nothing. `LuqmaTelemetry.event` marks order placed/failed.
+- **Staff accounts from AdminApp** — the `create-staff-account` Edge Function (deployed,
+  proven live by `tool/verify-create-staff.mjs`): GoTrue verifies the caller's JWT, our
+  staff table must say active platform admin, and only then does the service role mint
+  one Auth user plus one staff row.
+- **`merchants.planExpiresAt`** — one current truth; the nightly pass is a bounded range
+  query and a payment moves the date in its own transaction.
+- **Release signing** — one keystore at `signing/` (gitignored), all three apps' gradle
+  files read it when present. SHA-1 is in `signing/README.md`; register it per app id.
+
+Still open, none of it code:
+
+- Play Console account, listings, and enrolling Play App Signing with this key.
+- Google Sign-In on a real device (new OAuth clients keyed on the SHA-1 above).
+- Onboarding the first 10–15 merchants at zero commission.
+- A Sentry project for the DSN dart-defines to point at.
+
 ### Infrastructure
 
 Firebase project **`luqma-edku`**, Firestore in **`europe-west3`** — the location is

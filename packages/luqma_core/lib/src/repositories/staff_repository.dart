@@ -77,7 +77,7 @@ class SupabaseStaffRepository implements StaffRepository {
           'name': name,
           'scope': scope,
           'role': role,
-          if (merchantId != null) 'merchantId': merchantId,
+          'merchantId': ?merchantId,
         },
       );
 

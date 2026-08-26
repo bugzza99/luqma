@@ -5,6 +5,7 @@
 library;
 
 export 'src/app/supabase_options.dart';
+export 'src/app/telemetry.dart';
 export 'src/auth/auth_service.dart';
 export 'src/auth/staff_identity.dart';
 export 'src/config/luqma_config.dart';
