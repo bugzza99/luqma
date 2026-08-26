@@ -13,6 +13,15 @@ Stream<List<Merchant>> allMerchants(Ref ref) => ref
     .watch(merchantRepositoryProvider)
     .watchAllMerchants(cityId: ref.watch(currentCityProvider));
 
+/// How many orders one merchant has taken — the real query the delete control is
+/// decided on. Delete is offered only while this is zero.
+@riverpod
+Future<int> merchantOrderCount(Ref ref, String merchantId) async {
+  final result =
+      await ref.watch(merchantRepositoryProvider).orderCount(merchantId);
+  return result.valueOrThrow;
+}
+
 /// Which merchant the detail pane is showing. Null on a wide screen means the list is
 /// waiting for a choice; on a phone it means the list is what is on screen.
 ///
@@ -69,5 +78,13 @@ class MerchantActions extends _$MerchantActions {
   Future<void> update(Merchant merchant) async {
     await ref.read(merchantRepositoryProvider).saveMerchant(merchant);
     ref.invalidate(allMerchantsProvider);
+  }
+
+  /// Deletes a merchant that never traded. The screen checks the count first; the
+  /// database's foreign key is what makes that promise keepable rather than remembered.
+  Future<Result<void>> delete(String id) async {
+    final result = await ref.read(merchantRepositoryProvider).deleteMerchant(id);
+    ref.invalidate(allMerchantsProvider);
+    return result;
   }
 }

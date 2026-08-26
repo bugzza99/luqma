@@ -41,6 +41,10 @@ abstract interface class MerchantRepository {
   /// screen offers delete only while the count is zero; the constraint is what makes
   /// that promise keepable rather than remembered.
   Future<Result<void>> deleteMerchant(String id);
+
+  /// How many orders a merchant has taken. The real query, never a denormalized count
+  /// that could drift — the screen uses it to offer delete only to a merchant with none.
+  Future<Result<int>> orderCount(String merchantId);
 }
 
 /// Pending first, then approved, then suspended.
@@ -211,6 +215,17 @@ class SupabaseMerchantRepository implements MerchantRepository {
       () => _db.from('merchants').delete().eq('id', id),
     );
   }
+
+  @override
+  Future<Result<int>> orderCount(String merchantId) {
+    return Result.guard(() async {
+      final rows = await _db
+          .from('orders')
+          .select('id')
+          .eq('merchant_id', merchantId);
+      return rows.length;
+    });
+  }
 }
 
 /// An in-memory merchant repository for tests and for building screens before the
@@ -300,5 +315,11 @@ class FakeMerchantRepository implements MerchantRepository {
     }
     _merchants.remove(id);
     return const Result.ok(null);
+  }
+
+  @override
+  Future<Result<int>> orderCount(String merchantId) async {
+    if (failure != null) return Result.err(failure!);
+    return Result.ok(_orderCounts[merchantId] ?? 0);
   }
 }

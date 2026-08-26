@@ -167,11 +167,15 @@ class SupabaseCourierOrderRepository implements CourierOrderRepository {
 /// In-memory deliveries, for tests and for building the courier screens without a
 /// backend. Re-applies the same transition rules as the real one.
 class FakeCourierOrderRepository implements CourierOrderRepository {
-  FakeCourierOrderRepository({List<Order> seed = const [], this.failure})
-      : _orders = {for (final o in seed) o.id: o};
+  FakeCourierOrderRepository({List<Order> seed = const [], Failure? failure})
+      : _orders = {for (final o in seed) o.id: o},
+        failure = failure;
 
   final Map<String, Order> _orders;
-  final Failure? failure;
+
+  /// Mutable on purpose: a test takes the repository offline and back online, which is
+  /// the exact transition the courier write queue exists to survive.
+  Failure? failure;
 
   final _changed = StreamController<void>.broadcast();
 

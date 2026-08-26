@@ -148,5 +148,15 @@ void main() {
       expect((await repo.deleteMerchant('m2')).failureOrNull,
           isA<ConflictFailure>());
     });
+
+    test('orderCount is the real number the delete control is decided on', () async {
+      final repo = FakeMerchantRepository(
+        seed: [merchant('m1'), merchant('m2')],
+        orderCounts: {'m2': 7},
+      );
+
+      expect((await repo.orderCount('m1')).valueOrNull, 0);
+      expect((await repo.orderCount('m2')).valueOrNull, 7);
+    });
   });
 }

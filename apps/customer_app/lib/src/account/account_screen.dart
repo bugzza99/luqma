@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:luqma_core/luqma_core.dart';
 
 import '../address/address_list_screen.dart';
+import '../about/about_screen.dart';
 
 /// حسابي.
 ///
@@ -17,6 +18,7 @@ class AccountScreen extends ConsumerWidget {
   static const confirmSignOutKey = Key('account.confirmSignOut');
   static const addressesKey = Key('account.addresses');
   static const contactKey = Key('account.contact');
+  static const aboutKey = Key('account.about');
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -58,6 +60,16 @@ class AccountScreen extends ConsumerWidget {
             title: 'كلّمنا',
             subtitle: 'لو في مشكلة في طلب أو حاجة مش مظبوطة',
             onTap: () {},
+          ),
+          const SizedBox(height: Space.sm),
+          _Tile(
+            tileKey: aboutKey,
+            icon: Icons.info_outline,
+            title: 'حول لقمة',
+            subtitle: 'مين احنا وإزاي توصلنا',
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(builder: (_) => const AboutScreen()),
+            ),
           ),
           if (identity != null) ...[
             const SizedBox(height: Space.xl),

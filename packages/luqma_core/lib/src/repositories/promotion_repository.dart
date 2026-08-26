@@ -37,11 +37,15 @@ abstract interface class PromotionRepository {
     required String by,
   });
 
-  /// How many marketing pushes have gone out since [since]. The cap is enforced against
-  /// this, and it counts what was *sent* rather than what was approved.
-  Future<Result<int>> pushesSentSince({
+  /// Whether the city still has a marketing push left this week.
+  ///
+  /// Asked of the server, not counted here: a merchant's RLS sees only their own rows,
+  /// so a client-side count would understate every merchant but the caller and the cap
+  /// would never bite. The cap is on the city — what is being rationed is a customer's
+  /// patience — and it counts what was *sent*, not what was approved.
+  Future<Result<bool>> pushSlotAvailable({
     required String cityId,
-    required DateTime since,
+    required int limit,
   });
 }
 
@@ -178,21 +182,17 @@ class SupabasePromotionRepository implements PromotionRepository {
   }
 
   @override
-  Future<Result<int>> pushesSentSince({
+  Future<Result<bool>> pushSlotAvailable({
     required String cityId,
-    required DateTime since,
+    required int limit,
   }) {
     return Result.guard(() async {
-      final rows = await _db
-          .from('promotions')
-          .select('id')
-          .eq('city_id', cityId)
-          .eq('channel', PromotionChannel.push.name)
-          .eq('status', PromotionStatus.ended.name)
-          // Counted from what was *sent*, not what was approved. An approved campaign
-          // that never went out has not spent anybody's attention.
-          .gte('start_at', since.toUtc().toIso8601String());
-      return rows.length;
+      // The server counts the whole city, which is the one thing a merchant-scoped
+      // client cannot do for itself — its RLS sees only its own rows.
+      return await _db.rpc('push_slot_available', params: {
+        'p_city_id': cityId,
+        'p_limit': limit,
+      }) as bool;
     });
   }
 }
@@ -313,19 +313,24 @@ class FakePromotionRepository implements PromotionRepository {
   }
 
   @override
-  Future<Result<int>> pushesSentSince({
+  Future<Result<bool>> pushSlotAvailable({
     required String cityId,
-    required DateTime since,
+    required int limit,
   }) async {
     if (failure != null) return Result.err(failure!);
-    return Result.ok(
-      _promotions.values
-          .where((p) =>
-              p.cityId == cityId &&
-              p.channel == PromotionChannel.push &&
-              p.status == PromotionStatus.ended &&
-              !p.startAt.isBefore(since))
-          .length,
-    );
+    // Mirrors the server: sent means ended, or approved and already started, within the
+    // last seven days. An approved campaign that has not begun has not spent attention.
+    final now = DateTime.now();
+    final since = now.subtract(const Duration(days: 7));
+    final sent = _promotions.values
+        .where((p) =>
+            p.cityId == cityId &&
+            p.channel == PromotionChannel.push &&
+            !p.startAt.isBefore(since) &&
+            (p.status == PromotionStatus.ended ||
+                (p.status == PromotionStatus.approved &&
+                    !p.startAt.isAfter(now))))
+        .length;
+    return Result.ok(sent < limit);
   }
 }

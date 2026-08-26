@@ -17,6 +17,8 @@ class CourierScreen extends ConsumerWidget {
   static const errorKey = Key('courier.error');
   static const confirmDeliveredKey = Key('courier.confirmDelivered');
   static const reasonSheetKey = Key('courier.reasonSheet');
+  static const pendingKey = Key('courier.pending');
+  static const retryKey = Key('courier.retry');
 
   static Key cardKey(String id) => Key('courier.card.$id');
   static Key cashKey(String id) => Key('courier.cash.$id');
@@ -62,19 +64,26 @@ class CourierScreen extends ConsumerWidget {
     return Scaffold(
       backgroundColor: colors.background,
       appBar: AppBar(title: const Text('التوصيل')),
-      body: switch (deliveries) {
-        // First, and on `hasError`: a stream that fails before it has ever emitted stays
-        // AsyncLoading with the error hanging off it.
-        AsyncValue(hasError: true, :final error?) => LuqmaErrorView(key: CourierScreen.errorKey, failure: error, onRetry: () => retryDeliveries()),
-        AsyncValue(hasValue: true, :final value?) when value.isEmpty => const _Empty(),
-        AsyncValue(hasValue: true, :final value?) => ListView.separated(
-            padding: const EdgeInsets.all(Space.gutter),
-            itemCount: value.length,
-            separatorBuilder: (_, _) => const SizedBox(height: Space.md),
-            itemBuilder: (context, i) => _Card(order: value[i], courierUid: staff.uid),
+      body: Column(
+        children: [
+          const _PendingBanner(),
+          Expanded(
+            child: switch (deliveries) {
+              // First, and on `hasError`: a stream that fails before it has ever emitted
+              // stays AsyncLoading with the error hanging off it.
+              AsyncValue(hasError: true, :final error?) => LuqmaErrorView(key: CourierScreen.errorKey, failure: error, onRetry: () => retryDeliveries()),
+              AsyncValue(hasValue: true, :final value?) when value.isEmpty => const _Empty(),
+              AsyncValue(hasValue: true, :final value?) => ListView.separated(
+                  padding: const EdgeInsets.all(Space.gutter),
+                  itemCount: value.length,
+                  separatorBuilder: (_, _) => const SizedBox(height: Space.md),
+                  itemBuilder: (context, i) => _Card(order: value[i], courierUid: staff.uid),
+                ),
+              _ => const Center(child: CircularProgressIndicator()),
+            },
           ),
-        _ => const Center(child: CircularProgressIndicator()),
-      },
+        ],
+      ),
     );
   }
 }
@@ -196,10 +205,10 @@ class _Card extends ConsumerWidget {
                     key: CourierScreen.outKey(order.id),
                     onPressed: courierUid == null
                         ? null
-                        : () => _report(
+                        : () => _submit(
                               context,
-                              pending: ref
-                                  .read(courierOrderRepositoryProvider)
+                              ref
+                                  .read(courierWriteQueueProvider)
                                   .markOnTheWay(order.id, courierUid: courierUid!),
                             ),
                     style: FilledButton.styleFrom(
@@ -269,9 +278,9 @@ class _Card extends ConsumerWidget {
 
     if (!(confirmed ?? false) || !context.mounted) return;
 
-    _report(
+    _submit(
       context,
-      pending: ref.read(courierOrderRepositoryProvider).markDelivered(order.id),
+      ref.read(courierWriteQueueProvider).markDelivered(order.id),
     );
   }
 
@@ -322,24 +331,25 @@ class _Card extends ConsumerWidget {
 
     if (reason == null || !context.mounted) return;
 
-    _report(
+    _submit(
       context,
-      pending: ref
-          .read(courierOrderRepositoryProvider)
+      ref
+          .read(courierWriteQueueProvider)
           .markFailed(order.id, reason: reason),
     );
   }
 
-  /// Says something when a write is refused. A courier in the street tapping a button
-  /// that appears to do nothing will tap it again, and then phone somebody.
-  Future<void> _report(
-    BuildContext context, {
-    required Future<Result<void>> pending,
-  }) async {
-    final result = await pending;
+  /// Says what happened to the tap. Queued is the honest middle: the write is saved and
+  /// will go out when the connection returns, so the courier is told that rather than
+  /// "failed" — the tap did not die, it is waiting.
+  Future<void> _submit(
+    BuildContext context,
+    Future<CourierSubmitOutcome> pending,
+  ) async {
+    final outcome = await pending;
     if (!context.mounted) return;
 
-    if (result case Err(:final failure)) {
+    if (outcome case CourierRejected(:final failure)) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(switch (failure) {
@@ -349,6 +359,10 @@ class _Card extends ConsumerWidget {
             _ => 'مقدرناش نحفظ ده. جرّب تاني.',
           }),
         ),
+      );
+    } else if (outcome case CourierQueued()) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('هيتبعت أول ما النت يرجع.')),
       );
     }
   }
@@ -386,3 +400,44 @@ class _Empty extends StatelessWidget {
   }
 }
 
+/// The one banner that must never be missing: a courier whose tap was queued has to see
+/// that it is still waiting, and be given a way to try again. Nothing else on this
+/// screen is silently lost, and neither is this.
+class _PendingBanner extends ConsumerWidget {
+  const _PendingBanner();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final pending =
+        ref.watch(courierPendingWritesProvider).value ?? const [];
+    if (pending.isEmpty) return const SizedBox.shrink();
+
+    final theme = Theme.of(context);
+    final colors = theme.luqma;
+
+    return Container(
+      key: CourierScreen.pendingKey,
+      width: double.infinity,
+      color: colors.accent,
+      padding: const EdgeInsets.symmetric(horizontal: Space.gutter, vertical: Space.sm),
+      child: Row(
+        children: [
+          Icon(Icons.cloud_off_outlined, size: Sizes.iconMd, color: colors.onAccent),
+          const SizedBox(width: Space.sm),
+          Expanded(
+            child: Text(
+              'فيه ${pending.length} تحديث هيتبعت أول ما النت يرجع',
+              style: theme.textTheme.bodyMedium?.copyWith(color: colors.onAccent),
+            ),
+          ),
+          TextButton(
+            key: CourierScreen.retryKey,
+            onPressed: () => ref.read(courierWriteQueueProvider).flush(),
+            style: TextButton.styleFrom(foregroundColor: colors.onAccent),
+            child: const Text('حاول تاني'),
+          ),
+        ],
+      ),
+    );
+  }
+}

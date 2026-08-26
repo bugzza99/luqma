@@ -110,11 +110,16 @@ class SupabaseBillingRepository implements BillingRepository {
 
   @override
   Future<Result<void>> savePlan(Plan plan) {
-    return Result.guard(() async {
-      // Upsert: plans are keyed by fixed ids ('free', 'basic'), so saving an existing
-      // id replaces it rather than colliding with it.
-      await _db.from('plans').upsert(ColumnNames.toRow(plan.toJson()));
-    });
+    return Result.guard(
+      () => _db.rpc('admin_set_plan', params: {
+        'p_id': plan.id,
+        'p_name': plan.name,
+        'p_price_monthly': plan.priceMonthly,
+        'p_features': plan.features.toJson(),
+        'p_sort_order': plan.sortOrder,
+        'p_is_active': plan.isActive,
+      }),
+    );
   }
 
   Subscription _toSubscription(Map<String, dynamic> row) =>

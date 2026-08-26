@@ -14,8 +14,11 @@ import '../models/daily_meal.dart';
 import '../models/order.dart';
 import '../models/promotion.dart';
 import '../repositories/address_repository.dart';
+import '../repositories/admin_repository.dart';
 import '../repositories/billing_repository.dart';
+import '../repositories/config_repository.dart';
 import '../repositories/courier_order_repository.dart';
+import '../repositories/courier_write_queue.dart';
 import '../repositories/customer_repository.dart';
 import '../repositories/daily_meal_repository.dart';
 import '../repositories/feedback_repository.dart';
@@ -27,6 +30,7 @@ import '../repositories/menu_repository.dart';
 import '../repositories/merchant_order_repository.dart';
 import '../repositories/merchant_repository.dart';
 import '../repositories/order_repository.dart';
+import '../repositories/profile_repository.dart';
 import '../repositories/promotion_repository.dart';
 import '../repositories/staff_repository.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -92,12 +96,20 @@ CustomerRepository customerRepository(Ref ref) =>
     SupabaseCustomerRepository(ref.watch(supabaseProvider));
 
 @Riverpod(keepAlive: true)
+AdminRepository adminRepository(Ref ref) =>
+    SupabaseAdminRepository(ref.watch(supabaseProvider));
+
+@Riverpod(keepAlive: true)
 IssueRepository issueRepository(Ref ref) =>
     SupabaseIssueRepository(ref.watch(supabaseProvider));
 
 @Riverpod(keepAlive: true)
 StaffRepository staffRepository(Ref ref) =>
     SupabaseStaffRepository(ref.watch(supabaseProvider));
+
+@Riverpod(keepAlive: true)
+ConfigRepository configRepository(Ref ref) =>
+    SupabaseConfigRepository(ref.watch(supabaseProvider));
 
 @Riverpod(keepAlive: true)
 MenuRepository menuRepository(Ref ref) =>
@@ -207,17 +219,15 @@ Stream<List<Promotion>> merchantPromotions(Ref ref, String merchantId) =>
 @riverpod
 Future<bool> pushSlotAvailable(Ref ref) async {
   final config = ref.watch(appConfigProvider);
-  final now = ref.watch(clockProvider)();
 
-  final sent = await ref.watch(promotionRepositoryProvider).pushesSentSince(
+  final available = await ref.watch(promotionRepositoryProvider).pushSlotAvailable(
         cityId: ref.watch(currentCityProvider),
-        since: now.subtract(const Duration(days: 7)),
+        limit: config.marketingPushPerWeek,
       );
 
   // Unreadable means unknown, and unknown must not open the gate: the cost of one push
   // too many is customers turning notifications off for good.
-  return (sent.valueOrNull ?? config.marketingPushPerWeek) <
-      config.marketingPushPerWeek;
+  return available.valueOrNull ?? false;
 }
 
 @Riverpod(keepAlive: true)
@@ -240,6 +250,33 @@ Stream<Subscription?> subscription(Ref ref, String merchantId) =>
 @Riverpod(keepAlive: true)
 CourierOrderRepository courierOrderRepository(Ref ref) =>
     SupabaseCourierOrderRepository(ref.watch(supabaseProvider));
+
+/// Where the courier's pending writes live between launches. Overridden in the apps with
+/// a shared_preferences-backed store; memory here is the test and default.
+@Riverpod(keepAlive: true)
+CourierWriteStore courierWriteStore(Ref ref) => InMemoryCourierWriteStore();
+
+/// The courier's write queue — the one place a tap that dies with the connection is
+/// held rather than lost.
+@Riverpod(keepAlive: true)
+CourierWriteQueue courierWriteQueue(Ref ref) {
+  final queue = CourierWriteQueue(
+    ref.watch(courierOrderRepositoryProvider),
+    store: ref.watch(courierWriteStoreProvider),
+  );
+  ref.onDispose(queue.dispose);
+  return queue;
+}
+
+/// The writes still waiting to reach the server, live. The courier screen watches this
+/// to say "هيتبعت أول ما النت يرجع" honestly instead of dropping the tap.
+@riverpod
+Stream<List<PendingCourierWrite>> courierPendingWrites(Ref ref) async* {
+  final queue = ref.watch(courierWriteQueueProvider);
+  await queue.load();
+  yield queue.pending;
+  yield* queue.changes.map((_) => queue.pending);
+}
 
 /// What one merchant's own courier has to take out. Live.
 @riverpod
@@ -318,6 +355,11 @@ AddressRepository addressRepository(Ref ref) =>
 @Riverpod(keepAlive: true)
 OrderRepository orderRepository(Ref ref) =>
     SupabaseOrderRepository(ref.watch(supabaseProvider));
+
+/// The signed-in customer's own profile row.
+@Riverpod(keepAlive: true)
+ProfileRepository profileRepository(Ref ref) =>
+    SupabaseProfileRepository(ref.watch(supabaseProvider));
 
 /// The signed-in customer's addresses.
 ///

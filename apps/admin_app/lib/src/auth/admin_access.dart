@@ -14,11 +14,18 @@ abstract final class Routes {
   static const noAccess = '/no-access';
   static const dashboard = '/';
   static const merchants = '/merchants';
+  static const customers = '/customers';
+  static const issues = '/issues';
+  static const staff = '/staff';
+  static const statistics = '/statistics';
   static const zones = '/zones';
   static const media = '/media';
   static const promotions = '/promotions';
   static const home = '/home-builder';
-  static const staff = '/staff';
+  static const settings = '/settings';
+  static const config = '/config';
+  static const plans = '/plans';
+  static const about = '/about';
 }
 
 enum AdminAccess {

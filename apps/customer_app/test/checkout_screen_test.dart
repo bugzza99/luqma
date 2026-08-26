@@ -61,6 +61,7 @@ void main() {
 
   late ProviderContainer container;
   late FakeOrderRepository orders;
+  late FakeProfileRepository profiles;
   late String? placedOrderId;
 
   Future<void> pump(
@@ -68,9 +69,11 @@ void main() {
     Merchant merchant = shore,
     List<Address> addresses = const [home],
     Failure? placementFails,
-    LuqmaIdentity? signedInAs = const LuqmaIdentity(uid: 'u1', name: 'أحمد'),
+    LuqmaIdentity? signedInAs =
+        const LuqmaIdentity(uid: 'u1', name: 'أحمد', phone: '01012345678'),
   }) async {
     orders = FakeOrderRepository(failure: placementFails);
+    profiles = FakeProfileRepository();
     placedOrderId = null;
 
     await tester.pumpWidget(
@@ -88,6 +91,7 @@ void main() {
             ),
           ),
           orderRepositoryProvider.overrideWithValue(orders),
+          profileRepositoryProvider.overrideWithValue(profiles),
           remoteConfigServiceProvider
               .overrideWithValue(RemoteConfigService(FakeConfigFetcher({}))),
           cartProvider.overrideWith(() => CartController.seeded(cart)),
@@ -382,6 +386,63 @@ void main() {
 
       expect(placedOrderId, isNotNull);
       expect(orders.drafts.single.couponCode, 'SAVE20');
+    });
+  });
+
+  group('the phone', () {
+    // A Google account usually carries no phone, and a courier with nobody to call
+    // cannot deliver. The field appears only when the identity has none, and the order
+    // is not sent until it holds a valid Egyptian mobile.
+    testWidgets('is asked for when the account has none', (tester) async {
+      await pump(
+        tester,
+        signedInAs: const LuqmaIdentity(uid: 'u1', name: 'أحمد'),
+      );
+
+      expect(find.byKey(CheckoutScreen.phoneKey), findsOneWidget);
+    });
+
+    testWidgets('is not asked again when the account already has one',
+        (tester) async {
+      await pump(tester);
+
+      expect(find.byKey(CheckoutScreen.phoneKey), findsNothing);
+    });
+
+    testWidgets('an invalid phone stops the order and says why', (tester) async {
+      await pump(
+        tester,
+        signedInAs: const LuqmaIdentity(uid: 'u1', name: 'أحمد'),
+      );
+
+      await tester.ensureVisible(find.byKey(CheckoutScreen.phoneKey));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(CheckoutScreen.phoneKey), '123');
+      await tester.tap(find.byKey(CheckoutScreen.placeKey));
+      await tester.pumpAndSettle();
+
+      expect(placedOrderId, isNull);
+      expect(orders.drafts, isEmpty);
+      expect(find.textContaining('رقم موبايل مصري صحيح'), findsOneWidget);
+    });
+
+    testWidgets('a valid phone is saved and the order goes out', (tester) async {
+      await pump(
+        tester,
+        signedInAs: const LuqmaIdentity(uid: 'u1', name: 'أحمد'),
+      );
+
+      await tester.ensureVisible(find.byKey(CheckoutScreen.phoneKey));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(CheckoutScreen.phoneKey),
+        '01098765432',
+      );
+      await tester.tap(find.byKey(CheckoutScreen.placeKey));
+      await tester.pumpAndSettle();
+
+      expect(placedOrderId, isNotNull);
+      expect(profiles.phones['u1'], '01098765432');
     });
   });
 }

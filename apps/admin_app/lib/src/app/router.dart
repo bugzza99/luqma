@@ -5,19 +5,35 @@ import 'package:riverpod_annotation/riverpod_annotation.dart';
 import '../auth/admin_access.dart';
 import '../auth/gate_screens.dart';
 import '../auth/identity_provider.dart';
+import '../about/about_editor_screen.dart';
+import '../config/config_screen.dart';
+import '../customers/customers_screen.dart';
 import '../dashboard/dashboard_screen.dart';
 import '../home_builder/home_builder_screen.dart';
+import '../issues/issues_screen.dart';
 import '../media/media_screen.dart';
 import '../merchants/merchants_screen.dart';
 import '../places/places_screen.dart';
+import '../plans/plans_editor_screen.dart';
 import '../promotions/promotions_screen.dart';
+import '../settings/settings_screen.dart';
 import '../shell/layout.dart';
+import '../staff/staff_screen.dart';
+import '../statistics/statistics_screen.dart';
 
 part 'router.g.dart';
 
 const _destinations = [
   AdminDestination(label: 'اليوم', icon: Icons.today, route: Routes.dashboard),
+  AdminDestination(
+    label: 'الإحصائيات',
+    icon: Icons.bar_chart,
+    route: Routes.statistics,
+  ),
   AdminDestination(label: 'المطاعم', icon: Icons.storefront, route: Routes.merchants),
+  AdminDestination(label: 'العملاء', icon: Icons.people, route: Routes.customers),
+  AdminDestination(label: 'الشكاوى', icon: Icons.forum, route: Routes.issues),
+  AdminDestination(label: 'الفريق', icon: Icons.badge, route: Routes.staff),
   AdminDestination(label: 'الأماكن', icon: Icons.place, route: Routes.zones),
   AdminDestination(label: 'الصور', icon: Icons.photo_library, route: Routes.media),
   AdminDestination(
@@ -26,6 +42,7 @@ const _destinations = [
     route: Routes.promotions,
   ),
   AdminDestination(label: 'الرئيسية', icon: Icons.dashboard, route: Routes.home),
+  AdminDestination(label: 'الإعدادات', icon: Icons.settings, route: Routes.settings),
 ];
 
 @Riverpod(keepAlive: true)
@@ -56,7 +73,14 @@ GoRouter router(Ref ref) {
         ),
         routes: [
           GoRoute(path: Routes.dashboard, builder: (_, _) => const DashboardScreen()),
+          GoRoute(
+            path: Routes.statistics,
+            builder: (_, _) => const StatisticsScreen(),
+          ),
           GoRoute(path: Routes.merchants, builder: (_, _) => const MerchantsScreen()),
+          GoRoute(path: Routes.customers, builder: (_, _) => const CustomersScreen()),
+          GoRoute(path: Routes.issues, builder: (_, _) => const IssuesScreen()),
+          GoRoute(path: Routes.staff, builder: (_, _) => const StaffScreen()),
           GoRoute(path: Routes.zones, builder: (_, _) => const PlacesScreen()),
           GoRoute(path: Routes.media, builder: (_, _) => const MediaScreen()),
           GoRoute(
@@ -64,6 +88,10 @@ GoRouter router(Ref ref) {
             builder: (_, _) => const PromotionsScreen(),
           ),
           GoRoute(path: Routes.home, builder: (_, _) => const HomeBuilderScreen()),
+          GoRoute(path: Routes.settings, builder: (_, _) => const SettingsScreen()),
+          GoRoute(path: Routes.config, builder: (_, _) => const ConfigScreen()),
+          GoRoute(path: Routes.plans, builder: (_, _) => const PlansEditorScreen()),
+          GoRoute(path: Routes.about, builder: (_, _) => const AboutEditorScreen()),
         ],
       ),
     ],

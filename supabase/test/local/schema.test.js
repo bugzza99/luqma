@@ -162,7 +162,11 @@ describe('a merchant that has traded cannot be deleted', () => {
 
   it('a merchant with an order does not', async () => {
     const customer = await uid();
-    await db.query('insert into users (id, name) values ($1, $2)', [customer, 'عميل']);
+    // The ensure_user_profile trigger already made the row; the name still lands here.
+    await db.query(
+      'insert into users (id, name) values ($1, $2) on conflict (id) do update set name = excluded.name',
+      [customer, 'عميل'],
+    );
     await db.query(
       `insert into orders (city_id, customer_uid, customer_name, customer_phone,
                            merchant_id, merchant_name, zone_id, type, items, pricing)
@@ -239,7 +243,8 @@ describe('one rating per order', () => {
   // instead of moving a merchant's average a second time.
   it('a second rating for the same order replaces the first', async () => {
     const customer = await uid();
-    await db.query('insert into users (id) values ($1)', [customer]);
+    // The ensure_user_profile trigger already made the row; this is now a no-op guard.
+    await db.query('insert into users (id) values ($1) on conflict (id) do nothing', [customer]);
     const o = await db.query(
       `insert into orders (city_id, customer_uid, customer_name, customer_phone,
                            merchant_id, merchant_name, zone_id, type, items, pricing, status)
@@ -268,7 +273,8 @@ describe('one rating per order', () => {
 
   it('stars outside one to five are refused', async () => {
     const customer = await uid();
-    await db.query('insert into users (id) values ($1)', [customer]);
+    // The ensure_user_profile trigger already made the row; this is now a no-op guard.
+    await db.query('insert into users (id) values ($1) on conflict (id) do nothing', [customer]);
     const o = await db.query(
       `insert into orders (city_id, customer_uid, customer_name, customer_phone,
                            merchant_id, merchant_name, zone_id, type, items, pricing)
@@ -380,7 +386,8 @@ describe('orders', () => {
   // a window, so a deadline on one is a countdown to nothing.
   it('a pre-order cannot carry an accept deadline', async () => {
     const customer = await uid();
-    await db.query('insert into users (id) values ($1)', [customer]);
+    // The ensure_user_profile trigger already made the row; this is now a no-op guard.
+    await db.query('insert into users (id) values ($1) on conflict (id) do nothing', [customer]);
 
     const error = await refused(
       `insert into orders (city_id, customer_uid, customer_name, customer_phone,
@@ -394,7 +401,8 @@ describe('orders', () => {
 
   it('an unknown status cannot be written at all', async () => {
     const customer = await uid();
-    await db.query('insert into users (id) values ($1)', [customer]);
+    // The ensure_user_profile trigger already made the row; this is now a no-op guard.
+    await db.query('insert into users (id) values ($1) on conflict (id) do nothing', [customer]);
 
     const error = await refused(
       `insert into orders (city_id, customer_uid, customer_name, customer_phone,
@@ -408,7 +416,8 @@ describe('orders', () => {
 
   it('order numbers are handed out without being asked for', async () => {
     const customer = await uid();
-    await db.query('insert into users (id) values ($1)', [customer]);
+    // The ensure_user_profile trigger already made the row; this is now a no-op guard.
+    await db.query('insert into users (id) values ($1) on conflict (id) do nothing', [customer]);
 
     const r = await db.query(
       `insert into orders (city_id, customer_uid, customer_name, customer_phone,

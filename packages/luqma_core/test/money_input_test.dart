@@ -20,6 +20,17 @@ void main() {
       expect(Money.parse('1,250'), 125000);
     });
 
+    // A comma is a thousands separator, never a decimal point, so it must sit in groups
+    // of three. "1,500" is fifteen hundred pounds, not one-and-a-half.
+    test('a comma in thousands groups is read as one number', () {
+      expect(Money.parse('1,500'), 150000);
+      expect(Money.parse('1,234'), 123400);
+    });
+
+    test('thousands groups with piastres', () {
+      expect(Money.parse('1,234.50'), 123450);
+    });
+
     test('a leading currency word is ignored', () => expect(Money.parse('150 ج'), 15000));
   });
 
@@ -31,6 +42,14 @@ void main() {
     // Three decimal places is not a price — it is a typo, and rounding it silently would
     // mean the merchant's menu says one thing and the courier collects another.
     test('more precision than a piastre', () => expect(Money.parse('150.555'), isNull));
+
+    // Stripping every comma was how "1,5" read as fifteen pounds — one keystroke from
+    // "1.5", worth a factor of ten at the till.
+    test('a comma that is not a thousands group', () {
+      expect(Money.parse('1,5'), isNull);
+      expect(Money.parse('1,25'), isNull);
+      expect(Money.parse('12,34'), isNull);
+    });
 
     test('absurdly large', () => expect(Money.parse('99999999'), isNull));
   });
@@ -44,5 +63,10 @@ void main() {
     });
 
     test('zero is zero, not blank', () => expect(Money.format(0), '0'));
+
+    test('a negative amount never renders as a negative price', () {
+      expect(Money.format(-50), '0');
+      expect(Money.format(-150), '0');
+    });
   });
 }

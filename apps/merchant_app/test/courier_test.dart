@@ -261,4 +261,35 @@ void main() {
       expect(find.byKey(CourierScreen.cardKey('theirs')), findsNothing);
     });
   });
+
+  group('a tap that dies with the connection', () {
+    // The one case where a lost write is money lost: cash collected against an order
+    // the system still thinks is out. The tap must be held, and the screen must say so.
+    testWidgets('is queued, not lost, and flushes on retry', (tester) async {
+      await pump(
+        tester,
+        seed: [order(status: OrderStatus.outForDelivery, courierUid: 'c1')],
+      );
+
+      // The connection drops exactly as the courier confirms the cash is in hand.
+      deliveries.failure = const OfflineFailure();
+
+      await tester.tap(find.byKey(CourierScreen.deliveredKey('o1')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('اه، تم'));
+      await tester.pumpAndSettle();
+
+      // Still out, but the tap is saved and the screen says so honestly.
+      expect(find.byKey(CourierScreen.pendingKey), findsOneWidget);
+      expect(deliveries['o1']!.status, OrderStatus.outForDelivery);
+
+      // The connection returns; retry sends what was held.
+      deliveries.failure = null;
+      await tester.tap(find.byKey(CourierScreen.retryKey));
+      await tester.pumpAndSettle();
+
+      expect(deliveries['o1']!.status, OrderStatus.delivered);
+      expect(find.byKey(CourierScreen.pendingKey), findsNothing);
+    });
+  });
 }

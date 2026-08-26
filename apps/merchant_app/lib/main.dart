@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:luqma_core/luqma_core.dart';
 
 import 'src/app/merchant_app.dart';
+import 'src/courier/courier_write_store.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -24,6 +25,11 @@ Future<void> main() async {
         // owner, so there is no credential source to hand over.
         authServiceProvider.overrideWithValue(
           SupabaseAuthService(supabase, googleIdToken: () async => null),
+        ),
+        // The courier's write queue survives an app being killed: shared_preferences,
+        // not memory.
+        courierWriteStoreProvider.overrideWithValue(
+          SharedPreferencesCourierWriteStore(),
         ),
       ],
       child: const MerchantApp(),

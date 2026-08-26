@@ -33,6 +33,7 @@ void main() {
   Future<void> pump(
     WidgetTester tester, {
     List<Merchant>? seed,
+    Map<String, int> orderCounts = const {},
     Size size = const Size(1400, 1000),
   }) async {
     tester.view.physicalSize = size;
@@ -45,6 +46,7 @@ void main() {
             merchant('a', name: 'مطعم الشاطئ'),
             merchant('b', name: 'كشري المحطة', status: MerchantStatus.pending),
           ],
+      orderCounts: orderCounts,
     );
     menus = FakeMenuRepository(
       categories: const [MenuCategory(id: 'c1', name: 'مشويات')],
@@ -189,6 +191,38 @@ void main() {
 
       final saved = await merchants.watchAllMerchants(cityId: 'edku').first;
       expect(saved, hasLength(2), reason: 'nothing was added');
+    });
+  });
+
+  group('deleting a merchant', () {
+    testWidgets('a merchant that never traded deletes cleanly', (tester) async {
+      await pump(tester);
+
+      await tester.tap(find.text('مطعم الشاطئ').first);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(MerchantsScreen.deleteKey));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(MerchantsScreen.confirmDeleteKey));
+      await tester.pumpAndSettle();
+
+      final saved = await merchants.watchAllMerchants(cityId: 'edku').first;
+      expect(saved.where((m) => m.id == 'a'), isEmpty);
+    });
+
+    testWidgets('a merchant with orders cannot be deleted', (tester) async {
+      await pump(tester, orderCounts: {'a': 7});
+
+      await tester.tap(find.text('مطعم الشاطئ').first);
+      await tester.pumpAndSettle();
+
+      // The control is present but disabled: the reason is in the tooltip.
+      final button = tester.widget<IconButton>(
+        find.byKey(MerchantsScreen.deleteKey),
+      );
+      expect(button.onPressed, isNull);
+
+      // The fallback — suspension — is still on offer.
+      expect(find.byKey(MerchantsScreen.suspendKey), findsOneWidget);
     });
   });
 

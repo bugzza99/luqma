@@ -72,6 +72,45 @@ void main() {
     });
   });
 
+  group('the real access-token hook shape', () {
+    // The hook (supabase/migrations/20260824040000_fix_access_token_hook.sql) writes
+    // app_metadata as jsonb_build_object('role', role, 'scope', scope), then adds
+    // 'merchant_id' only when non-null and 'admin' only for admins. These cases mirror
+    // that shape exactly — snake_case merchant_id, not camelCase.
+
+    test('a merchant owner carries the snake_case merchant_id the hook writes', () {
+      final staff = read({
+        'role': 'owner',
+        'scope': 'merchant',
+        'merchant_id': 'm1',
+      });
+
+      expect(staff.role, StaffRole.owner);
+      expect(staff.scope, StaffScope.merchant);
+      expect(staff.merchantId, 'm1');
+      expect(staff.isAdmin, isFalse);
+    });
+
+    test('a merchant courier carries the snake_case merchant_id', () {
+      final staff = read({
+        'role': 'courier',
+        'scope': 'merchant',
+        'merchant_id': 'm7',
+      });
+
+      expect(staff.role, StaffRole.courier);
+      expect(staff.merchantId, 'm7');
+      expect(staff.ownsAMerchant, isTrue);
+    });
+
+    test('an admin carries the bare admin flag the hook writes', () {
+      final staff = read({'role': 'admin', 'scope': 'platform', 'admin': true});
+
+      expect(staff.role, StaffRole.admin);
+      expect(staff.isAdmin, isTrue);
+    });
+  });
+
   group('a token that says nothing useful', () {
     test('a customer is staff of nothing', () {
       final staff = read({});

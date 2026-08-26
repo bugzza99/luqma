@@ -280,12 +280,23 @@ is not usage, it is a function that calls itself.
 ### Running the checks
 
 ```
+powershell -ExecutionPolicy Bypass -File tool\run_tests.ps1   # the whole suite, with a summary
+```
+
+Or run the pieces by hand:
+
+```
 cd packages/luqma_core && flutter gen-l10n && flutter analyze && flutter test
-npm --prefix functions test
 npm --prefix supabase test          # schema and seed, on PGlite — no Docker needed
 npm --prefix supabase run test:stack # the boundary, against a running `supabase start`
 cd packages/luqma_core && flutter test test_live -j 1   # repositories, against the stack
 ```
+
+**`tool\run_tests.ps1` is the reliable entry point, and the merchant_app tests must run
+from PowerShell, not Git Bash.** Git Bash rewrites `PROGRAMFILES` to a POSIX-style path,
+and the Android toolchain then fails to resolve it — the same tests pass untouched from a
+PowerShell session that inherits the real Windows environment. The script sets no
+variable; it simply runs in the shell that already has the right one.
 
 **`-j 1` on `test_live` is not optional.** Those files all talk to the same database, and
 `flutter test` runs files concurrently — so in parallel the suite fails somewhere
@@ -462,6 +473,23 @@ is a debt from the moment the order is placed, accrued as `pricing.platformOwesM
 
 Coupon documents are **unreadable by any client** — a readable collection is one anyone
 can enumerate. The app calls a function that returns the discount for one basket.
+
+## Known debts from the audit
+
+Deliberately deferred rather than fixed in this pass; each one is the smaller, safer
+choice against the risk of touching a live boundary without being able to prove it here:
+
+- **L2** — `subscriptions.settled_at` and its partial index are left alone. Dropping a
+  column in a migration for a system with no production data would be safe, but the
+  nightly pass still reads it, and removing it is churn with no reader.
+- **L3** — `markDelivered` stamps `delivered_at` from the client clock. Making it server
+  time needs a `SECURITY DEFINER` RPC plus a repository and fake change; that is more
+  than the finding is worth right now, and the client clock is the courier's own device.
+- **L5** — the staff read policy (courier sees only their own merchant) is not tightened
+  here. RLS cannot be argued with on PGlite, so a change would ship unverified against
+  the stack; it is noted for the next stack-backed pass.
+- **L1 / L4 / L6 / L8** — recorded, not fixed: low-severity findings whose only correct
+  home is a stack or a design pass, not a PGlite-only change.
 
 ## Deferred, deliberately
 

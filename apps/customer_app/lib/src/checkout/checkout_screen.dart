@@ -30,6 +30,7 @@ class CheckoutScreen extends ConsumerStatefulWidget {
   static const placeKey = Key('checkout.place');
   static const cashKey = Key('checkout.cash');
   static const noteKey = Key('checkout.note');
+  static const phoneKey = Key('checkout.phone');
   static const errorKey = Key('checkout.error');
   static const signInKey = Key('checkout.signIn');
   static const needsAddressKey = Key('checkout.needsAddress');
@@ -47,9 +48,14 @@ class CheckoutScreen extends ConsumerStatefulWidget {
 class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
   final _note = TextEditingController();
   final _coupon = TextEditingController();
+  final _phone = TextEditingController();
 
   Failure? _failure;
   bool _sending = false;
+
+  /// Set when the typed phone cannot be a mobile the courier can call. Cleared the
+  /// moment the field changes, so a correction dismisses the error.
+  String? _phoneError;
 
   /// The verdict the server returned for the typed code. An accepted one rides along
   /// on the draft; a rejected one is said out loud under the field.
@@ -61,6 +67,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
   void dispose() {
     _note.dispose();
     _coupon.dispose();
+    _phone.dispose();
     super.dispose();
   }
 
@@ -106,11 +113,40 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
     });
   }
 
-  Future<void> _place(Cart cart, Address address) async {
+  Future<void> _place(Cart cart, Address address, LuqmaIdentity identity) async {
     setState(() {
       _sending = true;
       _failure = null;
+      _phoneError = null;
     });
+
+    // A brand-new Google account has no phone, and a courier with nobody to call is a
+    // courier who cannot deliver. The phone is captured once here, written to the user's
+    // row, and then read back by place_order onto the order itself.
+    final needsPhone = identity.phone?.trim().isEmpty ?? true;
+    if (needsPhone) {
+      final phone = _phone.text.trim();
+      if (!Phone.isValidEgyptianMobile(phone)) {
+        setState(() {
+          _sending = false;
+          _phoneError = 'اكتب رقم موبايل مصري صحيح — يبدأ بـ 01 ومكوّن من 11 رقم.';
+        });
+        return;
+      }
+
+      final saved = await ref.read(profileRepositoryProvider).savePhone(
+            uid: identity.uid,
+            phone: phone,
+          );
+      if (!mounted) return;
+      if (saved is Err) {
+        setState(() {
+          _sending = false;
+          _failure = saved.failure;
+        });
+        return;
+      }
+    }
 
     final note = _note.text.trim();
     final result = await ref.read(orderRepositoryProvider).placeOrder(
@@ -179,6 +215,10 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
         cart.isNotEmpty &&
         !_sending;
 
+    // A Google account usually carries no phone. The courier needs one to call, so it is
+    // asked here — once — and written to the user's row before the order goes out.
+    final needsPhone = identity != null && (identity.phone?.trim().isEmpty ?? true);
+
     return Scaffold(
       backgroundColor: colors.background,
       appBar: AppBar(title: const Text('تأكيد الطلب')),
@@ -226,6 +266,24 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
                     // Found out here, not from a rejection an hour later.
                     text: '${merchant?.name ?? "المطعم"} مبيوصلش '
                         '${zone?.name ?? "المنطقة دي"}. غيّر العنوان أو اختار مطعم تاني.',
+                  ),
+                ],
+                if (needsPhone) ...[
+                  const SizedBox(height: Space.xl),
+                  TextField(
+                    key: CheckoutScreen.phoneKey,
+                    controller: _phone,
+                    keyboardType: TextInputType.phone,
+                    textDirection: TextDirection.ltr,
+                    // The error lives under the field, where the correction is typed.
+                    onChanged: (_) {
+                      if (_phoneError != null) setState(() => _phoneError = null);
+                    },
+                    decoration: InputDecoration(
+                      labelText: 'رقم الموبايل',
+                      hintText: '01012345678',
+                      errorText: _phoneError,
+                    ),
                   ),
                 ],
                 const SizedBox(height: Space.xl),
@@ -294,7 +352,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
               total: pricing.total,
               sending: _sending,
               onPlace:
-                  ready ? () => _place(cart, address) : null,
+                  ready ? () => _place(cart, address, identity) : null,
             ),
     );
   }

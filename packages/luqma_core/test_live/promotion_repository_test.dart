@@ -186,12 +186,16 @@ void main() {
       // count.
       await push('approved', DateTime.now());
 
-      final count = await repository.pushesSentSince(
-        cityId: cityId,
-        since: DateTime.now().subtract(const Duration(days: 7)),
+      // One sent push against a limit of two leaves the slot open; against a limit of
+      // one it is spent.
+      expect(
+        (await repository.pushSlotAvailable(cityId: cityId, limit: 2)).valueOrNull,
+        isTrue,
       );
-
-      expect(count.valueOrNull, 1);
+      expect(
+        (await repository.pushSlotAvailable(cityId: cityId, limit: 1)).valueOrNull,
+        isFalse,
+      );
     });
   });
 }

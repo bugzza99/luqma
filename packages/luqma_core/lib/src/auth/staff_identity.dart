@@ -67,13 +67,25 @@ class StaffIdentity {
       email: identity.email,
       role: role,
       scope: _enumFrom(StaffScope.values, claims['scope']),
-      merchantId: claims['merchantId'] is String
-          ? claims['merchantId']! as String
-          : null,
+      // The access-token hook (supabase/migrations/20260824040000_fix_access_token_hook.sql)
+      // writes `merchant_id` in snake_case into app_metadata. Older fakes and any legacy
+      // token still used `merchantId`, so both spellings count — snake_case first because
+      // that is what a real sign-in produces today.
+      merchantId:
+          _stringClaim(claims, 'merchant_id') ?? _stringClaim(claims, 'merchantId'),
       // Either spelling counts. The rules check the bare `admin` flag, so the app has to
       // agree with them about who is one even on a token that carries nothing else.
       isAdmin: role == StaffRole.admin || claims['admin'] == true,
     );
+  }
+
+  /// A string claim, or null when the key is absent or of the wrong type.
+  ///
+  /// A claim of the wrong type is ignored rather than thrown on, so a token somebody
+  /// typed in a console cannot crash the app over one field.
+  static String? _stringClaim(Map<String, Object?> claims, String key) {
+    final value = claims[key];
+    return value is String ? value : null;
   }
 
   /// Null for anything that is not one of [values] by name.

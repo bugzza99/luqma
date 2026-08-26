@@ -143,3 +143,115 @@ class StaffMember {
   static StaffMember fromRow(Map<String, dynamic> row) =>
       StaffMember.fromJson(ColumnNames.toModel(row));
 }
+
+/// The four numbers the owner opens AdminApp to see, in one server round trip.
+///
+/// Not `freezed`: read-only, computed by `admin_today`, and never written back. A model
+/// with a `toJson` would invite a client to write what only the server should answer.
+class AdminToday {
+  const AdminToday({
+    required this.ordersToday,
+    required this.moneyToday,
+    required this.needsAttention,
+    required this.openIssues,
+  });
+
+  /// Orders placed today that were not refused or cancelled.
+  final int ordersToday;
+
+  /// Piastres. Money counted on the same rule as [ordersToday]: a delivered order and an
+  /// eaten one both moved cash.
+  final int moneyToday;
+
+  /// The escalator's queue: orders nobody answered in time.
+  final List<NeedsAttentionItem> needsAttention;
+
+  /// Tickets a customer has raised that nobody has closed.
+  final int openIssues;
+
+  factory AdminToday.fromJson(Map<String, dynamic> json) => AdminToday(
+    ordersToday: (json['ordersToday'] as num?)?.toInt() ?? 0,
+    moneyToday: (json['moneyToday'] as num?)?.toInt() ?? 0,
+    needsAttention: [
+      for (final item in (json['needsAttention'] as List? ?? const []))
+        NeedsAttentionItem.fromJson(Map<String, dynamic>.from(item as Map)),
+    ],
+    openIssues: (json['openIssues'] as num?)?.toInt() ?? 0,
+  );
+}
+
+/// One order waiting on the escalator's queue.
+class NeedsAttentionItem {
+  const NeedsAttentionItem({
+    required this.id,
+    required this.number,
+    required this.merchantId,
+    required this.merchantName,
+  });
+
+  final String id;
+  final int number;
+  final String merchantId;
+  final String merchantName;
+
+  factory NeedsAttentionItem.fromJson(Map<String, dynamic> json) =>
+      NeedsAttentionItem(
+    id: json['id'] as String,
+    number: (json['number'] as num).toInt(),
+    merchantId: json['merchantId'] as String,
+    merchantName: json['merchantName'] as String? ?? '',
+  );
+}
+
+/// Wider than a day: who is on the platform and how it is moving. Read-only.
+class AdminStatistics {
+  const AdminStatistics({
+    required this.customers,
+    required this.merchantsByStatus,
+    required this.ordersTotal,
+    required this.avgOrderValue,
+    required this.byWeek,
+    required this.byMonth,
+  });
+
+  final int customers;
+  final Map<String, int> merchantsByStatus;
+  final int ordersTotal;
+
+  /// Piastres, averaged over every non-cancelled order.
+  final int avgOrderValue;
+  final List<SeriesPoint> byWeek;
+  final List<SeriesPoint> byMonth;
+
+  factory AdminStatistics.fromJson(Map<String, dynamic> json) => AdminStatistics(
+    customers: (json['customers'] as num?)?.toInt() ?? 0,
+    merchantsByStatus: {
+      for (final entry
+          in (json['merchantsByStatus'] as Map? ?? const {}).entries)
+        entry.key as String: (entry.value as num).toInt(),
+    },
+    ordersTotal: (json['ordersTotal'] as num?)?.toInt() ?? 0,
+    avgOrderValue: (json['avgOrderValue'] as num?)?.toInt() ?? 0,
+    byWeek: [
+      for (final item in (json['byWeek'] as List? ?? const []))
+        SeriesPoint.fromJson(Map<String, dynamic>.from(item as Map)),
+    ],
+    byMonth: [
+      for (final item in (json['byMonth'] as List? ?? const []))
+        SeriesPoint.fromJson(Map<String, dynamic>.from(item as Map)),
+    ],
+  );
+}
+
+/// One bucket in a growth series: a starting date and how many orders it covers.
+class SeriesPoint {
+  const SeriesPoint({required this.starting, required this.count});
+
+  final DateTime starting;
+  final int count;
+
+  factory SeriesPoint.fromJson(Map<String, dynamic> json) => SeriesPoint(
+    starting: DateTime.parse(json['starting'] as String).toLocal(),
+    count: (json['count'] as num?)?.toInt() ?? 0,
+  );
+}

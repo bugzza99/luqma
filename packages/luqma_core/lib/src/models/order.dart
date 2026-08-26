@@ -53,9 +53,13 @@ extension OrderTransitions on OrderStatus {
   /// button rather than offer an action that will be refused.
   bool canMoveTo(OrderStatus next, {required OrderActor by}) {
     if (this == next) return false;
-    // Delivered and cancelled are final for everyone. An order that can be reopened is
-    // an order whose cash total can be changed after the money was handed over.
-    if (this == OrderStatus.delivered || this == OrderStatus.cancelled) return false;
+    // Delivered and cancelled are final for everyone but the admin. The server stays
+    // authoritative for admin — it already allows reopening a finished order — so the
+    // interface must not hide a button the server would honour. Two sources of truth
+    // would disagree only as an owner staring at a stuck order.
+    if (this == OrderStatus.delivered || this == OrderStatus.cancelled) {
+      return by == OrderActor.admin;
+    }
 
     return switch (by) {
       OrderActor.customer =>

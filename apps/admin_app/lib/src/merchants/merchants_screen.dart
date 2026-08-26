@@ -21,6 +21,8 @@ class MerchantsScreen extends ConsumerWidget {
   static const billingKey = Key('merchants.billing');
   static const approveKey = Key('merchants.approve');
   static const suspendKey = Key('merchants.suspend');
+  static const deleteKey = Key('merchants.delete');
+  static const confirmDeleteKey = Key('merchants.confirmDelete');
   static const nameFieldKey = Key('merchants.name');
   static const phoneFieldKey = Key('merchants.phone');
   static const saveKey = Key('merchants.save');
@@ -237,6 +239,7 @@ class _Detail extends ConsumerWidget {
     final theme = Theme.of(context);
     final colors = theme.luqma;
     final actions = ref.read(merchantActionsProvider.notifier);
+    final orderCount = ref.watch(merchantOrderCountProvider(merchant.id));
 
     return Scaffold(
       key: MerchantsScreen.detailKey,
@@ -274,6 +277,20 @@ class _Detail extends ConsumerWidget {
                   actions.setStatus(merchant.id, MerchantStatus.suspended),
               child: Text('إيقاف', style: TextStyle(color: colors.onBrand)),
             ),
+          // Delete only while the merchant never traded. Once it has an order the
+          // control is disabled and the reason is said in the tooltip — history exists,
+          // and history wins. The real count is queried, never a field that can drift.
+          IconButton(
+            key: MerchantsScreen.deleteKey,
+            tooltip: switch (orderCount.value ?? 0) {
+              0 => 'حذف المطعم',
+              final n => 'مينفعش حذف — عنده $n طلب',
+            },
+            icon: const Icon(Icons.delete_outline),
+            onPressed: (orderCount.value ?? 0) == 0
+                ? () => _confirmDelete(context, ref)
+                : null,
+          ),
         ],
       ),
       body: Column(
@@ -295,6 +312,47 @@ class _Detail extends ConsumerWidget {
         ],
       ),
     );
+  }
+
+  Future<void> _confirmDelete(BuildContext context, WidgetRef ref) async {
+    // Asked, because delete is the one write here with no undo. A merchant that never
+    // traded is a typo; deleting the wrong one is an afternoon of re-entering a menu.
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('حذف المطعم؟'),
+        content: Text('${merchant.name} هيتشال نهائيًا. مفيش رجوع.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('إلغاء'),
+          ),
+          FilledButton(
+            key: MerchantsScreen.confirmDeleteKey,
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('احذف'),
+          ),
+        ],
+      ),
+    );
+
+    if (!(confirmed ?? false) || !context.mounted) return;
+
+    final result =
+        await ref.read(merchantActionsProvider.notifier).delete(merchant.id);
+    if (!context.mounted) return;
+
+    if (result case Err(:final failure)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(switch (failure) {
+          OfflineFailure() => 'مفيش نت — جرّب تاني.',
+          ConflictFailure() => 'المطعم ده ليه طلبات، فمينفعش يتشال.',
+          _ => 'مقدرناش نحذف. جرّب تاني.',
+        })),
+      );
+    } else {
+      onBack?.call();
+    }
   }
 }
 
