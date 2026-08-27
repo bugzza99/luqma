@@ -17,9 +17,18 @@ Linked from `supabase/`; the dashboard is at
 `https://supabase.com/dashboard/project/vqcivwdoekyfqhfmnuos`. The database password is in
 `supabase/.temp/db-password.txt` (gitignored) — move it to a password manager.
 
-Production builds point the apps at it with dart-defines:
+Production builds are one script, because three dart-defines typed by hand three times is
+three chances to drop one — and a dropped one is silent. A build with no
+`LUQMA_SENTRY_DSN` reports nothing and looks identical to one that has it:
 
 ```
+powershell -ExecutionPolicy Bypass -File tooluild-apks.ps1
+```
+
+It fetches the anon key from the linked project rather than having it pasted, carries the
+Sentry DSN, builds arm64-only split APKs for all three apps, and drops them in `apks/`.
+Both values are public by design — the anon key is what every phone carries and RLS is
+what protects the data, and a Sentry DSN can only *send* events, never read them.
 flutter build apk --dart-define=LUQMA_SUPABASE_URL=https://vqcivwdoekyfqhfmnuos.supabase.co \
   --dart-define=LUQMA_SUPABASE_ANON_KEY=<anon key, supabase projects api-keys>
 ```
