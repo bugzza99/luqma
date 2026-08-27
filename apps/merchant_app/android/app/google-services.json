@@ -1,0 +1,105 @@
+{
+  "project_info": {
+    "project_number": "718707520076",
+    "project_id": "luqma-edku",
+    "storage_bucket": "luqma-edku.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:718707520076:android:7f8b0bee40fcc31bc8fae9",
+        "android_client_info": {
+          "package_name": "com.luqma.admin"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "718707520076-enjui4vckuunk2e2nbsnuu8kgaok3tho.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDNRBrTJYXXKs0yyskVw9omWKgEMjAspOk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "718707520076-enjui4vckuunk2e2nbsnuu8kgaok3tho.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:718707520076:android:b605590f4cf06ff8c8fae9",
+        "android_client_info": {
+          "package_name": "com.luqma.customer"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "718707520076-e71tb8dgr8kodallbuverviaouih0oar.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.luqma.customer",
+            "certificate_hash": "75869059d00581c646586deee61451ba80cabadf"
+          }
+        },
+        {
+          "client_id": "718707520076-enjui4vckuunk2e2nbsnuu8kgaok3tho.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDNRBrTJYXXKs0yyskVw9omWKgEMjAspOk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "718707520076-enjui4vckuunk2e2nbsnuu8kgaok3tho.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:718707520076:android:3d3a03064a162165c8fae9",
+        "android_client_info": {
+          "package_name": "com.luqma.merchant"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "718707520076-enjui4vckuunk2e2nbsnuu8kgaok3tho.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDNRBrTJYXXKs0yyskVw9omWKgEMjAspOk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "718707520076-enjui4vckuunk2e2nbsnuu8kgaok3tho.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -605,6 +605,19 @@ JAVA_HOME="C:\Program Files\Android\Android Studio\jbr" firebase emulators:exec 
 - **`ensure_user_profile` makes the `users` row.** It fires on every insert into
   `auth.users`, so a fixture that also inserts one collides on the primary key, and
   "no such customer" is unreachable through a real account.
+- **`alter database … set app.whatever` is refused on hosted Supabase.** Setting a custom
+  parameter needs superuser and the hosted `postgres` role is not one — it answers
+  `42501: permission denied to set parameter`. Anything a scheduled job needs to read goes
+  in **Vault** (`vault.create_secret`, read back through `vault.decrypted_secrets`), which
+  is encrypted at rest rather than readable by every session through `current_setting`.
+  A function that reads vault must build the lookup with `execute`: a `language sql` body
+  is parsed at creation and fails on PGlite, which has no vault at all.
+- **An Edge Function verifies a JWT unless you say otherwise.** `pg_net` from a cron job
+  sends no Authorization header, so the gateway answers `401
+  UNAUTHORIZED_NO_AUTH_HEADER` **before the function runs** — its own logs stay empty and
+  its own auth never fires. Deploy anything cron-driven with `--no-verify-jwt` and let the
+  function's own secret be the gate. That is least privilege too: a purpose-built secret
+  that can only trigger a drain beats sending the service-role key every minute.
 - **A test window is not a phone.** `flutter test` defaults to 800x600 — wider than it is
   tall, and unlike any device this ships on. Once merchant cards carried a picture the
   first card's name fell below 600 and every tap on it landed outside the render tree,
