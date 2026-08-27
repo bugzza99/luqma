@@ -57,6 +57,7 @@ export 'src/theme/typography.dart';
 export 'src/media/image_compressor.dart';
 export 'src/models/cuisine.dart';
 export 'src/repositories/cuisine_repository.dart';
+export 'src/repositories/push_token_repository.dart';
 export 'src/repositories/search_repository.dart';
 export 'src/media/image_source.dart';
 export 'src/widgets/luqma_image.dart';

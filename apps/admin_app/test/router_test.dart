@@ -2,7 +2,6 @@ import 'package:admin_app/src/app/router.dart';
 import 'package:admin_app/src/auth/admin_access.dart';
 import 'package:admin_app/src/auth/gate_screens.dart';
 import 'package:admin_app/src/auth/identity_provider.dart';
-import 'package:admin_app/src/dashboard/dashboard_screen.dart';
 import 'package:admin_app/src/dashboard/module_grid_screen.dart';
 import 'package:admin_app/src/places/places_screen.dart';
 import 'package:admin_app/src/shell/layout.dart';

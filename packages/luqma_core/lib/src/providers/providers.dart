@@ -36,6 +36,7 @@ import '../repositories/merchant_repository.dart';
 import '../repositories/order_repository.dart';
 import '../repositories/profile_repository.dart';
 import '../repositories/promotion_repository.dart';
+import '../repositories/push_token_repository.dart';
 import '../repositories/search_repository.dart';
 import '../repositories/staff_repository.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -71,6 +72,10 @@ CuisineRepository cuisineRepository(Ref ref) =>
 @Riverpod(keepAlive: true)
 SearchRepository searchRepository(Ref ref) =>
     SupabaseSearchRepository(ref.watch(supabaseProvider));
+
+@Riverpod(keepAlive: true)
+PushTokenRepository pushTokenRepository(Ref ref) =>
+    SupabasePushTokenRepository(ref.watch(supabaseProvider));
 
 /// What is waiting for the admin, by module — the numbers on the home grid.
 ///

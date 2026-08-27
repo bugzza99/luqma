@@ -41,6 +41,13 @@ dependencies:
   # The gallery. Lives here rather than in luqma_core because it is a platform plugin —
   # a FileProvider entry and, on some Androids, a camera permission — and CustomerApp
   # uploads nothing, so it should carry none of that.
+  # Firebase, for Messaging and nothing else. The backend is Supabase; this is the one
+  # Google product still in the product, because there is no push transport in Supabase
+  # and a merchant whose phone does not ring does not know an order arrived.
+  firebase_core: ^3.8.0
+  firebase_messaging: ^15.1.5
+  flutter_local_notifications: ^18.0.1
+
   image_picker: ^1.1.2
 
   flutter_riverpod: ^3.0.0

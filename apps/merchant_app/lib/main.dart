@@ -6,6 +6,7 @@ import 'package:luqma_core/luqma_core.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
 import 'src/app/gallery.dart';
+import 'src/app/push.dart';
 import 'src/app/merchant_app.dart';
 import 'src/courier/courier_write_store.dart';
 
@@ -23,19 +24,30 @@ Future<void> main() async {
   final config = RemoteConfigService(SupabaseConfigFetcher(supabase));
   unawaited(config.refresh());
 
+  // The merchant's phone ringing when an order arrives — the one notification this
+  // business depends on. Started from the same container the app runs on, so the token
+  // it registers belongs to the session every screen is reading.
+  //
+  // Inert without google-services.json: a build that has never been given one still
+  // runs, and says so once in the log rather than dying at launch.
+  final container = ProviderContainer(
+    overrides: [
+      remoteConfigServiceProvider.overrideWithValue(config),
+      authServiceProvider.overrideWithValue(SupabaseAuthService(supabase)),
+      // The only place this app names the gallery; see src/app/gallery.dart.
+      pickImageProvider.overrideWithValue(pickImageFromGallery),
+      // The courier's write queue survives an app being killed: shared_preferences,
+      // not memory.
+      courierWriteStoreProvider.overrideWithValue(
+        SharedPreferencesCourierWriteStore(),
+      ),
+    ],
+  );
+  unawaited(LuqmaPush.start(container.read(pushTokenRepositoryProvider)));
+
   runApp(
-    ProviderScope(
-      overrides: [
-        remoteConfigServiceProvider.overrideWithValue(config),
-        authServiceProvider.overrideWithValue(SupabaseAuthService(supabase)),
-        // The only place this app names the gallery; see src/app/gallery.dart.
-        pickImageProvider.overrideWithValue(pickImageFromGallery),
-        // The courier's write queue survives an app being killed: shared_preferences,
-        // not memory.
-        courierWriteStoreProvider.overrideWithValue(
-          SharedPreferencesCourierWriteStore(),
-        ),
-      ],
+    UncontrolledProviderScope(
+      container: container,
       child: MerchantApp(currentVersion: info.version),
     ),
   );

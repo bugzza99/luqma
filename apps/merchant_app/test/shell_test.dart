@@ -55,6 +55,8 @@ void main() {
       ProviderScope(
         overrides: [
           authServiceProvider.overrideWithValue(auth),
+          pushTokenRepositoryProvider
+              .overrideWithValue(FakePushTokenRepository()),
           merchantRepositoryProvider
               .overrideWithValue(FakeMerchantRepository(seed: [shopIs])),
           dailyMealRepositoryProvider

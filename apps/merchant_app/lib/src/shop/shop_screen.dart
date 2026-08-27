@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:luqma_core/luqma_core.dart';
 
+import '../app/push.dart';
+
 import '../promotions/promotions_screen.dart';
 import 'busy_toggle.dart';
 
@@ -117,6 +119,16 @@ class ShopScreen extends ConsumerWidget {
     );
 
     if (confirmed ?? false) {
+      // Before the session goes, not after: a till behind a counter that keeps the last
+      // merchant's token goes on ringing for a shop the person holding it no longer
+      // works for, and once signed out there is no account to take it off.
+      //
+      // Guarded, because signing out must always work. An account somebody cannot leave
+      // is trusted less, not more — and a token left behind is a nuisance, where a
+      // sign-out button that does nothing is a person stuck in somebody else's shop.
+      try {
+        await LuqmaPush.stop(ref.read(pushTokenRepositoryProvider));
+      } catch (_) {}
       await ref.read(authServiceProvider).signOut();
     }
   }
