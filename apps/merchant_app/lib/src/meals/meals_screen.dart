@@ -232,7 +232,7 @@ class _MealCard extends ConsumerWidget {
 }
 
 /// Three fields and a window. Nothing else belongs here.
-class _MealForm extends StatefulWidget {
+class _MealForm extends ConsumerStatefulWidget {
   const _MealForm({
     required this.merchantId,
     required this.cityId,
@@ -244,10 +244,18 @@ class _MealForm extends StatefulWidget {
   final String day;
 
   @override
-  State<_MealForm> createState() => _MealFormState();
+  ConsumerState<_MealForm> createState() => _MealFormState();
 }
 
-class _MealFormState extends State<_MealForm> {
+class _MealFormState extends ConsumerState<_MealForm> {
+  /// The photograph, once one has been taken.
+  ///
+  /// A meal is published in the morning and gone by the evening, so its picture is the
+  /// only thing a customer has to go on — there is no reputation attached to a dish that
+  /// exists for one day.
+  String? _mediaId;
+  String? _mediaUrl;
+
   final _formKey = GlobalKey<FormState>();
   final _name = TextEditingController();
   final _price = TextEditingController();
@@ -289,6 +297,7 @@ class _MealFormState extends State<_MealForm> {
         // Already cooked, so both counts start the same. Every reservation after this
         // moves the second one, and only the server may.
         remainingQty: quantity,
+        mediaId: _mediaId,
         pickupWindowStart: _start,
         pickupWindowEnd: _end,
         status: DailyMealStatus.published,
@@ -388,6 +397,20 @@ class _MealFormState extends State<_MealForm> {
                       ],
                     ),
                   ),
+                ),
+                const SizedBox(height: Space.md),
+                // A meal is published in the morning and gone by the evening, so its
+                // photograph is the only thing a customer has to go on — there is no
+                // reputation attached to a dish that exists for one day.
+                MediaPicker(
+                  kind: MediaKind.dailyMeal,
+                  url: _mediaUrl,
+                  name: _name.text.trim().isEmpty ? 'وجبة' : _name.text.trim(),
+                  height: 140,
+                  onUploaded: (media) => setState(() {
+                    _mediaId = media.id;
+                    _mediaUrl = media.url;
+                  }),
                 ),
                 const SizedBox(height: Space.md),
                 FilledButton(

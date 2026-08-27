@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:luqma_core/luqma_core.dart';
@@ -73,8 +75,9 @@ class ShopScreen extends ConsumerWidget {
                 Text(
                   staff.email ?? '',
                   textAlign: TextAlign.center,
-                  style: theme.textTheme.bodySmall
-                      ?.copyWith(color: colors.textSecondary),
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: colors.textSecondary,
+                  ),
                 ),
                 const SizedBox(height: Space.sm),
                 TextButton(
@@ -134,10 +137,57 @@ class ShopScreen extends ConsumerWidget {
   }
 }
 
-class _Identity extends StatelessWidget {
+class _Identity extends ConsumerStatefulWidget {
   const _Identity({required this.merchant});
 
   final Merchant merchant;
+
+  static const coverKey = Key('shop.cover');
+
+  @override
+  ConsumerState<_Identity> createState() => _IdentityState();
+}
+
+class _IdentityState extends ConsumerState<_Identity> {
+  /// The cover as it stands, replaced the moment a new one is uploaded so the merchant
+  /// sees what they picked rather than the old picture until they reopen the screen.
+  String? _coverUrl;
+  bool _saving = false;
+
+  Merchant get merchant => widget.merchant;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_loadCover());
+  }
+
+  /// Resolves the id the merchant row carries into a URL.
+  ///
+  /// The row stores the id, never the address — that is the rule for every image in the
+  /// product, and it is what lets a rejected picture disappear everywhere at once.
+  Future<void> _loadCover() async {
+    final id = merchant.coverMediaId;
+    if (id == null || id.isEmpty) return;
+
+    final result = await ref.read(mediaRepositoryProvider).get(id);
+    if (!mounted) return;
+    setState(() => _coverUrl = result.valueOrNull?.url);
+  }
+
+  Future<void> _attachCover(Media media) async {
+    setState(() {
+      _coverUrl = media.url;
+      _saving = true;
+    });
+
+    // The id goes on the merchant row; the picture stays invisible to customers until an
+    // admin approves it, like every other image in the product.
+    await ref
+        .read(merchantRepositoryProvider)
+        .saveMerchant(merchant.copyWith(coverMediaId: media.id));
+    if (mounted) setState(() => _saving = false);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -151,28 +201,50 @@ class _Identity extends StatelessWidget {
         borderRadius: Radii.cardAll,
         border: Border.all(color: colors.hairline),
       ),
-      child: Row(
+      child: Column(
         children: [
-          Icon(
-            merchant.type == MerchantType.homeKitchen
-                ? Icons.soup_kitchen_outlined
-                : Icons.storefront_outlined,
-            color: colors.brand,
-            size: Sizes.iconLg,
+          // The picture at the top of this shop's page on the customer's home. Until now
+          // there was no way for a merchant to have one at all.
+          MediaPicker(
+            key: _Identity.coverKey,
+            kind: MediaKind.merchantCover,
+            url: _coverUrl,
+            name: merchant.name,
+            ownerId: merchant.id,
+            height: 120,
+            onUploaded: _attachCover,
           ),
-          const SizedBox(width: Space.md),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(merchant.name, style: theme.textTheme.titleMedium),
-                Text(
-                  merchant.phone,
-                  style: theme.textTheme.bodySmall
-                      ?.copyWith(color: colors.textSecondary),
-                ),
-              ],
+          if (_saving)
+            const Padding(
+              padding: EdgeInsets.only(top: Space.sm),
+              child: LinearProgressIndicator(minHeight: 2),
             ),
+          const SizedBox(height: Space.md),
+          Row(
+            children: [
+              Icon(
+                merchant.type == MerchantType.homeKitchen
+                    ? Icons.soup_kitchen_outlined
+                    : Icons.storefront_outlined,
+                color: colors.brand,
+                size: Sizes.iconLg,
+              ),
+              const SizedBox(width: Space.md),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(merchant.name, style: theme.textTheme.titleMedium),
+                    Text(
+                      merchant.phone,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: colors.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -221,7 +293,11 @@ class _Billing extends ConsumerWidget {
         children: [
           Row(
             children: [
-              Icon(Icons.receipt_long_outlined, color: colors.brand, size: Sizes.iconMd),
+              Icon(
+                Icons.receipt_long_outlined,
+                color: colors.brand,
+                size: Sizes.iconMd,
+              ),
               const SizedBox(width: Space.md),
               Expanded(
                 child: Text(
@@ -239,8 +315,9 @@ class _Billing extends ConsumerWidget {
                 Expanded(
                   child: Text(
                     'الرصيد',
-                    style: theme.textTheme.bodyMedium
-                        ?.copyWith(color: colors.textSecondary),
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: colors.textSecondary,
+                    ),
                   ),
                 ),
                 Text(
@@ -303,24 +380,26 @@ class _Feedback extends ConsumerWidget {
           // First, and on `hasError`: a stream that fails before it has ever emitted
           // stays AsyncLoading with the error hanging off it.
           AsyncValue(hasError: true) => Text(
-              'مش قادرين نجيب التقييمات دلوقتي.',
-              style: theme.textTheme.bodyMedium
-                  ?.copyWith(color: colors.textSecondary),
+            'مش قادرين نجيب التقييمات دلوقتي.',
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: colors.textSecondary,
             ),
+          ),
           AsyncValue(hasValue: true, :final value?) when value.isEmpty => Text(
-              'لسه محدش قيّم طلب.',
-              style: theme.textTheme.bodyMedium
-                  ?.copyWith(color: colors.textSecondary),
+            'لسه محدش قيّم طلب.',
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: colors.textSecondary,
             ),
+          ),
           AsyncValue(hasValue: true, :final value?) => Column(
-              children: [
-                for (final one in value.take(20))
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: Space.sm),
-                    child: _FeedbackRow(feedback: one),
-                  ),
-              ],
-            ),
+            children: [
+              for (final one in value.take(20))
+                Padding(
+                  padding: const EdgeInsets.only(bottom: Space.sm),
+                  child: _FeedbackRow(feedback: one),
+                ),
+            ],
+          ),
           _ => const Center(child: CircularProgressIndicator()),
         },
       ],
@@ -352,7 +431,9 @@ class _FeedbackRow extends StatelessWidget {
             children: [
               for (var i = 1; i <= 5; i++)
                 Icon(
-                  i <= feedback.stars ? Icons.star_rounded : Icons.star_border_rounded,
+                  i <= feedback.stars
+                      ? Icons.star_rounded
+                      : Icons.star_border_rounded,
                   size: Sizes.iconSm,
                   color: i <= feedback.stars ? colors.accent : colors.border,
                 ),
@@ -415,15 +496,17 @@ class _Rating extends ConsumerWidget {
                       ),
                       Text(
                         'من ${merchant.ratingCount} تقييم',
-                        style: theme.textTheme.bodySmall
-                            ?.copyWith(color: colors.textSecondary),
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: colors.textSecondary,
+                        ),
                       ),
                     ],
                   )
                 : Text(
                     'التقييم هيظهر بعد ما يوصل $threshold تقييمات.',
-                    style: theme.textTheme.bodyMedium
-                        ?.copyWith(color: colors.textSecondary),
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: colors.textSecondary,
+                    ),
                   ),
           ),
         ],
@@ -476,8 +559,9 @@ class _Tile extends StatelessWidget {
                   Text(title, style: theme.textTheme.titleMedium),
                   Text(
                     subtitle,
-                    style: theme.textTheme.bodySmall
-                        ?.copyWith(color: colors.textSecondary),
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: colors.textSecondary,
+                    ),
                   ),
                 ],
               ),

@@ -67,8 +67,10 @@ void main() {
         date: date,
         totalQty: totalQty,
         remainingQty: remainingQty,
-        pickupWindowStart: 13 * 60,
-        pickupWindowEnd: 16 * 60,
+        // Open all day: see the note in order_repository_test — a fixed afternoon
+        // window makes a test that is not about the hour fail after four o'clock.
+        pickupWindowStart: 0,
+        pickupWindowEnd: 24 * 60 - 1,
         status: status,
       );
 

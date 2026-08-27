@@ -155,8 +155,17 @@ void main() {
           'date': DailyMeal.dayKeyOf(DateTime.now()),
           'total_qty': remaining,
           'remaining_qty': remaining,
-          'pickup_window_start': 13 * 60,
-          'pickup_window_end': 16 * 60,
+          // A window that is open *now*, rather than 13:00–16:00.
+          //
+          // `launch_fixes` H2 refuses a reservation once the collection window has
+          // closed — correctly — so a fixed afternoon window made these tests pass in
+          // the morning and fail after four o'clock. Nothing about the transactional
+          // decrement they exist to prove has anything to do with the hour.
+          //
+          // The window itself is covered where it belongs: by the H2 tests, which move
+          // the clock on purpose.
+          'pickup_window_start': 0,
+          'pickup_window_end': 24 * 60 - 1,
           'status': 'published',
         }).select().single().then((row) => row['id'] as String);
 

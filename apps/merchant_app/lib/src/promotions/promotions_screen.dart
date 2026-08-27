@@ -210,7 +210,7 @@ class _Card extends ConsumerWidget {
   static String _day(DateTime date) => '${date.day}/${date.month}';
 }
 
-class _RequestForm extends StatefulWidget {
+class _RequestForm extends ConsumerStatefulWidget {
   const _RequestForm({
     required this.merchantId,
     required this.cityId,
@@ -226,14 +226,24 @@ class _RequestForm extends StatefulWidget {
   final bool pushOpen;
 
   @override
-  State<_RequestForm> createState() => _RequestFormState();
+  ConsumerState<_RequestForm> createState() => _RequestFormState();
 }
 
-class _RequestFormState extends State<_RequestForm> {
+class _RequestFormState extends ConsumerState<_RequestForm> {
   final _title = TextEditingController();
   final _body = TextEditingController();
 
   PromotionChannel? _channel;
+
+  /// The banner's picture, if the merchant supplied one.
+  ///
+  /// Optional: a text banner on the burgundy gradient is a real render mode and the
+  /// cheapest thing to ask for. What the schema refuses is the middle case — a banner
+  /// that claims a picture and carries none renders as a broken box on the home screen
+  /// of every customer in the city — so the render mode is derived from this rather than
+  /// picked separately.
+  String? _mediaId;
+  String? _mediaUrl;
 
   /// A boost has nothing to write: no headline is ever shown for one. Asking for text
   /// would be asking for something nobody will ever read.
@@ -259,6 +269,12 @@ class _RequestFormState extends State<_RequestForm> {
         cityId: widget.cityId,
         merchantId: widget.merchantId,
         channel: channel,
+        // Derived, never chosen: `promotions_image_has_media` refuses a row whose mode
+        // promises a picture it does not have, so the mode follows the picture.
+        renderMode: _mediaId == null
+            ? PromotionRender.text
+            : (title.isEmpty ? PromotionRender.image : PromotionRender.imageWithText),
+        mediaId: _mediaId,
         title: title,
         body: _body.text.trim(),
         // A week from tomorrow, which is what a merchant asking today means. The admin
@@ -351,6 +367,23 @@ class _RequestFormState extends State<_RequestForm> {
                           decoration: const InputDecoration(
                             labelText: 'سطر تاني (اختياري)',
                           ),
+                        ),
+                      ],
+                      // A boost has no banner to carry a picture on.
+                      if (_needsText) ...[
+                        const SizedBox(height: Space.md),
+                        MediaPicker(
+                          kind: MediaKind.promotion,
+                          url: _mediaUrl,
+                          name: _title.text.trim().isEmpty
+                              ? 'إعلان'
+                              : _title.text.trim(),
+                          ownerId: widget.merchantId,
+                          height: 120,
+                          onUploaded: (media) => setState(() {
+                            _mediaId = media.id;
+                            _mediaUrl = media.url;
+                          }),
                         ),
                       ],
                     ],
