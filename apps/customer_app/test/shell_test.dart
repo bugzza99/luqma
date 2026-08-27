@@ -55,6 +55,18 @@ void main() {
     ],
   );
 
+  /// A window the size of a phone.
+  ///
+  /// The test default is 800x600, which is not the shape of any device this app runs on
+  /// — it is wider than it is tall. Once merchant cards carried a picture, the first
+  /// card's name fell below 600 and every tap on it landed outside the render tree,
+  /// which reads as "the card does not open" rather than "the window is the wrong shape".
+  void phoneSized(WidgetTester tester) {
+    tester.view.physicalSize = const Size(400, 900);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+  }
+
   Future<void> pump(
     WidgetTester tester, {
     Cart startingCart = Cart.empty,
@@ -68,6 +80,8 @@ void main() {
     ),
     List<HomeSection> sections = const [],
   }) async {
+    phoneSized(tester);
+
     await tester.pumpWidget(
       ProviderScope(
         overrides: [

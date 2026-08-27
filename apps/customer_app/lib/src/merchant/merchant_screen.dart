@@ -406,14 +406,25 @@ class _CartBar extends StatelessWidget {
         child: FilledButton(
           onPressed: onOpenCart,
           style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(50)),
+          // Both halves flex. On a 400px phone — which is most of them — "شوف السلة"
+          // beside "٣ أصناف · ١٥٠ ج" is wider than the button, and a Row of two natural
+          // widths overflows rather than shrinking. The count is what gives way first:
+          // the label is the instruction, and the total is already on the basket screen.
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text('شوف السلة'),
-              Text(
-                '${strings.orderCount(cart.itemCount)} · '
-                '${strings.price(cart.subtotal)}',
-                style: LuqmaType.button.copyWith(color: colors.onBrand),
+              const Flexible(
+                child: Text('شوف السلة', overflow: TextOverflow.ellipsis),
+              ),
+              const SizedBox(width: Space.sm),
+              Flexible(
+                child: Text(
+                  '${strings.orderCount(cart.itemCount)} · '
+                  '${strings.price(cart.subtotal)}',
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.end,
+                  style: LuqmaType.button.copyWith(color: colors.onBrand),
+                ),
               ),
             ],
           ),
