@@ -15,6 +15,13 @@ abstract interface class AdminRepository {
 
   /// Who is on the platform and how it is moving.
   Future<Result<AdminStatistics>> statistics();
+
+  /// What is waiting, by module — the numbers on the home grid's tiles.
+  ///
+  /// One call rather than one per tile: eleven round trips to draw one screen is eleven
+  /// chances to be slow on a phone in a shop, and they would land at eleven different
+  /// moments so the grid would fill in raggedly.
+  Future<Result<AdminAttention>> attention();
 }
 
 class SupabaseAdminRepository implements AdminRepository {
@@ -37,15 +44,35 @@ class SupabaseAdminRepository implements AdminRepository {
       return AdminStatistics.fromJson(Map<String, dynamic>.from(row as Map));
     });
   }
+
+  @override
+  Future<Result<AdminAttention>> attention() {
+    return Result.guard(() async {
+      final row = await _db.rpc('admin_attention');
+      return AdminAttention.fromJson(Map<String, dynamic>.from(row as Map));
+    });
+  }
 }
 
 /// In-memory admin figures, for tests and for building the screens above them.
 class FakeAdminRepository implements AdminRepository {
-  FakeAdminRepository({this.todayValue, this.statisticsValue, this.failure});
+  FakeAdminRepository({
+    this.todayValue,
+    this.statisticsValue,
+    this.attentionValue,
+    this.failure,
+  });
 
   final AdminToday? todayValue;
   final AdminStatistics? statisticsValue;
+  final AdminAttention? attentionValue;
   final Failure? failure;
+
+  @override
+  Future<Result<AdminAttention>> attention() async {
+    if (failure != null) return Result.err(failure!);
+    return Result.ok(attentionValue ?? const AdminAttention());
+  }
 
   @override
   Future<Result<AdminToday>> today() async {

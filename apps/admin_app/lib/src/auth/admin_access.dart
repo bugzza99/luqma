@@ -12,7 +12,11 @@ abstract final class Routes {
   static const starting = '/starting';
   static const signIn = '/sign-in';
   static const noAccess = '/no-access';
+  /// The home: a grid of every module.
   static const dashboard = '/';
+
+  /// The day's four numbers, which used to be the home.
+  static const today = '/today';
   static const merchants = '/merchants';
   static const customers = '/customers';
   static const issues = '/issues';
@@ -26,6 +30,9 @@ abstract final class Routes {
   static const config = '/config';
   static const plans = '/plans';
   static const about = '/about';
+
+  /// The kinds of food the customer's home is arranged by.
+  static const cuisines = '/cuisines';
 }
 
 enum AdminAccess {

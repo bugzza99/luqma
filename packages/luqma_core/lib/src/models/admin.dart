@@ -148,6 +148,51 @@ class StaffMember {
 ///
 /// Not `freezed`: read-only, computed by `admin_today`, and never written back. A model
 /// with a `toJson` would invite a client to write what only the server should answer.
+/// What is waiting for the admin, by module.
+///
+/// The AdminApp home is a grid of every module, and a grid of eleven identical tiles
+/// answers the one question somebody opens this app with — "what needs me today?" — with
+/// nothing at all. These are the numbers that turn that grid into a list of jobs.
+///
+/// Every one is a small filtered count. None is an aggregate over orders: `AdminToday`
+/// owns those, and `docs/16` is explicit that counting must not mean reading every order
+/// in the city.
+class AdminAttention {
+  const AdminAttention({
+    this.pendingMedia = 0,
+    this.openIssues = 0,
+    this.requestedPromotions = 0,
+    this.pendingMerchants = 0,
+    this.ordersNeedingAttention = 0,
+  });
+
+  /// Photographs nobody has reviewed. Every one of them is a merchant waiting.
+  final int pendingMedia;
+
+  /// Tickets a customer raised that nobody has closed.
+  final int openIssues;
+
+  /// Campaigns a merchant asked for and nobody has answered. A merchant who paid for a
+  /// placement and heard nothing is the loudest kind of unhappy.
+  final int requestedPromotions;
+
+  final int pendingMerchants;
+
+  /// Orders that ran out their accept deadline. The escalator's queue.
+  final int ordersNeedingAttention;
+
+  factory AdminAttention.fromJson(Map<String, dynamic> json) {
+    int at(String key) => (json[key] as num?)?.toInt() ?? 0;
+    return AdminAttention(
+      pendingMedia: at('pendingMedia'),
+      openIssues: at('openIssues'),
+      requestedPromotions: at('requestedPromotions'),
+      pendingMerchants: at('pendingMerchants'),
+      ordersNeedingAttention: at('ordersNeedingAttention'),
+    );
+  }
+}
+
 class AdminToday {
   const AdminToday({
     required this.ordersToday,

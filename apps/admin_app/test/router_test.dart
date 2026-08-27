@@ -3,6 +3,7 @@ import 'package:admin_app/src/auth/admin_access.dart';
 import 'package:admin_app/src/auth/gate_screens.dart';
 import 'package:admin_app/src/auth/identity_provider.dart';
 import 'package:admin_app/src/dashboard/dashboard_screen.dart';
+import 'package:admin_app/src/dashboard/module_grid_screen.dart';
 import 'package:admin_app/src/places/places_screen.dart';
 import 'package:admin_app/src/shell/layout.dart';
 import 'package:flutter/material.dart';
@@ -66,10 +67,12 @@ void main() {
     expect(find.text('تسجيل الخروج'), findsOneWidget);
   });
 
-  testWidgets('an admin lands on the dashboard inside the shell', (tester) async {
+  // An admin lands on the grid of modules. The day's four numbers used to be here; they
+  // are a module inside it now — somewhere the owner goes rather than where they land.
+  testWidgets('an admin lands on the module grid inside the shell', (tester) async {
     await pumpWith(tester, AdminAccess.granted);
 
-    expect(find.byType(DashboardScreen), findsOneWidget);
+    expect(find.byType(ModuleGridScreen), findsOneWidget);
     expect(find.byType(AdminShell), findsOneWidget);
     expect(find.byType(SignInScreen), findsNothing);
   });

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:luqma_core/luqma_core.dart';
 
+import '../dashboard/module_grid_screen.dart';
+
 /// How much room there is, and what to do with it.
 ///
 /// AdminApp is the only Luqma app that runs on more than a phone. That is deliberate: the
@@ -40,18 +42,7 @@ enum AdminLayout {
       available < maxContentWidth ? available : maxContentWidth;
 }
 
-@immutable
-class AdminDestination {
-  const AdminDestination({
-    required this.label,
-    required this.icon,
-    required this.route,
-  });
 
-  final String label;
-  final IconData icon;
-  final String route;
-}
 
 /// The chrome around every AdminApp screen.
 ///
@@ -61,16 +52,16 @@ class AdminDestination {
 class AdminShell extends StatelessWidget {
   const AdminShell({
     super.key,
-    required this.destinations,
+    required this.modules,
     required this.currentRoute,
     required this.onDestination,
     required this.child,
     this.detail,
   });
 
-  final List<AdminDestination> destinations;
+  final List<AdminModule> modules;
   final String currentRoute;
-  final ValueChanged<AdminDestination> onDestination;
+  final ValueChanged<AdminModule> onDestination;
 
   /// The primary pane.
   final Widget child;
@@ -80,7 +71,7 @@ class AdminShell extends StatelessWidget {
   final Widget? detail;
 
   int get _selectedIndex {
-    final index = destinations.indexWhere((d) => currentRoute.startsWith(d.route));
+    final index = modules.indexWhere((d) => currentRoute.startsWith(d.route));
     // A route that belongs to no destination — the dashboard, a detail page — should
     // leave the navigation showing the first entry rather than crashing on -1.
     return index < 0 ? 0 : index;
@@ -101,38 +92,39 @@ class AdminShell extends StatelessWidget {
           )
         : child;
 
+    // No bottom bar on a phone. There are fourteen modules, and `NavigationBar` is a
+    // component Material designs for three to five — eleven of them was already a row of
+    // unreadable slivers. The grid at `/` is the navigation, and every module is one tap
+    // from it and one back away.
     if (layout.usesBottomNav) {
-      return Scaffold(
-        body: SafeArea(child: body),
-        bottomNavigationBar: NavigationBar(
-          selectedIndex: _selectedIndex,
-          onDestinationSelected: (i) => onDestination(destinations[i]),
-          destinations: [
-            for (final d in destinations)
-              NavigationDestination(icon: Icon(d.icon), label: d.label),
-          ],
-        ),
-      );
+      return Scaffold(body: SafeArea(child: body));
     }
 
     return Scaffold(
       body: SafeArea(
         child: Row(
           children: [
-            NavigationRail(
-              selectedIndex: _selectedIndex,
-              onDestinationSelected: (i) => onDestination(destinations[i]),
-              // Labels always shown: this is a tool used occasionally, not an app whose
-              // icons anyone will memorise.
-              labelType: NavigationRailLabelType.all,
-              backgroundColor: colors.card,
-              destinations: [
-                for (final d in destinations)
-                  NavigationRailDestination(
-                    icon: Icon(d.icon),
-                    label: Text(d.label),
-                  ),
-              ],
+            // The rail stays on a desktop, where fourteen labelled rows are readable
+            // and a grid would mean a trip home between every module. Scrollable,
+            // because fourteen of them is taller than a laptop screen.
+            SingleChildScrollView(
+              child: IntrinsicHeight(
+                child: NavigationRail(
+                  selectedIndex: _selectedIndex,
+                  onDestinationSelected: (i) => onDestination(modules[i]),
+                  // Labels always shown: this is a tool used occasionally, not an app
+                  // whose icons anyone will memorise.
+                  labelType: NavigationRailLabelType.all,
+                  backgroundColor: colors.card,
+                  destinations: [
+                    for (final d in modules)
+                      NavigationRailDestination(
+                        icon: Icon(d.icon),
+                        label: Text(d.label),
+                      ),
+                  ],
+                ),
+              ),
             ),
             VerticalDivider(width: 1, color: colors.hairline),
             Expanded(child: body),

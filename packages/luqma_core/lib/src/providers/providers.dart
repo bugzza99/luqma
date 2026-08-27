@@ -5,6 +5,7 @@ import '../auth/auth_service.dart';
 import '../auth/staff_identity.dart';
 import '../config/luqma_config.dart';
 import '../config/remote_config_service.dart';
+import '../models/admin.dart';
 import '../models/cuisine.dart';
 import '../models/geography.dart';
 import '../models/home_section.dart';
@@ -70,6 +71,17 @@ CuisineRepository cuisineRepository(Ref ref) =>
 @Riverpod(keepAlive: true)
 SearchRepository searchRepository(Ref ref) =>
     SupabaseSearchRepository(ref.watch(supabaseProvider));
+
+/// What is waiting for the admin, by module — the numbers on the home grid.
+///
+/// Auto-disposed and re-read on demand rather than kept alive: these go stale the moment
+/// the admin approves something, and the grid invalidates it on pull-to-refresh and when
+/// a module is returned from.
+@riverpod
+Future<AdminAttention> adminAttention(Ref ref) async {
+  final result = await ref.watch(adminRepositoryProvider).attention();
+  return result.valueOrThrow;
+}
 
 /// The city's cuisines, as the home screen and the admin's editor both read them.
 ///

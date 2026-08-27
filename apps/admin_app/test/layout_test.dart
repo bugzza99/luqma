@@ -1,3 +1,4 @@
+import 'package:admin_app/src/dashboard/module_grid_screen.dart';
 import 'package:admin_app/src/shell/layout.dart';
 import 'package:flutter/material.dart';
 import 'package:luqma_core/luqma_core.dart';
@@ -51,9 +52,9 @@ void main() {
           home: Directionality(
             textDirection: TextDirection.rtl,
             child: AdminShell(
-              destinations: const [
-                AdminDestination(label: 'المطاعم', icon: Icons.store, route: '/merchants'),
-                AdminDestination(label: 'المناطق', icon: Icons.map, route: '/zones'),
+              modules: const [
+                AdminModule(label: 'المطاعم', icon: Icons.store, route: '/merchants'),
+                AdminModule(label: 'المناطق', icon: Icons.map, route: '/zones'),
               ],
               currentRoute: '/merchants',
               onDestination: (_) {},
@@ -65,13 +66,18 @@ void main() {
       await tester.pumpAndSettle();
     }
 
-    testWidgets('a phone shows a bottom bar and no rail', (tester) async {
+    // No bottom bar at all any more. There are fourteen modules and `NavigationBar` is
+    // designed for three to five; eleven of them was already a row of unreadable
+    // slivers. On a phone the grid at `/` is the navigation.
+    testWidgets('a phone shows neither bar nor rail', (tester) async {
       await pumpAt(tester, const Size(400, 800));
 
-      expect(find.byType(NavigationBar), findsOneWidget);
+      expect(find.byType(NavigationBar), findsNothing);
       expect(find.byType(NavigationRail), findsNothing);
     });
 
+    // The rail stays on a desktop, where fourteen labelled rows are readable and a grid
+    // would mean a trip home between every module.
     testWidgets('a laptop shows a rail and no bottom bar', (tester) async {
       await pumpAt(tester, const Size(1400, 900));
 
@@ -89,8 +95,19 @@ void main() {
       expect(find.text('المحتوى'), findsOneWidget);
     });
 
-    testWidgets('every destination is reachable on a phone', (tester) async {
+    // On a phone the shell carries no navigation at all — the grid at `/` is it, and it
+    // is one tap away from every module and one back from any of them. What the shell
+    // still owes a phone is the content, whole.
+    testWidgets('a phone gets the content and nothing in its way', (tester) async {
       await pumpAt(tester, const Size(400, 800));
+
+      expect(find.text('المحتوى'), findsOneWidget);
+      expect(find.byType(NavigationBar), findsNothing);
+    });
+
+    testWidgets('every module is reachable from the rail on a laptop',
+        (tester) async {
+      await pumpAt(tester, const Size(1400, 900));
 
       expect(find.text('المطاعم'), findsWidgets);
       expect(find.text('المناطق'), findsWidgets);
