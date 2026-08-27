@@ -8,7 +8,9 @@ import '../models/merchant.dart';
 import '../models/money.dart';
 import '../providers/providers.dart';
 import '../theme/colors.dart';
+import '../models/media.dart';
 import '../theme/dimens.dart';
+import 'media_picker.dart';
 
 /// Editing a merchant's menu.
 ///
@@ -26,6 +28,7 @@ class MenuEditor extends ConsumerWidget {
   static const descriptionFieldKey = Key('menu.description');
   static const availableSwitchKey = Key('menu.available');
   static const saveItemKey = Key('menu.saveItem');
+  static const itemPhotoKey = Key('menu.itemPhoto');
 
   static Key addItemKey(String categoryId) => Key('menu.addItem.$categoryId');
   static Key unavailableKey(String itemId) => Key('menu.unavailable.$itemId');
@@ -34,8 +37,10 @@ class MenuEditor extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final strings = LuqmaStrings.of(context);
     final categories =
-        ref.watch(menuCategoriesProvider(merchantId)).value ?? const <MenuCategory>[];
-    final items = ref.watch(menuItemsProvider(merchantId)).value ?? const <MenuItem>[];
+        ref.watch(menuCategoriesProvider(merchantId)).value ??
+        const <MenuCategory>[];
+    final items =
+        ref.watch(menuItemsProvider(merchantId)).value ?? const <MenuItem>[];
 
     if (categories.isEmpty) {
       return Center(child: Text(strings.menuNoCategories));
@@ -83,7 +88,8 @@ class _CategorySection extends ConsumerWidget {
               ),
               TextButton(
                 key: MenuEditor.addItemKey(category.id),
-                onPressed: () => _editItem(context, ref, merchantId, null, category.id),
+                onPressed: () =>
+                    _editItem(context, ref, merchantId, null, category.id),
                 child: Text(strings.menuAddItem),
               ),
             ],
@@ -92,7 +98,8 @@ class _CategorySection extends ConsumerWidget {
           for (final item in items)
             _ItemRow(
               item: item,
-              onTap: () => _editItem(context, ref, merchantId, item, category.id),
+              onTap: () =>
+                  _editItem(context, ref, merchantId, item, category.id),
             ),
         ],
       ),
@@ -137,7 +144,9 @@ class _ItemRow extends StatelessWidget {
                     Text(
                       strings.menuUnavailable,
                       key: MenuEditor.unavailableKey(item.id),
-                      style: theme.textTheme.bodySmall?.copyWith(color: colors.danger),
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: colors.danger,
+                      ),
                     ),
                 ],
               ),
@@ -199,10 +208,17 @@ class _ItemSheetState extends State<_ItemSheet> {
   final _formKey = GlobalKey<FormState>();
 
   late String _name = widget.existing?.name ?? '';
-  late String _price =
-      widget.existing == null ? '' : Money.format(widget.existing!.price);
+  late String _price = widget.existing == null
+      ? ''
+      : Money.format(widget.existing!.price);
   late String? _description = widget.existing?.description;
   late bool _available = widget.existing?.isAvailable ?? true;
+  late String? _mediaId = widget.existing?.mediaId;
+
+  /// The picture as it stands. Held rather than looked up: the row the caller handed us
+  /// carries an id, and resolving it to a URL is a read this sheet does not need — the
+  /// picker draws the dish's monogram until a new photograph replaces it.
+  String? _mediaUrl;
 
   @override
   Widget build(BuildContext context) {
@@ -215,55 +231,79 @@ class _ItemSheetState extends State<_ItemSheet> {
         top: Space.xl,
         bottom: MediaQuery.viewInsetsOf(context).bottom + Space.xl,
       ),
-      child: Form(
-        key: _formKey,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextFormField(
-              key: MenuEditor.nameFieldKey,
-              initialValue: _name,
-              decoration: InputDecoration(labelText: strings.menuItemName),
-              validator: (v) =>
-                  (v == null || v.trim().isEmpty) ? strings.menuNameRequired : null,
-              onSaved: (v) => _name = v!.trim(),
-            ),
-            const SizedBox(height: Space.md),
-            TextFormField(
-              key: MenuEditor.priceFieldKey,
-              initialValue: _price,
-              decoration: InputDecoration(labelText: strings.menuItemPrice),
-              keyboardType: TextInputType.number,
-              // Refused rather than rounded: a price the app cannot read exactly would
-              // otherwise become a menu that says one figure while the courier collects
-              // another.
-              validator: (v) =>
-                  Money.parse(v ?? '') == null ? strings.menuPriceInvalid : null,
-              onSaved: (v) => _price = v!,
-            ),
-            const SizedBox(height: Space.md),
-            TextFormField(
-              key: MenuEditor.descriptionFieldKey,
-              initialValue: _description,
-              decoration: InputDecoration(labelText: strings.menuItemDescription),
-              maxLines: 2,
-              onSaved: (v) => _description = v,
-            ),
-            const SizedBox(height: Space.md),
-            SwitchListTile(
-              key: MenuEditor.availableSwitchKey,
-              value: _available,
-              title: Text(strings.menuItemAvailable),
-              contentPadding: EdgeInsets.zero,
-              onChanged: (v) => setState(() => _available = v),
-            ),
-            const SizedBox(height: Space.lg),
-            FilledButton(
-              key: MenuEditor.saveItemKey,
-              onPressed: _submit,
-              child: Text(strings.menuSaveItem),
-            ),
-          ],
+      // Scrolls, because the sheet now carries a photograph as well as the fields, and a
+      // keyboard takes half the screen the moment somebody touches the name. A bottom
+      // sheet that cannot scroll is one where the price is behind the keyboard.
+      child: SingleChildScrollView(
+        child: Form(
+          key: _formKey,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextFormField(
+                key: MenuEditor.nameFieldKey,
+                initialValue: _name,
+                decoration: InputDecoration(labelText: strings.menuItemName),
+                validator: (v) => (v == null || v.trim().isEmpty)
+                    ? strings.menuNameRequired
+                    : null,
+                onSaved: (v) => _name = v!.trim(),
+              ),
+              const SizedBox(height: Space.md),
+              TextFormField(
+                key: MenuEditor.priceFieldKey,
+                initialValue: _price,
+                decoration: InputDecoration(labelText: strings.menuItemPrice),
+                keyboardType: TextInputType.number,
+                // Refused rather than rounded: a price the app cannot read exactly would
+                // otherwise become a menu that says one figure while the courier collects
+                // another.
+                validator: (v) => Money.parse(v ?? '') == null
+                    ? strings.menuPriceInvalid
+                    : null,
+                onSaved: (v) => _price = v!,
+              ),
+              const SizedBox(height: Space.md),
+              TextFormField(
+                key: MenuEditor.descriptionFieldKey,
+                initialValue: _description,
+                decoration: InputDecoration(
+                  labelText: strings.menuItemDescription,
+                ),
+                maxLines: 2,
+                onSaved: (v) => _description = v,
+              ),
+              const SizedBox(height: Space.md),
+              SwitchListTile(
+                key: MenuEditor.availableSwitchKey,
+                value: _available,
+                title: Text(strings.menuItemAvailable),
+                contentPadding: EdgeInsets.zero,
+                onChanged: (v) => setState(() => _available = v),
+              ),
+              const SizedBox(height: Space.lg),
+              // The dish's photograph. Six hundred of these is the owner's launch week, so
+              // it sits in the same sheet as the name and the price rather than behind a
+              // second trip into a gallery screen.
+              MediaPicker(
+                key: MenuEditor.itemPhotoKey,
+                kind: MediaKind.menuItem,
+                url: _mediaUrl,
+                name: _name.isEmpty ? (widget.existing?.name ?? '') : _name,
+                ownerId: widget.existing?.id,
+                onUploaded: (media) => setState(() {
+                  _mediaId = media.id;
+                  _mediaUrl = media.url;
+                }),
+              ),
+              const SizedBox(height: Space.lg),
+              FilledButton(
+                key: MenuEditor.saveItemKey,
+                onPressed: _submit,
+                child: Text(strings.menuSaveItem),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -283,7 +323,7 @@ class _ItemSheetState extends State<_ItemSheet> {
         name: _name,
         price: Money.parse(_price)!,
         description: _description,
-        mediaId: widget.existing?.mediaId,
+        mediaId: _mediaId,
         isAvailable: _available,
         options: widget.existing?.options ?? const [],
         sortOrder: widget.existing?.sortOrder ?? 0,

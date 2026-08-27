@@ -93,6 +93,13 @@ final class PhoneTakenFailure extends Failure {
   const PhoneTakenFailure();
 }
 
+/// What was chosen is not an image this build can read — a video, a PDF, a file that
+/// arrived broken. Its own type because nothing was ever sent: it is the one failure in
+/// the upload path the person can fix themselves, by picking something else.
+final class NotAnImageFailure extends Failure {
+  const NotAnImageFailure();
+}
+
 final class RateLimitedFailure extends Failure {
   const RateLimitedFailure();
 }

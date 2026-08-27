@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:luqma_core/luqma_core.dart';
@@ -56,6 +58,28 @@ class _AboutFormState extends ConsumerState<_AboutForm> {
 
   bool _busy = false;
 
+  /// The picture as it stands, so the picker shows it rather than a monogram.
+  ///
+  /// Loaded from the id the config carries, and replaced the moment a new one is
+  /// uploaded — an admin's upload is approved as it arrives, so what they see here is
+  /// what the customer sees.
+  String? _photoUrl;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_loadPhoto());
+  }
+
+  Future<void> _loadPhoto() async {
+    final id = _photo.text.trim();
+    if (id.isEmpty) return;
+
+    final result = await ref.read(mediaRepositoryProvider).get(id);
+    if (!mounted) return;
+    setState(() => _photoUrl = result.valueOrNull?.url);
+  }
+
   TextEditingController _field(String key) => TextEditingController(
         text: widget.initial[key] is String ? widget.initial[key] as String : '',
       );
@@ -95,21 +119,31 @@ class _AboutFormState extends ConsumerState<_AboutForm> {
     final theme = Theme.of(context);
     final colors = theme.luqma;
 
-    return ListView(
-      padding: const EdgeInsets.all(Space.gutter),
+    return Column(
       children: [
+        Expanded(
+          child: ListView(
+            padding: const EdgeInsets.all(Space.gutter),
+            children: [
         Text(
           'الصورة والروابط اللي هتظهر للعميل في شاشة "حول لقمة".',
           style: theme.textTheme.bodyMedium?.copyWith(color: colors.textSecondary),
         ),
         const SizedBox(height: Space.lg),
-        TextField(
+        Text('صورتك', style: theme.textTheme.titleMedium),
+        const SizedBox(height: Space.sm),
+        // Was a text field asking for the uuid of an already-approved image — a workflow
+        // that could not be completed, because nothing in the product could upload one.
+        MediaPicker(
           key: AboutEditorScreen.photoKey,
-          controller: _photo,
-          decoration: const InputDecoration(
-            labelText: 'معرف صورة المالك (من مسار الصور)',
-            hintText: 'ارفع الصورة من مسار الصور، وبعد الموافقة الصق المعرّف هنا',
-          ),
+          kind: MediaKind.aboutPhoto,
+          url: _photoUrl,
+          name: 'صورة المالك',
+          height: 180,
+          onUploaded: (media) => setState(() {
+            _photo.text = media.id;
+            _photoUrl = media.url;
+          }),
         ),
         const SizedBox(height: Space.md),
         TextField(
@@ -136,14 +170,26 @@ class _AboutFormState extends ConsumerState<_AboutForm> {
           maxLines: 5,
           decoration: const InputDecoration(labelText: 'وصف لقمة'),
         ),
-        const SizedBox(height: Space.xl),
-        FilledButton.icon(
-          key: AboutEditorScreen.saveKey,
-          onPressed: _busy ? null : _save,
-          icon: const Icon(Icons.save_outlined, size: Sizes.iconSm),
-          label: Text(_busy ? 'جاري…' : 'احفظ'),
-          style: FilledButton.styleFrom(
-            minimumSize: const Size.fromHeight(Sizes.minTarget),
+            ],
+          ),
+        ),
+        // Pinned, not the last row of the list: this screen is a form, and its one
+        // action should be reachable without hunting for where it scrolled to.
+        Padding(
+          padding: const EdgeInsets.fromLTRB(
+            Space.gutter,
+            Space.sm,
+            Space.gutter,
+            Space.gutter,
+          ),
+          child: FilledButton.icon(
+            key: AboutEditorScreen.saveKey,
+            onPressed: _busy ? null : _save,
+            icon: const Icon(Icons.save_outlined, size: Sizes.iconSm),
+            label: Text(_busy ? 'جاري…' : 'احفظ'),
+            style: FilledButton.styleFrom(
+              minimumSize: const Size.fromHeight(Sizes.minTarget),
+            ),
           ),
         ),
       ],

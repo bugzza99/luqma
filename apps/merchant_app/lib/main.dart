@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:luqma_core/luqma_core.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
+import 'src/app/gallery.dart';
 import 'src/app/merchant_app.dart';
 import 'src/courier/courier_write_store.dart';
 
@@ -27,6 +28,8 @@ Future<void> main() async {
       overrides: [
         remoteConfigServiceProvider.overrideWithValue(config),
         authServiceProvider.overrideWithValue(SupabaseAuthService(supabase)),
+        // The only place this app names the gallery; see src/app/gallery.dart.
+        pickImageProvider.overrideWithValue(pickImageFromGallery),
         // The courier's write queue survives an app being killed: shared_preferences,
         // not memory.
         courierWriteStoreProvider.overrideWithValue(

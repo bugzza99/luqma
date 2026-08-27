@@ -166,6 +166,8 @@ class _Card extends ConsumerWidget {
         MediaKind.menuItem => 'صنف في المنيو',
         MediaKind.dailyMeal => 'وجبة بيتي',
         MediaKind.promotion => 'بانر إعلان',
+        MediaKind.aboutPhoto => 'صورة المالك',
+        MediaKind.cuisine => 'صورة قسم',
       };
 }
 

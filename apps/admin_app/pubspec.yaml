@@ -38,6 +38,11 @@ dependencies:
   luqma_core:
     path: ../../packages/luqma_core
 
+  # The gallery. Lives here rather than in luqma_core because it is a platform plugin —
+  # a FileProvider entry and, on some Androids, a camera permission — and CustomerApp
+  # uploads nothing, so it should carry none of that.
+  image_picker: ^1.1.2
+
   flutter_riverpod: ^3.0.0
   riverpod_annotation: ^3.0.0
   go_router: ^16.0.0

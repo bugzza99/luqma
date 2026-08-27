@@ -110,6 +110,14 @@ abstract class Merchant with _$Merchant {
     @Default(0) int minOrder,
     @Default(0) double ratingAvg,
     @Default(0) int ratingCount,
+
+    /// Roughly how long the kitchen takes, in minutes.
+    ///
+    /// One number rather than a range: Edku is ten minutes across on a motorbike, so
+    /// what actually differs between two shops is the kitchen, not the distance — and a
+    /// "25–35" built from two hand-typed numbers reads as a precision nobody measured.
+    /// The database bounds it between 5 and 180, because 600 is a typo.
+    @Default(30) int prepMinutes,
   }) = _Merchant;
 
   const Merchant._();

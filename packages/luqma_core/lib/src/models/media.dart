@@ -7,7 +7,19 @@ part 'media.g.dart';
 
 /// What an image belongs to. A banner and a dish photo are judged against different
 /// things, so the reviewer has to be told which they are looking at.
-enum MediaKind { merchantLogo, merchantCover, menuItem, dailyMeal, promotion }
+enum MediaKind {
+  merchantLogo,
+  merchantCover,
+  menuItem,
+  dailyMeal,
+  promotion,
+
+  /// The owner's own photograph on حول لقمة.
+  aboutPhoto,
+
+  /// The picture on one of the circles across the top of the customer's home.
+  cuisine,
+}
 
 enum MediaStatus { pending, approved, rejected }
 

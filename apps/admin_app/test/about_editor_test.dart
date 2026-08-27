@@ -11,6 +11,17 @@ void main() {
   Future<void> pump(WidgetTester tester, {Map<String, Object> seed = const {}}) async {
     config = FakeConfigRepository(seed: seed);
 
+    // A window tall enough for the whole form.
+    //
+    // AdminApp is the one Luqma app that runs on more than a phone — the owner types six
+    // hundred menu items on a real keyboard — so this is a size it genuinely renders at.
+    // The default 800x600 test window puts the description field below the fold, and a
+    // lazy ListView does not build what is below the fold: the field is then absent for
+    // a reason that has nothing to do with the screen being wrong.
+    tester.view.physicalSize = const Size(1200, 2400);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
     await tester.pumpWidget(
       ProviderScope(
         overrides: [configRepositoryProvider.overrideWithValue(config)],
@@ -26,6 +37,12 @@ void main() {
         ),
       ),
     );
+    await tester.pumpAndSettle();
+  }
+
+  /// Taps save. Pinned below the scrolling form, so it is always reachable.
+  Future<void> save(WidgetTester tester) async {
+    await tester.tap(find.byKey(AboutEditorScreen.saveKey));
     await tester.pumpAndSettle();
   }
 
@@ -49,8 +66,7 @@ void main() {
       find.byKey(AboutEditorScreen.descriptionKey),
       'أكل بيتي على أصوله في إدكو.',
     );
-    await tester.tap(find.byKey(AboutEditorScreen.saveKey));
-    await tester.pumpAndSettle();
+    await save(tester);
 
     expect(config.setCalls, hasLength(1));
     expect(

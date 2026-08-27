@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:luqma_core/luqma_core.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
+import 'src/app/gallery.dart';
 import 'src/app/router.dart';
 
 Future<void> main() async {
@@ -18,6 +19,8 @@ Future<void> main() async {
     ProviderScope(
       overrides: [
         authServiceProvider.overrideWithValue(SupabaseAuthService(supabase)),
+        // The only place this app names the gallery; see src/app/gallery.dart.
+        pickImageProvider.overrideWithValue(pickImageFromGallery),
       ],
       child: AdminApp(currentVersion: info.version),
     ),

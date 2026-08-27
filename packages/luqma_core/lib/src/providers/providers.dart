@@ -5,6 +5,7 @@ import '../auth/auth_service.dart';
 import '../auth/staff_identity.dart';
 import '../config/luqma_config.dart';
 import '../config/remote_config_service.dart';
+import '../models/cuisine.dart';
 import '../models/geography.dart';
 import '../models/home_section.dart';
 import '../models/menu_item.dart';
@@ -19,12 +20,14 @@ import '../repositories/billing_repository.dart';
 import '../repositories/config_repository.dart';
 import '../repositories/courier_order_repository.dart';
 import '../repositories/courier_write_queue.dart';
+import '../repositories/cuisine_repository.dart';
 import '../repositories/customer_repository.dart';
 import '../repositories/daily_meal_repository.dart';
 import '../repositories/feedback_repository.dart';
 import '../repositories/geography_repository.dart';
 import '../repositories/home_section_repository.dart';
 import '../repositories/issue_repository.dart';
+import '../media/image_source.dart';
 import '../repositories/media_repository.dart';
 import '../repositories/menu_repository.dart';
 import '../repositories/merchant_order_repository.dart';
@@ -58,6 +61,21 @@ MerchantRepository merchantRepository(Ref ref) =>
 @Riverpod(keepAlive: true)
 GeographyRepository geographyRepository(Ref ref) =>
     SupabaseGeographyRepository(ref.watch(supabaseProvider));
+
+@Riverpod(keepAlive: true)
+CuisineRepository cuisineRepository(Ref ref) =>
+    SupabaseCuisineRepository(ref.watch(supabaseProvider));
+
+/// The city's cuisines, as the home screen and the admin's editor both read them.
+///
+/// One list, cached: the circles are the first thing drawn on every open, and re-asking
+/// for four rows each time is a request that buys nothing.
+@riverpod
+Future<List<Cuisine>> cuisines(Ref ref) async {
+  final result =
+      await ref.watch(cuisineRepositoryProvider).forCity(ref.watch(currentCityProvider));
+  return result.valueOrThrow;
+}
 
 /// The city's zones. Kept alive because they change about once a month and every address
 /// screen needs them.
@@ -138,6 +156,18 @@ Future<Merchant> merchant(Ref ref, String id) async {
   final result = await ref.watch(merchantRepositoryProvider).getMerchant(id);
   return result.valueOrThrow;
 }
+
+/// Where a picture comes from.
+///
+/// No default, for the same reason [authService] has none: `image_picker` is a platform
+/// plugin and the app that uses it is the app that should carry it. MerchantApp and
+/// AdminApp override this in `main`; CustomerApp uploads nothing and never does, so it
+/// ships no picker, no FileProvider and no camera permission.
+@Riverpod(keepAlive: true)
+PickImage pickImage(Ref ref) => throw UnimplementedError(
+      'Override pickImageProvider in main(). The picker is a platform plugin, so '
+      'luqma_core cannot build one.',
+    );
 
 // ------------------------------------------------------------------ identity
 
