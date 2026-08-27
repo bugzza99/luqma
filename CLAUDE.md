@@ -280,6 +280,71 @@ Still open, none of it code:
 - Onboarding the first 10–15 merchants at zero commission.
 - A Sentry project for the DSN dart-defines to point at.
 
+### Images, the customer's home, and the merchant's phone (2026-08-27)
+
+Four things that were agreed and had never been built. All four are done.
+
+**Images had no way in.** Every image column has existed since the first schema — a
+merchant's logo and cover, a menu item, a daily meal, a promotion — and the moderation
+queue that reviews them was built and tested. **None of it could be reached**: no bucket,
+no policy on `storage.objects`, no upload method. The queue reviewed a table nothing wrote
+to, and every screen drew a grey box.
+
+- The `media` bucket is **public**, with a uuid path. A private bucket makes each of ~600
+  menu photos a signed URL that expires; a pending/approved pair stores every image twice
+  and turns "approve" into a copy that can half-fail. What keeps an unapproved image out
+  of the product is the `media` row, which `read_media` already hides.
+- `upload()` writes twice and means both: **when the row fails, the bytes are removed**.
+  A URL with no row is invisible to the product and to the admin.
+- `ImageCompressor` is 1600px/85%, **pure Dart**, so what a merchant's phone does to a
+  picture is provable in an ordinary `flutter test` rather than only observable on a
+  device. A native compressor is faster; the swap is one file.
+- One `MediaPicker` for all six surfaces. It does not take `uploadedBy` — the policy
+  requires `uploaded_by = auth.uid()`, so there was only ever one correct value, and a
+  parameter is somewhere a caller can put a different one.
+- **An admin's upload arrives approved, and always could**: `admin_media` is `for all`
+  and policies are OR'd. There is a test pinning it now instead of it being a coincidence.
+
+**`LuqmaImage` is the launch-day screen, not an edge case.** On day one there is no
+photograph of anything. Twenty identical marks read as a page that failed to load, so the
+tint comes from the name — **summed code units, not `hashCode`**, which Dart does not
+promise to keep stable across runs and which would repaint the whole city on an upgrade.
+
+**Three things on the customer's home were placeholders**, and each was load-bearing:
+
+- `categoryChips` rendered **four Arabic words compiled into the app** and filtered
+  nothing. It is the `cuisines` table now — city-wide kinds of food, admin-only, because a
+  merchant tagging itself into a circle it does not belong in is the cheapest promotion in
+  the product.
+- The search box was `readOnly: true` with `onTap: () {}`. `docs/04` removed the
+  categories tab on the grounds that "search covers the rest", so the whole decision
+  rested on a control that did nothing.
+- `adSlot` showed one banner. It rotates now — and **stops entirely under reduced
+  motion**, which is on for people who get motion sick and for people using a screen
+  reader.
+
+**The cuisine filter is a provider, not a field.** The circles and the list are different
+sections, built independently by the registry in whatever order the admin arranged them.
+Neither can reach the other, so `selectedCuisineProvider` is what they share. Null and
+empty stay different answers: null is "nothing pressed", empty is "this cuisine has nobody
+in it yet".
+
+**AdminApp's home was eleven items in a `NavigationBar`** — a component Material designs
+for three to five. It is a grid of all fourteen modules with live counts, and there is no
+bottom bar at all on a phone. `admin_attention` is one function, not eleven queries.
+
+**The merchant's phone rings.** FCM alone, in the existing `luqma-edku` Firebase project
+(all three apps were already registered there with the right package names). The order
+writes a row in `push_outbox` **in its own transaction** and `pg_cron` drains it — not
+`pg_net` from inside the trigger, which would let a slow FCM fail an order, and not the
+client calling afterwards, because the customer with the weak connection is exactly the
+one whose call would not arrive.
+
+The part that decides whether this still works in six months is **`settle_push` pruning
+the tokens FCM says it no longer knows**. Without it a merchant who has changed phones
+twice keeps dead tokens for ever and the logs fill with errors that read as a broken
+integration rather than an old handset.
+
 ### Customer accounts are a phone number (2026-08-27)
 
 **Google Sign-In is removed from CustomerApp.** A customer signs up with a name, a phone
@@ -367,7 +432,7 @@ in the repository — and `flutter test` on a *package* does not run the generat
 the way an app build does. Without it a new string is a compile error that points at the
 call site rather than at the missing step.
 
-**799 Dart tests · 56 schema tests · 99 stack tests · 134 live-repository tests.**
+**~830 Dart tests · 66 schema tests · 109 stack tests · 137 live-repository tests.**
 `flutter analyze` clean.
 
 There are no `function` tests and no `tsc`: the TypeScript Cloud Functions went with
@@ -540,6 +605,21 @@ JAVA_HOME="C:\Program Files\Android\Android Studio\jbr" firebase emulators:exec 
 - **`ensure_user_profile` makes the `users` row.** It fires on every insert into
   `auth.users`, so a fixture that also inserts one collides on the primary key, and
   "no such customer" is unreachable through a real account.
+- **A test window is not a phone.** `flutter test` defaults to 800x600 — wider than it is
+  tall, and unlike any device this ships on. Once merchant cards carried a picture the
+  first card's name fell below 600 and every tap on it landed outside the render tree,
+  which reads as "the card does not open" rather than "the window is the wrong shape".
+  Size the view (`tester.view.physicalSize`) to what the app actually runs at. Doing so
+  immediately surfaced a real overflow on the merchant screen that had been live on every
+  narrow phone.
+- **A live test cannot reach `clockProvider`.** The clock there is Postgres's. A daily-meal
+  fixture with a 13:00–16:00 collection window passed all morning and failed after four —
+  the rule it tripped was right, the fixture was asserting the hour. Seed windows that are
+  open whenever the suite runs, and let the tests that are *about* the window move the
+  clock themselves.
+- **`scrollUntilVisible` loops until it finds the thing.** Pointed at something that is
+  not in the scrollable it is scrolling, it does not fail — it hangs, and the suite looks
+  like a slow machine rather than a broken test.
 - Rules read claims with **`token.get('x', default)`**. A bare `token.admin` errors on a
   token with no custom claims — every customer — and fails the branch it sits in for a
   reason unrelated to access.
@@ -578,23 +658,15 @@ choice against the risk of touching a live boundary without being able to prove 
 
 ## Deferred, deliberately
 
-**The nightly billing pass reads the whole `subscriptions` collection.** The obvious fix —
-querying only expired rows — is *wrong*, not merely narrower: whether an expired term
-still counts depends on whether a **later** row exists for the same merchant, and a query
-for expired rows cannot see the renewal that makes them irrelevant. It would downgrade
-merchants who had just paid.
+**AdMob.** It ships off behind `admobEnabled`, and building an integration nobody can
+switch on — Google's network would serve competitor ads inside the app, weakening the
+pitch to merchants paying for placement — is work with no reader. The flag exists; the
+decision stays reversible. See `docs/15-simplifications.md`.
 
-The real fix belongs to Phase 9 and is a data-model change: put the term's end date on the
-merchant — `merchants.planExpiresAt` — so there is one current truth instead of N
-historical rows. Then `where('planExpiresAt', '<=', now)` is bounded *and* correct, and
-the downgrade **deletes the field**, which removes that merchant from the next night's
-query by itself: a document missing the field does not match a range filter. No flag, no
-memory. `subscriptions` goes back to being receipts, read when somebody asks about
-history rather than every night.
+**The audit's L1 / L3 / L4 / L6 / L8.** Recorded, not fixed: low-severity findings whose
+only correct home is a stack or a design pass.
 
-Until then the code is correct and merely wasteful, and Edku is a few dozen rows.
-
-`prepaid` shipped filled in — that decision is closed. See `docs/15-simplifications.md`.
+`prepaid` shipped filled in — that decision is closed.
 
 ## Stack
 
