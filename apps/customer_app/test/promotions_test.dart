@@ -57,6 +57,7 @@ void main() {
     List<Promotion> promotions = const [],
     List<HomeSection> sections = const [],
     List<Merchant> merchants = const [],
+    bool reducedMotion = false,
   }) async {
     await tester.pumpWidget(
       ProviderScope(
@@ -78,9 +79,14 @@ void main() {
           locale: const Locale('ar'),
           localizationsDelegates: LuqmaStrings.localizationsDelegates,
           supportedLocales: LuqmaStrings.supportedLocales,
-          home: const Directionality(
-            textDirection: TextDirection.rtl,
-            child: HomeScreen(),
+          home: MediaQuery(
+            // The accessibility setting the carousel has to honour, set the way the
+            // platform sets it.
+            data: MediaQueryData(disableAnimations: reducedMotion),
+            child: const Directionality(
+              textDirection: TextDirection.rtl,
+              child: HomeScreen(),
+            ),
           ),
         ),
       ),
@@ -273,6 +279,81 @@ void main() {
 
       expect(find.text('مطعم أ'), findsOneWidget);
       expect(find.byKey(AdSlotSection.slotKey('top')), findsNothing);
+    });
+  });
+
+  // Rotating banners. The whole point of a carousel is that a customer sees the second
+  // banner without doing anything — a merchant paying for the third slot in a stack
+  // nobody swipes has bought nothing.
+  group('a rotating slot', () {
+    final two = [
+      promotion(id: 'p1', title: 'الأول', sectionKey: 'hero'),
+      promotion(id: 'p2', merchantId: 'm2', title: 'التاني', sectionKey: 'hero'),
+    ];
+    const heroSlot = [
+      HomeSection(
+        key: 'hero',
+        type: 'adSlot',
+        sortOrder: 0,
+        cityId: 'edku',
+        params: {'maxAds': 3},
+      ),
+    ];
+
+    testWidgets('one banner gets no dots — there is nowhere to go', (tester) async {
+      await pump(tester,
+          promotions: [promotion(id: 'p1', sectionKey: 'hero')],
+          sections: heroSlot,
+          merchants: [merchant('m1')]);
+
+      expect(find.byKey(AdSlotSection.dotsKey), findsNothing);
+    });
+
+    testWidgets('several get dots, so the customer knows there are more',
+        (tester) async {
+      await pump(tester,
+          promotions: two,
+          sections: heroSlot,
+          merchants: [merchant('m1'), merchant('m2')]);
+
+      expect(find.byKey(AdSlotSection.dotsKey), findsOneWidget);
+    });
+
+    testWidgets('and it turns itself over', (tester) async {
+      await pump(tester,
+          promotions: two,
+          sections: heroSlot,
+          merchants: [merchant('m1'), merchant('m2')]);
+
+      // `hitTestable`, not a plain find: a PageView built from `children` puts every
+      // page in the tree at once, so `find.text` answers yes for a banner nobody can
+      // see — and this test would pass without the carousel turning at all.
+      expect(find.text('التاني').hitTestable(), findsNothing);
+
+      await tester.pump(const Duration(seconds: 5));
+      await tester.pumpAndSettle();
+
+      expect(find.text('التاني').hitTestable(), findsOneWidget);
+    });
+
+    // High severity in the guidance, and the rule most carousels skip: the setting is on
+    // for people who get motion sick and for people using a screen reader, and a page
+    // that keeps turning under a reader is one that never finishes being read.
+    testWidgets('but never when the phone asks for reduced motion', (tester) async {
+      await pump(tester,
+          promotions: two,
+          sections: heroSlot,
+          merchants: [merchant('m1'), merchant('m2')],
+          reducedMotion: true);
+
+      expect(find.text('الأول').hitTestable(), findsOneWidget);
+
+      await tester.pump(const Duration(seconds: 5));
+      await tester.pumpAndSettle();
+
+      expect(find.text('الأول').hitTestable(), findsOneWidget,
+          reason: 'it stayed where the reader left it');
+      expect(find.text('التاني').hitTestable(), findsNothing);
     });
   });
 }

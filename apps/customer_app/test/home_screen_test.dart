@@ -31,10 +31,17 @@ void main() {
               .overrideWithValue(FakeHomeSectionRepository(seed: sections)),
           merchantRepositoryProvider
               .overrideWithValue(FakeMerchantRepository(seed: seed)),
-          // MerchantRow reads the rating-display threshold off the config, so the config
-          // is a real dependency of this screen rather than incidental setup.
+          // MerchantCard reads the rating-display threshold off the config, so the
+          // config is a real dependency of this screen rather than incidental setup.
           remoteConfigServiceProvider
               .overrideWithValue(RemoteConfigService(FakeConfigFetcher({}))),
+          cuisineRepositoryProvider.overrideWithValue(
+            FakeCuisineRepository(seed: const [
+              Cuisine(id: 'c1', cityId: 'edku', name: 'مشويات'),
+            ]),
+          ),
+          // The card asks whether the shop is open, which is a question about the hour.
+          clockProvider.overrideWithValue(() => DateTime(2026, 8, 27, 13)),
         ],
         child: MaterialApp(
           theme: LuqmaTheme.light,
@@ -78,7 +85,9 @@ void main() {
         section('categoryChips', key: 'chips', sortOrder: 0),
       ]);
 
-      final chips = tester.getTopLeft(find.text('الكل')).dy;
+      // The first cuisine circle, which is what `categoryChips` renders now — it used
+      // to be an "all" chip, and the circles clear themselves by being pressed again.
+      final chips = tester.getTopLeft(find.text('مشويات')).dy;
       final list = tester.getTopLeft(find.text('مطعم الشاطئ')).dy;
       expect(chips, lessThan(list));
     });

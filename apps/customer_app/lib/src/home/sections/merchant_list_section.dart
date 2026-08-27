@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:luqma_core/luqma_core.dart';
 
+import '../selected_cuisine.dart';
 import 'merchant_card.dart';
 
 import 'section_header.dart';
@@ -36,6 +37,9 @@ class MerchantListSection extends ConsumerWidget {
     // Nothing on the card says which merchant paid. Saying so would make the placement
     // worth less than it cost.
     final boosted = ref.watch(boostedMerchantsProvider);
+    // Null means nothing is pressed, and everything shows. Empty means the pressed
+    // circle has no merchants in it yet — a different answer, and it has to stay one.
+    final inCuisine = ref.watch(merchantsInSelectedCuisineProvider).value;
 
     return switch (merchants) {
       // An error here costs this section, not the screen: the home is assembled from
@@ -53,7 +57,8 @@ class MerchantListSection extends ConsumerWidget {
               padding: const EdgeInsets.symmetric(horizontal: Space.gutter),
               child: Column(
                 children: [
-                  for (final merchant in _sorted(value, boosted)) ...[
+                  for (final merchant
+                      in _sorted(_filtered(value, inCuisine), boosted)) ...[
                     MerchantCard(merchant: merchant),
                     const SizedBox(height: Space.sm),
                   ],
@@ -65,6 +70,12 @@ class MerchantListSection extends ConsumerWidget {
           _ => const _Skeleton(),
 };
   }
+
+  /// Narrowed to the pressed cuisine, if one is pressed.
+  List<Merchant> _filtered(List<Merchant> merchants, Set<String>? inCuisine) =>
+      inCuisine == null
+          ? merchants
+          : merchants.where((m) => inCuisine.contains(m.id)).toList();
 
   List<Merchant> _sorted(List<Merchant> merchants, Set<String> boosted) {
     final list = [...merchants];

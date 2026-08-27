@@ -2,76 +2,136 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:luqma_core/luqma_core.dart';
 
-/// The category filter, as a scrolling row rather than a tab of its own.
+import '../selected_cuisine.dart';
+
+/// The cuisines, as a scrolling row of circles across the top of the home.
 ///
-/// Edku will have on the order of thirty merchants — not enough to fill a tab, which is
-/// why this ended up inside the home screen. Being a section rather than fixed chrome
-/// also means the owner can move it or hide it like anything else here.
-class CategoryChipsSection extends ConsumerStatefulWidget {
+/// Edku will have on the order of thirty merchants — not enough to fill a tab of its
+/// own, which is why this ended up inside the home screen. Being a section rather than
+/// fixed chrome also means the owner can move it or hide it like anything else here.
+///
+/// Until now it rendered four Arabic words compiled into the app and filtered nothing.
+class CategoryChipsSection extends ConsumerWidget {
   const CategoryChipsSection({super.key, required this.section});
 
   final HomeSection section;
 
-  @override
-  ConsumerState<CategoryChipsSection> createState() => _CategoryChipsSectionState();
-}
-
-class _CategoryChipsSectionState extends ConsumerState<CategoryChipsSection> {
-  String? _selected;
+  static const circleKey = Key('cuisines.circle');
 
   @override
-  Widget build(BuildContext context) {
-    // Placeholder list until merchant categories are aggregated for the city. The
-    // interaction and the layout are what the home screen needs settled first.
-    const categories = ['مشويات', 'أسماك', 'كشري', 'حلويات'];
+  Widget build(BuildContext context, WidgetRef ref) {
+    final cuisines = ref.watch(cuisinesProvider);
+    final selected = ref.watch(selectedCuisineProvider);
 
-    return SizedBox(
-      height: Sizes.minTarget,
-      child: ListView(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: Space.gutter),
-        children: [
-          _Chip(
-            label: 'الكل',
-            selected: _selected == null,
-            onTap: () => setState(() => _selected = null),
-          ),
-          for (final category in categories) ...[
-            const SizedBox(width: Space.sm),
-            _Chip(
-              label: category,
-              selected: _selected == category,
-              onTap: () => setState(() => _selected = category),
+    return switch (cuisines) {
+      // One failing section must not blank the home: the page is assembled from several
+      // independent blocks. And `hasError` first, because a stream that fails before it
+      // has ever emitted stays AsyncLoading with the error hanging off it.
+      AsyncValue(hasError: true) => const SizedBox.shrink(),
+      AsyncValue(hasValue: true, :final value?) when value.isEmpty =>
+        const SizedBox.shrink(),
+      AsyncValue(hasValue: true, :final value?) => SizedBox(
+          height: 104,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: Space.gutter),
+            itemCount: value.length,
+            separatorBuilder: (_, _) => const SizedBox(width: Space.md),
+            itemBuilder: (context, i) => _Circle(
+              cuisine: value[i],
+              selected: value[i].id == selected,
+              onTap: () =>
+                  ref.read(selectedCuisineProvider.notifier).toggle(value[i].id),
             ),
-          ],
-        ],
-      ),
-    );
+          ),
+        ),
+      _ => const _Skeleton(),
+    };
   }
 }
 
-class _Chip extends StatelessWidget {
-  const _Chip({required this.label, required this.selected, required this.onTap});
+class _Circle extends StatelessWidget {
+  const _Circle({
+    required this.cuisine,
+    required this.selected,
+    required this.onTap,
+  });
 
-  final String label;
+  final Cuisine cuisine;
   final bool selected;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    final colors = Theme.of(context).luqma;
-    return Center(
-      child: ChoiceChip(
-        label: Text(label),
-        selected: selected,
-        onSelected: (_) => onTap(),
-        backgroundColor: colors.card,
-        selectedColor: colors.brand,
-        labelStyle: LuqmaType.bodySmall.copyWith(
-          color: selected ? colors.onBrand : colors.textSecondary,
-          fontWeight: selected ? FontWeight.w700 : FontWeight.w400,
+    final theme = Theme.of(context);
+    final colors = theme.luqma;
+
+    return Semantics(
+      button: true,
+      selected: selected,
+      child: InkWell(
+        key: CategoryChipsSection.circleKey,
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(40),
+        child: SizedBox(
+          width: 72,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 64,
+                height: 64,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  // Burgundy, not the accent. Orange is reserved for prices, offers and
+                  // ratings — the moment it also means "selected" it stops meaning value
+                  // anywhere, and every price on every screen loses its pull.
+                  border: selected
+                      ? Border.all(color: colors.brand, width: 3)
+                      : null,
+                ),
+                child: ClipOval(
+                  child: LuqmaImage(url: cuisine.imageUrl, name: cuisine.name),
+                ),
+              ),
+              const SizedBox(height: Space.xs),
+              Text(
+                cuisine.name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: selected ? colors.textPrimary : colors.textSecondary,
+                  fontWeight: selected ? FontWeight.w700 : FontWeight.w400,
+                ),
+              ),
+            ],
+          ),
         ),
-        side: BorderSide(color: selected ? colors.brand : colors.border),
+      ),
+    );
+  }
+}
+
+class _Skeleton extends StatelessWidget {
+  const _Skeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).luqma;
+
+    return SizedBox(
+      height: 104,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: Space.gutter),
+        itemCount: 4,
+        separatorBuilder: (_, _) => const SizedBox(width: Space.md),
+        itemBuilder: (_, _) => Container(
+          width: 64,
+          height: 64,
+          decoration: BoxDecoration(shape: BoxShape.circle, color: colors.surface),
+        ),
       ),
     );
   }
