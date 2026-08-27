@@ -39,6 +39,13 @@ dependencies:
   intl: any
   sentry_flutter: ^9.0.0
 
+  # Downscaling a photo before it is uploaded. Pure Dart on purpose: it runs in an
+  # ordinary `flutter test` with no device and no platform channel, so what the merchant's
+  # phone actually does to a picture is provable here rather than only observable there.
+  # The cost is speed — a native compressor is several times faster — and the swap is one
+  # file if 600 menu photos ever make that matter.
+  image: ^4.5.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

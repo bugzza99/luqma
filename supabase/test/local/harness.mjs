@@ -19,6 +19,27 @@ export async function freshDatabase() {
   const db = await new PGlite();
 
   await db.exec(`
+    -- Storage lives in its own container, not in the migrations, so PGlite has no
+    -- trace of it. Stubbed for the same reason auth is: the migrations that create the
+    -- media bucket and its policies are real schema and must apply here unchanged,
+    -- and without these two tables every one of them fails with "relation does not
+    -- exist" -- which reads as a broken migration rather than a missing stub.
+    create schema if not exists storage;
+    create table storage.buckets (
+      id text primary key,
+      name text not null,
+      public boolean not null default false,
+      file_size_limit bigint,
+      allowed_mime_types text[]
+    );
+    create table storage.objects (
+      id uuid primary key default gen_random_uuid(),
+      bucket_id text references storage.buckets,
+      name text not null,
+      owner uuid,
+      created_at timestamptz not null default now()
+    );
+
     create schema if not exists auth;
     -- raw_user_meta_data is here because ensure_user_profile reads it: a customer signs
     -- up with their name and phone in the signup metadata, and the trigger copies both

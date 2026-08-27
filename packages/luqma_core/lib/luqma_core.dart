@@ -54,6 +54,8 @@ export 'src/theme/dimens.dart';
 export 'src/theme/luqma_theme.dart';
 export 'src/theme/motion.dart';
 export 'src/theme/typography.dart';
+export 'src/media/image_compressor.dart';
+export 'src/widgets/luqma_image.dart';
 export 'src/util/arabic_digits.dart';
 export 'src/util/arabic_text.dart';
 export 'src/util/contrast.dart';

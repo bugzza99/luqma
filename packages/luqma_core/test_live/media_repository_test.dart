@@ -1,3 +1,6 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:luqma_core/luqma_core.dart';
 
@@ -137,6 +140,51 @@ void main() {
       because: 'the new upload never reached the open queue',
       timeout: const Duration(seconds: 15),
     );
+  });
+
+  // Uploading — the half that never existed. Every image column in the product has been
+  // there since the first schema and the queue below was built and tested, but nothing
+  // could put a row in it: no bucket, no storage policy, no method here. The queue
+  // reviewed a table nothing wrote to.
+  group('uploading', () {
+    // A one-pixel PNG. What is under test is the round trip, not the picture.
+    final bytes = Uint8List.fromList(base64Decode(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAE'
+      'hQGAhKmMIQAAAABJRU5ErkJggg==',
+    ));
+
+    test('puts the bytes somewhere and files a row for them', () async {
+      final result = await repository.upload(
+        kind: MediaKind.menuItem,
+        bytes: bytes,
+        uploadedBy: uploaderUid,
+      );
+
+      expect(result.failureOrNull, isNull);
+      final media = result.valueOrNull!;
+      expect(media.url, startsWith('http'), reason: 'a URL a phone can fetch');
+      expect(media.status, MediaStatus.pending,
+          reason: 'the one door: nothing is visible until an admin says so');
+      expect(media.uploadedBy, uploaderUid);
+    });
+
+    test('the row it files is the row the queue shows', () async {
+      await repository.upload(
+        kind: MediaKind.menuItem, bytes: bytes, uploadedBy: uploaderUid);
+
+      expect(await mine(), hasLength(1));
+    });
+
+    // Two uploads of one picture are two images. Sharing a path would mean approving
+    // one photo silently approves somebody else's.
+    test('two uploads never land on the same path', () async {
+      final first = await repository.upload(
+        kind: MediaKind.menuItem, bytes: bytes, uploadedBy: uploaderUid);
+      final second = await repository.upload(
+        kind: MediaKind.menuItem, bytes: bytes, uploadedBy: uploaderUid);
+
+      expect(first.valueOrNull!.url, isNot(second.valueOrNull!.url));
+    });
   });
 }
 
