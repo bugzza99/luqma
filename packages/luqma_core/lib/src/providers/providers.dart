@@ -35,6 +35,7 @@ import '../repositories/merchant_repository.dart';
 import '../repositories/order_repository.dart';
 import '../repositories/profile_repository.dart';
 import '../repositories/promotion_repository.dart';
+import '../repositories/search_repository.dart';
 import '../repositories/staff_repository.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -65,6 +66,10 @@ GeographyRepository geographyRepository(Ref ref) =>
 @Riverpod(keepAlive: true)
 CuisineRepository cuisineRepository(Ref ref) =>
     SupabaseCuisineRepository(ref.watch(supabaseProvider));
+
+@Riverpod(keepAlive: true)
+SearchRepository searchRepository(Ref ref) =>
+    SupabaseSearchRepository(ref.watch(supabaseProvider));
 
 /// The city's cuisines, as the home screen and the admin's editor both read them.
 ///

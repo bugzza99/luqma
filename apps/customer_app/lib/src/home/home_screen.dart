@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:luqma_core/luqma_core.dart';
 
+import '../search/search_screen.dart';
 import 'section_registry.dart';
 
 /// The customer's home.
@@ -135,8 +136,12 @@ class _SearchField extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: Space.gutter),
       child: TextField(
         key: HomeScreen.searchKey,
+        // Read-only on purpose: this is a button that looks like a field. Typing happens
+        // on the search screen, which owns the query, the debounce and the results.
         readOnly: true,
-        onTap: () {},
+        onTap: () => Navigator.of(context).push(
+          MaterialPageRoute<void>(builder: (_) => const SearchScreen()),
+        ),
         decoration: InputDecoration(
           hintText: strings.searchHint,
           prefixIcon: Icon(Icons.search_rounded, color: colors.textSecondary),
