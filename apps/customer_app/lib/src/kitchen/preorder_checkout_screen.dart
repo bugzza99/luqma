@@ -34,6 +34,7 @@ class PreorderCheckoutScreen extends ConsumerStatefulWidget {
   static const signInKey = Key('preorder.signIn');
   static const errorKey = Key('preorder.error');
   static const needsAddressKey = Key('preorder.needsAddress');
+  static const outOfRangeKey = Key('preorder.outOfRange');
   static const addressKey = Key('preorder.address');
   static const pickupKey = Key('preorder.pickup');
 
@@ -115,10 +116,22 @@ class _PreorderCheckoutScreenState extends ConsumerState<PreorderCheckoutScreen>
     final zone = zones.where((z) => z.id == address?.zoneId).firstOrNull;
 
     final meal = widget.meal;
+    final cook = ref.watch(merchantProvider(meal.merchantId)).value;
     final total = meal.price * widget.quantity;
+
+    // Having an address is not the same as being somewhere the cook delivers to.
+    // `CheckoutScreen` has always made that distinction; this screen checked only that
+    // an address existed, so a customer in a zone this kitchen does not serve could
+    // confirm — and find out from a rejection instead of from the screen.
+    final inRange = !_needsAddress ||
+        (cook != null &&
+            address != null &&
+            Delivery.serves(merchant: cook, zoneId: address.zoneId));
+
     final ready = identity != null &&
         !_sending &&
         (!_needsAddress || address != null) &&
+        inRange &&
         meal.canBeOrderedAt(ref.watch(clockProvider)());
 
     return Scaffold(
@@ -165,6 +178,16 @@ class _PreorderCheckoutScreenState extends ConsumerState<PreorderCheckoutScreen>
                       color: colors.danger,
                       text: 'محتاجين عنوان عشان الأكلة توصلك.',
                     ),
+                  ] else if (!inRange) ...[
+                    const SizedBox(height: Space.md),
+                    _Notice(
+                      noticeKey: PreorderCheckoutScreen.outOfRangeKey,
+                      icon: Icons.wrong_location_outlined,
+                      color: colors.danger,
+                      // Found out here, not from a rejection after the portion is gone.
+                      text: '${cook?.name ?? "المطبخ"} مبيوصلش '
+                          '${zone?.name ?? "المنطقة دي"}. غيّر العنوان.',
+                    ),
                   ],
                 ],
                 const SizedBox(height: Space.lg),
@@ -197,10 +220,16 @@ class _PreorderCheckoutScreenState extends ConsumerState<PreorderCheckoutScreen>
                         key: PreorderCheckoutScreen.totalKey,
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Text(
-                            strings.cashOnDelivery,
-                            style: theme.textTheme.bodySmall
-                                ?.copyWith(color: colors.textSecondary),
+                          // `Expanded`, because the label is a full sentence in Arabic
+                          // and the price beside it is unbreakable. On a 360dp phone —
+                          // which is most of them — the pair overflowed by 49px, and a
+                          // test window of 800x600 is wide enough to hide that.
+                          Expanded(
+                            child: Text(
+                              strings.cashOnDelivery,
+                              style: theme.textTheme.bodySmall
+                                  ?.copyWith(color: colors.textSecondary),
+                            ),
                           ),
                           Text(
                             strings.price(total),
