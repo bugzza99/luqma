@@ -26,13 +26,25 @@ dependencies:
   freezed_annotation: ^3.0.0
   json_annotation: ^4.9.0
 
-  firebase_core: ^4.0.0
-  firebase_auth: ^6.0.0
-  cloud_firestore: ^6.0.0
-  firebase_storage: ^13.0.0
-  firebase_remote_config: ^6.0.0
+  supabase_flutter: ^2.17.2
+  postgrest: ^2.9.1
+
+  # The version this build was installed as, against minSupportedVersion. Read once at
+  # start-up and handed to the gate as a string, so nothing here depends on a plugin.
+  package_info_plus: ^8.0.0
+
+  # The one outbound tap: the force-update button opening the store listing.
+  url_launcher: ^6.3.0
 
   intl: any
+  sentry_flutter: ^9.0.0
+
+  # Downscaling a photo before it is uploaded. Pure Dart on purpose: it runs in an
+  # ordinary `flutter test` with no device and no platform channel, so what the merchant's
+  # phone actually does to a picture is provable here rather than only observable there.
+  # The cost is speed — a native compressor is several times faster — and the swap is one
+  # file if 600 menu photos ever make that matter.
+  image: ^4.5.0
 
 dev_dependencies:
   flutter_test:
@@ -46,7 +58,6 @@ dev_dependencies:
   # An in-memory Firestore. This is not a mock of our own code — it is a real
   # implementation of the Firestore API, so the repository under test runs its actual
   # queries and mapping instead of being stubbed out.
-  fake_cloud_firestore: ^4.0.0
 
 flutter:
   # Turns on the l10n code generator configured in l10n.yaml.

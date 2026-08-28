@@ -96,9 +96,17 @@ class _CarouselState extends State<_Carousel> {
     _schedule(reducedMotion: MediaQuery.disableAnimationsOf(context));
   }
 
+  /// Set once somebody touches the thing, and never cleared.
+  ///
+  /// Cancelling the timer was not enough: `didChangeDependencies` reschedules, and it
+  /// fires for a theme change, a locale change, the keyboard coming up, a rotation —
+  /// so the rotation resumed under the reader's thumb, which is the thing the listener
+  /// below exists to prevent.
+  bool _stopped = false;
+
   void _schedule({required bool reducedMotion}) {
     _timer?.cancel();
-    if (reducedMotion) return;
+    if (reducedMotion || _stopped) return;
 
     _timer = Timer.periodic(_interval, (_) {
       if (!mounted || !_controller.hasClients) return;
@@ -134,6 +142,7 @@ class _CarouselState extends State<_Carousel> {
             onNotification: (notification) {
               if (notification is ScrollStartNotification &&
                   notification.dragDetails != null) {
+                _stopped = true;
                 _timer?.cancel();
               }
               return false;

@@ -162,6 +162,10 @@ class Cart {
             name: line.name,
             unitPrice: line.unitPrice,
             quantity: line.quantity,
+            // The chosen extras, by id. The cart has held the whole `MenuOption`
+            // objects since it was written and flattened them to a number right here —
+            // which left the server with nothing to check the number against.
+            optionIds: [for (final o in line.options) o.id],
             optionsTotal: line.optionsTotal,
             note: line.note,
           ),

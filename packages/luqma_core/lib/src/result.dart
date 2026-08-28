@@ -1,5 +1,7 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+﻿import 'package:postgrest/postgrest.dart' show PostgrestException;
+
+import 'models/coupon.dart' show CouponRejection;
+
 
 /// Why something failed, in the only granularity the interface actually acts on.
 ///
@@ -18,22 +20,43 @@ sealed class Failure {
   static Failure from(Object error, [StackTrace? stackTrace]) {
     if (error is Failure) return error;
 
-    final code = switch (error) {
-      FirebaseException(:final code) => code,
-      _ => null,
-    };
+    if (error is PostgrestException) {
+      // The reasons the order function raises by name: each one is a sentence a person
+      // is shown, so they are classified rather than collapsed.
+      switch (error.code) {
+        case '42501':
+          return const PermissionFailure();
+        case 'P0002':
+          return const NotFoundFailure();
+        case '23505':
+          return const ConflictFailure();
+        case '23503':
+          // A foreign key said no: deleting a merchant that has taken orders is the
+          // case in point. Not a permission problem and not a race — history exists,
+          // and history wins.
+          return const ConflictFailure();
+      }
+      final message = error.message;
+      if (message.startsWith('coupon:')) {
+        // The order function names every coupon refusal as `coupon: <reason>`; the
+        // reason is what the checkout screen speaks.
+        final name = message.substring('coupon:'.length).trim();
+        return CouponFailure(
+          CouponRejection.values.firstWhere(
+            (r) => r.name == name,
+            orElse: () => CouponRejection.notFound,
+          ),
+        );
+      }
+      if (message == 'sold out' ||
+          message.contains('not accepting orders') ||
+          message.contains('not accepting reservations') ||
+          message.contains('does not deliver')) {
+        return const ConflictFailure();
+      }
+    }
 
-    return switch (code) {
-      'unavailable' ||
-      'network-request-failed' ||
-      'deadline-exceeded' =>
-        const OfflineFailure(),
-      'permission-denied' || 'unauthenticated' => const PermissionFailure(),
-      'not-found' => const NotFoundFailure(),
-      'already-exists' || 'aborted' || 'failed-precondition' => const ConflictFailure(),
-      'resource-exhausted' => const RateLimitedFailure(),
-      _ => UnknownFailure(error, stackTrace),
-    };
+    return UnknownFailure(error, stackTrace);
   }
 }
 
@@ -57,8 +80,37 @@ final class ConflictFailure extends Failure {
   const ConflictFailure();
 }
 
+/// The e-mail already belongs to an account. Its own type rather than a conflict,
+/// because the sentence it earns — "this one is taken" — asks for a different fix than
+/// "something collided": retype the address, not retry the action.
+final class EmailTakenFailure extends Failure {
+  const EmailTakenFailure();
+}
+
+/// The phone number already belongs to an account. Its own type for the same reason as
+/// [EmailTakenFailure] — "هذا الرقم مسجل بالفعل" asks for signing in, not retyping.
+final class PhoneTakenFailure extends Failure {
+  const PhoneTakenFailure();
+}
+
+/// What was chosen is not an image this build can read — a video, a PDF, a file that
+/// arrived broken. Its own type because nothing was ever sent: it is the one failure in
+/// the upload path the person can fix themselves, by picking something else.
+final class NotAnImageFailure extends Failure {
+  const NotAnImageFailure();
+}
+
 final class RateLimitedFailure extends Failure {
   const RateLimitedFailure();
+}
+
+/// The coupon said no, and said why. Each reason is its own sentence on the checkout
+/// screen rather than one shrug for all of them - "expired" and "minimum not met" ask
+/// for two completely different responses from the customer.
+final class CouponFailure extends Failure {
+  const CouponFailure(this.reason);
+
+  final CouponRejection reason;
 }
 
 /// Something we have not seen. Keeps [cause] so the crash report has the real error

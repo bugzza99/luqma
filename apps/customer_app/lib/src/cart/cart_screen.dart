@@ -200,7 +200,10 @@ class _Footer extends ConsumerWidget {
     final strings = LuqmaStrings.of(context);
 
     final merchant = ref.watch(merchantProvider(cart.merchantId ?? '')).value;
-    final open = merchant?.acceptsOrdersAt(DateTime.now()) ?? false;
+    // Never DateTime.now(): whether a shop is open depends on the hour, and a widget
+    // reading the wall clock can only be tested by waiting for the right one.
+    final open =
+        merchant?.acceptsOrdersAt(ref.watch(clockProvider)()) ?? false;
     final minOrder = merchant?.minOrder ?? 0;
     final shortfall = cart.shortfallFrom(minOrder);
 

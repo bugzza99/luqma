@@ -269,7 +269,9 @@ class _Billing extends ConsumerWidget {
     final subscription = ref.watch(subscriptionProvider(merchant.id)).value;
     final plans = ref.watch(plansProvider).value ?? const <Plan>[];
     final plan = plans.where((p) => p.id == merchant.planId).firstOrNull;
-    final now = DateTime.now();
+    // Whether a subscription term has run out is a question about a moment, and the
+    // moment has to be one a test can choose.
+    final now = ref.watch(clockProvider)();
     final canAfford = Revenue.canAffordAnOrder(merchant);
 
     return Container(

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:luqma_core/luqma_core.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
@@ -36,10 +38,16 @@ class OrderAlarm extends _$OrderAlarm {
     // Later emissions assign `state`; the first one is the value this build returns.
     // Firing the listener immediately would assign `state` before the notifier exists,
     // which Riverpod reports as a circular dependency and is easy to write by accident.
-    ref.listen(
-      incomingOrdersProvider(merchantId),
-      (_, next) => state = _decide(next.value ?? const []),
-    );
+    ref.listen(incomingOrdersProvider(merchantId), (_, next) {
+      // An error is not an empty inbox. `next.value ?? const []` treats a dropped
+      // connection as "no orders waiting", which stops the alarm — so the one event that
+      // should make the merchant *more* suspicious made the phone go quiet instead.
+      //
+      // On an error the alarm keeps doing whatever it was doing. A false alarm is a
+      // merchant checking a screen; a silenced one is an order nobody cooked.
+      if (next.hasError) return;
+      state = _decide(next.value ?? const []);
+    });
 
     return _decide(ref.read(incomingOrdersProvider(merchantId)).value ?? const []);
   }
@@ -61,11 +69,18 @@ class OrderAlarm extends _$OrderAlarm {
 
   void _apply(bool shouldRing) {
     final alarm = ref.read(alarmProvider);
-    if (shouldRing) {
-      alarm.start();
-    } else {
-      alarm.stop();
-    }
+    // Neither future is awaited — this is called from a listener and from `build`, and
+    // neither can wait on a device. But a dropped future that rejects is an *unhandled*
+    // asynchronous error, which by default takes down the zone it was raised in; and
+    // the one failure worth knowing about in this whole app is the alarm not sounding.
+    // So each is caught and named instead.
+    final work = shouldRing ? alarm.start() : alarm.stop();
+    unawaited(work.catchError((Object error) {
+      LuqmaTelemetry.event('alarm_failed', data: {
+        'action': shouldRing ? 'start' : 'stop',
+        'error': error.toString(),
+      });
+    }));
   }
 
   /// The merchant has seen it. Silences the sound for everything waiting right now, and

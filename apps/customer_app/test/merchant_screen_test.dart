@@ -56,6 +56,7 @@ void main() {
     Merchant merchant = shore,
     List<MenuItem> items = const [chicken, soldOut],
     Cart startingCart = Cart.empty,
+    Failure? menuFailure,
   }) async {
     await tester.pumpWidget(
       ProviderScope(
@@ -63,7 +64,11 @@ void main() {
           merchantRepositoryProvider
               .overrideWithValue(FakeMerchantRepository(seed: [merchant])),
           menuRepositoryProvider.overrideWithValue(
-            FakeMenuRepository(categories: merchant.menuCategories, items: items),
+            FakeMenuRepository(
+              categories: merchant.menuCategories,
+              items: items,
+              failure: menuFailure,
+            ),
           ),
           remoteConfigServiceProvider
               .overrideWithValue(RemoteConfigService(FakeConfigFetcher({}))),
@@ -222,5 +227,19 @@ void main() {
 
       expect(find.byKey(MerchantScreen.itemSheetKey), findsNothing);
     });
+  });
+
+  // The merchant stream has a careful error arm and says why in a comment beside it.
+  // The two menu streams did not: they were collapsed with `.value ?? const []`, so a
+  // dropped connection drew the shop with nothing in it — a kitchen that appears to
+  // cook nothing, with no error text and no way to try again. An empty menu and an
+  // unreachable one look identical to the customer and are not the same thing.
+  testWidgets('a menu that fails to load says so instead of showing an empty shop',
+      (tester) async {
+    await pump(tester, menuFailure: const OfflineFailure());
+
+    expect(find.byType(LuqmaErrorView), findsOneWidget,
+        reason: 'the customer is told, and given the retry every other error carries');
+    expect(find.text('نص فرخة على الفحم'), findsNothing);
   });
 }

@@ -213,5 +213,19 @@ class LuqmaColors extends ThemeExtension<LuqmaColors> {
 
 extension LuqmaThemeAccess on ThemeData {
   /// The brand colour roles. Present on every theme this package builds.
-  LuqmaColors get luqma => extension<LuqmaColors>()!;
+  ///
+  /// Fails with an explanation rather than a bare null-check error, because the only way
+  /// to get here is a `ThemeData` that did not come from [LuqmaTheme] — almost always a
+  /// widget test that reached for `MaterialApp()` without one.
+  LuqmaColors get luqma {
+    final colors = extension<LuqmaColors>();
+    if (colors == null) {
+      throw FlutterError(
+        'This ThemeData carries no LuqmaColors. '
+        'Build it with LuqmaTheme.light or LuqmaTheme.dark. In a widget test that '
+        'means MaterialApp(theme: LuqmaTheme.light, ...).',
+      );
+    }
+    return colors;
+  }
 }

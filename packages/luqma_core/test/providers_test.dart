@@ -33,7 +33,7 @@ void main() {
 
       // Hold a subscription the way a widget on screen does: a stream provider with no
       // listener is disposed before it can emit, which is not a state the app is ever in.
-      addTearDown(container.listen(merchantsProvider('edku'), (_, __) {}).close);
+      addTearDown(container.listen(merchantsProvider('edku'), (_, _) {}).close);
 
       final merchants = await container.read(merchantsProvider('edku').future);
 
@@ -44,7 +44,7 @@ void main() {
       final container = containerWith(
         FakeMerchantRepository(failure: const OfflineFailure()),
       );
-      addTearDown(container.listen(merchantsProvider('edku'), (_, __) {}).close);
+      addTearDown(container.listen(merchantsProvider('edku'), (_, _) {}).close);
       await Future<void>.delayed(Duration.zero);
 
       // Asserted on the AsyncValue rather than the future, because the AsyncValue is what

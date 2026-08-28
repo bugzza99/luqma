@@ -19,9 +19,21 @@ abstract interface class Alarm {
   Future<void> stop();
 }
 
-/// Plays `assets/audio/new_order.wav` on a loop, through the alarm channel.
-class LoopingAlarm implements Alarm {
-  LoopingAlarm([AudioPlayer? player]) : _player = player ?? AudioPlayer() {
+/// The device underneath, as the two calls this class actually makes.
+///
+/// A seam rather than an `AudioPlayer` parameter, because `AudioPlayer()`'s constructor
+/// reaches the platform channel the moment it is built — so a test cannot even
+/// *construct* a stand-in for it, let alone make one fail. Everything worth arguing with
+/// here is the state machine above it, and this is what lets that be argued with.
+abstract interface class AlarmDevice {
+  Future<void> play();
+  Future<void> stop();
+  Future<void> dispose();
+}
+
+/// `assets/audio/new_order.wav`, on a loop, through the alarm channel.
+class AudioPlayerDevice implements AlarmDevice {
+  AudioPlayerDevice([AudioPlayer? player]) : _player = player ?? AudioPlayer() {
     // The alarm stream, not media: it stays audible when the phone is on vibrate and it
     // does not duck for whatever else is playing. This sound exists to interrupt.
     _player.setAudioContext(
@@ -44,6 +56,23 @@ class LoopingAlarm implements Alarm {
 
   final AudioPlayer _player;
 
+  @override
+  Future<void> play() =>
+      _player.play(AssetSource('audio/new_order.wav'), volume: 1);
+
+  @override
+  Future<void> stop() => _player.stop();
+
+  @override
+  Future<void> dispose() => _player.dispose();
+}
+
+/// Keeps the sound going until it is told to stop.
+class LoopingAlarm implements Alarm {
+  LoopingAlarm([AlarmDevice? device]) : _device = device ?? AudioPlayerDevice();
+
+  final AlarmDevice _device;
+
   bool _playing = false;
 
   @override
@@ -53,17 +82,30 @@ class LoopingAlarm implements Alarm {
   Future<void> start() async {
     if (_playing) return;
     _playing = true;
-    await _player.play(AssetSource('audio/new_order.wav'), volume: 1);
+    try {
+      await _device.play();
+    } catch (_) {
+      // The flag is the guard that stops a second order clipping the loop back to its
+      // beginning during a rush. Left set after a failure it latches: every later
+      // `start()` returns here, and the merchant hears nothing for the rest of the
+      // session while the screen goes on showing orders. A device that refused once may
+      // well take the next one — a call has ended, focus has come back — so the honest
+      // state after a failed start is "not playing".
+      _playing = false;
+      rethrow;
+    }
   }
 
   @override
   Future<void> stop() async {
     if (!_playing) return;
+    // Cleared before the call and not after it, for the same reason: a stop that throws
+    // must not leave this believing the sound is still going.
     _playing = false;
-    await _player.stop();
+    await _device.stop();
   }
 
-  Future<void> dispose() => _player.dispose();
+  Future<void> dispose() => _device.dispose();
 }
 
 /// Counts what it was asked to do, so the rules above it can be tested without a device.

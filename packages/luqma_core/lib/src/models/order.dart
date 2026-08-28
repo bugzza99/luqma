@@ -2,6 +2,7 @@ import 'package:freezed_annotation/freezed_annotation.dart';
 
 import 'converters.dart';
 import 'coupon.dart';
+import 'geography.dart';
 import 'merchant.dart';
 
 part 'order.freezed.dart';
@@ -28,6 +29,19 @@ enum OrderStatus {
   needsAttention,
 }
 
+/// Whose courier takes this order out.
+///
+/// Frozen onto the order rather than read from the merchant, like everything else here
+/// that decides responsibility: a merchant who stops delivering their own orders next
+/// week must not change who was answerable for last week's.
+enum DeliveryBy {
+  /// The merchant's own courier.
+  merchant,
+
+  /// Luqma's courier. Home kitchens, and merchants with `deliversSelf = false`.
+  platform,
+}
+
 /// Who is asking to move an order. Every transition is checked against this, because
 /// most of the rules are about *who*, not about *what*.
 enum OrderActor { customer, merchant, courier, admin, system }
@@ -39,9 +53,13 @@ extension OrderTransitions on OrderStatus {
   /// button rather than offer an action that will be refused.
   bool canMoveTo(OrderStatus next, {required OrderActor by}) {
     if (this == next) return false;
-    // Delivered and cancelled are final for everyone. An order that can be reopened is
-    // an order whose cash total can be changed after the money was handed over.
-    if (this == OrderStatus.delivered || this == OrderStatus.cancelled) return false;
+    // Delivered and cancelled are final for everyone but the admin. The server stays
+    // authoritative for admin — it already allows reopening a finished order — so the
+    // interface must not hide a button the server would honour. Two sources of truth
+    // would disagree only as an owner staring at a stuck order.
+    if (this == OrderStatus.delivered || this == OrderStatus.cancelled) {
+      return by == OrderActor.admin;
+    }
 
     return switch (by) {
       OrderActor.customer =>
@@ -83,7 +101,18 @@ abstract class OrderLine with _$OrderLine {
     required int quantity,
 
     /// Piastres of chosen extras, per unit.
+    ///
+    /// Written by the server from [optionIds] and the menu. What the phone sends here is
+    /// ignored: a number nobody can verify is a number nobody should read.
     @Default(0) int optionsTotal,
+
+    /// Which extras were chosen, by id.
+    ///
+    /// The ids rather than a total, because the total is the one figure on an order that
+    /// the server could not check — it had no idea what had been selected. A crafted
+    /// request could ask for every extra on the menu and claim they were free, and the
+    /// merchant would hand over the food and collect the base price in cash.
+    @Default(<String>[]) List<String> optionIds,
     String? note,
   }) = _OrderLine;
 
@@ -154,12 +183,28 @@ abstract class OrderPricing with _$OrderPricing {
 abstract class RevenueSnapshot with _$RevenueSnapshot {
   const factory RevenueSnapshot({
     required RevenueModel model,
+
+    /// The rate or fee in force: basis points under commission, piastres per order
+    /// under prepaid, and meaningless under a subscription.
     @Default(0) int value,
+
+    /// What was actually taken, once the order was delivered. Zero until then.
     @Default(0) int amount,
   }) = _RevenueSnapshot;
 
+  const RevenueSnapshot._();
+
   factory RevenueSnapshot.fromJson(Map<String, dynamic> json) =>
       _$RevenueSnapshotFromJson(json);
+
+  /// The terms in force for [merchant] right now.
+  ///
+  /// Taken once, at order creation, and never read from the merchant again. That is what
+  /// makes the model switchable at runtime without rewriting history.
+  factory RevenueSnapshot.of(Merchant merchant) => RevenueSnapshot(
+        model: merchant.revenueModel,
+        value: merchant.revenueValue,
+      );
 }
 
 @freezed
@@ -174,6 +219,18 @@ abstract class Order with _$Order {
     required String merchantId,
     required String merchantName,
     required String zoneId,
+
+    /// The address as it stood when the order was placed.
+    ///
+    /// A copy, not a reference. A courier cannot read another person's address
+    /// collection — the rules see to that — so a reference would render as nothing at
+    /// the one moment it is needed. And an address corrected next month must not
+    /// rewrite where last week's order actually went.
+    ///
+    /// Nullable only so that an order written before this field existed still opens
+    /// rather than crashing the screen a courier is standing in the street holding.
+    Address? address,
+    @Default(DeliveryBy.merchant) DeliveryBy deliveryBy,
     required OrderType type,
     required List<OrderLine> items,
     required OrderPricing pricing,
