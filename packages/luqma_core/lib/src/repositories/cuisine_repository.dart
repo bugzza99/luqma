@@ -140,7 +140,10 @@ class FakeCuisineRepository implements CuisineRepository {
 
   final Map<String, Cuisine> _cuisines;
   final Map<String, Set<String>> _members;
-  final Failure? failure;
+  /// Settable, like the courier and customer fakes: a test needs to make the connection
+  /// drop *between* opening a sheet and tapping save, which is when a half-typed form is
+  /// at stake.
+  Failure? failure;
 
   var _counter = 0;
 

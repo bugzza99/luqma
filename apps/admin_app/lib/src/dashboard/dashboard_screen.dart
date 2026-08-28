@@ -86,6 +86,7 @@ class _Body extends StatelessWidget {
         else
           ...today.needsAttention.map(
             (item) => Padding(
+              key: DashboardScreen.needsAttentionKey,
               padding: const EdgeInsets.only(bottom: Space.sm),
               child: _QueueRow(item: item),
             ),
