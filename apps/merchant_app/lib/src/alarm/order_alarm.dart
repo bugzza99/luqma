@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:luqma_core/luqma_core.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
@@ -67,11 +69,18 @@ class OrderAlarm extends _$OrderAlarm {
 
   void _apply(bool shouldRing) {
     final alarm = ref.read(alarmProvider);
-    if (shouldRing) {
-      alarm.start();
-    } else {
-      alarm.stop();
-    }
+    // Neither future is awaited — this is called from a listener and from `build`, and
+    // neither can wait on a device. But a dropped future that rejects is an *unhandled*
+    // asynchronous error, which by default takes down the zone it was raised in; and
+    // the one failure worth knowing about in this whole app is the alarm not sounding.
+    // So each is caught and named instead.
+    final work = shouldRing ? alarm.start() : alarm.stop();
+    unawaited(work.catchError((Object error) {
+      LuqmaTelemetry.event('alarm_failed', data: {
+        'action': shouldRing ? 'start' : 'stop',
+        'error': error.toString(),
+      });
+    }));
   }
 
   /// The merchant has seen it. Silences the sound for everything waiting right now, and
