@@ -18,6 +18,20 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 /// Everything here is inert without `google-services.json`: [start] returns quietly, so a
 /// developer without the file gets an app that runs rather than an app that crashes on
 /// launch.
+/// Draws the alert when a message arrives and the app is not in the foreground.
+///
+/// Runs in its own isolate with none of the app around it — no providers, no session, no
+/// navigator. It may do exactly one thing: render the notification. Anything it needed
+/// from the app would not be there.
+///
+/// `vm:entry-point` keeps it from being tree-shaken out of a release build, where it is
+/// only ever reached from native code.
+@pragma('vm:entry-point')
+Future<void> luqmaBackgroundMessage(RemoteMessage message) async {
+  await Firebase.initializeApp();
+  await LuqmaPush.render(message);
+}
+
 abstract final class LuqmaPush {
   const LuqmaPush._();
 
@@ -26,6 +40,13 @@ abstract final class LuqmaPush {
   static const ordersChannel = 'orders_critical';
 
   static final _local = FlutterLocalNotificationsPlugin();
+
+  /// The order behind the notification somebody just tapped, or null.
+  ///
+  /// A `ValueNotifier` rather than a route: the tap can arrive while the app is starting,
+  /// from a terminated state, or in the background isolate, and none of those has a
+  /// navigator to push onto. The shell watches this and opens the order when it can.
+  static final tappedOrder = ValueNotifier<String?>(null);
 
   /// Starts Messaging and asks for permission.
   ///
@@ -51,16 +72,26 @@ abstract final class LuqmaPush {
     // would never know why nothing rang.
     await messaging.requestPermission(alert: true, sound: true, badge: true);
 
-    await _local.initialize(
-      const InitializationSettings(
-        android: AndroidInitializationSettings('@mipmap/ic_launcher'),
-      ),
-    );
+    await _initLocal();
+
+    // A notification tapped while the app was dead is waiting here at launch. Without
+    // this the merchant taps the alarm, the app opens on whatever it opened on last, and
+    // the order they were told about is not on the screen.
+    final launch = await _local.getNotificationAppLaunchDetails();
+    if (launch?.didNotificationLaunchApp ?? false) {
+      tappedOrder.value = launch!.notificationResponse?.payload;
+    }
 
     // The message carries data only, never a `notification` block — with one, Android
     // draws the alert itself and this app never runs, so the looping alarm on the
     // critical channel would never play.
     FirebaseMessaging.onMessage.listen(_show);
+
+    // The one that matters. A data-only message renders nothing by itself, and
+    // `onMessage` only fires in the foreground — so without this, an order arriving at a
+    // phone in a merchant's pocket, with the app closed, does nothing at all. Which is
+    // the entire case this feature exists for.
+    FirebaseMessaging.onBackgroundMessage(luqmaBackgroundMessage);
 
     return true;
   }
@@ -76,6 +107,24 @@ abstract final class LuqmaPush {
     } catch (_) {
       return null;
     }
+  }
+
+  /// Sets the plugin up. Safe to call twice, and called again in the background isolate,
+  /// which starts with nothing configured.
+  static Future<void> _initLocal() async {
+    await _local.initialize(
+      const InitializationSettings(
+        android: AndroidInitializationSettings('@mipmap/ic_launcher'),
+      ),
+      onDidReceiveNotificationResponse: (response) =>
+          tappedOrder.value = response.payload,
+    );
+  }
+
+  /// Draws the alert. Public because the background isolate has to reach it.
+  static Future<void> render(RemoteMessage message) async {
+    await _initLocal();
+    await _show(message);
   }
 
   static Future<void> _show(RemoteMessage message) async {

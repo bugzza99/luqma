@@ -67,7 +67,8 @@ class _Loaded extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final open = merchant.acceptsOrdersAt(DateTime.now());
+    // From the shared clock, so a test can move it rather than wait for an evening.
+    final open = merchant.acceptsOrdersAt(ref.watch(clockProvider)());
     final strings = LuqmaStrings.of(context);
 
     return Scaffold(

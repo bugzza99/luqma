@@ -14,6 +14,8 @@ class IssuesScreen extends ConsumerWidget {
 
   static const emptyKey = Key('issues.empty');
   static const closeKey = Key('issues.close');
+  static const cancelKey = Key('issues.cancel');
+  static const confirmKey = Key('issues.confirm');
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -60,7 +62,11 @@ class IssuesScreen extends ConsumerWidget {
       context: context,
       builder: (dialogContext) => _CloseDialog(),
     );
-    if (note == null && !context.mounted) return;
+    // `||`, not `&&`. With `and` this only returned when the dialog was cancelled
+    // *and* the screen had gone — so cancelling while still looking at it fell
+    // through and closed the ticket anyway, which is the opposite of what the
+    // person just asked for.
+    if (note == null || !context.mounted) return;
 
     await ref.read(issueRepositoryProvider).close(issue.id, adminNote: note);
   }
@@ -151,10 +157,12 @@ class _CloseDialogState extends State<_CloseDialog> {
       ),
       actions: [
         TextButton(
+          key: IssuesScreen.cancelKey,
           onPressed: () => Navigator.of(context).pop(null),
           child: const Text('إلغاء'),
         ),
         FilledButton(
+          key: IssuesScreen.confirmKey,
           onPressed: () => Navigator.of(context).pop(_note.text.trim()),
           child: const Text('اقفل الشكوى'),
         ),

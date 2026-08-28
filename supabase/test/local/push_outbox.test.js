@@ -193,3 +193,103 @@ describe('the push outbox', () => {
     });
   });
 });
+
+/**
+ * The orphan sweep, and the two ways it was wrong.
+ *
+ * It deletes rows from `media` and objects from Storage, so who may call it and which
+ * object it matches are both worth being exact about. Neither was.
+ */
+describe('sweeping orphan media', () => {
+  const db = async () => {
+    const d = await freshDatabase();
+    await d.query(
+      `insert into storage.buckets (id, name, public) values ('media','media',true)
+       on conflict (id) do nothing`,
+    );
+    return d;
+  };
+
+  /** An orphan: pending, old enough, and referenced by nothing. */
+  const orphan = (d, name) =>
+    d.query(
+      `insert into media (kind, url, status, created_at)
+       values ('menuItem',
+               'https://x.supabase.co/storage/v1/object/public/media/' || $1,
+               'pending', now() - interval '30 days')
+       returning id`,
+      [name],
+    );
+
+  it('takes the orphan row and its own object', async () => {
+    const d = await db();
+    await orphan(d, 'menuItem/abc1.jpg');
+    await d.query(
+      `insert into storage.objects (bucket_id, name) values ('media','menuItem/abc1.jpg')`,
+    );
+
+    await d.query('select sweep_orphan_media()');
+
+    strictEqual((await d.query('select 1 from media')).rows.length, 0);
+    strictEqual((await d.query('select 1 from storage.objects')).rows.length, 0);
+  });
+
+  // The match used to be `url LIKE '%' || name`, so a shorter name that happened to be a
+  // suffix of somebody else's URL was deleted — the picture disappears from a menu while
+  // the row still points at it.
+  it('leaves an object whose name is merely a suffix of the orphan url', async () => {
+    const d = await db();
+    await orphan(d, 'menuItem/abc1.jpg');
+    await d.query(
+      `insert into storage.objects (bucket_id, name)
+       values ('media','menuItem/abc1.jpg'), ('media','1.jpg')`,
+    );
+
+    await d.query('select sweep_orphan_media()');
+
+    const left = await d.query('select name from storage.objects');
+    deepStrictEqual(left.rows.map((r) => r.name), ['1.jpg']);
+  });
+
+  // `%` and `_` are wildcards to LIKE. Nothing writes such a name today, and nothing
+  // stopped one either.
+  it('treats a name containing % as a name, not a pattern', async () => {
+    const d = await db();
+    await orphan(d, 'menuItem/plain.jpg');
+    await d.query(
+      `insert into storage.objects (bucket_id, name)
+       values ('media','menuItem/plain.jpg'), ('media','%')`,
+    );
+
+    await d.query('select sweep_orphan_media()');
+
+    const left = await d.query('select name from storage.objects');
+    deepStrictEqual(left.rows.map((r) => r.name), ['%']);
+  });
+
+  it('keeps a pending image something still points at', async () => {
+    const d = await db();
+    const { rows } = await orphan(d, 'cuisine/kept.jpg');
+    await d.query(`insert into cities (id,name) values ('edku','إدكو')`);
+    await d.query(
+      `insert into cuisines (city_id, name, media_id) values ('edku','مشويات',$1)`,
+      [rows[0].id],
+    );
+
+    await d.query('select sweep_orphan_media()');
+
+    strictEqual((await d.query('select 1 from media')).rows.length, 1);
+  });
+
+  // security definer plus delete, with EXECUTE granted to PUBLIC by default, made the
+  // nightly clean-up reachable from every phone in the city.
+  it('is not callable by the API roles', async () => {
+    const d = await db();
+    const { rows } = await d.query(
+      `select has_function_privilege('anon', 'public.sweep_orphan_media()', 'execute') as anon,
+              has_function_privilege('authenticated', 'public.sweep_orphan_media()', 'execute') as auth`,
+    );
+    strictEqual(rows[0].anon, false);
+    strictEqual(rows[0].auth, false);
+  });
+});

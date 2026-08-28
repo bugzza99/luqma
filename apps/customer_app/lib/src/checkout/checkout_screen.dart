@@ -61,6 +61,14 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
   /// on the draft; a rejected one is said out loud under the field.
   CouponEvaluation? _couponEvaluation;
   String? _appliedCouponCode;
+
+  /// The delivery fee the coupon was judged against.
+  ///
+  /// A verdict is only true for the basket it was given. Change the address and the fee
+  /// changes with the zone — and a free-delivery coupon that was worth 10 EGP is now
+  /// worth 15, or the minimum it cleared no longer clears. The old verdict stays on
+  /// screen looking settled while the number under it has moved.
+  int? _couponJudgedAgainstFee;
   bool _checkingCoupon = false;
 
   @override
@@ -108,6 +116,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
     setState(() {
       _checkingCoupon = false;
       _couponEvaluation = evaluation;
+      _couponJudgedAgainstFee = deliveryFee;
       _appliedCouponCode =
           evaluation is CouponAccepted ? code.toUpperCase() : null;
     });
@@ -206,6 +215,15 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
     final deliveryFee = merchant != null && zone != null && inRange
         ? Delivery.feeFor(merchant: merchant, zone: zone, config: config)
         : 0;
+
+    // Dropped the moment the fee it was judged against is no longer the fee. The
+    // customer re-applies the code, which is a keystroke; the alternative is a total
+    // that does not match what the server will charge.
+    if (_couponJudgedAgainstFee != null && _couponJudgedAgainstFee != deliveryFee) {
+      _couponEvaluation = null;
+      _appliedCouponCode = null;
+      _couponJudgedAgainstFee = null;
+    }
 
     final acceptedCoupon =
         _couponEvaluation is CouponAccepted ? _couponEvaluation as CouponAccepted : null;

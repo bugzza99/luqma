@@ -34,7 +34,9 @@ class BusyToggle extends ConsumerWidget {
     final merchant = ref.watch(merchantProvider(merchantId)).value;
     if (merchant == null) return const SizedBox.shrink();
 
-    final now = DateTime.now();
+    // The shared clock: both questions below are about the hour, and a widget that
+    // reads the wall clock cannot be tested without waiting for one.
+    final now = ref.watch(clockProvider)();
     final paused = merchant.pausedUntil != null && now.isBefore(merchant.pausedUntil!);
     // Asked separately from the pause: a shop can be shut because of the clock, and
     // offering to reopen it then would be offering something that does nothing.

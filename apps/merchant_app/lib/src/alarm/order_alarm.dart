@@ -36,10 +36,16 @@ class OrderAlarm extends _$OrderAlarm {
     // Later emissions assign `state`; the first one is the value this build returns.
     // Firing the listener immediately would assign `state` before the notifier exists,
     // which Riverpod reports as a circular dependency and is easy to write by accident.
-    ref.listen(
-      incomingOrdersProvider(merchantId),
-      (_, next) => state = _decide(next.value ?? const []),
-    );
+    ref.listen(incomingOrdersProvider(merchantId), (_, next) {
+      // An error is not an empty inbox. `next.value ?? const []` treats a dropped
+      // connection as "no orders waiting", which stops the alarm — so the one event that
+      // should make the merchant *more* suspicious made the phone go quiet instead.
+      //
+      // On an error the alarm keeps doing whatever it was doing. A false alarm is a
+      // merchant checking a screen; a silenced one is an order nobody cooked.
+      if (next.hasError) return;
+      state = _decide(next.value ?? const []);
+    });
 
     return _decide(ref.read(incomingOrdersProvider(merchantId)).value ?? const []);
   }

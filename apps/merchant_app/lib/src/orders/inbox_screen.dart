@@ -339,16 +339,21 @@ class _OrderCard extends ConsumerWidget {
 /// server-side for this to be right. Instant orders only: a pre-order was accepted the
 /// moment the seller published the meal, so a timer on it counts down to a deadline that
 /// does not exist.
-class _Deadline extends StatefulWidget {
+class _Deadline extends ConsumerStatefulWidget {
   const _Deadline({required this.order});
 
   final Order order;
 
   @override
-  State<_Deadline> createState() => _DeadlineState();
+  ConsumerState<_Deadline> createState() => _DeadlineState();
 }
 
-class _DeadlineState extends State<_Deadline> {
+class _DeadlineState extends ConsumerState<_Deadline> {
+  /// The shared clock. The countdown a merchant watches is the whole point of this
+  /// widget, so a test that cannot move time can only check it by waiting in real
+  /// seconds — which is how a suite starts taking minutes.
+  DateTime get _now => ref.read(clockProvider)();
+
   Timer? _tick;
 
   @override
@@ -364,11 +369,11 @@ class _DeadlineState extends State<_Deadline> {
   /// there — and would keep the screen from ever going idle.
   void _start() {
     final deadline = widget.order.acceptDeadlineAt;
-    if (deadline == null || !deadline.isAfter(DateTime.now())) return;
+    if (deadline == null || !deadline.isAfter(_now)) return;
 
     _tick = Timer.periodic(const Duration(seconds: 1), (timer) {
       if (!mounted) return timer.cancel();
-      if (!deadline.isAfter(DateTime.now())) timer.cancel();
+      if (!deadline.isAfter(_now)) timer.cancel();
       setState(() {});
     });
   }
@@ -385,7 +390,7 @@ class _DeadlineState extends State<_Deadline> {
     if (deadline == null) return const SizedBox.shrink();
 
     final colors = Theme.of(context).luqma;
-    final left = deadline.difference(DateTime.now());
+    final left = deadline.difference(_now);
 
     if (left.isNegative) {
       // Not a negative timer. The order is still here and still wanted; what changed is
