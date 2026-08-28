@@ -1,5 +1,7 @@
 import 'package:freezed_annotation/freezed_annotation.dart';
 
+import '../data/column_names.dart';
+
 part 'menu_item.freezed.dart';
 part 'menu_item.g.dart';
 
@@ -38,4 +40,22 @@ abstract class MenuItem with _$MenuItem {
   }) = _MenuItem;
 
   factory MenuItem.fromJson(Map<String, dynamic> json) => _$MenuItemFromJson(json);
+
+  /// A `menu_items` row, with the two places the table is looser than this model.
+  ///
+  /// `category_id` is `on delete set null` on purpose: deleting a category must not take
+  /// the dishes with it — somebody has to be able to re-file them. So a dish really can
+  /// arrive with no category, and every reader of the table has to expect it.
+  ///
+  /// It lives here rather than in a repository because it was in one, privately, and the
+  /// next repository to read this table did not know: an uncategorised dish threw
+  /// `type 'Null' is not a subtype of type 'String'` inside the search, and because the
+  /// rows are mapped in a loop, one orphaned dish took the whole city's search with it —
+  /// on the one screen `docs/04` removed the categories tab in favour of.
+  static MenuItem fromRow(Map<String, dynamic> row) {
+    final model = ColumnNames.toModel(row);
+    model['categoryId'] ??= '';
+    model['options'] ??= <dynamic>[];
+    return MenuItem.fromJson(model);
+  }
 }

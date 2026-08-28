@@ -121,7 +121,7 @@ void main() {
     await live.dropCity(cityId);
   });
 
-  final draft = () => OrderDraft(
+  OrderDraft draft() => OrderDraft(
         merchantId: merchantId,
         type: OrderType.instant,
         items: [
