@@ -117,6 +117,15 @@ class CourierWriteQueue {
   final CourierWriteStore _store;
 
   final List<PendingCourierWrite> _pending = [];
+
+  /// Writes the server refused on replay, kept until somebody has been told.
+  ///
+  /// Dropping a conflicting write is right — retrying it for ever is noise and the
+  /// order has moved on. Dropping it *silently* is not: the screen promises "هيتبعت أول
+  /// ما النت يرجع", and a count that quietly falls by one reads as sent. The courier is
+  /// standing in the street with the cash for that order.
+  final List<PendingCourierWrite> _rejected = [];
+
   bool _loaded = false;
 
   final _changed = StreamController<void>.broadcast();
@@ -125,6 +134,16 @@ class CourierWriteQueue {
   List<PendingCourierWrite> get pending => List.unmodifiable(_pending);
 
   int get pendingCount => _pending.length;
+
+  /// What a replay could not land. Cleared by [clearRejected] once it has been shown.
+  List<PendingCourierWrite> get rejected => List.unmodifiable(_rejected);
+
+  /// The courier has read it.
+  void clearRejected() {
+    if (_rejected.isEmpty) return;
+    _rejected.clear();
+    _notify();
+  }
 
   /// Emits when the pending set changes, so the screen can show the honest
   /// "هيتبعت أول ما النت يرجع" line rather than pretending the tap vanished.
@@ -177,8 +196,9 @@ class CourierWriteQueue {
   }
 
   /// Replays the queue, oldest first. A write that fails offline again stays queued; a
-  /// write that fails for any other reason is dropped — retrying a conflict forever is
-  /// noise, and the order has already moved on.
+  /// write that fails for any other reason is not retried — retrying a conflict for ever
+  /// is noise, and the order has already moved on — but it lands in [rejected] rather
+  /// than vanishing, because the courier was promised it would be sent.
   Future<void> flush() async {
     await load();
     if (_pending.isEmpty) return;
@@ -188,6 +208,8 @@ class CourierWriteQueue {
       final result = await _perform(write);
       if (result case Err(:final failure) when failure is OfflineFailure) {
         remaining.add(write);
+      } else if (result case Err()) {
+        _rejected.add(write);
       }
     }
     _pending

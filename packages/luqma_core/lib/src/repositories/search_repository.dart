@@ -98,7 +98,7 @@ class SupabaseSearchRepository implements SearchRepository {
 
         final withoutJoin = Map<String, dynamic>.from(row)..remove('merchants');
         dishes.add((
-          item: MenuItem.fromJson(ColumnNames.toModel(withoutJoin)),
+          item: MenuItem.fromRow(withoutJoin),
           merchant: Merchant.fromJson(ColumnNames.toModel(merchantRow)),
         ));
       }

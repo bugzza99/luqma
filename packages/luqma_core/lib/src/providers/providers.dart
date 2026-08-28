@@ -330,6 +330,19 @@ Stream<List<PendingCourierWrite>> courierPendingWrites(Ref ref) async* {
   yield* queue.changes.map((_) => queue.pending);
 }
 
+/// What a replay could not land, live.
+///
+/// Separate from `courierPendingWrites` because they say opposite things: one is a
+/// promise that something is still coming, the other is news that it is not. A screen
+/// that folds them together tells a courier holding cash that their tap went through.
+@riverpod
+Stream<List<PendingCourierWrite>> courierRejectedWrites(Ref ref) async* {
+  final queue = ref.watch(courierWriteQueueProvider);
+  await queue.load();
+  yield queue.rejected;
+  yield* queue.changes.map((_) => queue.rejected);
+}
+
 /// What one merchant's own courier has to take out. Live.
 @riverpod
 Stream<List<Order>> merchantDeliveries(Ref ref, String merchantId) =>
