@@ -516,7 +516,12 @@ Stream<Order> order(Ref ref, String orderId) =>
 /// exactly one place a raw remote value becomes a value the app trusts.
 @Riverpod(keepAlive: true)
 RemoteConfigService remoteConfigService(Ref ref) =>
-    RemoteConfigService(SupabaseConfigFetcher(Supabase.instance.client));
+    // `supabaseProvider`, not `Supabase.instance.client`. The whole reason the client is
+    // a provider is that overriding it redirects every read; reaching past it to the
+    // global singleton meant a test that pointed everything else at its own database
+    // still fetched config from whatever `Supabase.initialize` had last been handed —
+    // and threw outright if nothing had initialised it.
+    RemoteConfigService(SupabaseConfigFetcher(ref.watch(supabaseProvider)));
 
 /// The values the owner controls from AdminApp.
 ///

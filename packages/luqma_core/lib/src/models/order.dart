@@ -101,7 +101,18 @@ abstract class OrderLine with _$OrderLine {
     required int quantity,
 
     /// Piastres of chosen extras, per unit.
+    ///
+    /// Written by the server from [optionIds] and the menu. What the phone sends here is
+    /// ignored: a number nobody can verify is a number nobody should read.
     @Default(0) int optionsTotal,
+
+    /// Which extras were chosen, by id.
+    ///
+    /// The ids rather than a total, because the total is the one figure on an order that
+    /// the server could not check — it had no idea what had been selected. A crafted
+    /// request could ask for every extra on the menu and claim they were free, and the
+    /// merchant would hand over the food and collect the base price in cash.
+    @Default(<String>[]) List<String> optionIds,
     String? note,
   }) = _OrderLine;
 
