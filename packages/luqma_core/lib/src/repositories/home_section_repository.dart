@@ -21,8 +21,12 @@ abstract interface class HomeSectionRepository {
   Stream<List<HomeSection>> watchSections({required String cityId});
 
   Future<Result<void>> save(HomeSection section);
-  Future<Result<void>> setVisible(String key, bool isVisible);
-  Future<Result<void>> reorder(List<String> keysInOrder);
+  /// Both of these name a city, and neither is complete without one: `home_sections` is
+  /// keyed `(key, cityId)`, so the same `key` exists once per city. Without the city
+  /// these act on every city that has a section by that name.
+  Future<Result<void>> setVisible(String key, bool isVisible,
+      {required String cityId});
+  Future<Result<void>> reorder(List<String> keysInOrder, {required String cityId});
 }
 
 class SupabaseHomeSectionRepository implements HomeSectionRepository {
@@ -55,19 +59,22 @@ class SupabaseHomeSectionRepository implements HomeSectionRepository {
   }
 
   @override
-  Future<Result<void>> setVisible(String key, bool isVisible) {
+  Future<Result<void>> setVisible(String key, bool isVisible,
+      {required String cityId}) {
     return Result.guard(
       () => _db.from('home_sections').update({
         'is_visible': isVisible,
-      }).eq('key', key),
+      }).eq('key', key).eq('city_id', cityId),
     );
   }
 
   @override
-  Future<Result<void>> reorder(List<String> keysInOrder) {
+  Future<Result<void>> reorder(List<String> keysInOrder,
+      {required String cityId}) {
     return Result.guard(
       () => _db.rpc('reorder_home_sections', params: {
         'p_keys': keysInOrder,
+        'p_city_id': cityId,
       }),
     );
   }
@@ -121,9 +128,10 @@ class FakeHomeSectionRepository implements HomeSectionRepository {
   }
 
   @override
-  Future<Result<void>> setVisible(String key, bool isVisible) async {
+  Future<Result<void>> setVisible(String key, bool isVisible,
+      {required String cityId}) async {
     if (failure != null) return Result.err(failure!);
-    final i = _sections.indexWhere((s) => s.key == key);
+    final i = _sections.indexWhere((s) => s.key == key && s.cityId == cityId);
     if (i < 0) return const Result.err(NotFoundFailure());
     _sections[i] = _sections[i].copyWith(isVisible: isVisible);
     _notify();
@@ -131,10 +139,12 @@ class FakeHomeSectionRepository implements HomeSectionRepository {
   }
 
   @override
-  Future<Result<void>> reorder(List<String> keysInOrder) async {
+  Future<Result<void>> reorder(List<String> keysInOrder,
+      {required String cityId}) async {
     if (failure != null) return Result.err(failure!);
     for (var i = 0; i < keysInOrder.length; i++) {
-      final index = _sections.indexWhere((s) => s.key == keysInOrder[i]);
+      final index = _sections
+          .indexWhere((s) => s.key == keysInOrder[i] && s.cityId == cityId);
       if (index >= 0) _sections[index] = _sections[index].copyWith(sortOrder: i);
     }
     _notify();

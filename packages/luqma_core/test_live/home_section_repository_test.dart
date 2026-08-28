@@ -122,7 +122,7 @@ void main() {
           await collect(repository.watchSections(cityId: cityId));
       expect(emissions.first.single.isVisible, isTrue);
 
-      await repository.setVisible('a', false);
+      await repository.setVisible('a', false, cityId: cityId);
 
       // The watch re-emits several times around start-up (fetch, subscribe, the
       // replication-grace sweep), so assertions read *any* emission for what changed,
@@ -176,7 +176,8 @@ void main() {
       final emissions =
           await collect(repository.watchSections(cityId: cityId));
 
-      final reordered = await repository.reorder(['c', 'b', 'a']);
+      final reordered =
+          await repository.reorder(['c', 'b', 'a'], cityId: cityId);
       expect(reordered.failureOrNull, isNull,
           reason: 'the reorder call itself failed');
 

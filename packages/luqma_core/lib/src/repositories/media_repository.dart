@@ -77,7 +77,13 @@ class SupabaseMediaRepository implements MediaRepository {
       // A uuid, not the file name somebody's phone chose. Two uploads of one picture are
       // two images, and a shared path would mean approving one photo silently approves
       // another merchant's — while `DSC_0001.jpg` from two phones is one collision.
-      final path = '${kind.name}/${_uuid()}.jpg';
+      //
+      // The uploader's id leads, because `media_upload` requires it to: the bucket is
+      // public, so without a prefix any signed-in customer could write any name in it.
+      // The policy compares the first segment to `auth.uid()`, which means a caller that
+      // passes somebody else's `uploadedBy` is refused here rather than one statement
+      // later at the row — the same refusal, arriving before the bytes are stored.
+      final path = '$uploadedBy/${kind.name}/${_uuid()}.jpg';
 
       await storage.uploadBinary(
         path,

@@ -234,7 +234,8 @@ class _Row extends ConsumerWidget {
             ),
             onPressed: () => ref
                 .read(homeSectionRepositoryProvider)
-                .setVisible(section.key, !section.isVisible),
+                .setVisible(section.key, !section.isVisible,
+                    cityId: ref.read(currentCityProvider)),
           ),
           IconButton(
             key: HomeBuilderScreen.upKey(section.key),
@@ -262,7 +263,10 @@ class _Row extends ConsumerWidget {
     final next = [...order]
       ..removeAt(index)
       ..insert(to, section.key);
-    await ref.read(homeSectionRepositoryProvider).reorder(next);
+    await ref.read(homeSectionRepositoryProvider).reorder(
+          next,
+          cityId: ref.read(currentCityProvider),
+        );
   }
 }
 
