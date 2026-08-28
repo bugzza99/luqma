@@ -1,4 +1,8 @@
+import 'dart:async';
+
 import 'package:supabase_flutter/supabase_flutter.dart';
+
+import '../auth/auth_service.dart';
 
 import '../result.dart';
 
@@ -85,4 +89,45 @@ class FakePushTokenRepository implements PushTokenRepository {
     tokens.remove(token);
     return const Result.ok(null);
   }
+}
+
+/// Keeps [repository] in step with whoever is signed in.
+///
+/// Registering at launch does not work, and it fails silently: `users.fcm_tokens` is
+/// written by the signed-in account under RLS, and at launch nobody is signed in yet. A
+/// merchant installs the app, opens it, *then* signs in — by which time registration has
+/// already run and been refused. Nothing about that is visible: the app looks fine, the
+/// account has no token, and the phone never rings.
+///
+/// So the token follows the session rather than the start-up. [token] is asked for each
+/// time somebody signs in, because Android reissues it after a reinstall or a restore.
+///
+/// Nothing here throws. A merchant who cannot be reached by notification can still cook;
+/// a merchant whose app dies on sign-in cannot.
+StreamSubscription<LuqmaIdentity?> keepPushTokenRegistered({
+  required Stream<LuqmaIdentity?> identities,
+  required PushTokenRepository repository,
+  required Future<String?> Function() token,
+}) {
+  String? registered;
+
+  return identities.listen((identity) async {
+    try {
+      if (identity == null) {
+        final was = registered;
+        registered = null;
+        if (was != null) await repository.forget(was);
+        return;
+      }
+
+      final fresh = await token();
+      if (fresh == null) return;
+
+      registered = fresh;
+      await repository.register(fresh);
+    } catch (_) {
+      // Deliberately swallowed. This runs on every sign-in, and the worst outcome it may
+      // cause is a merchant who is not woken — never one who cannot sign in.
+    }
+  });
 }

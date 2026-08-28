@@ -43,7 +43,15 @@ Future<void> main() async {
       ),
     ],
   );
-  unawaited(LuqmaPush.start(container.read(pushTokenRepositoryProvider)));
+  // Messaging first, so a token can be asked for at all…
+  unawaited(LuqmaPush.start());
+  // …and then the token follows the session. Registering at launch would run before
+  // anybody has signed in, and RLS would refuse it without a word.
+  keepPushTokenRegistered(
+    identities: container.read(authServiceProvider).changes,
+    repository: container.read(pushTokenRepositoryProvider),
+    token: LuqmaPush.token,
+  );
 
   runApp(
     UncontrolledProviderScope(

@@ -4,7 +4,6 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
-import 'package:luqma_core/luqma_core.dart';
 
 /// The merchant's phone ringing when an order arrives.
 ///
@@ -28,11 +27,16 @@ abstract final class LuqmaPush {
 
   static final _local = FlutterLocalNotificationsPlugin();
 
-  /// Starts Messaging, asks for permission, and keeps [tokens] current.
+  /// Starts Messaging and asks for permission.
+  ///
+  /// It deliberately does **not** register a token. `users.fcm_tokens` is written by the
+  /// signed-in account under RLS, and at launch nobody is signed in — a merchant who
+  /// installs the app, opens it and then signs in would have had registration run and be
+  /// refused, silently. `keepPushTokenRegistered` follows the session instead.
   ///
   /// Returns false when Firebase is not configured in this build, which is a normal
   /// state and not an error — the rest of the app works without it.
-  static Future<bool> start(PushTokenRepository tokens) async {
+  static Future<bool> start() async {
     try {
       await Firebase.initializeApp();
     } catch (error) {
@@ -53,13 +57,6 @@ abstract final class LuqmaPush {
       ),
     );
 
-    final token = await messaging.getToken();
-    if (token != null) await tokens.register(token);
-
-    // A token is not for ever: Android reissues it after a reinstall, a restore, or a
-    // long silence. Without following it the merchant goes quiet and nothing says so.
-    messaging.onTokenRefresh.listen((fresh) => unawaited(tokens.register(fresh)));
-
     // The message carries data only, never a `notification` block — with one, Android
     // draws the alert itself and this app never runs, so the looping alarm on the
     // critical channel would never play.
@@ -68,18 +65,16 @@ abstract final class LuqmaPush {
     return true;
   }
 
-  /// Stops waking this device for whoever just signed out.
+  /// This device's token, or null when Firebase is not configured here.
   ///
-  /// A till behind a counter that keeps the last merchant's token goes on ringing for a
-  /// shop the person holding it no longer works for.
-  static Future<void> stop(PushTokenRepository tokens) async {
+  /// Asked for on every sign-in rather than cached: Android reissues it after a
+  /// reinstall, a restore, or a long silence, and a stale one is a merchant who has gone
+  /// quiet with nothing saying so.
+  static Future<String?> token() async {
     try {
-      final token = await FirebaseMessaging.instance.getToken();
-      if (token != null) await tokens.forget(token);
-      await FirebaseMessaging.instance.deleteToken();
+      return await FirebaseMessaging.instance.getToken();
     } catch (_) {
-      // Not configured, or offline. Signing out must not fail because a notification
-      // token could not be tidied up.
+      return null;
     }
   }
 
