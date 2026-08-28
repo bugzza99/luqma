@@ -149,17 +149,25 @@ void main() {
       );
     });
 
-    test('a delivered order is finished, even for the admin', () {
+    test('a delivered order is final for everyone but the admin', () {
+      expect(
+        OrderStatus.delivered.canMoveTo(OrderStatus.cancelled, by: OrderActor.merchant),
+        isFalse,
+      );
       expect(
         OrderStatus.delivered.canMoveTo(OrderStatus.cancelled, by: OrderActor.admin),
-        isFalse,
+        isTrue,
       );
     });
 
-    test('a cancelled order cannot be revived', () {
+    test('a cancelled order can only be revived by the admin', () {
       expect(
         OrderStatus.cancelled.canMoveTo(OrderStatus.accepted, by: OrderActor.merchant),
         isFalse,
+      );
+      expect(
+        OrderStatus.cancelled.canMoveTo(OrderStatus.accepted, by: OrderActor.admin),
+        isTrue,
       );
     });
 

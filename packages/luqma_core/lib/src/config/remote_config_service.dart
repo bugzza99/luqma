@@ -1,4 +1,4 @@
-import 'package:firebase_remote_config/firebase_remote_config.dart';
+﻿import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter/foundation.dart';
 
 import 'luqma_config.dart';
@@ -49,44 +49,22 @@ class RemoteConfigService {
   }
 }
 
-/// Reads Firebase Remote Config. Deliberately thin — everything worth testing lives in
-/// [RemoteConfigService] and [LuqmaConfig].
-class FirebaseConfigFetcher implements ConfigFetcher {
-  FirebaseConfigFetcher(this._remoteConfig);
+/// Reads the `config` table over PostgREST. Deliberately thin — everything worth testing
+/// lives in [RemoteConfigService] and [LuqmaConfig].
+class SupabaseConfigFetcher implements ConfigFetcher {
+  SupabaseConfigFetcher(this._db);
 
-  final FirebaseRemoteConfig _remoteConfig;
-
-  /// How stale a cached value may be before a fetch goes to the network.
-  ///
-  /// Fifteen minutes rather than hours: this is how quickly a mistake made in AdminApp
-  /// can be undone on phones already in the field.
-  static const staleAfter = Duration(minutes: 15);
+  final SupabaseClient _db;
 
   @override
   Future<ConfigSource> fetch() async {
-    await _remoteConfig.setConfigSettings(
-      RemoteConfigSettings(
-        fetchTimeout: const Duration(seconds: 10),
-        minimumFetchInterval: staleAfter,
-      ),
-    );
-    await _remoteConfig.fetchAndActivate();
-
+    // Values live as jsonb scalars, so they arrive already typed - a boolean comes back
+    // a bool, an integer an int, and validation upstream stays type-aware.
+    final rows = await _db.from('config').select('key, value');
     return MapConfigSource({
-      for (final entry in _remoteConfig.getAll().entries)
-        entry.key: _typed(entry.value),
+      for (final row in rows)
+        if (row['value'] != null) row['key'] as String: row['value'] as Object,
     });
-  }
-
-  /// Remote Config hands back every value as a string with accessors on the side. The
-  /// app's validation is type-aware, so the string is turned back into what it plainly
-  /// is before it gets there.
-  static Object _typed(RemoteConfigValue value) {
-    final raw = value.asString();
-    if (raw == 'true' || raw == 'false') return raw == 'true';
-    final asInt = int.tryParse(raw);
-    if (asInt != null) return asInt;
-    return raw;
   }
 }
 

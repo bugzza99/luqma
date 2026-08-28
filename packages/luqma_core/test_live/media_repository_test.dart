@@ -1,0 +1,191 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
+import 'package:flutter_test/flutter_test.dart';
+import 'package:luqma_core/luqma_core.dart';
+
+import 'harness.dart';
+
+/// The moderation queue, against a real Postgres.
+///
+/// `uploaded_by` and `reviewed_by` are foreign keys into auth.users here, not free
+/// strings — so the tests sign real people in rather than inventing reviewer names,
+/// which is exactly the discipline the read policy asks of production.
+void main() {
+  late LiveDatabase live;
+  late SupabaseMediaRepository repository;
+  late String uploaderUid;
+
+  setUpAll(() async {
+    live = await LiveDatabase.open();
+    repository = SupabaseMediaRepository(live.client);
+  });
+
+  setUp(() async {
+    // The queue is global — media carries no city — so this clears what past runs of
+    // *this* suite left behind. It cannot clear what other suites leave, which is why
+    // `mine` below exists: an upload from the menu or boundary suites is a legitimate
+    // occupant of a queue the admin genuinely sees whole.
+    await live.client.from('media').delete().like('url', 'https://example.com/%');
+    uploaderUid = await live.makeCustomer();
+  });
+
+  tearDownAll(() => live.close());
+
+  /// The queue, narrowed to what this run put in it.
+  ///
+  /// `watchPending` returns the whole moderation queue on purpose — one collection, one
+  /// door, and the admin reads all of it. So a test that asserts on the whole list is
+  /// asserting on every other suite's leftovers, and fails for a reason that has nothing
+  /// to do with media.
+  Future<List<Media>> mine() async => (await repository.watchPending().first)
+      .where((m) => m.uploadedBy == uploaderUid)
+      .toList();
+
+  Future<String> upload({
+    MediaStatus status = MediaStatus.pending,
+    MediaKind kind = MediaKind.menuItem,
+    DateTime? createdAt,
+  }) async =>
+      await live.client.from('media').insert({
+        'kind': kind.name,
+        'url': 'https://example.com/$uploaderUid-$kind.name.jpg',
+        'status': status.name,
+        'uploaded_by': _uuidOrDbNull(uploaderUid),
+        // Explicit: two uploads inside the same tick share now(), and a queue ordered
+        // by a tied column owes nobody an order.
+        if (createdAt != null) 'created_at': createdAt.toUtc().toIso8601String(),
+      }).select().single().then((row) => row['id'] as String);
+
+  test('the queue shows pending uploads, oldest first', () async {
+    final older =
+        await upload(createdAt: DateTime.now().subtract(const Duration(hours: 1)));
+    final newer = await upload();
+
+    final queue = await mine();
+
+    expect(queue.map((m) => m.id), [older, newer]);
+  });
+
+  // A banner and a dish photo are judged against different things, so the reviewer
+  // has to be told which they are looking at.
+  test('says which kind of image each one is', () async {
+    await upload(kind: MediaKind.promotion);
+
+    final pending = await mine();
+
+    expect(pending.single.kind, MediaKind.promotion);
+  });
+
+  test('approved uploads leave the queue', () async {
+    await upload(status: MediaStatus.approved);
+
+    expect(await mine(), isEmpty);
+  });
+
+  // Knowing a decision was made, and by whom, is what separates "reviewed and refused"
+  // from "nobody has looked yet".
+  test('a review records who decided and why', () async {
+    final id = await upload();
+
+    await repository.setStatus(
+      id,
+      MediaStatus.rejected,
+      reviewedBy: uploaderUid,
+      note: 'الصورة مش واضحة',
+    );
+
+    final read = (await repository.get(id)).valueOrNull!;
+    expect(read.status, MediaStatus.rejected);
+    expect(read.reviewNote, 'الصورة مش واضحة');
+  });
+
+  test('an empty note is no note', () async {
+    final id = await upload();
+
+    await repository.setStatus(id, MediaStatus.approved, note: '');
+
+    final read = (await repository.get(id)).valueOrNull!;
+    expect(read.status, MediaStatus.approved);
+    expect(read.reviewNote, isNull);
+  });
+
+  test('a missing medium is a not-found failure', () async {
+    final result =
+        await repository.get('00000000-0000-0000-0000-000000000000');
+
+    expect(result.failureOrNull, isA<NotFoundFailure>());
+  });
+
+  // The queue is watched live in AdminApp: an upload from a merchant's phone should
+  // appear without anyone refreshing.
+  // Narrowed to this run's uploads for the same reason `mine` is: the queue is global,
+  // so "it was empty and then it was not" is a claim about every other suite as well.
+  test('an upload arrives on an already-open queue', () async {
+    final emissions = <List<Media>>[];
+    final sub = repository
+        .watchPending()
+        .map((queue) => queue.where((m) => m.uploadedBy == uploaderUid).toList())
+        .listen(emissions.add);
+    addTearDown(sub.cancel);
+
+    await waitFor(() => emissions.isNotEmpty,
+        because: 'the queue never produced its first emission');
+    expect(emissions.first, isEmpty);
+
+    await upload();
+
+    await waitFor(
+      () => emissions.any((e) => e.isNotEmpty),
+      because: 'the new upload never reached the open queue',
+      timeout: const Duration(seconds: 15),
+    );
+  });
+
+  // Uploading — the half that never existed. Every image column in the product has been
+  // there since the first schema and the queue below was built and tested, but nothing
+  // could put a row in it: no bucket, no storage policy, no method here. The queue
+  // reviewed a table nothing wrote to.
+  group('uploading', () {
+    // A one-pixel PNG. What is under test is the round trip, not the picture.
+    final bytes = Uint8List.fromList(base64Decode(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAE'
+      'hQGAhKmMIQAAAABJRU5ErkJggg==',
+    ));
+
+    test('puts the bytes somewhere and files a row for them', () async {
+      final result = await repository.upload(
+        kind: MediaKind.menuItem,
+        bytes: bytes,
+        uploadedBy: uploaderUid,
+      );
+
+      expect(result.failureOrNull, isNull);
+      final media = result.valueOrNull!;
+      expect(media.url, startsWith('http'), reason: 'a URL a phone can fetch');
+      expect(media.status, MediaStatus.pending,
+          reason: 'the one door: nothing is visible until an admin says so');
+      expect(media.uploadedBy, uploaderUid);
+    });
+
+    test('the row it files is the row the queue shows', () async {
+      await repository.upload(
+        kind: MediaKind.menuItem, bytes: bytes, uploadedBy: uploaderUid);
+
+      expect(await mine(), hasLength(1));
+    });
+
+    // Two uploads of one picture are two images. Sharing a path would mean approving
+    // one photo silently approves somebody else's.
+    test('two uploads never land on the same path', () async {
+      final first = await repository.upload(
+        kind: MediaKind.menuItem, bytes: bytes, uploadedBy: uploaderUid);
+      final second = await repository.upload(
+        kind: MediaKind.menuItem, bytes: bytes, uploadedBy: uploaderUid);
+
+      expect(first.valueOrNull!.url, isNot(second.valueOrNull!.url));
+    });
+  });
+}
+
+String? _uuidOrDbNull(String id) => (id.isEmpty) ? null : id;

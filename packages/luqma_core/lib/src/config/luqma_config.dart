@@ -41,6 +41,11 @@ class LuqmaConfig {
     required this.minSupportedVersion,
     required this.updateMessage,
     required this.supportWhatsapp,
+    this.aboutPhotoMediaId,
+    this.aboutFacebook,
+    this.aboutWhatsapp,
+    this.aboutInstagram,
+    this.aboutDescription,
   });
 
   /// Phone verification. Built, and off until order volume makes it worth the SMS cost.
@@ -72,6 +77,14 @@ class LuqmaConfig {
   final String? minSupportedVersion;
   final String updateMessage;
   final String supportWhatsapp;
+
+  /// The "حول لقمة" content, edited from AdminApp and stored on the same config table.
+  /// An icon with no link set is not drawn, so each of these is nullable.
+  final String? aboutPhotoMediaId;
+  final String? aboutFacebook;
+  final String? aboutWhatsapp;
+  final String? aboutInstagram;
+  final String? aboutDescription;
 
   static const defaults = LuqmaConfig(
     otpEnabled: false,
@@ -162,6 +175,11 @@ class LuqmaConfig {
       minSupportedVersion: text('min_supported_version'),
       updateMessage: text('update_message') ?? defaults.updateMessage,
       supportWhatsapp: text('support_whatsapp') ?? defaults.supportWhatsapp,
+      aboutPhotoMediaId: text('about_photo_media_id'),
+      aboutFacebook: text('about_facebook'),
+      aboutWhatsapp: text('about_whatsapp'),
+      aboutInstagram: text('about_instagram'),
+      aboutDescription: text('about_description'),
     );
   }
 
