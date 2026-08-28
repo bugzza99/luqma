@@ -19,6 +19,8 @@ class CourierScreen extends ConsumerWidget {
   static const reasonSheetKey = Key('courier.reasonSheet');
   static const pendingKey = Key('courier.pending');
   static const retryKey = Key('courier.retry');
+  static const rejectedKey = Key('courier.rejected');
+  static const dismissRejectedKey = Key('courier.dismissRejected');
 
   static Key cardKey(String id) => Key('courier.card.$id');
   static Key cashKey(String id) => Key('courier.cash.$id');
@@ -67,6 +69,7 @@ class CourierScreen extends ConsumerWidget {
       body: Column(
         children: [
           const _PendingBanner(),
+          const _RejectedBanner(),
           Expanded(
             child: switch (deliveries) {
               // First, and on `hasError`: a stream that fails before it has ever emitted
@@ -435,6 +438,60 @@ class _PendingBanner extends ConsumerWidget {
             onPressed: () => ref.read(courierWriteQueueProvider).flush(),
             style: TextButton.styleFrom(foregroundColor: colors.onAccent),
             child: const Text('حاول تاني'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+/// The other half of the promise the banner above makes.
+///
+/// `_PendingBanner` says "هيتبعت أول ما النت يرجع". When the replay is refused — the
+/// order was finished by somebody else while there was no signal — that write is
+/// correctly not retried for ever, and used to vanish with it. The count fell by one and
+/// read as sent, while the cash for that order was already in the courier's pocket.
+///
+/// So it is said out loud, in the colour the rest of the app reserves for something
+/// being wrong, and it stays until the courier dismisses it.
+class _RejectedBanner extends ConsumerWidget {
+  const _RejectedBanner();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final rejected = ref.watch(courierRejectedWritesProvider).value ?? const [];
+    if (rejected.isEmpty) return const SizedBox.shrink();
+
+    final theme = Theme.of(context);
+    final colors = theme.luqma;
+
+    return Container(
+      key: CourierScreen.rejectedKey,
+      width: double.infinity,
+      // A white card with `danger` on it, which is how every other error in this product
+      // is drawn. There is no `onDanger` token, and there is no token because nothing
+      // here puts text on a red field — inventing that pairing in a screen would be a
+      // colour written outside `luqma_core` and a contrast ratio nobody has checked.
+      decoration: BoxDecoration(
+        color: colors.card,
+        border: Border(bottom: BorderSide(color: colors.hairline)),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: Space.gutter, vertical: Space.sm),
+      child: Row(
+        children: [
+          Icon(Icons.report_problem_outlined,
+              size: Sizes.iconMd, color: colors.danger),
+          const SizedBox(width: Space.sm),
+          Expanded(
+            child: Text(
+              '${rejected.length} تحديث محصلش — الأوردر اتغيّر. كلّم الإدارة.',
+              style: theme.textTheme.bodyMedium?.copyWith(color: colors.danger),
+            ),
+          ),
+          TextButton(
+            key: CourierScreen.dismissRejectedKey,
+            onPressed: () => ref.read(courierWriteQueueProvider).clearRejected(),
+            style: TextButton.styleFrom(foregroundColor: colors.danger),
+            child: const Text('تمام'),
           ),
         ],
       ),

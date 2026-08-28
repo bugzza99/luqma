@@ -102,12 +102,7 @@ class SupabaseMenuRepository implements MenuRepository {
   }
 }
 
-MenuItem _toItem(Map<String, dynamic> row) {
-  final model = ColumnNames.toModel(row);
-  if (model['categoryId'] == null) model['categoryId'] = '';
-  if (model['options'] == null) model['options'] = <dynamic>[];
-  return MenuItem.fromJson(model);
-}
+MenuItem _toItem(Map<String, dynamic> row) => MenuItem.fromRow(row);
 
 /// In-memory menu, for tests and for entering data before the backend exists.
 class FakeMenuRepository implements MenuRepository {
