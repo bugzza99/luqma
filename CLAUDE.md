@@ -44,14 +44,33 @@ Three things the migrations alone cannot carry to a new project — each bit har
 - **pg_cron schedules** land in `20260824130000_scheduled_jobs.sql` — verify with
   `select jobname from cron.job` after any restore.
 
-The live repository suite runs against the cloud exactly as against the local stack:
+### The test project — `luqma-test`, ref `letdxuiypazbcfxbafab`
+
+**The two suites that need a real Postgres run against their own cloud project, and
+Docker is not part of the loop any more.** `luqma-test` is the same region, the same
+thirty migrations and the same access-token hook; nothing about it is a reduced copy.
+
+It exists because **both suites are destructive**. One full run leaves roughly thirteen
+staff rows, nine auth users, seven merchants, five cities and four orders behind, and
+`tool/cleanup-cloud-test-residue.sql` is in this repository because they were once
+pointed at `luqma-edku` and somebody had to clean it out by hand afterwards. A suite that
+has to be run carefully is a suite that gets run less often.
+
+Credentials live in `supabase/.temp/` (gitignored) and are written by:
 
 ```
-flutter test test_live --dart-define=SUPABASE_URL=https://vqcivwdoekyfqhfmnuos.supabase.co \
-  --dart-define=SUPABASE_SERVICE_KEY=<service_role key>
+powershell -ExecutionPolicy Bypass -File tool\setup-cloud-test.ps1 `
+    -ProjectRef letdxuiypazbcfxbafab -DbPassword '<the project database password>'
 ```
 
-All 125 passed against the hosted project on 2026-08-25.
+After that `tool\run_tests.ps1` runs everything, both cloud suites included. A clone with
+no credentials **skips** them and says so in the summary rather than reporting a clean
+sweep it did not earn.
+
+A project that has never had the migrations needs `db push` **and** `config push` — the
+second is not optional, for the reason in the bullet above: the hook is configuration.
+
+137 live tests and 109 stack tests passed against `luqma-test` on 2026-08-28.
 
 
 **The design is finished and verified. Read `docs/` before changing anything.**
@@ -412,8 +431,10 @@ Or run the pieces by hand:
 ```
 cd packages/luqma_core && flutter gen-l10n && flutter analyze && flutter test
 npm --prefix supabase test          # schema and seed, on PGlite — no Docker needed
-npm --prefix supabase run test:stack # the boundary, against a running `supabase start`
-cd packages/luqma_core && flutter test test_live -j 1   # repositories, against the stack
+DATABASE_URL=<luqma-test session pooler> npm --prefix supabase run test:stack
+cd packages/luqma_core && flutter test test_live -j 1 \
+  --dart-define=SUPABASE_URL=https://letdxuiypazbcfxbafab.supabase.co \
+  --dart-define=SUPABASE_SERVICE_KEY=<service_role> --dart-define=SUPABASE_ANON_KEY=<anon>
 ```
 
 **`tool\run_tests.ps1` is the reliable entry point, and the merchant_app tests must run
@@ -427,13 +448,18 @@ variable; it simply runs in the shell that already has the right one.
 different every run and none of it is about the code.
 
 `supabase test` runs on **PGlite**, Postgres compiled to WebAssembly: the real migrations,
-the real constraint machinery, no container. `test:stack` needs `supabase start`, because
-policies, `auth.uid()` and the claims hook only exist in the real thing.
+the real constraint machinery, no container. `test:stack` and `test_live` need policies,
+`auth.uid()` and the claims hook, which only exist in a real Postgres — that is the
+`luqma-test` project above, not a local stack.
 
-**The local stack sits 1000 above the Supabase defaults** — 55321 for the API, 55322 for
-the database. Windows reserves 54084-54683 for Hyper-V on this machine and that swallows
-every one of them; check yours with
-`netsh interface ipv4 show excludedportrange protocol=tcp`.
+**Connect to it in session mode (5432), never transaction mode (6543).** The stack tests
+hold a transaction open across statements and set a role inside it; a transaction pooler
+hands the next statement to a different backend and the role is gone.
+
+`supabase start` still works and nothing here forbids it, but no documented command needs
+it any more. **The local stack sits 1000 above the Supabase defaults** — 55321 for the
+API, 55322 for the database — because Windows reserves 54084-54683 for Hyper-V on this
+machine; check yours with `netsh interface ipv4 show excludedportrange protocol=tcp`.
 
 `gen-l10n` first on a fresh clone, and after any change to `lib/l10n/app_ar.arb`.
 The generated `app_localizations*.dart` are gitignored — generated code does not belong
@@ -634,6 +660,13 @@ JAVA_HOME="C:\Program Files\Android\Android Studio\jbr" firebase emulators:exec 
   Size the view (`tester.view.physicalSize`) to what the app actually runs at. Doing so
   immediately surfaced a real overflow on the merchant screen that had been live on every
   narrow phone.
+- **`test_live` needs the anon key too, not just the service key.** The harness defaults
+  all three defines to the *local stack's* demo values, so a cloud run that passes only
+  `SUPABASE_URL` and `SUPABASE_SERVICE_KEY` silently keeps the demo anon key — which
+  GoTrue on a real project rejects. Only `phone_auth_test` uses it, because it signs up
+  the way a phone does rather than with the service key ("can an administrator make an
+  account" is a different question), so the whole thing reads as *signup is broken* in
+  exactly one file while the other 132 tests pass. `tool\run_tests.ps1` passes all three.
 - **A live test cannot reach `clockProvider`.** The clock there is Postgres's. A daily-meal
   fixture with a 13:00–16:00 collection window passed all morning and failed after four —
   the rule it tripped was right, the fixture was asserting the hour. Seed windows that are

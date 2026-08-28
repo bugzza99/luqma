@@ -37,7 +37,8 @@ enum CouponRejection {
   alreadyUsed,
   exhausted,
 
-  /// The coupon itself is unusable — currently only an uncapped percentage.
+  /// The coupon itself is unusable: an uncapped percentage, or a negative figure
+  /// anywhere in it.
   malformed,
 }
 
@@ -134,6 +135,13 @@ abstract class Coupon with _$Coupon {
     required bool isFirstOrder,
   }) {
     if (type == CouponType.percentage && maxDiscount == null) {
+      return const CouponRejected(CouponRejection.malformed);
+    }
+    // A discount cannot be negative. Every figure here is typed into AdminApp by a
+    // person, and a minus sign is one keystroke from a comma — left alone it becomes
+    // arithmetic that *raises* the total, and the courier collects the higher figure
+    // at the door. Zero is fine: that is a campaign wound down, not a mistake.
+    if (value < 0 || (maxDiscount != null && maxDiscount! < 0)) {
       return const CouponRejected(CouponRejection.malformed);
     }
     if (!isActive) return const CouponRejected(CouponRejection.inactive);

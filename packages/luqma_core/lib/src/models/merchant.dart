@@ -1,6 +1,7 @@
 import 'package:freezed_annotation/freezed_annotation.dart';
 
 import 'converters.dart';
+import 'revenue.dart';
 
 part 'merchant.freezed.dart';
 part 'merchant.g.dart';
@@ -93,9 +94,14 @@ abstract class Merchant with _$Merchant {
     String? planId,
     @Default(RevenueModel.subscription) RevenueModel revenueModel,
 
-    /// Commission rate in basis points, or the prepaid balance in piastres, depending
-    /// on [revenueModel]. Meaningless under a subscription.
+    /// The rate or fee in force: **basis points** under commission, **piastres per
+    /// order** under prepaid, and meaningless under a subscription.
+    ///
+    /// Not the prepaid balance, which the data-model note once said — that is
+    /// [walletBalance]. Two fields meaning the same thing is how they come to disagree.
     @Default(0) int revenueValue,
+
+    /// Remaining prepaid credit, in piastres. Only ever moved by the server.
     @Default(0) int walletBalance,
 
     /// Overrides the zone's default delivery fee, in piastres. Clamped server-side to
@@ -104,6 +110,14 @@ abstract class Merchant with _$Merchant {
     @Default(0) int minOrder,
     @Default(0) double ratingAvg,
     @Default(0) int ratingCount,
+
+    /// Roughly how long the kitchen takes, in minutes.
+    ///
+    /// One number rather than a range: Edku is ten minutes across on a motorbike, so
+    /// what actually differs between two shops is the kitchen, not the distance — and a
+    /// "25–35" built from two hand-typed numbers reads as a precision nobody measured.
+    /// The database bounds it between 5 and 180, because 600 is a typo.
+    @Default(30) int prepMinutes,
   }) = _Merchant;
 
   const Merchant._();
@@ -115,6 +129,10 @@ abstract class Merchant with _$Merchant {
   bool acceptsOrdersAt(DateTime now) {
     if (status != MerchantStatus.approved) return false;
     if (pausedUntil != null && now.isBefore(pausedUntil!)) return false;
+    // A prepaid merchant whose wallet has run out stops appearing as open, exactly like
+    // one outside its hours. Letting orders through would mean the platform carries
+    // them for nothing and then argues about it afterwards.
+    if (!Revenue.canAffordAnOrder(this)) return false;
     return openingHours.any((window) => window.contains(now));
   }
 }

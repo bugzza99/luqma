@@ -9,3 +9,6 @@ environment:
 # luqma_core can never drift onto different versions of the same dependency.
 workspace:
   - packages/luqma_core
+  - apps/admin_app
+  - apps/customer_app
+  - apps/merchant_app
