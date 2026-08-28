@@ -177,8 +177,11 @@ class _Card extends ConsumerWidget {
           ),
           // Approved is not live. Without this, a merchant whose campaign starts on
           // Tuesday opens the app on Monday and thinks something is broken.
+          // `now`, read from `clockProvider` above — not the wall clock. Two reads of
+          // two different clocks let the status chip and this hint disagree, and made
+          // the test that covers it pass only while the real date sits before `startAt`.
           if (promotion.status == PromotionStatus.approved &&
-              !promotion.isLiveAt(DateTime.now())) ...[
+              !promotion.isLiveAt(now)) ...[
             const SizedBox(height: Space.xs),
             Text(
               'هيبدأ ${_day(promotion.startAt)}',

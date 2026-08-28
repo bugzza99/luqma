@@ -58,6 +58,7 @@ void main() {
     List<HomeSection> sections = const [],
     List<Merchant> merchants = const [],
     bool reducedMotion = false,
+    ThemeData? theme,
   }) async {
     await tester.pumpWidget(
       ProviderScope(
@@ -75,7 +76,7 @@ void main() {
               .overrideWithValue(RemoteConfigService(FakeConfigFetcher({}))),
         ],
         child: MaterialApp(
-          theme: LuqmaTheme.light,
+          theme: theme ?? LuqmaTheme.light,
           locale: const Locale('ar'),
           localizationsDelegates: LuqmaStrings.localizationsDelegates,
           supportedLocales: LuqmaStrings.supportedLocales,
@@ -334,6 +335,43 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('التاني').hitTestable(), findsOneWidget);
+    });
+
+    // "A touch stops the rotation for good" is what the code says beside the listener,
+    // and it was true only until the next inherited-widget change. `didChangeDependencies`
+    // reschedules, and it fires for a theme change, a locale change, the keyboard coming
+    // up — every one of which happens while somebody is mid-sentence.
+    //
+    // The theme is the trigger used here because the carousel reads `Theme.of(context)`
+    // in its build, so it is a dependency it genuinely has. Re-pumping the same widget
+    // types at the same positions reuses the elements, so the carousel keeps its state
+    // and this is a dependency change rather than a fresh widget.
+    testWidgets('a touch stops it for good, and a theme change does not undo that',
+        (tester) async {
+      await pump(tester,
+          promotions: two,
+          sections: heroSlot,
+          merchants: [merchant('m1'), merchant('m2')]);
+
+      await tester.drag(find.byType(PageView), const Offset(-20, 0));
+      await tester.pumpAndSettle();
+
+      await tester.pump(const Duration(seconds: 5));
+      await tester.pumpAndSettle();
+      expect(find.text('الأول').hitTestable(), findsOneWidget,
+          reason: 'the drag stopped it');
+
+      await pump(tester,
+          promotions: two,
+          sections: heroSlot,
+          merchants: [merchant('m1'), merchant('m2')],
+          theme: LuqmaTheme.dark);
+
+      await tester.pump(const Duration(seconds: 5));
+      await tester.pumpAndSettle();
+
+      expect(find.text('الأول').hitTestable(), findsOneWidget,
+          reason: 'it must not start turning again under the thumb');
     });
 
     // High severity in the guidance, and the rule most carousels skip: the setting is on

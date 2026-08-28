@@ -27,10 +27,30 @@ class MerchantScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final merchant = ref.watch(merchantProvider(merchantId));
-    final items = ref.watch(menuItemsProvider(merchantId)).value ?? const <MenuItem>[];
-    final categories =
-        ref.watch(menuCategoriesProvider(merchantId)).value ?? const <MenuCategory>[];
+    final itemsAsync = ref.watch(menuItemsProvider(merchantId));
+    final categoriesAsync = ref.watch(menuCategoriesProvider(merchantId));
+    final items = itemsAsync.value ?? const <MenuItem>[];
+    final categories = categoriesAsync.value ?? const <MenuCategory>[];
     final cart = ref.watch(cartProvider);
+
+    // The same rule the merchant stream below is given, and for the same reason. These
+    // two were collapsed with `.value ?? const []`, so a dropped connection drew the
+    // shop with an empty menu: a kitchen that appears to cook nothing, with no error and
+    // no way to retry. An empty menu and an unreachable one look identical to a customer
+    // and are not remotely the same thing.
+    final menuError = itemsAsync.error ?? categoriesAsync.error;
+    if (menuError != null) {
+      return Scaffold(
+        appBar: AppBar(),
+        body: LuqmaErrorView(
+          failure: menuError,
+          onRetry: () {
+            ref.invalidate(menuItemsProvider(merchantId));
+            ref.invalidate(menuCategoriesProvider(merchantId));
+          },
+        ),
+      );
+    }
 
     return switch (merchant) {
       // An error arm comes first, and matches on `hasError` rather than on the

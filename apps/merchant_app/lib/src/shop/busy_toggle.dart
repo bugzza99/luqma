@@ -135,7 +135,10 @@ class _Open extends ConsumerWidget {
 
     await ref.read(merchantRepositoryProvider).setPausedUntil(
           merchantId,
-          DateTime.now().add(Duration(minutes: minutes)),
+          // The injected clock, so a test can pause the shop at a known moment and read
+          // back a known `pausedUntil` — this value is written to the database and is
+          // what every other screen derives "is the shop taking orders" from.
+          ref.read(clockProvider)().add(Duration(minutes: minutes)),
         );
     ref.invalidate(merchantProvider(merchantId));
   }
@@ -149,7 +152,11 @@ class _Paused extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final colors = Theme.of(context).luqma;
-    final left = merchant.pausedUntil!.difference(DateTime.now()).inMinutes + 1;
+    // How long the merchant is told the pause has left. Read from `clockProvider` so a
+    // test can stand at the boundary — the minute before it lapses and the minute after
+    // — rather than only wherever the machine's wall clock happens to be.
+    final left =
+        merchant.pausedUntil!.difference(ref.watch(clockProvider)()).inMinutes + 1;
     final strings = LuqmaStrings.of(context);
 
     return _Bar(

@@ -325,7 +325,9 @@ class _Term extends ConsumerWidget {
 
     final subscription = ref.watch(subscriptionProvider(merchantId)).value;
     final plans = ref.watch(plansProvider).value ?? const <Plan>[];
-    final now = DateTime.now();
+    // The same rule as the merchant's own view of this: an expiry is judged against the
+    // injected clock, so both screens can be tested at the day the term lapses.
+    final now = ref.watch(clockProvider)();
 
     return _Card(
       title: 'الاشتراك',
