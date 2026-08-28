@@ -65,7 +65,10 @@ class _Body extends StatelessWidget {
         const SizedBox(height: Space.xl),
         Text('المطاعم', style: theme.textTheme.titleLarge),
         const SizedBox(height: Space.sm),
-        _StatusBreakdown(statuses: stats.merchantsByStatus),
+        _StatusBreakdown(
+          key: StatisticsScreen.merchantsKey,
+          statuses: stats.merchantsByStatus,
+        ),
         const SizedBox(height: Space.xl),
         Text('النمو', style: theme.textTheme.titleLarge),
         const SizedBox(height: Space.sm),
@@ -107,7 +110,7 @@ class _Stat extends StatelessWidget {
 }
 
 class _StatusBreakdown extends StatelessWidget {
-  const _StatusBreakdown({required this.statuses});
+  const _StatusBreakdown({super.key, required this.statuses});
 
   final Map<String, int> statuses;
 

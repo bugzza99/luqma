@@ -4,6 +4,7 @@ import '../models/admin.dart';
 import '../models/order.dart';
 import '../data/column_names.dart';
 import '../result.dart';
+import '../util/phone.dart';
 
 /// Customers, as AdminApp supports and moderates them.
 ///
@@ -46,8 +47,15 @@ class SupabaseCustomerRepository implements CustomerRepository {
       var request = _db.from('users').select();
       final trimmed = query.trim();
       if (trimmed.isNotEmpty) {
-        // A phone number typed with spaces still finds its person.
-        final digits = trimmed.replaceAll(RegExp(r'[\s-]'), '');
+        // `Phone.normalize`, which is the same folding sign-up does before it stores the
+        // number — not a local copy that only strips spaces.
+        //
+        // Sign-up writes `010…` whatever was typed, so an admin on an Arabic keyboard
+        // searching `٠١٠…` was looking for a spelling that is never stored. They found
+        // nobody and told the customer on the phone that they have no account — and this
+        // screen is the *only* way back from a forgotten password, because there is no
+        // mailbox and no SMS.
+        final digits = Phone.normalize(trimmed);
         request = request.or(
           'name.ilike.%$trimmed%,phone.ilike.%${digits.isNotEmpty ? digits : trimmed}%',
         );
