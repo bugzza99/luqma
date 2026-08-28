@@ -204,8 +204,16 @@ class AdminToday {
   /// Orders placed today that were not refused or cancelled.
   final int ordersToday;
 
-  /// Piastres. Money counted on the same rule as [ordersToday]: a delivered order and an
-  /// eaten one both moved cash.
+  /// Piastres, and deliberately *not* counted on the same rule as [ordersToday].
+  ///
+  /// This is the cash that came in: orders actually handed over, dated by when they were
+  /// handed over rather than by when they were placed. [ordersToday] answers a different
+  /// question — how much was asked for today — so an order still on the stove is in one
+  /// figure and not the other, and that is the point.
+  ///
+  /// The owner chose this reading. The alternative, the value of everything ordered, is
+  /// highest at the moment the least is certain and falls through the evening as orders
+  /// resolve, which reads as a bad night rather than as a number correcting itself.
   final int moneyToday;
 
   /// The escalator's queue: orders nobody answered in time.
