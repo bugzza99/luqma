@@ -50,3 +50,8 @@ serviceAccount*.json
 # listing; leaking it loses the store listing to whoever else has it.
 signing/*.jks
 signing/key.properties
+
+# JVM heap dumps. Gradle writes one of these when it runs out of memory, and four of them
+# — 3 GB in total — were committed and sat in the history until the first attempt to push
+# anywhere. GitHub refuses a single file over 100 MB, so they would have blocked it.
+*.hprof
