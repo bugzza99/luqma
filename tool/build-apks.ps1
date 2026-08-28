@@ -87,16 +87,17 @@ foreach ($app in @('customer_app', 'merchant_app', 'admin_app')) {
   Write-Host "`n=== $app ===" -ForegroundColor Cyan
   Push-Location (Join-Path $root "apps\$app")
   try {
-    # `clean` first, and it is not caution — it is a fix.
+    # `clean` first — caution, not a fix, and worth being honest about which.
     #
-    # Flutter reuses a compiled kernel (`.dart_tool/flutter_build/<hash>/app.dill`)
-    # between builds, and a dart-define that was passed once stays baked into it. A
-    # release built here once carried the production **service_role** key, which nothing
-    # in this repository reads and this script has never passed: it came from an earlier
-    # build made with the `test_live` defines, and every later build inherited it.
+    # A stale kernel was the first explanation for the keys that turned up in these APKs,
+    # and it was wrong: a cleaned build reproduced the leak exactly, which is what pointed
+    # at the `ConvertFrom-Json` line above. Flutter does keep a compiled kernel per build
+    # directory, and a define baked into one is a plausible way to ship a value nobody
+    # passed — it just was not what happened here.
     #
-    # An extra two minutes per app against shipping a key that bypasses every policy in
-    # the database is not a trade worth thinking about.
+    # It stays because two minutes an app is nothing against a release built from
+    # something other than the code in front of you, and because a build that produces
+    # the same bytes every time is the one you can reason about when it goes wrong again.
     & flutter clean | Out-Null
     & flutter build apk --release --split-per-abi --target-platform android-arm64 @defines
     if ($LASTEXITCODE -ne 0) { throw "$app failed to build" }
