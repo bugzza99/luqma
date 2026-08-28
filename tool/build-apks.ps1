@@ -54,10 +54,43 @@ foreach ($app in @('customer_app', 'merchant_app', 'admin_app')) {
   Write-Host "`n=== $app ===" -ForegroundColor Cyan
   Push-Location (Join-Path $root "apps\$app")
   try {
+    # `clean` first, and it is not caution — it is a fix.
+    #
+    # Flutter reuses a compiled kernel (`.dart_tool/flutter_build/<hash>/app.dill`)
+    # between builds, and a dart-define that was passed once stays baked into it. A
+    # release built here once carried the production **service_role** key, which nothing
+    # in this repository reads and this script has never passed: it came from an earlier
+    # build made with the `test_live` defines, and every later build inherited it.
+    #
+    # An extra two minutes per app against shipping a key that bypasses every policy in
+    # the database is not a trade worth thinking about.
+    & flutter clean | Out-Null
     & flutter build apk --release --split-per-abi --target-platform android-arm64 @defines
     if ($LASTEXITCODE -ne 0) { throw "$app failed to build" }
 
     $built = Join-Path (Get-Location) 'build\app\outputs\flutter-apk\app-arm64-v8a-release.apk'
+
+    # Nothing ships without being read first.
+    #
+    # A `service_role` JWT inside an APK is not a leak that needs an attacker: the file
+    # sits on the phone, unzipping it takes seconds, and that key bypasses every policy
+    # in the database — every address, every phone number, and the ability to delete all
+    # of it. It happened here, and nothing in the build said a word.
+    #
+    # So the build reads its own output. A key whose payload says `service_role` fails
+    # the build rather than reaching `apks/`.
+    $blob = [IO.File]::ReadAllText($built, [Text.Encoding]::ASCII)
+    foreach ($jwt in ([regex]'eyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{20,}').Matches($blob)) {
+      $payload = $jwt.Value.Split('.')[1].Replace('-', '+').Replace('_', '/')
+      switch ($payload.Length % 4) { 2 { $payload += '==' } 3 { $payload += '=' } }
+      try { $json = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($payload)) }
+      catch { continue }
+      if ($json -match '"role"\s*:\s*"service_role"') {
+        throw ("$app embeds a service_role key. It bypasses every policy in the database, " +
+               "and an APK is a file anybody can open. Rotate that key, then build again.")
+      }
+    }
+
     $name  = $app -replace '_app$', ''
     Copy-Item $built (Join-Path $outDir "luqma-$name.apk") -Force
   } finally {

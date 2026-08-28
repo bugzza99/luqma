@@ -637,6 +637,18 @@ JAVA_HOME="C:\Program Files\Android\Android Studio\jbr" firebase emulators:exec 
   feature here: `plan_expires_at` and the push-cap fix sat unapplied and untested until
   the collision was found. `ls supabase/migrations | sed 's/_.*//' | sort | uniq -d`
   must print nothing.
+- **A dart-define that was passed once stays in the build.** Flutter reuses the compiled
+  kernel in `.dart_tool/flutter_build/<hash>/app.dill`, and every `--dart-define` baked
+  into it survives into later builds that never passed it. A release APK here carried the
+  production **`service_role` key** — which nothing in this repository reads and
+  `tool/build-apks.ps1` has never passed — inherited from an earlier build made with the
+  `test_live` defines. One of seven cached build directories was the poisoned one, and it
+  was the one being reused, so building *with the correct script* reproduced the leak.
+  That key bypasses every policy in the database, and an APK is a file anybody can unzip.
+  The same stale kernel is why the release apps could not reach Supabase while `flutter
+  run` worked perfectly: the binary was compiled from values nobody had passed that day.
+  `build-apks.ps1` now runs `flutter clean` first and reads its own output, failing the
+  build on any JWT whose payload says `service_role`.
 - **A PowerShell function cannot `+=` a variable in its caller's scope.** `$results +=`
   inside `Invoke-Check` wrote to a *local* copy, so `tool/run_tests.ps1` finished with an
   empty result table and printed **"All suites passed."** however many suites had failed —
