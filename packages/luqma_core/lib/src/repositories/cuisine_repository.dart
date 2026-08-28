@@ -53,7 +53,12 @@ class SupabaseCuisineRepository implements CuisineRepository {
           .from('cuisines')
           .select('id, city_id, name, media_id, sort_order, media(url, status)')
           .eq('city_id', cityId)
-          .order('sort_order');
+          // `ascending: true`, spelled out: `order()` in this SDK defaults to
+          // *descending*, so the bare call put the circles in the reverse of the order
+          // the admin arranged them in — and the "الترتيب" field on the admin's screen
+          // did the opposite of what it says. Every other ordered query in this package
+          // passes the flag; this one did not, which is the whole story.
+          .order('sort_order', ascending: true);
 
       return rows.map((row) {
         final media = row['media'] as Map<String, dynamic>?;

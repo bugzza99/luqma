@@ -60,7 +60,13 @@ class SupabaseAddressRepository implements AddressRepository {
   Future<Result<List<Address>>> addresses(String uid) {
     return Result.guard(() async {
       final rows =
-          await _db.from('addresses').select().eq('user_id', uid).order('created_at');
+          await _db
+              .from('addresses')
+              .select()
+              .eq('user_id', uid)
+              // Newest first, and said out loud rather than inherited from the SDK's
+              // default — a reader should not have to know that `order()` descends.
+              .order('created_at', ascending: false);
       return rows.map(_address).toList();
     });
   }
