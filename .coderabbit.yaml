@@ -1,0 +1,114 @@
+# What CodeRabbit needs to know before it reads this repository.
+#
+# Most of what follows is not preference — it is the set of decisions that were argued
+# through and written down, and that a reviewer meeting this code cold will otherwise
+# flag as mistakes. Every one of them is documented in CLAUDE.md or docs/; this file is
+# the short version.
+
+language: ar
+
+tone_instructions: >
+  Be direct and specific. This is a solo project with one reader, so skip praise and
+  restatement. Say what breaks and under what conditions. If a rule in CLAUDE.md already
+  settles the point, cite it rather than re-arguing it.
+
+reviews:
+  profile: assertive
+  high_level_summary: true
+  auto_review:
+    enabled: true
+    drafts: false
+    # Named explicitly: auto review only runs against the default branch otherwise, and
+    # the full-project review PR targets an empty baseline on purpose — that is what
+    # makes its diff the whole repository rather than the last change.
+    base_branches:
+      - master
+      - review-baseline
+
+  path_filters:
+    # Generated. Reviewing it reviews the generator, one step removed.
+    - "!**/*.g.dart"
+    - "!**/*.freezed.dart"
+    - "!packages/luqma_core/lib/l10n/app_localizations*.dart"
+    # A design mockup, not shipped code.
+    - "!design/**"
+    - "!graphify-out/**"
+    - "!apks/**"
+
+  path_instructions:
+    - path: "supabase/migrations/**"
+      instructions: >
+        This is the real security boundary — the apps hold no authority the database does
+        not grant. Check every policy against the query the repository actually runs, not
+        against a single-row read: Postgres refuses a whole query it cannot prove is
+        limited to readable rows, so a policy allowing less than the query asks for
+        returns nothing rather than less.
+
+        Two migrations must never share a timestamp prefix. The CLI records an applied
+        migration by that prefix, so the second one silently never runs — it cost a whole
+        feature here once.
+
+        cron and vault are not everywhere: PGlite runs the local suite and has neither, so
+        anything touching them is guarded by availability, and a function reading vault
+        builds its lookup with `execute` because a `language sql` body is parsed at
+        creation. This is deliberate, not an oversight.
+
+        `alter database … set app.*` is refused on hosted Supabase. Secrets go in Vault.
+
+    - path: "packages/luqma_core/lib/src/repositories/**"
+      instructions: >
+        Repositories never throw across their boundary; they return `Result`. Each
+        `Failure` variant exists because the person reads a different sentence — do not
+        suggest collapsing them.
+
+        Every interface has a Fake beside it. A new method on the interface without one on
+        the Fake breaks every screen test, and — more importantly — the Fakes are more
+        permissive than Postgres plus RLS. A green widget test proves the screen works
+        against the Fake and nothing more; anything resting on a policy needs a test in
+        `supabase/test/stack` too.
+
+    - path: "**/*_test.dart"
+      instructions: >
+        Watch for tests that pass for the wrong reason. Specific traps that have bitten
+        this repo: `find.byType(X).first` picking up a widget from Material's own
+        scaffolding; a `PageView` built from `children` putting every page in the tree so
+        `find.text` answers yes for something nobody can see (use `.hitTestable()`); and
+        the 800x600 default window, which is wider than it is tall and unlike any device
+        this ships on.
+
+        Never match `AsyncError()` after `AsyncLoading()`. A stream that fails before it
+        has ever emitted stays `AsyncLoading` with the error hanging off it, so the error
+        arm never fires and the screen spins for ever.
+
+    - path: "apps/**/lib/**"
+      instructions: >
+        Arabic RTL only, and money is integer piastres everywhere — never a double.
+
+        Colour rules that are measured, not stylistic: orange `#D67F2B` is 2.58:1 on the
+        cream background and fails, so small orange text uses `price`; an orange badge
+        carries dark text, never white (white is 3.03:1); cards are white with a shadow,
+        never `surface`, which is 1.24:1 on cream. No colour is ever written in a screen —
+        everything comes from tokens in luqma_core.
+
+        Time comes from `clockProvider`, never `DateTime.now()` in a widget: whether a
+        shop is open depends on the hour, and a widget reading the wall clock cannot be
+        tested without waiting for one.
+
+        Every `IconButton` needs a `tooltip` — it is the accessible name as well as the
+        long-press label, and a test scans the source for it.
+
+    - path: "supabase/functions/**"
+      instructions: >
+        These hold the service role. Check that the caller is verified before it is spent,
+        and that a half-made account is cleaned up rather than left behind.
+
+        Anything cron-driven is deployed with `--no-verify-jwt` on purpose: pg_net sends
+        no Authorization header, so the gateway would answer 401 before the function ran
+        and its own auth would never fire. The function's own secret is the gate.
+
+knowledge_base:
+  code_guidelines:
+    enabled: true
+    filePatterns:
+      - "CLAUDE.md"
+      - "docs/**/*.md"
