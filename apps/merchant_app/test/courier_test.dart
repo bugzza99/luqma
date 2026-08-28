@@ -291,5 +291,36 @@ void main() {
       expect(deliveries['o1']!.status, OrderStatus.delivered);
       expect(find.byKey(CourierScreen.pendingKey), findsNothing);
     });
+
+    // Dropping a conflicting write is right; dropping it silently is not. The banner
+    // above promises "هيتبعت أول ما النت يرجع", so a count that quietly falls by one
+    // reads as sent — while the cash for that order is already in the courier's pocket.
+    testWidgets('and a queued tap the server refuses is said out loud', (tester) async {
+      await pump(
+        tester,
+        seed: [order(status: OrderStatus.outForDelivery, courierUid: 'c1')],
+      );
+
+      deliveries.failure = const OfflineFailure();
+      await tester.tap(find.byKey(CourierScreen.deliveredKey('o1')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('اه، تم'));
+      await tester.pumpAndSettle();
+      expect(find.byKey(CourierScreen.pendingKey), findsOneWidget);
+
+      // The connection returns, but the order moved while there was no signal.
+      deliveries.failure = const ConflictFailure();
+      await tester.tap(find.byKey(CourierScreen.retryKey));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(CourierScreen.pendingKey), findsNothing,
+          reason: 'it is not retried for ever');
+      expect(find.byKey(CourierScreen.rejectedKey), findsOneWidget,
+          reason: 'but the courier is told it never landed');
+
+      await tester.tap(find.byKey(CourierScreen.dismissRejectedKey));
+      await tester.pumpAndSettle();
+      expect(find.byKey(CourierScreen.rejectedKey), findsNothing);
+    });
   });
 }
