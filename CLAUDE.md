@@ -306,7 +306,8 @@ Still open, none of it code:
 
 - Play Console account, listings, and enrolling Play App Signing with this key.
 - Onboarding the first 10–15 merchants at zero commission.
-- A Sentry project for the DSN dart-defines to point at.
+- Running the three apps on a real handset. They have been built many times and
+  installed never, which is its own kind of untested.
 
 ### Images, the customer's home, and the merchant's phone (2026-08-27)
 
