@@ -20,7 +20,7 @@ $ref  = 'vqcivwdoekyfqhfmnuos'
 # release build cannot quietly go un-instrumented.
 $dsn = 'https://2271d9cf126307f61a8f17bf4ceab890@o4511984137994240.ingest.de.sentry.io/4511984143695952'
 
-Write-Host "Fetching the anon key from $ref…"
+Write-Host "Fetching the publishable key from $ref…"
 
 # ErrorActionPreference is relaxed around this one call on purpose. The Supabase CLI
 # writes its "a new version is available" notice to stderr, and Windows PowerShell wraps
@@ -34,14 +34,47 @@ try {
   $ErrorActionPreference = 'Stop'
 }
 
-$anon = ($keys | ConvertFrom-Json | Where-Object { $_.name -eq 'anon' }).api_key
-if (-not $anon) {
-  throw "Could not read the anon key. Is the CLI logged in? Try: npx supabase login"
+# The `sb_publishable_…` key, not the legacy `anon` JWT.
+#
+# Both are public and both work. The difference is what happens when one has to be
+# killed: the legacy `anon` and `service_role` keys share the project's single JWT
+# secret, so revoking either means rotating that secret and invalidating both — every
+# installed app stops at once. The new keys are revoked one at a time.
+#
+# Matched by prefix rather than by name: the API returns two keys called `default`, one
+# publishable and one secret, and picking by name would be a coin toss between the key
+# every phone carries and the key that bypasses every policy in the database.
+# `@(…)` around the parse, and it is the whole bug this script once shipped.
+#
+# Windows PowerShell 5.1 hands `ConvertFrom-Json`'s array to the pipeline as ONE object.
+# `Where-Object { $_.api_key -like '…' }` then tests the *array* of every api_key at
+# once — which passes, because one of them matches — and `.api_key` on what comes back
+# is every key in the project, joined.
+#
+# The earlier version selected by `$_.name -eq 'anon'` and had exactly the same shape, so
+# the value it handed to `--dart-define` was all four keys at once. Two things followed,
+# and it took a night to connect them: the apps carried a key nobody meant to ship — the
+# production `service_role` — and they could not talk to Supabase at all, because the key
+# they authenticated with was four keys in a trench coat.
+#
+# So the parse is forced to enumerate, and the result is checked for being one string of
+# the right shape. A guess about a pipeline is not something to ship a key on.
+$parsed = @($keys | ConvertFrom-Json | ForEach-Object { $_ })
+$publishable = @($parsed | Where-Object { $_.api_key -like 'sb_publishable_*' })[0].api_key
+
+if ($publishable -isnot [string]) {
+  throw ("Reading the publishable key from $ref gave a " +
+         "$($publishable.GetType().Name) instead of one string. Refusing to build: " +
+         "that is how every key in the project ends up inside an APK.")
+}
+if ($publishable -notlike 'sb_publishable_*') {
+  throw ("Could not read a publishable key from $ref. Is the CLI logged in " +
+         "(npx supabase login), and does the project have the new API keys enabled?")
 }
 
 $defines = @(
   "--dart-define=LUQMA_SUPABASE_URL=https://$ref.supabase.co",
-  "--dart-define=LUQMA_SUPABASE_ANON_KEY=$anon",
+  "--dart-define=LUQMA_SUPABASE_PUBLISHABLE_KEY=$publishable",
   "--dart-define=LUQMA_SENTRY_DSN=$dsn"
 )
 

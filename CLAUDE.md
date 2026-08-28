@@ -30,7 +30,7 @@ Sentry DSN, builds arm64-only split APKs for all three apps, and drops them in `
 Both values are public by design — the anon key is what every phone carries and RLS is
 what protects the data, and a Sentry DSN can only *send* events, never read them.
 flutter build apk --dart-define=LUQMA_SUPABASE_URL=https://vqcivwdoekyfqhfmnuos.supabase.co \
-  --dart-define=LUQMA_SUPABASE_ANON_KEY=<anon key, supabase projects api-keys>
+  --dart-define=LUQMA_SUPABASE_PUBLISHABLE_KEY=<sb_publishable_..., supabase projects api-keys>
 ```
 
 Three things the migrations alone cannot carry to a new project — each bit hard:
@@ -637,18 +637,22 @@ JAVA_HOME="C:\Program Files\Android\Android Studio\jbr" firebase emulators:exec 
   feature here: `plan_expires_at` and the push-cap fix sat unapplied and untested until
   the collision was found. `ls supabase/migrations | sed 's/_.*//' | sort | uniq -d`
   must print nothing.
-- **A dart-define that was passed once stays in the build.** Flutter reuses the compiled
-  kernel in `.dart_tool/flutter_build/<hash>/app.dill`, and every `--dart-define` baked
-  into it survives into later builds that never passed it. A release APK here carried the
-  production **`service_role` key** — which nothing in this repository reads and
-  `tool/build-apks.ps1` has never passed — inherited from an earlier build made with the
-  `test_live` defines. One of seven cached build directories was the poisoned one, and it
-  was the one being reused, so building *with the correct script* reproduced the leak.
-  That key bypasses every policy in the database, and an APK is a file anybody can unzip.
-  The same stale kernel is why the release apps could not reach Supabase while `flutter
-  run` worked perfectly: the binary was compiled from values nobody had passed that day.
-  `build-apks.ps1` now runs `flutter clean` first and reads its own output, failing the
-  build on any JWT whose payload says `service_role`.
+- **`ConvertFrom-Json` on Windows PowerShell hands the pipeline one object, not a row
+  each.** `tool/build-apks.ps1` read the project's API keys with
+  `… | ConvertFrom-Json | Where-Object { $_.name -eq 'anon' }`. `$_` there is the *whole
+  array*, `$_.name` is an array of every name, `-eq 'anon'` filters that array rather
+  than testing it, and the result is truthy — so nothing was selected and `.api_key`
+  returned **every key the project has, joined into one value**.
+  Two things followed, and connecting them took a night. The three release APKs carried
+  the production **`service_role`** and **`sb_secret_`** keys — which bypass every policy
+  in the database, inside a file anybody can unzip. And the apps could not reach Supabase
+  at all: no home, no sign-up, no sign-in, while `flutter run` worked perfectly and
+  `curl` with the real key returned 200 on every endpoint — because the key the release
+  binary authenticated with was four keys in a trench coat.
+  The parse is forced to enumerate now (`@(… | ForEach-Object { $_ })`) and the result is
+  checked for being one string of the right shape. Downstream, the build reads its own
+  APK and fails on any JWT whose payload says `service_role`, because a wrong key in a
+  build is invisible until somebody installs it.
 - **A PowerShell function cannot `+=` a variable in its caller's scope.** `$results +=`
   inside `Invoke-Check` wrote to a *local* copy, so `tool/run_tests.ps1` finished with an
   empty result table and printed **"All suites passed."** however many suites had failed —
