@@ -388,7 +388,13 @@ follows is what breaks if it is not known.
   `Phone.toAccountEmail` — and GoTrue holds an ordinary **email** identity, which needs no
   provider. That domain has no mailbox and nothing is ever sent to it.
 - **Every spelling of one number must fold to one address.** `Phone.normalize` is that
-  one spelling and is shared with validation and with the admin's search. An Arabic
+  one spelling, and it has to be *called* — it is shared with validation and with the
+  admin's customer search, and that second one was a claim this file made rather than a
+  thing the code did. `SupabaseCustomerRepository.search` had its own copy that stripped
+  spaces and left Arabic-Indic digits alone, so an admin on an Arabic keyboard searched
+  `٠١٠…` for a row stored as `010…`, found nobody, and told a customer on the phone that
+  they had no account — on the one screen that is the only way back from a forgotten
+  password. An Arabic
   keyboard produces `٠١٠…` where the account was made with `010…`; two spellings reaching
   two accounts is one person with half their orders on each and no way to see the rest.
 - **The synthetic address is never shown.** `_toIdentity` returns a null `email` for one
