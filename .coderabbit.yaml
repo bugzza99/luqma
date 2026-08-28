@@ -5,7 +5,7 @@
 # flag as mistakes. Every one of them is documented in CLAUDE.md or docs/; this file is
 # the short version.
 
-language: ar-EG
+language: ar
 
 tone_instructions: >
   Be direct and specific. This is a solo project with one reader, so skip praise and
@@ -18,6 +18,12 @@ reviews:
   auto_review:
     enabled: true
     drafts: false
+    # Named explicitly: auto review only runs against the default branch otherwise, and
+    # the full-project review PR targets an empty baseline on purpose — that is what
+    # makes its diff the whole repository rather than the last change.
+    base_branches:
+      - master
+      - review-baseline
 
   path_filters:
     # Generated. Reviewing it reviews the generator, one step removed.
