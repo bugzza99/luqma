@@ -1,6 +1,7 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../result.dart';
+import '../util/phone.dart';
 
 /// The signed-in customer's own profile row.
 ///
@@ -26,7 +27,18 @@ class SupabaseProfileRepository implements ProfileRepository {
   @override
   Future<Result<void>> savePhone({required String uid, required String phone}) {
     return Result.guard(
-      () => _db.from('users').update({'phone': phone}).eq('id', uid),
+      // Normalised here rather than at the call site, because the call site already
+      // looked correct: checkout validates with `Phone.isValidEgyptianMobile`, which
+      // folds Arabic-Indic digits *inside itself* before matching — so `٠١٠…` passes
+      // validation and then arrives here exactly as typed.
+      //
+      // Sign-up stores `010…`. Two spellings of one number on one account means the
+      // admin's search finds nobody, and the number `place_order` stamps on the order is
+      // whichever the customer last typed. This is the last place it can go wrong before
+      // a courier is at a door unable to ring.
+      () => _db
+          .from('users')
+          .update({'phone': Phone.normalize(phone)}).eq('id', uid),
     );
   }
 }
