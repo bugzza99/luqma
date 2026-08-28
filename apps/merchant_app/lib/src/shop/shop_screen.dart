@@ -30,9 +30,30 @@ class ShopScreen extends ConsumerWidget {
     final colors = theme.luqma;
 
     final staff = ref.watch(staffIdentityProvider);
-    final merchant = staff.merchantId == null
+    final merchantAsync = staff.merchantId == null
         ? null
-        : ref.watch(merchantProvider(staff.merchantId!)).value;
+        : ref.watch(merchantProvider(staff.merchantId!));
+    final merchant = merchantAsync?.value;
+
+    // `.value` is null while loading *and* null on failure, and everything below was
+    // gated on it — so a dropped connection drew an empty page with `BusyToggle`
+    // collapsed to nothing. That control is how a merchant stops orders during a rush,
+    // and one that is simply absent does not read as "the connection is down": it reads
+    // as a shop that is fine, while orders keep arriving at a kitchen with no way to say
+    // stop.
+    //
+    // `hasError` rather than a match on `AsyncError`: a stream that fails before it has
+    // ever emitted stays `AsyncLoading` with the error hanging off it.
+    if (merchantAsync != null && merchantAsync.hasError) {
+      return Scaffold(
+        backgroundColor: colors.background,
+        appBar: AppBar(title: const Text('المطعم')),
+        body: LuqmaErrorView(
+          failure: merchantAsync.error!,
+          onRetry: () => ref.invalidate(merchantProvider(staff.merchantId!)),
+        ),
+      );
+    }
 
     return Scaffold(
       backgroundColor: colors.background,
