@@ -32,11 +32,15 @@ Edku's landmark list in advance, so it is grown from the notes customers type wh
 list does not have theirs — every such note is a place a courier has already had to be
 told about.
 
-**`staff` management moved out of this phase.** Creating a staff account means creating a
-Firebase Auth user, which only a server can do, which means Cloud Functions, which means
-Blaze. Everything else in AdminApp works on the free tier; this one thing does not, and
-building half a screen whose main action is disabled would be worse than waiting. It lands
-with `createStaffAccount` — see `07-backend-functions.md`.
+**`staff` management moved out of this phase.** Creating a staff account means creating an
+auth user, which only a server can do, which meant Cloud Functions, which meant Blaze.
+Everything else in AdminApp worked on the free tier; this one thing did not, and building
+half a screen whose main action is disabled would have been worse than waiting.
+
+> **Settled since.** The migration removed the blocker — the account is minted by the
+> `create-staff-account` Edge Function, which verifies the caller's JWT and checks that
+> their `staff` row is an active platform admin before the service role touches anything.
+> `apps/admin_app/lib/src/staff/staff_screen.dart` is the screen it was waiting for.
 
 ## Phase 3 — CustomerApp core
 Google Sign-In, home rendered from `homeSections`, merchant and item browsing, cart,

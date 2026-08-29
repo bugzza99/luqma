@@ -39,7 +39,11 @@ void main() {
   tearDown(() => live.dropCity(cityId));
   tearDownAll(() => live.close());
 
-  Merchant merchant(String name, {MerchantStatus status = MerchantStatus.approved}) =>
+  Merchant merchant(
+    String name, {
+    MerchantStatus status = MerchantStatus.approved,
+    int prepMinutes = 30,
+  }) =>
       Merchant(
         id: '',
         cityId: cityId,
@@ -48,6 +52,7 @@ void main() {
         zoneId: zoneId,
         phone: '01000000000',
         status: status,
+        prepMinutes: prepMinutes,
       );
 
   Future<String> saveRaw(
@@ -364,6 +369,31 @@ void main() {
     test('it can be told to fail, so error paths are testable', () async {
       final fake = FakeMerchantRepository(failure: const OfflineFailure());
       expect((await fake.getMerchant('a')).failureOrNull, isA<OfflineFailure>());
+    });
+  });
+
+  // `_row` did not carry `prep_minutes`, so the column kept its default of 30 whatever
+  // anybody set. The customer reads the consequence on every merchant card in the city —
+  // "٣٠ دقيقة تقريباً" under every shop, including the one that takes an hour. Its own
+  // fake had no opinion about it, so nothing in the suite noticed.
+  group('how long the food takes', () {
+    test('the number that was saved is the number that comes back', () async {
+      final saved =
+          await adminRepository.saveMerchant(merchant('بطيء', prepMinutes: 55));
+
+      final read = await repository.getMerchant(saved.valueOrThrow.id);
+
+      expect(read.valueOrThrow.prepMinutes, 55);
+    });
+
+    test('and an edit moves it', () async {
+      final saved =
+          (await adminRepository.saveMerchant(merchant('سريع'))).valueOrThrow;
+
+      await adminRepository.saveMerchant(saved.copyWith(prepMinutes: 15));
+      final read = await repository.getMerchant(saved.id);
+
+      expect(read.valueOrThrow.prepMinutes, 15);
     });
   });
 }
