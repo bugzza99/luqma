@@ -55,7 +55,11 @@ class MerchantPromotionsScreen extends ConsumerWidget {
       appBar: AppBar(title: const Text('الإعلانات')),
       body: switch (mine) {
         AsyncValue(hasError: true, :final error?) => LuqmaErrorView(key: MerchantPromotionsScreen.errorKey, failure: error, onRetry: () => ref.invalidate(merchantPromotionsProvider(merchantId))),
-        AsyncValue(hasValue: true, :final value?) when value.isEmpty => const _Empty(),
+        AsyncValue(hasValue: true, :final value?) when value.isEmpty => LuqmaEmptyView(
+            key: MerchantPromotionsScreen.emptyKey,
+            icon: Icons.campaign_outlined,
+            title: 'لسه مطلبتش إعلان',
+          ),
         AsyncValue(hasValue: true, :final value?) => ListView.separated(
             padding: const EdgeInsets.fromLTRB(
               Space.gutter,
@@ -410,44 +414,4 @@ class _RequestFormState extends ConsumerState<_RequestForm> {
   }
 }
 
-class _Empty extends StatelessWidget {
-  const _Empty();
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return Center(
-      key: MerchantPromotionsScreen.emptyKey,
-      child: Padding(
-        padding: const EdgeInsets.all(Space.xxl),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              Icons.campaign_outlined,
-              size: 56,
-              color: theme.luqma.textSecondary,
-            ),
-            const SizedBox(height: Space.lg),
-            Text(
-              'لسه مطلبتش إعلان',
-              style: theme.textTheme.titleLarge,
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: Space.sm),
-            Text(
-              // The commercial point of the text render mode, said plainly: a merchant
-              // with no artwork can buy a banner the same day they ask for one.
-              'تقدر تطلب بانر في الرئيسية من غير ما تعمل تصميم — نكتبهولك.',
-              style: theme.textTheme.bodyMedium
-                  ?.copyWith(color: theme.luqma.textSecondary),
-              textAlign: TextAlign.center,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
 

@@ -75,7 +75,12 @@ class InboxScreen extends ConsumerWidget {
       // ever on a dropped connection — which on this screen reads as a quiet evening.
       body: switch (incoming) {
         AsyncValue(hasError: true, :final error?) => LuqmaErrorView(key: InboxScreen.errorKey, failure: error, onRetry: () => ref.invalidate(incomingOrdersProvider(merchantId))),
-        AsyncValue(hasValue: true, :final value?) when value.isEmpty => const _Empty(),
+        AsyncValue(hasValue: true, :final value?) when value.isEmpty => LuqmaEmptyView(
+            key: InboxScreen.emptyKey,
+            icon: Icons.check_circle_outline_rounded,
+            title: 'مفيش طلبات مستنية',
+            message: 'أول ما يجي طلب هتسمع صوت.',
+          ),
         AsyncValue(hasValue: true, :final value?) => ListView.separated(
             padding: const EdgeInsets.all(Space.gutter),
             itemCount: value.length,
@@ -551,44 +556,6 @@ class _Choice extends StatelessWidget {
   }
 }
 
-class _Empty extends StatelessWidget {
-  const _Empty();
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return Center(
-      key: InboxScreen.emptyKey,
-      child: Padding(
-        padding: const EdgeInsets.all(Space.xxl),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              Icons.check_circle_outline_rounded,
-              size: 56,
-              color: theme.luqma.success,
-            ),
-            const SizedBox(height: Space.lg),
-            Text(
-              'مفيش طلبات مستنية',
-              style: theme.textTheme.titleLarge,
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: Space.sm),
-            Text(
-              'أول ما يجي طلب هتسمع صوت.',
-              style: theme.textTheme.bodyMedium
-                  ?.copyWith(color: theme.luqma.textSecondary),
-              textAlign: TextAlign.center,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
 
 /// A staff account whose claim names no merchant.
 ///

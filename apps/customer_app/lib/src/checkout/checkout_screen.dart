@@ -248,7 +248,15 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
       backgroundColor: colors.background,
       appBar: AppBar(title: const Text('تأكيد الطلب')),
       body: identity == null
-          ? _SignedOut(onSignIn: widget.onSignIn)
+          ? LuqmaEmptyView(
+            title: 'خطوة واحدة وخلاص',
+            message: 'سجّل دخول عشان نعرف نوصّلك الطلب ونتابعه معاك.',
+            action: FilledButton(
+              key: CheckoutScreen.signInKey,
+              onPressed: widget.onSignIn,
+              child: const Text('سجّل دخول'),
+            ),
+          )
           : ListView(
               padding: const EdgeInsets.fromLTRB(
                 Space.gutter,
@@ -258,10 +266,10 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
               ),
               children: [
                 if (_failure != null) ...[
-                  _Notice(
-                    noticeKey: CheckoutScreen.errorKey,
+                  LuqmaNotice(
+                    key: CheckoutScreen.errorKey,
                     icon: Icons.error_outline_rounded,
-                    color: colors.danger,
+                    tone: NoticeTone.problem,
                     text: switch (_failure!) {
                       OfflineFailure() =>
                         'مفيش نت دلوقتي. سلتك زي ما هي — جرّب تاني.',
@@ -276,18 +284,18 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
                 _AddressCard(address: address, zoneName: zone?.name),
                 if (address == null) ...[
                   const SizedBox(height: Space.md),
-                  _Notice(
-                    noticeKey: CheckoutScreen.needsAddressKey,
+                  LuqmaNotice(
+                    key: CheckoutScreen.needsAddressKey,
                     icon: Icons.location_off_outlined,
-                    color: colors.danger,
+                    tone: NoticeTone.problem,
                     text: 'محتاجين عنوان عشان الأوردر يوصل.',
                   ),
                 ] else if (!inRange) ...[
                   const SizedBox(height: Space.md),
-                  _Notice(
-                    noticeKey: CheckoutScreen.outOfRangeKey,
+                  LuqmaNotice(
+                    key: CheckoutScreen.outOfRangeKey,
                     icon: Icons.wrong_location_outlined,
-                    color: colors.danger,
+                    tone: NoticeTone.problem,
                     // Found out here, not from a rejection an hour later.
                     text: '${merchant?.name ?? "المطعم"} مبيوصلش '
                         '${zone?.name ?? "المنطقة دي"}. غيّر العنوان أو اختار مطعم تاني.',
@@ -615,37 +623,6 @@ class _CashNote extends StatelessWidget {
   }
 }
 
-class _Notice extends StatelessWidget {
-  const _Notice({
-    required this.noticeKey,
-    required this.icon,
-    required this.color,
-    required this.text,
-  });
-
-  final Key noticeKey;
-  final IconData icon;
-  final Color color;
-  final String text;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      key: noticeKey,
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Icon(icon, size: Sizes.iconSm, color: color),
-        const SizedBox(width: Space.sm),
-        Expanded(
-          child: Text(
-            text,
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(color: color),
-          ),
-        ),
-      ],
-    );
-  }
-}
 
 class _Footer extends StatelessWidget {
   const _Footer({
@@ -701,42 +678,3 @@ class _Footer extends StatelessWidget {
   }
 }
 
-class _SignedOut extends StatelessWidget {
-  const _SignedOut({this.onSignIn});
-
-  final VoidCallback? onSignIn;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(Space.xxl),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              'خطوة واحدة وخلاص',
-              style: theme.textTheme.titleLarge,
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: Space.sm),
-            Text(
-              'سجّل دخول عشان نعرف نوصّلك الطلب ونتابعه معاك.',
-              style: theme.textTheme.bodyMedium
-                  ?.copyWith(color: theme.luqma.textSecondary),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: Space.xl),
-            FilledButton(
-              key: CheckoutScreen.signInKey,
-              onPressed: onSignIn,
-              child: const Text('سجّل دخول بجوجل'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
