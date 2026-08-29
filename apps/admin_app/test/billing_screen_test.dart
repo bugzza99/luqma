@@ -44,6 +44,7 @@ void main() {
       );
 
   late FakeBillingRepository billing;
+  late FakeSettlementRepository settlementRepo;
   late FakeMerchantRepository merchants;
 
   Future<void> pump(
@@ -52,7 +53,14 @@ void main() {
     List<Subscription> subscriptions = const [],
     List<OrderSettlement> settlements = const [],
     Failure? settlementFailure,
+    Failure? collectFailure,
   }) async {
+    settlementRepo = FakeSettlementRepository(
+      seed: settlements,
+      failure: settlementFailure,
+      writeFailure: collectFailure,
+      owedStart: (seed ?? merchant()).commissionOwed,
+    );
     // A phone, not the runner's 800x600 default — which is wider than it is tall and
     // unlike anything this ships on. `ListView` builds lazily, so a card below the fold
     // of a window that shape is not merely off-screen: it does not exist, and every
@@ -79,12 +87,7 @@ void main() {
           ),
           merchantRepositoryProvider.overrideWithValue(merchants),
           billingRepositoryProvider.overrideWithValue(billing),
-          settlementRepositoryProvider.overrideWithValue(
-            FakeSettlementRepository(
-              seed: settlements,
-              failure: settlementFailure,
-            ),
-          ),
+          settlementRepositoryProvider.overrideWithValue(settlementRepo),
           remoteConfigServiceProvider
               .overrideWithValue(RemoteConfigService(FakeConfigFetcher({}))),
         ],
@@ -437,6 +440,132 @@ void main() {
       );
 
       expect(find.byType(LuqmaErrorView, skipOffstage: offstageToo), findsOneWidget);
+    });
+  });
+
+  // Taking the money. Until this existed `commission_owed` only ever grew, and the first
+  // merchant to pay in cash would have watched the figure on their own screen stay
+  // exactly where it was.
+  group('recording a collection', () {
+    const offstage = false;
+
+    Future<void> collect(WidgetTester tester, String amount) async {
+      await tester.tap(find.byKey(MerchantBillingScreen.collectKey));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+          find.byKey(MerchantBillingScreen.collectAmountKey), amount);
+      await tester.tap(find.byKey(MerchantBillingScreen.confirmCollectKey));
+      await tester.pumpAndSettle();
+    }
+
+    Future<void> pumpOwing(WidgetTester tester, int owed) async {
+      await pump(
+        tester,
+        seed: merchant(model: RevenueModel.commission, value: 1000, owed: owed),
+      );
+      await tester.drag(
+        find.byKey(MerchantBillingScreen.listKey),
+        const Offset(0, -900),
+      );
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('the button is there when something is owed', (tester) async {
+      await pumpOwing(tester, 47500);
+
+      expect(find.byKey(MerchantBillingScreen.collectKey, skipOffstage: offstage),
+          findsOneWidget);
+    });
+
+    // Nothing to take. And handing money *back* is a different act, which this screen
+    // must not be able to perform by accident.
+    testWidgets('and gone when nothing is', (tester) async {
+      await pumpOwing(tester, 0);
+
+      expect(find.byKey(MerchantBillingScreen.collectKey, skipOffstage: offstage),
+          findsNothing);
+    });
+
+    testWidgets('nor is it offered against a credit', (tester) async {
+      await pumpOwing(tester, -2500);
+
+      expect(find.byKey(MerchantBillingScreen.collectKey, skipOffstage: offstage),
+          findsNothing);
+    });
+
+    testWidgets('recording one sends the figure that was typed', (tester) async {
+      await pumpOwing(tester, 47500);
+
+      await collect(tester, '300');
+
+      expect(settlementRepo.recorded, hasLength(1));
+      expect(settlementRepo.recorded.single.amount, 30000,
+          reason: 'pounds on the screen, piastres in the database');
+      expect(settlementRepo.owed, 17500);
+    });
+
+    // The admin is standing in a shop holding the cash. A collection that failed and one
+    // that worked look identical if the only feedback is the screen refreshing.
+    testWidgets('and says what is left', (tester) async {
+      await pumpOwing(tester, 47500);
+
+      await collect(tester, '300');
+
+      expect(find.byKey(MerchantBillingScreen.collectedKey), findsOneWidget);
+      expect(find.textContaining('175'), findsWidgets);
+    });
+
+    testWidgets('a collection that clears it says so', (tester) async {
+      await pumpOwing(tester, 47500);
+
+      await collect(tester, '475');
+
+      expect(find.textContaining('الحساب مقفول'), findsOneWidget);
+    });
+
+    testWidgets('a refusal is said out loud rather than swallowed', (tester) async {
+      await pump(
+        tester,
+        seed: merchant(model: RevenueModel.commission, value: 1000, owed: 47500),
+        collectFailure: const PermissionFailure(),
+      );
+      await tester.drag(
+        find.byKey(MerchantBillingScreen.listKey),
+        const Offset(0, -900),
+      );
+      await tester.pumpAndSettle();
+
+      await collect(tester, '300');
+
+      expect(find.textContaining('مااتسجّلش'), findsOneWidget);
+    });
+
+    // Negative means the merchant handed over more than they owed. Shown in words, not
+    // as a minus sign, which reads as an error on a screen about money.
+    testWidgets('a credit is named as one rather than shown as a minus', (tester) async {
+      await pumpOwing(tester, -2500);
+
+      expect(find.byKey(MerchantBillingScreen.creditKey, skipOffstage: offstage),
+          findsOneWidget);
+      expect(find.byKey(MerchantBillingScreen.owedKey, skipOffstage: offstage),
+          findsNothing);
+    });
+
+    // A merchant moved to a subscription with a debt outstanding is exactly the case
+    // where somebody has to be able to collect it.
+    testWidgets('a debt survives a move to a subscription, and can still be taken',
+        (tester) async {
+      await pump(tester, seed: merchant(owed: 47500));
+      await tester.drag(
+        find.byKey(MerchantBillingScreen.listKey),
+        const Offset(0, -900),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(MerchantBillingScreen.settlementsKey, skipOffstage: offstage),
+          findsOneWidget);
+      expect(find.byKey(MerchantBillingScreen.collectKey, skipOffstage: offstage),
+          findsOneWidget);
     });
   });
 }

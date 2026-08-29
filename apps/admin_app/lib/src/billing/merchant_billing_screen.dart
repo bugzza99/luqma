@@ -33,6 +33,11 @@ class MerchantBillingScreen extends ConsumerWidget {
   static const owedKey = Key('billing.owed');
   static const platformOwesKey = Key('billing.platformOwes');
   static const noSettlementsKey = Key('billing.noSettlements');
+  static const collectKey = Key('billing.collect');
+  static const collectAmountKey = Key('billing.collectAmount');
+  static const confirmCollectKey = Key('billing.confirmCollect');
+  static const collectedKey = Key('billing.collected');
+  static const creditKey = Key('billing.credit');
 
   static Key modelKey(RevenueModel model) => Key('billing.model.${model.name}');
   static Key currentModelKey(RevenueModel model) => Key('billing.current.${model.name}');
@@ -81,9 +86,12 @@ class MerchantBillingScreen extends ConsumerWidget {
                     const SizedBox(height: Space.xl),
                   ],
                   _Term(merchantId: merchantId),
-                  // Under a subscription nothing is taken per order, so there is no
-                  // account to read — the term above is the whole arrangement.
-                  if (merchant.revenueModel != RevenueModel.subscription) ...[
+                  // Shown whenever there is an account to read. Not only under
+                  // commission: a merchant moved to a subscription with a debt still
+                  // outstanding is exactly the case where somebody has to be able to
+                  // collect it, and hiding the card would strand the money.
+                  if (merchant.revenueModel != RevenueModel.subscription ||
+                    merchant.commissionOwed != 0) ...[
                     const SizedBox(height: Space.xl),
                     _Settlements(merchant: merchant),
                   ],
@@ -619,36 +627,103 @@ class _Settlements extends ConsumerWidget {
               )
             else ...[
               _Figure(label: strings.orderCount(s.orders), value: strings.price(s.taken)),
-              if (merchant.revenueModel == RevenueModel.commission) ...[
-                const SizedBox(height: Space.sm),
-                _Figure(
-                  figureKey: MerchantBillingScreen.owedKey,
-                  // The running total, which is what somebody actually collects — the
-                  // page above is the last hundred orders, the debt is since the last
-                  // payment.
-                  label: 'المستحق على المطعم',
-                  value: strings.price(merchant.commissionOwed),
-                  emphasis: colors.price,
-                ),
-              ],
               if (s.platformOwes > 0) ...[
                 const SizedBox(height: Space.sm),
                 _Figure(
                   figureKey: MerchantBillingScreen.platformOwesKey,
-                  // Netted against the above by a person, not by this screen: what the
-                  // platform owes for its own discounts is a different conversation from
-                  // what the merchant owes in commission, and collapsing them into one
-                  // number is how a merchant stops being able to check either.
+                  // Netted against the commission by a person, not by this screen: what
+                  // the platform owes for its own discounts is a different conversation
+                  // from what the merchant owes, and collapsing them into one number is
+                  // how a merchant stops being able to check either.
                   label: 'لقمة عليها للمطعم',
                   value: strings.price(s.platformOwes),
                   emphasis: colors.success,
                 ),
               ],
             ],
+            // Outside the branch above, deliberately: this is the running total on the
+            // merchant, not a sum of the page. It was inside, and a merchant carrying a
+            // debt with nothing on this page — a debt from before, or a page that has
+            // scrolled past its charges — read as "لسه مفيش أوردرات اتسلّمت" with the
+            // money nowhere on the screen at all.
+            if (merchant.revenueModel == RevenueModel.commission ||
+                  merchant.commissionOwed != 0) ...[
+              const SizedBox(height: Space.sm),
+              _Figure(
+                figureKey: merchant.commissionOwed < 0
+                    ? MerchantBillingScreen.creditKey
+                    : MerchantBillingScreen.owedKey,
+                // Negative means the merchant handed over more than they owed — an
+                // admin in a shop takes what is on the counter rather than arguing
+                // about five pounds — and it is credit the next delivery eats into.
+                // Said in those words rather than shown as a minus sign, which reads
+                // as an error on a screen about money.
+                label: merchant.commissionOwed < 0
+                    ? 'رصيد للمطعم عندنا'
+                    : 'المستحق على المطعم',
+                value: strings.price(merchant.commissionOwed.abs()),
+                emphasis: merchant.commissionOwed < 0 ? colors.success : colors.price,
+              ),
+            ],
+            // Only where there is something to take. A merchant who owes nothing and a
+            // merchant who is owed credit both get no button: the first has nothing to
+            // pay, and handing money *back* is a different act that this screen must not
+            // be able to perform by accident.
+            if (merchant.commissionOwed > 0) ...[
+              const SizedBox(height: Space.md),
+              FilledButton.icon(
+                key: MerchantBillingScreen.collectKey,
+                onPressed: () => _collect(context, ref),
+                icon: const Icon(Icons.payments_outlined, size: Sizes.iconSm),
+                label: const Text('سجّل تحصيل'),
+              ),
+            ],
           ],
         ),
       ),
     );
+  }
+
+  Future<void> _collect(BuildContext context, WidgetRef ref) async {
+    final amount = await showDialog<int>(
+      context: context,
+      builder: (_) => const _AmountDialog(
+        title: 'تحصيل عمولة',
+        fieldKey: MerchantBillingScreen.collectAmountKey,
+        confirmKey: MerchantBillingScreen.confirmCollectKey,
+        label: 'المبلغ المستلم',
+      ),
+    );
+
+    if (amount == null || !context.mounted) return;
+
+    final result = await ref
+        .read(settlementRepositoryProvider)
+        .recordPayment(merchantId: merchant.id, amount: amount);
+    if (!context.mounted) return;
+
+    // The result is read rather than discarded. A collection that failed and a
+    // collection that worked look identical if the only feedback is the screen
+    // refreshing — and the admin is standing in a shop holding the cash.
+    switch (result) {
+      case Ok(:final value):
+        ref.invalidate(merchantProvider(merchant.id));
+        ref.invalidate(commissionPaymentsProvider(merchant.id));
+        ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+          SnackBar(
+            key: MerchantBillingScreen.collectedKey,
+            content: Text(
+              value > 0
+                  ? 'اتسجّل. الباقي ${LuqmaStrings.of(context).price(value)}'
+                  : 'اتسجّل. الحساب مقفول.',
+            ),
+          ),
+        );
+      case Err():
+        ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+          const SnackBar(content: Text('التحصيل مااتسجّلش. جرّب تاني.')),
+        );
+    }
   }
 }
 

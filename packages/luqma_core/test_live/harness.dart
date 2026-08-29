@@ -193,6 +193,10 @@ class LiveDatabase {
       // it or, under cascade, quietly destroy the record that a merchant was billed.
       // In the product nothing deletes an order at all; only a test does.
       await client.from('order_settlements').delete().inFilter('merchant_id', ids);
+      // And the receipts, for the same reason and with the same `on delete restrict`:
+      // a record that money changed hands must not be removable by deleting the shop it
+      // was paid by.
+      await client.from('commission_payments').delete().inFilter('merchant_id', ids);
     }
     for (final table in ['orders', 'promotions', 'daily_meals', 'coupons', 'merchants',
                          'landmarks', 'home_sections', 'zones']) {

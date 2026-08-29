@@ -91,3 +91,27 @@ abstract class SettlementSummary with _$SettlementSummary {
     return SettlementSummary(orders: orders, taken: taken, platformOwes: owes);
   }
 }
+
+/// One cash collection against a merchant's commission.
+///
+/// The receipt, and the only free text in the money path: "دفع ٤٧٠ والباقي الأسبوع
+/// الجاي" is the kind of thing that decides an argument three weeks later.
+@freezed
+abstract class CommissionPayment with _$CommissionPayment {
+  const factory CommissionPayment({
+    required String id,
+    required String merchantId,
+    required int amount,
+    String? note,
+
+    /// The admin who took it — read from the token by the server, never sent by a
+    /// caller. A log that can be lied to is not evidence.
+    required String recordedBy,
+    @TimestampConverter() DateTime? recordedAt,
+  }) = _CommissionPayment;
+
+  const CommissionPayment._();
+
+  factory CommissionPayment.fromJson(Map<String, dynamic> json) =>
+      _$CommissionPaymentFromJson(json);
+}

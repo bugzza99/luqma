@@ -70,7 +70,7 @@ sweep it did not earn.
 A project that has never had the migrations needs `db push` **and** `config push` — the
 second is not optional, for the reason in the bullet above: the hook is configuration.
 
-229 live tests and 141 stack tests passed against `luqma-test` on 2026-08-30.
+233 live tests and 156 stack tests passed against `luqma-test` on 2026-08-30.
 
 
 **The design is finished and verified. Read `docs/` before changing anything.**
@@ -481,7 +481,7 @@ in the repository — and `flutter test` on a *package* does not run the generat
 the way an app build does. Without it a new string is a compile error that points at the
 call site rather than at the missing step.
 
-**~980 Dart tests · 116 schema tests · 141 stack tests · 229 live-repository tests.**
+**~1000 Dart tests · 116 schema tests · 156 stack tests · 233 live-repository tests.**
 `flutter analyze` clean.
 
 There are no `function` tests and no `tsc`: the TypeScript Cloud Functions went with
@@ -795,8 +795,20 @@ What the platform *owes* stays its own figure on both screens rather than being 
 against the commission. They are two different conversations, and collapsing them into one
 number is how a merchant stops being able to check either.
 
-Still not built: **taking the money**. There is no equivalent of `recordSubscriptionPayment`
-for a commission debt, so `commission_owed` only ever grows.
+**Collection landed 2026-08-30** — `20260830000000_collect_commission.sql`.
+`record_commission_payment` writes a `commission_payments` receipt, lowers
+`commission_owed`, and logs who took it; the admin records it from the billing screen.
+
+Three things in it that look like details and are not:
+
+- **`commission_payments` has no write policy at all, and the function is
+  `security definer`.** An insert policy for admins would let one write a receipt without
+  moving the balance — paper saying money changed hands while the account says otherwise,
+  which is what a receipt exists to rule out. The function does both halves or neither.
+- **The actor is `auth.uid()`, never a parameter.** Same lesson as the audit's finding on
+  `record_subscription_payment`: a log that can be lied to is not evidence.
+- **The amount is not capped at what is owed**, so the balance can go negative. That is
+  credit, and both screens say so in words rather than printing a minus sign.
 
 ## Known debts from the audit
 

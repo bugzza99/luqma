@@ -233,4 +233,78 @@ void main() {
     expect(mine.map((s) => s.orderId), ['o2', 'o1'],
         reason: 'a fake that sorts differently lets a screen pass and be wrong live');
   });
+
+  // Taking the money. The charge is half an account; a debt that only grows is a number
+  // that eventually stops meaning anything.
+  group('collecting it', () {
+    test('an admin records a collection and the debt falls', () async {
+      await deliveredOrder(merchantId);
+      final adminDb = await live.openAsAdmin();
+      addTearDown(adminDb.dispose);
+
+      final remaining = (await SupabaseSettlementRepository(adminDb).recordPayment(
+        merchantId: merchantId,
+        amount: 1500,
+        note: 'دفع كاش',
+      ))
+          .valueOrThrow;
+
+      // The order took 2000; 1500 was handed over.
+      expect(remaining, 500);
+
+      final row = await live.client
+          .from('merchants')
+          .select('commission_owed')
+          .eq('id', merchantId)
+          .single();
+      expect(row['commission_owed'], 500,
+          reason: 'the balance the function returned is the balance it wrote');
+    });
+
+    test('and the receipt is readable by the merchant it belongs to', () async {
+      await deliveredOrder(merchantId);
+      final adminDb = await live.openAsAdmin();
+      addTearDown(adminDb.dispose);
+      await SupabaseSettlementRepository(adminDb)
+          .recordPayment(merchantId: merchantId, amount: 1500, note: '  دفع كاش  ');
+
+      final mine = (await SupabaseSettlementRepository(ownerDb)
+              .paymentsFor(merchantId))
+          .valueOrThrow;
+
+      expect(mine, hasLength(1));
+      expect(mine.single.amount, 1500);
+      expect(mine.single.note, 'دفع كاش', reason: 'trimmed by the server, not the phone');
+    });
+
+    // A merchant who could record their own collections would have free service, for
+    // ever. The refusal is the database's, not this interface's.
+    test('a merchant owner cannot clear their own debt', () async {
+      await deliveredOrder(merchantId);
+
+      final refused = await SupabaseSettlementRepository(ownerDb)
+          .recordPayment(merchantId: merchantId, amount: 99999);
+
+      expect(refused.failureOrNull, isA<PermissionFailure>());
+      final row = await live.client
+          .from('merchants')
+          .select('commission_owed')
+          .eq('id', merchantId)
+          .single();
+      expect(row['commission_owed'], 2000, reason: 'and nothing moved');
+    });
+
+    test('nor read the receipts of the shop next door', () async {
+      final adminDb = await live.openAsAdmin();
+      addTearDown(adminDb.dispose);
+      await SupabaseSettlementRepository(adminDb)
+          .recordPayment(merchantId: otherMerchantId, amount: 500);
+
+      final theirs = (await SupabaseSettlementRepository(ownerDb)
+              .paymentsFor(otherMerchantId))
+          .valueOrThrow;
+
+      expect(theirs, isEmpty);
+    });
+  });
 }

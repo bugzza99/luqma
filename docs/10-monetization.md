@@ -93,9 +93,26 @@ subscription, where nothing is taken per order. What the platform owes back is s
 own figure rather than netted against the commission: they are two different conversations,
 and one number that mixes them is a number nobody can check.
 
-Not built: **taking the money.** There is no equivalent of `recordSubscriptionPayment` for
-a commission debt, so `commission_owed` only ever grows — being cash, collection is a person
-and a receipt rather than a transaction, and the screen for recording one is the next piece.
+**Collection** is `record_commission_payment`: an admin, a figure, a receipt in
+`commission_payments`, and a line in the audit log — the same shape as
+`recordSubscriptionPayment`, because the money is cash and the act is a person handing
+over notes. The admin records it from the billing screen and the merchant's own statement
+shows the balance fall.
+
+Three decisions in it worth keeping:
+
+- **The amount is not capped at what is owed.** An admin standing in a shop takes what is
+  on the counter, and a merchant who rounds up by five pounds must not meet an error with
+  the cash already handed over. The balance goes negative, which is credit the next
+  delivery eats into — and the screen says "رصيد للمطعم عندنا" rather than showing a minus
+  sign, which on a screen about money reads as a fault.
+- **The button is offered only where something is owed.** Handing money *back* is a
+  different act with a different conversation behind it, and one control that can do both
+  without saying which is one nobody can audit.
+- **The receipts table has no write policy at all.** Granting inserts to admins would let
+  one write a receipt without moving the balance — a piece of paper saying money changed
+  hands while the account says it did not, which is the exact thing a receipt rules out.
+  The function does both halves or neither.
 
 ## Collection
 Cash, recorded in AdminApp via `recordSubscriptionPayment`, which writes a `subscriptions`

@@ -85,6 +85,14 @@ Future<List<OrderSettlement>> merchantSettlements(Ref ref, String merchantId) as
   return result.valueOrThrow;
 }
 
+/// The cash collected against a merchant's commission, newest first.
+@riverpod
+Future<List<CommissionPayment>> commissionPayments(Ref ref, String merchantId) async {
+  final result =
+      await ref.watch(settlementRepositoryProvider).paymentsFor(merchantId);
+  return result.valueOrThrow;
+}
+
 /// What the statement adds up to.
 ///
 /// Derived from the same fetch rather than asked separately, so the total on the screen
