@@ -77,6 +77,7 @@ describe('two policies that were too narrow', () => {
   // to the pile. `auth.users` last — `users` rows hang off it by foreign key.
   after(async () => {
     await q('delete from ratings where merchant_id in ($1,$2)', [merchantA, merchantB]);
+    await q('delete from order_settlements where order_id in (select id from orders where city_id = $1)', [city]);
     await q('delete from orders where city_id = $1', [city]);
     await q('delete from merchants where city_id = $1', [city]);
     await q('delete from zones where city_id = $1', [city]);

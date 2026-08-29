@@ -55,6 +55,43 @@ undercut the premium look; and Google's network can serve competitor ads inside 
 weakening the pitch to merchants paying for placement. The switch exists so the decision
 stays reversible at any time.
 
+## Settlement
+
+**When an order is delivered, and never before.** Cash reaches the merchant at the door,
+so that is the only moment the platform's share is real; charging at order time would bill
+for orders that are cancelled, refused, or never answered.
+
+`order_settlements` holds one row per delivered order — every model, including a
+subscription merchant's zero, because an audit trail with the uninteresting entries left
+out is one nobody can count. `order_id` is its primary key, and that is the guard: a
+trigger inside the status transaction cannot be *missed*, but it can still run twice, and
+the difference between those two sentences is a merchant charged twice for one order.
+Atomicity is not idempotence.
+
+| Model | What is taken | Where it lands |
+|---|---|---|
+| Subscription | Nothing | A row at zero, and nothing else |
+| Commission | Basis points of the **food**, rounded down | `merchants.commission_owed` |
+| Prepaid | The flat fee, capped at what the order was worth | Out of `merchants.wallet_balance` |
+
+Everything is read off the snapshot frozen onto the order, never off the merchant, so
+moving somebody to commission next month changes future orders and rewrites nothing.
+The two merchant columns are running totals because both are read on the hot path —
+`place_order` checks the wallet before every single order — and the ledger stays the
+evidence behind them. `platform_owes` lives only in the ledger, because nothing has to
+read it before an order and a second denormalised column would exist only to drift.
+
+**A charge can be taken back.** An admin can move a delivered order back out of delivered,
+and a merchant left billed for one that was cancelled afterwards will notice. The row
+stays, marked `reversed_at`: "charged and then returned" and "never charged" are different
+answers. The reversal hands back what the row says was taken, not what would be taken
+today — a rate corrected since would otherwise return the wrong money.
+
+Not built yet, and each is its own piece of work: **a screen for any of it** (the merchant
+reads their own settlements through the policy today, and nothing renders them), and
+**collecting what `commission_owed` says** — which, being cash, is a person and a receipt
+rather than a transaction.
+
 ## Collection
 Cash, recorded in AdminApp via `recordSubscriptionPayment`, which writes a `subscriptions`
 document and an `auditLog` entry.

@@ -149,13 +149,10 @@ This is where the migration pays for itself rather than merely surviving.
   not *move* the order settles nothing; and a settlement row keyed uniquely on the order,
   so a second attempt collides rather than pays.
 
-  **None of this is built.** `wallet_balance` is only ever added to, `commission_owed`
-  has never been written by anything, and `pricing.platformOwesMerchant` is computed by
-  `place_order`, frozen onto the order, and read by no settlement anywhere. Under all
-  three revenue models the platform records what it would charge and charges nothing —
-  which is survivable only because there is no live merchant yet. See
-  `docs/10-monetization.md` for what the settlement owes; this bullet is the shape it
-  takes, not a description of code that exists.
+  **Built 2026-08-29**, in `20260829000000_settle_delivered_orders.sql`, and it is that
+  shape: `when (old.status is distinct from new.status)` on the trigger, and
+  `order_settlements` keyed on the order so a second attempt collides rather than pays.
+  See "Settlement" in `docs/10-monetization.md` for what it does with each model.
 - **Order creation becomes a Postgres function called over RPC.** The pricing recompute,
   the coupon check, the redemption record and the `remaining_qty` decrement all land in
   one transaction. The race that the entire `dailyMeals` design exists to prevent is then

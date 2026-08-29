@@ -595,6 +595,46 @@ void main() {
       expect(again.failureOrNull, isA<ConflictFailure>());
     });
 
+    // The one thing the walk above did not do for eight phases: charge anybody.
+    //
+    // Through the real repositories and a real courier token, because that is the path
+    // the two defects in this feature hid behind. The settlement writes columns behind
+    // `guard_columns` and calls a function revoked from `authenticated`, and neither
+    // showed up until something ran it as the person who actually runs it.
+    test('and the platform is paid, through the courier who delivered it', () async {
+      final order = (await customerRepository.placeOrder(draft())).valueOrNull!;
+
+      await merchantRepository.accept(order.id, prepMinutes: 20);
+      await merchantRepository.advance(order.id, to: OrderStatus.preparing);
+      await courierRepository.markOnTheWay(order.id, courierUid: courierUid);
+      final delivered = await courierRepository.markDelivered(order.id);
+      expect(delivered.failureOrNull, isNull,
+          reason: 'a settlement that refuses the write takes the delivery with it');
+
+      final settled = await live.client
+          .from('order_settlements')
+          .select()
+          .eq('order_id', order.id)
+          .single();
+      expect(settled['merchant_id'], merchantId);
+      expect(settled['basis'], order.pricing.subtotal,
+          reason: 'the cut is on the food, never the bill');
+      expect(settled['reversed_at'], isNull);
+
+      // And it reached the snapshot the phone reads, where `RevenueSnapshot.amount` has
+      // been documented since Phase 7 and been zero ever since.
+      final row = await live.client
+          .from('orders')
+          .select('revenue')
+          .eq('id', order.id)
+          .single();
+      expect(
+        (row['revenue'] as Map)['amount'],
+        settled['amount'],
+        reason: 'the order and the ledger must not disagree about one number',
+      );
+    });
+
     test('a customer can cancel while nobody has answered', () async {
       final order = (await customerRepository.placeOrder(draft())).valueOrNull!;
 

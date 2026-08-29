@@ -1,11 +1,18 @@
+import 'dart:convert';
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:luqma_core/luqma_core.dart';
 
 /// What the platform earns from one order.
 ///
 /// A pure computation over a snapshot frozen at order time, so changing a merchant's
-/// terms in AdminApp affects future orders only and never rewrites past accounting. The
-/// same arithmetic runs in the Cloud Function that applies it; this is the definition.
+/// terms in AdminApp affects future orders only and never rewrites past accounting.
+///
+/// The same arithmetic runs in Postgres — `order_revenue_take`, which is what actually
+/// takes the money on delivery. This side decides what the *phone shows*; that side
+/// decides what is *taken*, and the two disagreeing is an argument in a shop with money
+/// on the counter. `data/revenue-cases.json` is the one table both assert.
 void main() {
   Merchant merchant({
     RevenueModel model = RevenueModel.subscription,
@@ -253,5 +260,38 @@ void main() {
 
       expect(subscriber.acceptsOrdersAt(now), isTrue);
     });
+  });
+
+  // The shared table, asserted by `supabase/test/local/settlement_arithmetic.test.js`
+  // against the Postgres engine as well.
+  //
+  // Before it existed the two sides were tested against different figures, which proves
+  // each one self-consistent and nothing whatever about them agreeing. Read from the
+  // file rather than copied into both suites, because a copy is a thing somebody edits
+  // on one side.
+  group('the same numbers the server takes', () {
+    final cases = (jsonDecode(
+      File('../../data/revenue-cases.json').readAsStringSync(),
+    ) as Map<String, dynamic>)['cases'] as List<dynamic>;
+
+    test('the table is actually loaded', () {
+      // A path that has quietly stopped resolving turns every case below into a pass by
+      // vacuity, which is the one way a shared fixture fails silently.
+      expect(cases, isNotEmpty);
+    });
+
+    for (final raw in cases) {
+      final c = raw as Map<String, dynamic>;
+      test(c['why'] as String, () {
+        final snapshot = RevenueSnapshot(
+          model: RevenueModel.values.byName(c['model'] as String),
+          value: c['value'] as int,
+        );
+        expect(
+          Revenue.takeFrom(snapshot, basis: c['basis'] as int),
+          c['take'],
+        );
+      });
+    }
   });
 }

@@ -80,6 +80,7 @@ describe('scheduled jobs', () => {
   after(async () => {
     // Everything here restricts its parent - the whole schema is built so live business
     // rows cannot vanish underneath history - so teardown goes leaf-first.
+    await q('delete from order_settlements where order_id in (select id from orders where city_id = $1)', [city]);
     await q('delete from orders where city_id = $1', [city]);
     await q(`delete from subscriptions where merchant_id in
                (select id from merchants where city_id = $1)`, [city]);

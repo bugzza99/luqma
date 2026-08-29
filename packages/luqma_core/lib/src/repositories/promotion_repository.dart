@@ -199,11 +199,25 @@ class SupabasePromotionRepository implements PromotionRepository {
 
 /// In-memory promotions, for tests and for the screens above them.
 class FakePromotionRepository implements PromotionRepository {
-  FakePromotionRepository({List<Promotion> seed = const [], this.failure})
-      : _promotions = {for (final p in seed) p.id: p};
+  FakePromotionRepository({
+    List<Promotion> seed = const [],
+    this.failure,
+    DateTime Function()? clock,
+  })  : _promotions = {for (final p in seed) p.id: p},
+        _clock = clock ?? DateTime.now;
 
   final Map<String, Promotion> _promotions;
   final Failure? failure;
+
+  /// The hour [pushSlotAvailable] answers against.
+  ///
+  /// Injectable because the push cap is a question about a seven-day window, and a fake
+  /// reading the wall clock makes every test of it depend on the day it is run. That is
+  /// not theoretical: the merchant's cap test pinned its own `now` to a fixed date and
+  /// seeded a campaign two days before it, and passed for five days — until the real
+  /// clock moved past the window and the same fixture started reading as "nothing sent
+  /// this week". The test failed for a reason that had nothing to do with the code.
+  final DateTime Function() _clock;
 
   final _changed = StreamController<void>.broadcast();
 
@@ -320,7 +334,7 @@ class FakePromotionRepository implements PromotionRepository {
     if (failure != null) return Result.err(failure!);
     // Mirrors the server: sent means ended, or approved and already started, within the
     // last seven days. An approved campaign that has not begun has not spent attention.
-    final now = DateTime.now();
+    final now = _clock();
     final since = now.subtract(const Duration(days: 7));
     final sent = _promotions.values
         .where((p) =>

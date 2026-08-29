@@ -1,0 +1,78 @@
+{
+  "$comment": [
+    "What the platform takes from one order, as one table asserted by both engines.",
+    "",
+    "The engine exists twice on purpose: `Revenue.takeFrom` in Dart decides what the",
+    "phone SHOWS, and `order_revenue_take` in Postgres decides what is actually TAKEN.",
+    "The server's answer is the one that counts, and the phone's is the one a merchant",
+    "reads off a screen before they hand over food — so the two disagreeing is not a",
+    "rounding curiosity, it is an argument in a shop with money on the counter.",
+    "",
+    "Before this file the two sides were tested against different figures, which proves",
+    "each one self-consistent and nothing at all about them agreeing. A case added here",
+    "is asserted by `packages/luqma_core/test/revenue_test.dart` and by",
+    "`supabase/test/local/settlement_arithmetic.test.js`, so a divergence fails a test",
+    "rather than turning up in somebody's till.",
+    "",
+    "All figures are piastres. `value` is basis points under commission, piastres per",
+    "order under prepaid, and meaningless under subscription."
+  ],
+  "cases": [
+    {
+      "why": "subscription takes nothing, whatever the order was worth",
+      "model": "subscription", "value": 0, "basis": 500000, "take": 0
+    },
+    {
+      "why": "and a value on a subscription snapshot changes nothing",
+      "model": "subscription", "value": 9999, "basis": 500000, "take": 0
+    },
+    {
+      "why": "10% of 200 EGP of food",
+      "model": "commission", "value": 1000, "basis": 20000, "take": 2000
+    },
+    {
+      "why": "10% of 250 EGP",
+      "model": "commission", "value": 1000, "basis": 25000, "take": 2500
+    },
+    {
+      "why": "rounded down, never to nearest: 12.34% of 99.99 EGP is 1233.87 piastres",
+      "model": "commission", "value": 1234, "basis": 9999, "take": 1233
+    },
+    {
+      "why": "rounded down again, on a figure that would round up",
+      "model": "commission", "value": 1234, "basis": 999, "take": 123
+    },
+    {
+      "why": "200% is a typo for 2.00%, and must not make a merchant owe double",
+      "model": "commission", "value": 20000, "basis": 25000, "take": 25000
+    },
+    {
+      "why": "a negative rate takes nothing rather than paying the merchant",
+      "model": "commission", "value": -500, "basis": 15000, "take": 0
+    },
+    {
+      "why": "prepaid is the flat fee, whatever the order was worth",
+      "model": "prepaid", "value": 500, "basis": 25000, "take": 500
+    },
+    {
+      "why": "and the same fee on an order twenty times the size",
+      "model": "prepaid", "value": 500, "basis": 500000, "take": 500
+    },
+    {
+      "why": "never more than the order: a fee that puts a merchant in the red on a small sale stops them taking small sales",
+      "model": "prepaid", "value": 500, "basis": 300, "take": 300
+    },
+    {
+      "why": "an order worth nothing owes nothing, under commission",
+      "model": "commission", "value": 1000, "basis": 0, "take": 0
+    },
+    {
+      "why": "and under prepaid",
+      "model": "prepaid", "value": 500, "basis": 0, "take": 0
+    },
+    {
+      "why": "a negative basis is not a refund",
+      "model": "prepaid", "value": 500, "basis": -1000, "take": 0
+    }
+  ]
+}

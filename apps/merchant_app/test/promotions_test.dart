@@ -40,7 +40,11 @@ void main() {
     List<Promotion> seed = const [],
     Map<String, Object> config = const {},
   }) async {
-    promotions = FakePromotionRepository(seed: seed);
+    // The same fixed hour the fixtures are built around. Without it the fake answers the
+    // push cap against the wall clock while every campaign here is dated relative to
+    // `now`, so the seven-day window drifts off the fixtures and the test starts failing
+    // on a particular day of a particular week.
+    promotions = FakePromotionRepository(seed: seed, clock: () => now);
 
     // The service starts on the compiled-in defaults and only takes fetched values after
     // a refresh — which is the whole point of it, so a test that wants a different cap

@@ -90,6 +90,7 @@ describe('admin completion functions', () => {
 
   after(async () => {
     // Leaf first, as everywhere: history cannot outlive its subject.
+    await q('delete from order_settlements where order_id in (select id from orders where city_id = $1)', [city]);
     await q('delete from orders where city_id = $1', [city]);
     await q('delete from order_issues where merchant_id = $1', [merchant]);
     // `$1::uuid`, not a bare $1: jsonb_build_object takes "any", so Postgres cannot infer

@@ -70,7 +70,7 @@ sweep it did not earn.
 A project that has never had the migrations needs `db push` **and** `config push` — the
 second is not optional, for the reason in the bullet above: the hook is configuration.
 
-137 live tests and 109 stack tests passed against `luqma-test` on 2026-08-28.
+221 live tests and 141 stack tests passed against `luqma-test` on 2026-08-29.
 
 
 **The design is finished and verified. Read `docs/` before changing anything.**
@@ -481,7 +481,7 @@ in the repository — and `flutter test` on a *package* does not run the generat
 the way an app build does. Without it a new string is a compile error that points at the
 call site rather than at the missing step.
 
-**~830 Dart tests · 66 schema tests · 109 stack tests · 137 live-repository tests.**
+**~950 Dart tests · 116 schema tests · 141 stack tests · 221 live-repository tests.**
 `flutter analyze` clean.
 
 There are no `function` tests and no `tsc`: the TypeScript Cloud Functions went with
@@ -731,36 +731,49 @@ is a debt from the moment the order is placed, accrued as `pricing.platformOwesM
 Coupon documents are **unreadable by any client** — a readable collection is one anyone
 can enumerate. The app calls a function that returns the discount for one basket.
 
-## Revenue is recorded and never collected
+## Revenue settlement, built 2026-08-29
 
-Found 2026-08-29, while checking a review finding about `onOrderDelivered`.
+For eight phases the platform recorded what it would charge and charged nothing:
+`wallet_balance` was only ever added to, `commission_owed` had never been written by
+anything, and `pricing.platformOwesMerchant` was computed by `place_order`, frozen onto
+the order, and read by no statement anywhere. `onOrderDelivered` left with Firebase.
 
-**All three revenue models stop at the order.** `place_order` freezes the terms onto
-`orders.revenue` and computes `pricing.platformOwesMerchant`, the phone shows the figure,
-`Revenue` in Dart and the billing screens agree about it — and **nothing ever settles it**:
+`20260829000000_settle_delivered_orders.sql` is the replacement. The table is
+`order_settlements`, one row per delivered order; `docs/10-monetization.md` has the
+model-by-model table and `docs/17` the design note.
 
-- `merchants.wallet_balance` is only ever added to. `top_up_wallet` exists in three
-  migrations; no statement anywhere subtracts. Under `prepaid` the balance is *checked*
-  before an order and never spent, so the credit never runs out and intake is never
-  suspended.
-- `merchants.commission_owed` has been a column since the first schema and has never been
-  written by anything.
-- `pricing.platformOwesMerchant` — the coupon debt, which in a cash market is the whole
-  point of `fundedBy` — is computed, stored in jsonb, and read by no settlement.
-- The nightly pass only downgrades expired subscriptions. There is no per-order pass.
+Four things that are easy to undo by accident:
 
-`onOrderDelivered` was the Cloud Function that did this; it went with Firebase, and
-`docs/17` describes the trigger that replaces it as though it were built. It is not.
+- **`order_id` is the primary key, and that is the guard.** A trigger inside the status
+  transaction cannot be *missed*; it can still run twice — a retry, a second write of the
+  same status, an admin touching a neighbouring column with `status` in the `set` list.
+  Atomicity is not idempotence. The `when (old.status is distinct from new.status)` clause
+  is the other half.
+- **Both functions are `security definer`, and each for a different reason.**
+  `apply_order_settlement` writes `merchants`, which a courier has no rights on;
+  `settle_on_delivery` is the *trigger*, which runs as whoever ran the statement — the
+  courier — and calls a function revoked from `authenticated`. Without the second one,
+  marking an order delivered fails outright from the street with "permission denied for
+  function". Granting the settlement to `authenticated` would make the same symptom go
+  away by letting anybody charge any merchant.
+- **`apply_order_settlement` declares `app.server_mode` and puts it back.**
+  `security definer` does not satisfy `guard_columns`, which asks whether a trusted server
+  function has declared itself, not who owns the function. And the setting is
+  transaction-local inside somebody else's transaction, so leaving it standing would stand
+  every guard down for whatever that transaction did next.
+- **`order_settlements.order_id` is `on delete restrict`.** A settlement is evidence of a
+  charge, and the order must not be able to take it with it. Nothing in the product deletes
+  an order; the teardowns in `test_live/harness.dart` and `supabase/test/stack/` delete
+  settlements first, and a new one that forgets fails on `23503`.
 
-**When it is built, atomicity is not idempotence.** A trigger inside the status
-transaction cannot be missed, but it can still run twice — a retry, a second
-`UPDATE … SET status = 'delivered'`, an admin touching a neighbouring column with status
-in the `SET` list. It needs `when (old.status is distinct from new.status)` *and* a
-settlement row keyed uniquely on the order. Deleting the guard because the write is
-atomic is the mistake `docs/17` used to prescribe.
+**Both defects above were found by one test** — delivering as a real courier token rather
+than with `app.server_mode` on, which every other test in the suite used. Twenty-three
+tests passed against a settlement that would have failed for every courier on every
+delivery. The suite was testing the path nobody takes.
 
-Survivable only because there is no live merchant. It is a launch blocker the moment one
-is onboarded at anything other than zero commission.
+Not built, and each its own piece: **a screen for any of it** — a merchant can read their
+own settlements through the policy and nothing renders them — and **collecting what
+`commission_owed` says**, which in a cash market is a person and a receipt.
 
 ## Known debts from the audit
 

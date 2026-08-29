@@ -104,6 +104,16 @@ abstract class Merchant with _$Merchant {
     /// Remaining prepaid credit, in piastres. Only ever moved by the server.
     @Default(0) int walletBalance,
 
+    /// What this merchant owes the platform under `commission`, in piastres.
+    ///
+    /// A running total the settlement maintains on delivery, and absent from `_row` for
+    /// the same reason [walletBalance] is: it is the server's money, and a form built
+    /// from this model must not be able to carry a new figure back.
+    ///
+    /// The evidence behind it is `order_settlements`, one row per delivered order. This
+    /// is the answer; that is the working.
+    @Default(0) int commissionOwed,
+
     /// Overrides the zone's default delivery fee, in piastres. Clamped server-side to
     /// the admin's range — the client is not trusted with it.
     int? deliveryFeeOverride,

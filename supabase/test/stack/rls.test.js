@@ -129,6 +129,10 @@ before(async () => {
 after(async () => {
   for (const sql of [
     'delete from coupons where city_id = $1',
+    // Settlements first: `order_id` is `on delete restrict`, because a settlement is
+    // evidence of a charge and the order it belongs to must not be able to take it
+    // with it. Nothing in the product deletes an order; only a teardown does.
+    'delete from order_settlements where order_id in (select id from orders where city_id = $1)',
     'delete from orders where city_id = $1',
     'delete from promotions where city_id = $1',
     'delete from daily_meals where city_id = $1',

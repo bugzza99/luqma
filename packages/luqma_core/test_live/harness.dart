@@ -187,6 +187,12 @@ class LiveDatabase {
 
     if (ids.isNotEmpty) {
       await client.from('menu_items').delete().inFilter('merchant_id', ids);
+      // Before the orders, and the ordering is the point rather than housekeeping:
+      // `order_settlements.order_id` is `on delete restrict`, because a settlement is
+      // evidence of a charge and deleting the order it belongs to would either strand
+      // it or, under cascade, quietly destroy the record that a merchant was billed.
+      // In the product nothing deletes an order at all; only a test does.
+      await client.from('order_settlements').delete().inFilter('merchant_id', ids);
     }
     for (final table in ['orders', 'promotions', 'daily_meals', 'coupons', 'merchants',
                          'landmarks', 'home_sections', 'zones']) {
