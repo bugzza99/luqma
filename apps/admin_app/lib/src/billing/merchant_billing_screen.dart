@@ -28,6 +28,11 @@ class MerchantBillingScreen extends ConsumerWidget {
   static const amountKey = Key('billing.amount');
   static const confirmTopUpKey = Key('billing.confirmTopUp');
   static const exhaustedKey = Key('billing.exhausted');
+  static const listKey = Key('billing.list');
+  static const settlementsKey = Key('billing.settlements');
+  static const owedKey = Key('billing.owed');
+  static const platformOwesKey = Key('billing.platformOwes');
+  static const noSettlementsKey = Key('billing.noSettlements');
 
   static Key modelKey(RevenueModel model) => Key('billing.model.${model.name}');
   static Key currentModelKey(RevenueModel model) => Key('billing.current.${model.name}');
@@ -63,6 +68,10 @@ class MerchantBillingScreen extends ConsumerWidget {
           ? const Center(child: CircularProgressIndicator())
           : AdminContent(
               child: ListView(
+                // Keyed so a test can scroll *this* list. The screen has several nested
+                // scrollables, and a finder that picks by type throws on the ambiguity
+                // rather than choosing.
+                key: listKey,
                 padding: const EdgeInsets.all(Space.gutter),
                 children: [
                   _Model(merchant: merchant),
@@ -72,6 +81,12 @@ class MerchantBillingScreen extends ConsumerWidget {
                     const SizedBox(height: Space.xl),
                   ],
                   _Term(merchantId: merchantId),
+                  // Under a subscription nothing is taken per order, so there is no
+                  // account to read — the term above is the whole arrangement.
+                  if (merchant.revenueModel != RevenueModel.subscription) ...[
+                    const SizedBox(height: Space.xl),
+                    _Settlements(merchant: merchant),
+                  ],
                 ],
               ),
             ),
@@ -559,6 +574,115 @@ class _AmountDialogState extends State<_AmountDialog> {
             Navigator.of(context).pop(amount);
           },
           child: const Text('سجّل'),
+        ),
+      ],
+    );
+  }
+}
+
+/// What has actually been taken, and what is outstanding.
+///
+/// The admin's half of the same rows the merchant reads in MerchantApp, and the reason it
+/// is here at all: collecting `commission_owed` is a person with a receipt, and the
+/// person needs a number to ask for. Before this it was a column nothing displayed.
+class _Settlements extends ConsumerWidget {
+  const _Settlements({required this.merchant});
+
+  final Merchant merchant;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
+    final colors = theme.luqma;
+    final strings = LuqmaStrings.of(context);
+    final summary = ref.watch(settlementSummaryProvider(merchant.id));
+
+    return _Card(
+      cardKey: MerchantBillingScreen.settlementsKey,
+      title: 'الحساب على الأوردرات',
+      child: LuqmaAsyncView(
+        value: summary,
+        onRetry: () => ref.invalidate(merchantSettlementsProvider(merchant.id)),
+        builder: (context, s) => Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (s.orders == 0)
+              Text(
+                // Not an empty card. "Nothing has been delivered yet" and "the figures
+                // failed to load" look identical as a blank space, and one of them is a
+                // reason to phone somebody.
+                'لسه مفيش أوردرات اتسلّمت.',
+                key: MerchantBillingScreen.noSettlementsKey,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: colors.textSecondary,
+                ),
+              )
+            else ...[
+              _Figure(label: strings.orderCount(s.orders), value: strings.price(s.taken)),
+              if (merchant.revenueModel == RevenueModel.commission) ...[
+                const SizedBox(height: Space.sm),
+                _Figure(
+                  figureKey: MerchantBillingScreen.owedKey,
+                  // The running total, which is what somebody actually collects — the
+                  // page above is the last hundred orders, the debt is since the last
+                  // payment.
+                  label: 'المستحق على المطعم',
+                  value: strings.price(merchant.commissionOwed),
+                  emphasis: colors.price,
+                ),
+              ],
+              if (s.platformOwes > 0) ...[
+                const SizedBox(height: Space.sm),
+                _Figure(
+                  figureKey: MerchantBillingScreen.platformOwesKey,
+                  // Netted against the above by a person, not by this screen: what the
+                  // platform owes for its own discounts is a different conversation from
+                  // what the merchant owes in commission, and collapsing them into one
+                  // number is how a merchant stops being able to check either.
+                  label: 'لقمة عليها للمطعم',
+                  value: strings.price(s.platformOwes),
+                  emphasis: colors.success,
+                ),
+              ],
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _Figure extends StatelessWidget {
+  const _Figure({
+    required this.label,
+    required this.value,
+    this.emphasis,
+    this.figureKey,
+  });
+
+  final String label;
+  final String value;
+  final Color? emphasis;
+  final Key? figureKey;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = theme.luqma;
+
+    return Row(
+      key: figureKey,
+      children: [
+        Expanded(
+          child: Text(
+            label,
+            style: theme.textTheme.bodyMedium
+                ?.copyWith(color: colors.textSecondary),
+          ),
+        ),
+        Text(
+          value,
+          style: LuqmaType.priceSmall.copyWith(color: emphasis ?? colors.textPrimary),
         ),
       ],
     );

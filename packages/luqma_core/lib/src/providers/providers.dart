@@ -15,6 +15,7 @@ import '../models/billing.dart';
 import '../models/daily_meal.dart';
 import '../models/order.dart';
 import '../models/promotion.dart';
+import '../models/settlement.dart';
 import '../repositories/address_repository.dart';
 import '../repositories/admin_repository.dart';
 import '../repositories/billing_repository.dart';
@@ -38,6 +39,7 @@ import '../repositories/profile_repository.dart';
 import '../repositories/promotion_repository.dart';
 import '../repositories/push_token_repository.dart';
 import '../repositories/search_repository.dart';
+import '../repositories/settlement_repository.dart';
 import '../repositories/staff_repository.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -68,6 +70,28 @@ GeographyRepository geographyRepository(Ref ref) =>
 @Riverpod(keepAlive: true)
 CuisineRepository cuisineRepository(Ref ref) =>
     SupabaseCuisineRepository(ref.watch(supabaseProvider));
+
+@Riverpod(keepAlive: true)
+SettlementRepository settlementRepository(Ref ref) =>
+    SupabaseSettlementRepository(ref.watch(supabaseProvider));
+
+/// One merchant's statement, newest first.
+///
+/// Not kept alive: this is a page somebody opens to check a figure, and holding a
+/// merchant's whole billing history in memory for the rest of the session buys nothing.
+@riverpod
+Future<List<OrderSettlement>> merchantSettlements(Ref ref, String merchantId) async {
+  final result = await ref.watch(settlementRepositoryProvider).forMerchant(merchantId);
+  return result.valueOrThrow;
+}
+
+/// What the statement adds up to.
+///
+/// Derived from the same fetch rather than asked separately, so the total on the screen
+/// and the rows under it can never be answers to two different questions.
+@riverpod
+Future<SettlementSummary> settlementSummary(Ref ref, String merchantId) async =>
+    SettlementSummary.of(await ref.watch(merchantSettlementsProvider(merchantId).future));
 
 @Riverpod(keepAlive: true)
 SearchRepository searchRepository(Ref ref) =>

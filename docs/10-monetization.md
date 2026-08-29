@@ -87,10 +87,15 @@ stays, marked `reversed_at`: "charged and then returned" and "never charged" are
 answers. The reversal hands back what the row says was taken, not what would be taken
 today — a rate corrected since would otherwise return the wrong money.
 
-Not built yet, and each is its own piece of work: **a screen for any of it** (the merchant
-reads their own settlements through the policy today, and nothing renders them), and
-**collecting what `commission_owed` says** — which, being cash, is a person and a receipt
-rather than a transaction.
+**Both sides read it.** MerchantApp's كشف الحساب lists the charges under a summary, and
+AdminApp's billing screen carries the same figures per merchant. Neither is offered under a
+subscription, where nothing is taken per order. What the platform owes back is shown as its
+own figure rather than netted against the commission: they are two different conversations,
+and one number that mixes them is a number nobody can check.
+
+Not built: **taking the money.** There is no equivalent of `recordSubscriptionPayment` for
+a commission debt, so `commission_owed` only ever grows — being cash, collection is a person
+and a receipt rather than a transaction, and the screen for recording one is the next piece.
 
 ## Collection
 Cash, recorded in AdminApp via `recordSubscriptionPayment`, which writes a `subscriptions`

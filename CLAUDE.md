@@ -70,7 +70,7 @@ sweep it did not earn.
 A project that has never had the migrations needs `db push` **and** `config push` — the
 second is not optional, for the reason in the bullet above: the hook is configuration.
 
-221 live tests and 141 stack tests passed against `luqma-test` on 2026-08-29.
+229 live tests and 141 stack tests passed against `luqma-test` on 2026-08-30.
 
 
 **The design is finished and verified. Read `docs/` before changing anything.**
@@ -481,7 +481,7 @@ in the repository — and `flutter test` on a *package* does not run the generat
 the way an app build does. Without it a new string is a compile error that points at the
 call site rather than at the missing step.
 
-**~950 Dart tests · 116 schema tests · 141 stack tests · 221 live-repository tests.**
+**~980 Dart tests · 116 schema tests · 141 stack tests · 229 live-repository tests.**
 `flutter analyze` clean.
 
 There are no `function` tests and no `tsc`: the TypeScript Cloud Functions went with
@@ -705,6 +705,19 @@ DATABASE_URL=<luqma-test session pooler> npm --prefix supabase run test:stack
   the way a phone does rather than with the service key ("can an administrator make an
   account" is a different question), so the whole thing reads as *signup is broken* in
   exactly one file while the other 132 tests pass. `tool\run_tests.ps1` passes all three.
+- **A weekday is 1..7 on the server, and `generate_series(0,6)` is the wrong seven.**
+  `merchant_open_at` maps Sunday to 7 exactly as `DateTime.weekday` does, so a fixture
+  built from `generate_series(0, 6)` covers Monday to Saturday and leaves the shop **shut
+  on Sundays**. `option_pricing.test.js` carried that from the day it was written and
+  `tool/seed-demo.mjs` still does: nine tests failed with "merchant not accepting orders"
+  on a Sunday and had passed every other day for weeks. Six runs in seven are green, so
+  the seventh reads as a flake rather than as the bug it is.
+- **Three tests failed on a date this week, all for different reasons, all the same
+  mistake:** a fixture pinned to a fixed date read against a clock that moved. The
+  promotions fake answered the push cap from `DateTime.now()` while its test pinned `now`;
+  the merchant fixture above was shut one day in seven; and a daily-meal window once
+  passed all morning and failed after four. If a suite fails and nothing changed, look at
+  the calendar before looking at the diff.
 - **A live test cannot reach `clockProvider`.** The clock there is Postgres's. A daily-meal
   fixture with a 13:00–16:00 collection window passed all morning and failed after four —
   the rule it tripped was right, the fixture was asserting the hour. Seed windows that are
@@ -771,9 +784,19 @@ than with `app.server_mode` on, which every other test in the suite used. Twenty
 tests passed against a settlement that would have failed for every courier on every
 delivery. The suite was testing the path nobody takes.
 
-Not built, and each its own piece: **a screen for any of it** — a merchant can read their
-own settlements through the policy and nothing renders them — and **collecting what
-`commission_owed` says**, which in a cash market is a person and a receipt.
+**Both sides can read it now.** `StatementScreen` in MerchantApp is كشف الحساب, reached
+from the billing card and drawn only when something is actually taken per order — under a
+subscription it would be a page of zeroes, and a screen that says nothing every time is
+one somebody stops believing when it finally has something to say. AdminApp's billing
+screen carries the same figures per merchant, because collecting `commission_owed` is a
+person with a receipt and the person needs a number to ask for.
+
+What the platform *owes* stays its own figure on both screens rather than being netted
+against the commission. They are two different conversations, and collapsing them into one
+number is how a merchant stops being able to check either.
+
+Still not built: **taking the money**. There is no equivalent of `recordSubscriptionPayment`
+for a commission debt, so `commission_owed` only ever grows.
 
 ## Known debts from the audit
 

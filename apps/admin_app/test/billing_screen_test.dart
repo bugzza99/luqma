@@ -26,6 +26,7 @@ void main() {
     int value = 0,
     int wallet = 0,
     String? planId,
+    int owed = 0,
   }) =>
       Merchant(
         id: 'm1',
@@ -39,6 +40,7 @@ void main() {
         revenueValue: value,
         walletBalance: wallet,
         planId: planId,
+        commissionOwed: owed,
       );
 
   late FakeBillingRepository billing;
@@ -48,7 +50,17 @@ void main() {
     WidgetTester tester, {
     Merchant? seed,
     List<Subscription> subscriptions = const [],
+    List<OrderSettlement> settlements = const [],
+    Failure? settlementFailure,
   }) async {
+    // A phone, not the runner's 800x600 default — which is wider than it is tall and
+    // unlike anything this ships on. `ListView` builds lazily, so a card below the fold
+    // of a window that shape is not merely off-screen: it does not exist, and every
+    // assertion about it reads as "the screen does not draw this".
+    tester.view.physicalSize = const Size(1080, 2340);
+    tester.view.devicePixelRatio = 3;
+    addTearDown(tester.view.reset);
+
     final shop = seed ?? merchant();
     merchants = FakeMerchantRepository(seed: [shop]);
     billing = FakeBillingRepository(
@@ -67,6 +79,12 @@ void main() {
           ),
           merchantRepositoryProvider.overrideWithValue(merchants),
           billingRepositoryProvider.overrideWithValue(billing),
+          settlementRepositoryProvider.overrideWithValue(
+            FakeSettlementRepository(
+              seed: settlements,
+              failure: settlementFailure,
+            ),
+          ),
           remoteConfigServiceProvider
               .overrideWithValue(RemoteConfigService(FakeConfigFetcher({}))),
         ],
@@ -286,6 +304,139 @@ void main() {
       );
 
       expect(find.byKey(MerchantBillingScreen.exhaustedKey), findsNothing);
+    });
+  });
+
+  // Collecting what a merchant owes is a person with a receipt, and the person needs a
+  // number to ask for. `commission_owed` was a column since the first schema that no
+  // screen displayed, and `platform_owes` had nowhere to be read at all.
+  group('the account on the orders', () {
+    /// Scrolls the account card into view.
+    ///
+    /// It sits below the plan, the wallet and the term, and `find.byKey` skips offstage
+    /// widgets by default — so a card that is built but scrolled past reads as one the
+    /// screen never draws. Scrolling asserts the stronger thing anyway: that an admin can
+    /// actually reach it.
+    /// Everything below asserts with `skipOffstage: false`.
+    ///
+    /// The card is the last of four in a `ListView`, so in a test window it is built but
+    /// scrolled past — and `find.byKey` skips offstage widgets, which reads as "the
+    /// screen does not draw this". Scrolling to it instead was tried and is the wrong
+    /// tool here: this screen has several nested scrollables, `scrollUntilVisible` picks
+    /// one by `single` and throws `Bad state: Too many elements`, and there is nothing on
+    /// this card to tap anyway. What is worth pinning is that it is in the list with the
+    /// right figures; that a `ListView` scrolls is Flutter's problem.
+    const offstageToo = false;
+
+    /// Drags the list far enough that the last card is built.
+    ///
+    /// `skipOffstage: false` finds a widget that exists and is scrolled past; it cannot
+    /// find one a lazy `ListView` never built, which is what happens under prepaid where
+    /// the wallet card pushes this one further down. Dragging the keyed list is
+    /// unambiguous where `scrollUntilVisible` is not.
+    Future<void> toTheBottom(WidgetTester tester) async {
+      await tester.drag(
+        find.byKey(MerchantBillingScreen.listKey),
+        const Offset(0, -900),
+      );
+      await tester.pumpAndSettle();
+    }
+
+    OrderSettlement settlement({
+      String orderId = 'o1',
+      int amount = 2000,
+      int platformOwes = 0,
+      DateTime? reversedAt,
+    }) =>
+        OrderSettlement(
+          orderId: orderId,
+          merchantId: 'm1',
+          model: RevenueModel.commission,
+          basis: 20000,
+          amount: amount,
+          platformOwes: platformOwes,
+          settledAt: DateTime(2026, 8, 24),
+          reversedAt: reversedAt,
+        );
+
+    testWidgets('a commission merchant shows what is outstanding', (tester) async {
+      await pump(
+        tester,
+        seed: merchant(model: RevenueModel.commission, value: 1000, owed: 47500),
+        settlements: [settlement()],
+      );
+
+      expect(find.byKey(MerchantBillingScreen.settlementsKey,
+          skipOffstage: offstageToo), findsOneWidget);
+      expect(find.byKey(MerchantBillingScreen.owedKey, skipOffstage: offstageToo),
+          findsOneWidget);
+      expect(find.textContaining('475', skipOffstage: offstageToo), findsWidgets);
+    });
+
+    // Under a subscription nothing is taken per order, so there is no account to read —
+    // the term is the whole arrangement, and a card of zeroes beside it invites the
+    // question of which one is right.
+    testWidgets('a subscription merchant has no such card', (tester) async {
+      await pump(tester, seed: merchant());
+
+      // `skipOffstage: false`: the card must not exist at all, not merely be out of
+      // view. Scrolling for it would loop rather than fail, since it is not there.
+      expect(
+        find.byKey(MerchantBillingScreen.settlementsKey, skipOffstage: offstageToo),
+        findsNothing,
+      );
+    });
+
+    // Under prepaid the money was taken in advance, so there is nothing outstanding —
+    // a line reading "المستحق" would be a debt the merchant does not have.
+    testWidgets('a prepaid merchant has the card but nothing outstanding',
+        (tester) async {
+      await pump(
+        tester,
+        seed: merchant(model: RevenueModel.prepaid, value: 500, wallet: 3000),
+        settlements: [settlement(amount: 500)],
+      );
+
+      await toTheBottom(tester);
+      expect(find.byKey(MerchantBillingScreen.settlementsKey,
+          skipOffstage: offstageToo), findsOneWidget);
+      expect(find.byKey(MerchantBillingScreen.owedKey, skipOffstage: offstageToo),
+          findsNothing);
+    });
+
+    testWidgets('what the platform owes back is its own figure', (tester) async {
+      await pump(
+        tester,
+        seed: merchant(model: RevenueModel.commission, value: 1000),
+        settlements: [settlement(platformOwes: 3000)],
+      );
+
+      // Kept apart from the commission on purpose: netting them into one number is how a
+      // merchant stops being able to check either.
+      expect(
+          find.byKey(MerchantBillingScreen.platformOwesKey, skipOffstage: offstageToo),
+          findsOneWidget);
+    });
+
+    // "Nothing has been delivered yet" and "the figures failed to load" look identical
+    // as a blank space, and one of them is a reason to phone somebody.
+    testWidgets('no delivered orders says so rather than showing nothing',
+        (tester) async {
+      await pump(tester, seed: merchant(model: RevenueModel.commission, value: 1000));
+
+      expect(
+          find.byKey(MerchantBillingScreen.noSettlementsKey, skipOffstage: offstageToo),
+          findsOneWidget);
+    });
+
+    testWidgets('and a failed read offers a retry', (tester) async {
+      await pump(
+        tester,
+        seed: merchant(model: RevenueModel.commission, value: 1000),
+        settlementFailure: const OfflineFailure(),
+      );
+
+      expect(find.byType(LuqmaErrorView, skipOffstage: offstageToo), findsOneWidget);
     });
   });
 }

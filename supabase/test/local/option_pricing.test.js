@@ -37,8 +37,13 @@ describe('what the extras cost', () => {
     merchant = (await db.query(
       `insert into merchants (city_id,type,name,zone_id,phone,status,delivers_self,min_order,opening_hours)
        values ('p','restaurant','مطعم',$1,'0100','approved',true,0,
+         -- 1..7, not 0..6. merchant_open_at counts Monday=1 to Sunday=7, the way
+         -- DateTime.weekday does, so a 0..6 series covers Monday to Saturday and leaves
+         -- Sunday shut. This fixture carried that from the day it was written and failed
+         -- on one day in seven, which is how it survived: six runs out of every seven
+         -- were green and the seventh read as a flake.
          (select jsonb_agg(jsonb_build_object('weekday',d,'openMinute',0,'closeMinute',1439))
-            from generate_series(0,6) d)) returning id`, [zone])).rows[0].id;
+            from generate_series(1,7) d)) returning id`, [zone])).rows[0].id;
     await db.query(`insert into merchant_served_zones (merchant_id,zone_id) values ($1,$2)`,
       [merchant, zone]);
     const cat = (await db.query(
@@ -147,8 +152,13 @@ describe('the bounds on a draft', () => {
     merchant = (await db.query(
       `insert into merchants (city_id,type,name,zone_id,phone,status,delivers_self,min_order,opening_hours)
        values ('b','restaurant','مطعم',$1,'0100','approved',true,0,
+         -- 1..7, not 0..6. merchant_open_at counts Monday=1 to Sunday=7, the way
+         -- DateTime.weekday does, so a 0..6 series covers Monday to Saturday and leaves
+         -- Sunday shut. This fixture carried that from the day it was written and failed
+         -- on one day in seven, which is how it survived: six runs out of every seven
+         -- were green and the seventh read as a flake.
          (select jsonb_agg(jsonb_build_object('weekday',d,'openMinute',0,'closeMinute',1439))
-            from generate_series(0,6) d)) returning id`, [zone])).rows[0].id;
+            from generate_series(1,7) d)) returning id`, [zone])).rows[0].id;
     await db.query(`insert into merchant_served_zones (merchant_id,zone_id) values ($1,$2)`,
       [merchant, zone]);
     const cat = (await db.query(

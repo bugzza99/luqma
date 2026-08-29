@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:luqma_core/luqma_core.dart';
 
+import 'statement_screen.dart';
+
 
 import '../promotions/promotions_screen.dart';
 import 'busy_toggle.dart';
@@ -20,6 +22,7 @@ class ShopScreen extends ConsumerWidget {
   static const confirmSignOutKey = Key('shop.confirmSignOut');
   static const feedbackKey = Key('shop.feedback');
   static const billingKey = Key('shop.billing');
+  static const statementKey = Key('shop.statement');
   static const walletKey = Key('shop.wallet');
   static const promotionsKey = Key('shop.promotions');
   static const noFeedbackKey = Key('shop.noFeedback');
@@ -375,6 +378,25 @@ class _Billing extends ConsumerWidget {
                 color: subscription.isActiveAt(now)
                     ? colors.textSecondary
                     : colors.danger,
+              ),
+            ),
+          ],
+          // Only where something is actually taken per order. Under a subscription the
+          // statement is a page of zeroes, and a screen that says nothing every time is
+          // one somebody stops believing when it finally has something to say.
+          if (merchant.revenueModel != RevenueModel.subscription) ...[
+            const SizedBox(height: Space.sm),
+            Align(
+              alignment: AlignmentDirectional.centerStart,
+              child: TextButton.icon(
+                key: ShopScreen.statementKey,
+                onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => StatementScreen(merchantId: merchant.id),
+                  ),
+                ),
+                icon: const Icon(Icons.list_alt_rounded, size: Sizes.iconSm),
+                label: const Text('كشف الحساب'),
               ),
             ),
           ],

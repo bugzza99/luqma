@@ -143,7 +143,9 @@ const shop = await sql(`
     select 'edku', 'restaurant', 'مطعم البحر', z.id, '01000000002', 'approved', true, 0,
            (select jsonb_agg(jsonb_build_object('weekday', d, 'openMinute', 0,
                                                 'closeMinute', 1439))
-              from generate_series(0, 6) as d),
+              -- 1..7: merchant_open_at counts Monday=1 to Sunday=7, as DateTime.weekday
+              -- does. A 0..6 series leaves every seeded shop shut on Sundays.
+              from generate_series(1, 7) as d),
            'commission', 1000
       from z
      where not exists (select 1 from public.merchants
