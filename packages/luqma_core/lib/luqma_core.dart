@@ -68,6 +68,7 @@ export 'src/util/contrast.dart';
 export 'src/util/phone.dart';
 export 'src/data/column_names.dart';
 export 'src/widgets/address_picker.dart';
+export 'src/widgets/async_view.dart';
 export 'src/widgets/empty_view.dart';
 export 'src/widgets/error_view.dart';
 export 'src/widgets/notice.dart';
