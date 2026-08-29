@@ -73,6 +73,11 @@ class _Gate extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final session = ref.watch(currentIdentityProvider);
 
+    // Not a `LuqmaAsyncView`, and it is the one gate in the product where that would be
+    // wrong. Failing to read the session means nobody is signed in, so the error arm
+    // shows the sign-in screen rather than an apology with a retry button — and there is
+    // an arm for a *loaded* session that is null, which the shared widget has no notion
+    // of because no other screen needs one.
     return switch (session) {
       AsyncValue(hasValue: true, value: null) => const SignInScreen(),
       AsyncValue(hasValue: true, :final value?) => switch (StaffIdentity.from(value)) {

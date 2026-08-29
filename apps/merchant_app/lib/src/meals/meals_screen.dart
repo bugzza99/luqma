@@ -41,18 +41,18 @@ class MealsScreen extends ConsumerWidget {
     return Scaffold(
       backgroundColor: colors.background,
       appBar: AppBar(title: const Text('أكل النهارده')),
-      body: switch (meals) {
-        // First, and on `hasError`: a stream that fails before it has ever emitted stays
-        // AsyncLoading with the error hanging off it, and a cook reading that as "no
-        // meals" thinks nothing published.
-        AsyncValue(hasError: true, :final error?) => LuqmaErrorView(key: MealsScreen.errorKey, failure: error, onRetry: () => ref.invalidate(merchantMealsProvider(merchantId))),
-        AsyncValue(hasValue: true, :final value?) when value.isEmpty => LuqmaEmptyView(
+      body: LuqmaAsyncView(
+        value: meals,
+        errorKey: MealsScreen.errorKey,
+        onRetry: () => ref.invalidate(merchantMealsProvider(merchantId)),
+        empty: LuqmaEmptyView(
             key: MealsScreen.emptyKey,
             icon: Icons.soup_kitchen_outlined,
             title: 'لسه منشرتش أكلة',
             message: 'قول بتطبخ إيه النهارده وكام طبق، والباقي علينا.',
           ),
-        AsyncValue(hasValue: true, :final value?) => ListView.separated(
+        isEmpty: (value) => value.isEmpty,
+        builder: (context, value) => ListView.separated(
             padding: const EdgeInsets.fromLTRB(
               Space.gutter,
               Space.gutter,
@@ -65,9 +65,8 @@ class MealsScreen extends ConsumerWidget {
               meal: value[i],
               isToday: value[i].date == ref.watch(todayProvider),
             ),
-          ),
-        _ => const Center(child: CircularProgressIndicator()),
-      },
+          )
+      ),
       floatingActionButton: FloatingActionButton.extended(
         key: addKey,
         onPressed: () => _publish(context, ref, merchantId),

@@ -73,22 +73,24 @@ class InboxScreen extends ConsumerWidget {
       // A stream that fails before it ever emits stays `AsyncLoading` with the error
       // hanging off it, so an `AsyncError()` arm never fires and the screen spins for
       // ever on a dropped connection — which on this screen reads as a quiet evening.
-      body: switch (incoming) {
-        AsyncValue(hasError: true, :final error?) => LuqmaErrorView(key: InboxScreen.errorKey, failure: error, onRetry: () => ref.invalidate(incomingOrdersProvider(merchantId))),
-        AsyncValue(hasValue: true, :final value?) when value.isEmpty => LuqmaEmptyView(
+      body: LuqmaAsyncView(
+        value: incoming,
+        errorKey: InboxScreen.errorKey,
+        onRetry: () => ref.invalidate(incomingOrdersProvider(merchantId)),
+        empty: LuqmaEmptyView(
             key: InboxScreen.emptyKey,
             icon: Icons.check_circle_outline_rounded,
             title: 'مفيش طلبات مستنية',
             message: 'أول ما يجي طلب هتسمع صوت.',
           ),
-        AsyncValue(hasValue: true, :final value?) => ListView.separated(
+        isEmpty: (value) => value.isEmpty,
+        builder: (context, value) => ListView.separated(
             padding: const EdgeInsets.all(Space.gutter),
             itemCount: value.length,
             separatorBuilder: (_, _) => const SizedBox(height: Space.md),
             itemBuilder: (context, i) => _OrderCard(order: value[i]),
-          ),
-        _ => const Center(child: CircularProgressIndicator()),
-      },
+          )
+      ),
     );
   }
 }

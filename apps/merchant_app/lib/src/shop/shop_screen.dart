@@ -391,6 +391,9 @@ class _Feedback extends ConsumerWidget {
       children: [
         Text('اللي العملاء قالوه', style: theme.textTheme.titleLarge),
         const SizedBox(height: Space.sm),
+        // Left hand-written: this is a section inside a page that is otherwise fine, so
+        // a failure is one quiet sentence rather than the full error block with a retry
+        // that `LuqmaAsyncView` draws. Losing the ratings must not take over the screen.
         switch (feedback) {
           // First, and on `hasError`: a stream that fails before it has ever emitted
           // stays AsyncLoading with the error hanging off it.

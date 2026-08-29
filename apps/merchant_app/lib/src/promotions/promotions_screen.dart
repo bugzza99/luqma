@@ -53,14 +53,17 @@ class MerchantPromotionsScreen extends ConsumerWidget {
     return Scaffold(
       backgroundColor: colors.background,
       appBar: AppBar(title: const Text('الإعلانات')),
-      body: switch (mine) {
-        AsyncValue(hasError: true, :final error?) => LuqmaErrorView(key: MerchantPromotionsScreen.errorKey, failure: error, onRetry: () => ref.invalidate(merchantPromotionsProvider(merchantId))),
-        AsyncValue(hasValue: true, :final value?) when value.isEmpty => LuqmaEmptyView(
+      body: LuqmaAsyncView(
+        value: mine,
+        errorKey: MerchantPromotionsScreen.errorKey,
+        onRetry: () => ref.invalidate(merchantPromotionsProvider(merchantId)),
+        empty: LuqmaEmptyView(
             key: MerchantPromotionsScreen.emptyKey,
             icon: Icons.campaign_outlined,
             title: 'لسه مطلبتش إعلان',
           ),
-        AsyncValue(hasValue: true, :final value?) => ListView.separated(
+        isEmpty: (value) => value.isEmpty,
+        builder: (context, value) => ListView.separated(
             padding: const EdgeInsets.fromLTRB(
               Space.gutter,
               Space.gutter,
@@ -70,9 +73,8 @@ class MerchantPromotionsScreen extends ConsumerWidget {
             itemCount: value.length,
             separatorBuilder: (_, _) => const SizedBox(height: Space.md),
             itemBuilder: (context, i) => _Card(promotion: value[i]),
-          ),
-        _ => const Center(child: CircularProgressIndicator()),
-      },
+          )
+      ),
       floatingActionButton: FloatingActionButton.extended(
         key: askKey,
         onPressed: () => _ask(context, ref, merchantId),

@@ -42,25 +42,21 @@ class AddressListScreen extends ConsumerWidget {
               child: const Text('سجّل دخول'),
             ),
           )
-          : switch (addresses) {
-              // An error arm comes first, and matches on `hasError` rather than on the
-              // `AsyncError` type: a stream that fails before it has ever emitted stays
-              // `AsyncLoading` with the error hanging off it, so a type match never fires
-              // and the screen spins for ever on a dropped connection.
-              AsyncValue(hasError: true, :final error?) => LuqmaErrorView(failure: error, onRetry: () => ref.invalidate(myAddressesProvider)),
-              AsyncValue(hasValue: true, :final value?) when value.isEmpty =>
-                LuqmaEmptyView(
-            key: AddressListScreen.emptyKey,
-            icon: Icons.location_off_outlined,
-            title: 'لسه مفيش عناوين محفوظة.',
-            message: 'ضيف عنوانك مرة واحدة وهيفضل موجود.',
+          : LuqmaAsyncView(
+            value: addresses,
+            onRetry: () => ref.invalidate(myAddressesProvider),
+            empty: LuqmaEmptyView(
+                key: AddressListScreen.emptyKey,
+                icon: Icons.location_off_outlined,
+                title: 'لسه مفيش عناوين محفوظة.',
+                message: 'ضيف عنوانك مرة واحدة وهيفضل موجود.',
+              ),
+            isEmpty: (value) => value.isEmpty,
+            builder: (context, value) => _List(
+                addresses: value,
+                chosenId: chosen?.id,
+              )
           ),
-              AsyncValue(hasValue: true, :final value?) => _List(
-                  addresses: value,
-                  chosenId: chosen?.id,
-                ),
-                          _ => const Center(child: CircularProgressIndicator()),
-},
       floatingActionButton: identity == null
           ? null
           : FloatingActionButton.extended(

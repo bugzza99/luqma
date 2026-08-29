@@ -44,15 +44,12 @@ class OrderScreen extends ConsumerWidget {
     return Scaffold(
       backgroundColor: Theme.of(context).luqma.background,
       appBar: AppBar(title: const Text('متابعة الطلب')),
-      body: switch (order) {
-        // An error arm comes first, and matches on `hasError` rather than on the
-        // `AsyncError` type: a stream that fails before it has ever emitted stays
-        // `AsyncLoading` with the error hanging off it, so a type match never fires
-        // and the screen spins for ever on a dropped connection.
-        AsyncValue(hasError: true, :final error?) => LuqmaErrorView(key: OrderScreen.errorKey, failure: error, onRetry: () => ref.invalidate(orderProvider(orderId))),
-        AsyncValue(hasValue: true, :final value?) => _Loaded(order: value),
-              _ => const Center(child: CircularProgressIndicator()),
-},
+      body: LuqmaAsyncView(
+        value: order,
+        errorKey: OrderScreen.errorKey,
+        onRetry: () => ref.invalidate(orderProvider(orderId)),
+        builder: (context, value) => _Loaded(order: value)
+      ),
     );
   }
 }

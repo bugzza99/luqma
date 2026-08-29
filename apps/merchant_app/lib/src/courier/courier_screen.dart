@@ -71,23 +71,23 @@ class CourierScreen extends ConsumerWidget {
           const _PendingBanner(),
           const _RejectedBanner(),
           Expanded(
-            child: switch (deliveries) {
-              // First, and on `hasError`: a stream that fails before it has ever emitted
-              // stays AsyncLoading with the error hanging off it.
-              AsyncValue(hasError: true, :final error?) => LuqmaErrorView(key: CourierScreen.errorKey, failure: error, onRetry: () => retryDeliveries()),
-              AsyncValue(hasValue: true, :final value?) when value.isEmpty => LuqmaEmptyView(
-            key: CourierScreen.emptyKey,
-            icon: Icons.delivery_dining_outlined,
-            title: 'مفيش طلبات للتوصيل دلوقتي',
-          ),
-              AsyncValue(hasValue: true, :final value?) => ListView.separated(
+            child: LuqmaAsyncView(
+              value: deliveries,
+              errorKey: CourierScreen.errorKey,
+              onRetry: () => retryDeliveries(),
+              empty: LuqmaEmptyView(
+                  key: CourierScreen.emptyKey,
+                  icon: Icons.delivery_dining_outlined,
+                  title: 'مفيش طلبات للتوصيل دلوقتي',
+                ),
+              isEmpty: (value) => value.isEmpty,
+              builder: (context, value) => ListView.separated(
                   padding: const EdgeInsets.all(Space.gutter),
                   itemCount: value.length,
                   separatorBuilder: (_, _) => const SizedBox(height: Space.md),
                   itemBuilder: (context, i) => _Card(order: value[i], courierUid: staff.uid),
-                ),
-              _ => const Center(child: CircularProgressIndicator()),
-            },
+                )
+            ),
           ),
         ],
       ),

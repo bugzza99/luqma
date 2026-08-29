@@ -44,22 +44,22 @@ class LiveBoardScreen extends ConsumerWidget {
     return Scaffold(
       backgroundColor: colors.background,
       appBar: AppBar(title: const Text('الطلبات الجارية')),
-      body: switch (ref.watch(liveOrdersProvider(merchantId))) {
-        // First, and on `hasError`: a stream that fails before it has ever emitted
-        // stays AsyncLoading with the error hanging off it.
-        AsyncValue(hasError: true, :final error?) => LuqmaErrorView(key: LiveBoardScreen.errorKey, failure: error, onRetry: () => ref.invalidate(liveOrdersProvider(merchantId))),
-        AsyncValue(hasValue: true, :final value?) when value.isEmpty => LuqmaEmptyView(
+      body: LuqmaAsyncView(
+        value: ref.watch(liveOrdersProvider(merchantId)),
+        errorKey: LiveBoardScreen.errorKey,
+        onRetry: () => ref.invalidate(liveOrdersProvider(merchantId)),
+        empty: LuqmaEmptyView(
             key: LiveBoardScreen.emptyKey,
             title: 'مفيش طلبات تحت التحضير دلوقتي.',
           ),
-        AsyncValue(hasValue: true, :final value?) => ListView.separated(
+        isEmpty: (value) => value.isEmpty,
+        builder: (context, value) => ListView.separated(
             padding: const EdgeInsets.all(Space.gutter),
             itemCount: value.length,
             separatorBuilder: (_, _) => const SizedBox(height: Space.md),
             itemBuilder: (context, i) => _Card(order: value[i]),
-          ),
-        _ => const Center(child: CircularProgressIndicator()),
-      },
+          )
+      ),
     );
   }
 }

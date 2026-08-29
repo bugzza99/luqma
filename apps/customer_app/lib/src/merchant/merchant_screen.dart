@@ -52,23 +52,17 @@ class MerchantScreen extends ConsumerWidget {
       );
     }
 
-    return switch (merchant) {
-      // An error arm comes first, and matches on `hasError` rather than on the
-      // `AsyncError` type: a stream that fails before it has ever emitted stays
-      // `AsyncLoading` with the error hanging off it, so a type match never fires
-      // and the screen spins for ever on a dropped connection.
-      AsyncValue(hasError: true, :final error?) => Scaffold(
-          appBar: AppBar(),
-          body: LuqmaErrorView(failure: error, onRetry: () => ref.invalidate(merchantProvider(merchantId))),
-        ),
-      AsyncValue(hasValue: true, :final value?) => _Loaded(
+    return LuqmaAsyncView(
+      value: merchant,
+      onRetry: () => ref.invalidate(merchantProvider(merchantId)),
+      loading: const Scaffold(body: Center(child: CircularProgressIndicator())),
+      builder: (context, value) => _Loaded(
           merchant: value,
           categories: categories,
           items: items,
           cart: cart,
-        ),
-          _ => const Scaffold(body: Center(child: CircularProgressIndicator())),
-};
+        )
+    );
   }
 }
 

@@ -49,24 +49,23 @@ class _MealScreenState extends ConsumerState<MealScreen> {
     return Scaffold(
       backgroundColor: colors.background,
       appBar: AppBar(title: const Text('أكل بيتي')),
-      body: switch (meals) {
-        AsyncValue(hasError: true, :final error?) => LuqmaErrorView(key: MealScreen.errorKey, failure: error, onRetry: () => ref.invalidate(todaysMealsProvider)),
-        // A meal that is not in today's list is one the cook took down, or yesterday's
-        // link. Far more common than a genuine error, and it needs its own sentence.
-        AsyncValue(hasValue: true, :final value?) => _meal(value) == null
-            ? LuqmaErrorView(
-              key: MealScreen.errorKey,
-              failure: const NotFoundFailure(),
-              onRetry: () => ref.invalidate(todaysMealsProvider),
+      body: LuqmaAsyncView(
+        value: meals,
+        errorKey: MealScreen.errorKey,
+        onRetry: () => ref.invalidate(todaysMealsProvider),
+        builder: (context, value) => _meal(value) == null
+          ? LuqmaErrorView(
+            key: MealScreen.errorKey,
+            failure: const NotFoundFailure(),
+            onRetry: () => ref.invalidate(todaysMealsProvider),
+          )
+          : _Loaded(
+              meal: _meal(value)!,
+              quantity: _quantity,
+              onQuantity: (q) => setState(() => _quantity = q),
+              onReserve: widget.onReserve,
             )
-            : _Loaded(
-                meal: _meal(value)!,
-                quantity: _quantity,
-                onQuantity: (q) => setState(() => _quantity = q),
-                onReserve: widget.onReserve,
-              ),
-        _ => const Center(child: CircularProgressIndicator()),
-      },
+      ),
     );
   }
 }
