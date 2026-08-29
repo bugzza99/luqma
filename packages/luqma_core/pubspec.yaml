@@ -1,0 +1,75 @@
+name: luqma_core
+description: Shared theme, brand assets and components for the Luqma apps.
+version: 0.1.0
+publish_to: none
+resolution: workspace
+
+environment:
+  sdk: ^3.12.0
+  flutter: ">=3.44.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+
+  # Brand assets are vector; see brand/README.md for why.
+  flutter_svg: ^2.0.0
+
+  # State. Riverpod is code-generated: see docs and Q8 in the Phase 1 decisions.
+  flutter_riverpod: ^3.0.0
+  riverpod_annotation: ^3.0.0
+
+  # Models are generated rather than hand-written — twenty collections of hand-rolled
+  # JSON mapping is twenty chances at a silently dropped field.
+  freezed_annotation: ^3.0.0
+  json_annotation: ^4.9.0
+
+  supabase_flutter: ^2.17.2
+  postgrest: ^2.9.1
+
+  # The version this build was installed as, against minSupportedVersion. Read once at
+  # start-up and handed to the gate as a string, so nothing here depends on a plugin.
+  package_info_plus: ^8.0.0
+
+  # The one outbound tap: the force-update button opening the store listing.
+  url_launcher: ^6.3.0
+
+  intl: any
+  sentry_flutter: ^9.0.0
+
+  # Downscaling a photo before it is uploaded. Pure Dart on purpose: it runs in an
+  # ordinary `flutter test` with no device and no platform channel, so what the merchant's
+  # phone actually does to a picture is provable here rather than only observable there.
+  # The cost is speed — a native compressor is several times faster — and the swap is one
+  # file if 600 menu photos ever make that matter.
+  image: ^4.5.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  # Only for the failure-classification test, which builds a real `ClientException`
+  # rather than trusting that the name it matches on is spelled the same way.
+  http: ^1.2.0
+  flutter_lints: ^6.0.0
+  build_runner: ^2.4.0
+  freezed: ^3.0.0
+  json_serializable: ^6.8.0
+  riverpod_generator: ^3.0.0
+
+  # An in-memory Firestore. This is not a mock of our own code — it is a real
+  # implementation of the Firestore API, so the repository under test runs its actual
+  # queries and mapping instead of being stubbed out.
+
+flutter:
+  # Turns on the l10n code generator configured in l10n.yaml.
+  generate: true
+  assets:
+    - assets/brand/
+  fonts:
+    - family: Cairo
+      fonts:
+        # One variable file covers every weight the app uses; pick weights with
+        # FontVariation, never by shipping a file per weight.
+        - asset: assets/fonts/Cairo.ttf
