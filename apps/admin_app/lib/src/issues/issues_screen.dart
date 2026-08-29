@@ -24,12 +24,10 @@ class IssuesScreen extends ConsumerWidget {
     return Scaffold(
       appBar: AppBar(title: const Text('الشكاوى')),
       body: AdminContent(
-        child: switch (issues) {
-          AsyncValue(hasError: true, :final error?) => LuqmaErrorView(
-              failure: error,
-              onRetry: () => ref.invalidate(issuesQueueProvider),
-            ),
-          AsyncValue(hasValue: true, :final value?) when value.isEmpty => Center(
+        child: LuqmaAsyncView(
+          value: issues,
+          onRetry: () => ref.invalidate(issuesQueueProvider),
+          empty: Center(
               key: IssuesScreen.emptyKey,
               child: Text(
                 'مفيش شكاوى.',
@@ -38,7 +36,8 @@ class IssuesScreen extends ConsumerWidget {
                     ),
               ),
             ),
-          AsyncValue(hasValue: true, :final value?) => ListView.separated(
+          isEmpty: (value) => value.isEmpty,
+          builder: (context, value) => ListView.separated(
               padding: const EdgeInsets.all(Space.gutter),
               itemCount: value.length,
               separatorBuilder: (_, _) => const SizedBox(height: Space.sm),
@@ -46,9 +45,8 @@ class IssuesScreen extends ConsumerWidget {
                 issue: value[i],
                 onClose: () => _closeIssue(context, ref, value[i]),
               ),
-            ),
-          _ => const Center(child: CircularProgressIndicator()),
-        },
+            )
+        ),
       ),
     );
   }

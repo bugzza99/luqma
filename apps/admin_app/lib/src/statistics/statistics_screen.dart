@@ -25,14 +25,11 @@ class StatisticsScreen extends ConsumerWidget {
     return Scaffold(
       appBar: AppBar(title: const Text('الإحصائيات')),
       body: AdminContent(
-        child: switch (stats) {
-          AsyncValue(hasError: true, :final error?) => LuqmaErrorView(
-              failure: error,
-              onRetry: () => ref.invalidate(adminStatisticsProvider),
-            ),
-          AsyncValue(hasValue: true, :final value?) => _Body(stats: value),
-          _ => const Center(child: CircularProgressIndicator()),
-        },
+        child: LuqmaAsyncView(
+          value: stats,
+          onRetry: () => ref.invalidate(adminStatisticsProvider),
+          builder: (context, value) => _Body(stats: value)
+        ),
       ),
     );
   }

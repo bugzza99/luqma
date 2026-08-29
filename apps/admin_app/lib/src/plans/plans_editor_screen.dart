@@ -25,12 +25,10 @@ class PlansEditorScreen extends ConsumerWidget {
     return Scaffold(
       appBar: AppBar(title: const Text('الخطط والأسعار')),
       body: AdminContent(
-        child: switch (plans) {
-          AsyncValue(hasError: true, :final error?) => LuqmaErrorView(
-              failure: error,
-              onRetry: () => ref.invalidate(allPlansProvider),
-            ),
-          AsyncValue(hasValue: true, :final value?) when value.isEmpty => Center(
+        child: LuqmaAsyncView(
+          value: plans,
+          onRetry: () => ref.invalidate(allPlansProvider),
+          empty: Center(
               key: PlansEditorScreen.emptyKey,
               child: Text(
                 'مفيش خطط.',
@@ -39,14 +37,14 @@ class PlansEditorScreen extends ConsumerWidget {
                     ),
               ),
             ),
-          AsyncValue(hasValue: true, :final value?) => ListView.separated(
+          isEmpty: (value) => value.isEmpty,
+          builder: (context, value) => ListView.separated(
               padding: const EdgeInsets.all(Space.gutter),
               itemCount: value.length,
               separatorBuilder: (_, _) => const SizedBox(height: Space.md),
               itemBuilder: (context, i) => _PlanEditor(plan: value[i]),
-            ),
-          _ => const Center(child: CircularProgressIndicator()),
-        },
+            )
+        ),
       ),
     );
   }

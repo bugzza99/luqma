@@ -25,16 +25,11 @@ class DashboardScreen extends ConsumerWidget {
     return Scaffold(
       appBar: AppBar(title: const LuqmaLockup.appBar()),
       body: AdminContent(
-        child: switch (today) {
-          // Error first: a stream that fails before it ever emits stays loading with the
-          // error hanging off it, so the error arm never fires and the screen spins.
-          AsyncValue(hasError: true, :final error?) => LuqmaErrorView(
-              failure: error,
-              onRetry: () => ref.invalidate(adminTodayProvider),
-            ),
-          AsyncValue(hasValue: true, :final value?) => _Body(today: value),
-          _ => const Center(child: CircularProgressIndicator()),
-        },
+        child: LuqmaAsyncView(
+          value: today,
+          onRetry: () => ref.invalidate(adminTodayProvider),
+          builder: (context, value) => _Body(today: value)
+        ),
       ),
     );
   }

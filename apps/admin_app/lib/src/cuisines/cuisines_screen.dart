@@ -32,12 +32,10 @@ class CuisinesScreen extends ConsumerWidget {
         label: const Text('قسم جديد'),
       ),
       body: AdminContent(
-        child: switch (cuisines) {
-          AsyncValue(hasError: true, :final error?) => LuqmaErrorView(
-              failure: error,
-              onRetry: () => ref.invalidate(cuisinesProvider),
-            ),
-          AsyncValue(hasValue: true, :final value?) when value.isEmpty => Center(
+        child: LuqmaAsyncView(
+          value: cuisines,
+          onRetry: () => ref.invalidate(cuisinesProvider),
+          empty: Center(
               key: emptyKey,
               child: Padding(
                 padding: const EdgeInsets.all(Space.xl),
@@ -49,7 +47,8 @@ class CuisinesScreen extends ConsumerWidget {
                 ),
               ),
             ),
-          AsyncValue(hasValue: true, :final value?) => ListView.separated(
+          isEmpty: (value) => value.isEmpty,
+          builder: (context, value) => ListView.separated(
               padding: const EdgeInsets.fromLTRB(
                 Space.gutter,
                 Space.gutter,
@@ -62,9 +61,8 @@ class CuisinesScreen extends ConsumerWidget {
                 cuisine: value[i],
                 onTap: () => _edit(context, ref, value[i]),
               ),
-            ),
-          _ => const Center(child: CircularProgressIndicator()),
-        },
+            )
+        ),
       ),
     );
   }

@@ -26,14 +26,11 @@ class ConfigScreen extends ConsumerWidget {
     return Scaffold(
       appBar: AppBar(title: const Text('الإعدادات')),
       body: AdminContent(
-        child: switch (config) {
-          AsyncValue(hasError: true, :final error?) => LuqmaErrorView(
-              failure: error,
-              onRetry: () => ref.invalidate(adminConfigProvider),
-            ),
-          AsyncValue(hasValue: true, :final value?) => _ConfigForm(initial: value),
-          _ => const Center(child: CircularProgressIndicator()),
-        },
+        child: LuqmaAsyncView(
+          value: config,
+          onRetry: () => ref.invalidate(adminConfigProvider),
+          builder: (context, value) => _ConfigForm(initial: value)
+        ),
       ),
     );
   }
