@@ -62,6 +62,23 @@ and no SMS to send a code by, so a customer calls the number on حول لقمة 
 a new password from the customers screen (`reset-customer-password`). It is generated rather
 than typed, out of an alphabet with no `l`/`1`/`O`/`0`, because it is read down a phone line.
 
+**Knowing the number must not be the proof.** Follow the two facts above to their
+conclusion and this is an account takeover: the number is not verified at signup, and a
+person who can name one gets a new password for it. What stands between the two is an
+admin on a phone call, and an admin who asks for nothing is not a control.
+
+Until `otpEnabled` flips on, the admin asks for something only the account holder can
+know before resetting: **the last order — roughly when, and roughly what it cost** — or,
+for an account that has never ordered, the saved address. Both are in front of the admin
+on the customer's own screen, and neither is guessable from a phone number. This is a
+procedure, not code, which is exactly its weakness; OTP replaces it rather than adding to
+it, and the account survives the change with its history and addresses intact.
+
+The function's own guards are separate from this and stay: the caller must be an active
+platform admin, the new password is returned once and never stored, and a uid with a
+`staff` row is refused outright — a support call must not become a way to reset another
+admin.
+
 ## Promotions surface
 Renders `promotions` in `adSlot` sections and boosted merchants in listings, through one
 `PromotionBanner` component that switches on `renderMode`: `text` on a burgundy gradient,

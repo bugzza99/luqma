@@ -138,8 +138,24 @@ This is where the migration pays for itself rather than merely surviving.
 - **`onOrderDelivered` becomes a Postgres trigger.** Today it is an eventually-consistent
   function that fires after the write, needs an idempotency guard because it can fire
   twice, and spends a merchant's wallet. As a trigger it runs *inside the same
-  transaction* as the status change: it cannot double-fire, it cannot be missed, and the
-  guard is deleted rather than trusted.
+  transaction* as the status change: it cannot be missed, and a half-applied settlement
+  cannot outlive a failed order update.
+
+  **It does not follow that the guard can be deleted, and the sentence here used to say
+  it could.** Atomicity is not idempotence. A transaction that runs twice settles twice —
+  a retry, a second `UPDATE … SET status = 'delivered'`, an admin correcting a
+  neighbouring column while status is in the `SET` list. Two things carry it instead:
+  `WHEN (old.status is distinct from new.status)` on the trigger, so a write that does
+  not *move* the order settles nothing; and a settlement row keyed uniquely on the order,
+  so a second attempt collides rather than pays.
+
+  **None of this is built.** `wallet_balance` is only ever added to, `commission_owed`
+  has never been written by anything, and `pricing.platformOwesMerchant` is computed by
+  `place_order`, frozen onto the order, and read by no settlement anywhere. Under all
+  three revenue models the platform records what it would charge and charges nothing —
+  which is survivable only because there is no live merchant yet. See
+  `docs/10-monetization.md` for what the settlement owes; this bullet is the shape it
+  takes, not a description of code that exists.
 - **Order creation becomes a Postgres function called over RPC.** The pricing recompute,
   the coupon check, the redemption record and the `remaining_qty` decrement all land in
   one transaction. The race that the entire `dailyMeals` design exists to prevent is then
