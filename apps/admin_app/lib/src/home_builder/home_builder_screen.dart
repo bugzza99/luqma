@@ -62,14 +62,17 @@ class HomeBuilderScreen extends ConsumerWidget {
       backgroundColor: colors.background,
       appBar: AppBar(title: const Text('ترتيب الرئيسية')),
       body: AdminContent(
-        child: switch (sections) {
-          AsyncValue(hasError: true, :final error?) => LuqmaErrorView(key: HomeBuilderScreen.errorKey, failure: error, onRetry: () => ref.invalidate(homeSectionsProvider)),
-          AsyncValue(hasValue: true, :final value?) when value.isEmpty => LuqmaEmptyView(
-            key: HomeBuilderScreen.emptyKey,
-            title: 'الرئيسية فاضية',
-            message: 'ضيف بلوك واحد على الأقل، وإلا العميل هيفتح على شاشة فاضية.',
-          ),
-          AsyncValue(hasValue: true, :final value?) => ListView.separated(
+        child: LuqmaAsyncView(
+          value: sections,
+          errorKey: HomeBuilderScreen.errorKey,
+          onRetry: () => ref.invalidate(homeSectionsProvider),
+          empty: LuqmaEmptyView(
+              key: HomeBuilderScreen.emptyKey,
+              title: 'الرئيسية فاضية',
+              message: 'ضيف بلوك واحد على الأقل، وإلا العميل هيفتح على شاشة فاضية.',
+            ),
+          isEmpty: (value) => value.isEmpty,
+          builder: (context, value) => ListView.separated(
               padding: const EdgeInsets.all(Space.gutter),
               itemCount: value.length,
               separatorBuilder: (_, _) => const SizedBox(height: Space.sm),
@@ -78,9 +81,8 @@ class HomeBuilderScreen extends ConsumerWidget {
                 order: value.map((s) => s.key).toList(),
                 index: i,
               ),
-            ),
-          _ => const Center(child: CircularProgressIndicator()),
-        },
+            )
+        ),
       ),
       floatingActionButton: FloatingActionButton.extended(
         key: addKey,

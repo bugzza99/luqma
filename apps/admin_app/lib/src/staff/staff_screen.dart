@@ -48,12 +48,10 @@ class _StaffScreenState extends ConsumerState<StaffScreen> {
         ],
       ),
       body: AdminContent(
-        child: switch (staff) {
-          AsyncValue(hasError: true, :final error?) => LuqmaErrorView(
-              failure: error,
-              onRetry: () => ref.invalidate(staffListProvider),
-            ),
-          AsyncValue(hasValue: true, :final value?) when value.isEmpty => Center(
+        child: LuqmaAsyncView(
+          value: staff,
+          onRetry: () => ref.invalidate(staffListProvider),
+          empty: Center(
               key: StaffScreen.emptyKey,
               child: Text(
                 'مفيش حسابات لسه.',
@@ -62,7 +60,8 @@ class _StaffScreenState extends ConsumerState<StaffScreen> {
                     ),
               ),
             ),
-          AsyncValue(hasValue: true, :final value?) => ListView.separated(
+          isEmpty: (value) => value.isEmpty,
+          builder: (context, value) => ListView.separated(
               padding: const EdgeInsets.all(Space.gutter),
               itemCount: value.length,
               separatorBuilder: (_, _) => const SizedBox(height: Space.sm),
@@ -70,9 +69,8 @@ class _StaffScreenState extends ConsumerState<StaffScreen> {
                 member: value[i],
                 onToggle: () => _toggle(context, ref, value[i]),
               ),
-            ),
-          _ => const Center(child: CircularProgressIndicator()),
-        },
+            )
+        ),
       ),
     );
   }

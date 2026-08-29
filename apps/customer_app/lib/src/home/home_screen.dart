@@ -33,6 +33,9 @@ class HomeScreen extends ConsumerWidget {
             const SliverToBoxAdapter(child: SizedBox(height: Space.md + 2)),
             const SliverToBoxAdapter(child: _SearchField()),
             const SliverToBoxAdapter(child: SizedBox(height: Space.xl - 4)),
+            // Slivers. `LuqmaAsyncView` is a box widget and cannot be one of these —
+            // this is the only screen in the product that builds its states as slivers,
+            // and one exception is cheaper than a second widget nobody else would use.
             switch (sections) {
               // One failed read of the arrangement should not hide the search field or
               // the bar — the customer can still look for what they wanted. It comes

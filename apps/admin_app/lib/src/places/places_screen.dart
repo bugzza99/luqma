@@ -52,13 +52,10 @@ class _PlacesScreenState extends ConsumerState<PlacesScreen> {
               onChanged: (t) => setState(() => _tab = t),
             ),
             Expanded(
-              child: switch (state) {
-                // An error arm comes first, and matches on `hasError` rather than on the
-                // `AsyncError` type: a stream that fails before it has ever emitted stays
-                // `AsyncLoading` with the error hanging off it, so a type match never fires
-                // and the screen spins for ever on a dropped connection.
-                AsyncValue(hasError: true, :final error?) => LuqmaErrorView(failure: error, onRetry: () => ref.invalidate(placesControllerProvider)),
-                AsyncValue(hasValue: true, :final value?) => switch (_tab) {
+              child: LuqmaAsyncView(
+                value: state,
+                onRetry: () => ref.invalidate(placesControllerProvider),
+                builder: (context, value) => switch (_tab) {
                     _Tab.zones => _Zones(zones: value.zones),
                     _Tab.landmarks =>
                       _Landmarks(zones: value.zones, landmarks: value.landmarks),
@@ -66,9 +63,8 @@ class _PlacesScreenState extends ConsumerState<PlacesScreen> {
                         suggestions: value.suggestions,
                         zones: value.zones,
                       ),
-                  },
-                              _ => const Center(child: CircularProgressIndicator()),
-},
+                  }
+              ),
             ),
           ],
         ),

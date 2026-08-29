@@ -23,14 +23,12 @@ class CategoryChipsSection extends ConsumerWidget {
     final cuisines = ref.watch(cuisinesProvider);
     final selected = ref.watch(selectedCuisineProvider);
 
-    return switch (cuisines) {
-      // One failing section must not blank the home: the page is assembled from several
-      // independent blocks. And `hasError` first, because a stream that fails before it
-      // has ever emitted stays AsyncLoading with the error hanging off it.
-      AsyncValue(hasError: true) => const SizedBox.shrink(),
-      AsyncValue(hasValue: true, :final value?) when value.isEmpty =>
-        const SizedBox.shrink(),
-      AsyncValue(hasValue: true, :final value?) => SizedBox(
+    return LuqmaAsyncView(
+      value: cuisines,
+      empty: const SizedBox.shrink(),
+      isEmpty: (value) => value.isEmpty,
+      loading: const _Skeleton(),
+      builder: (context, value) => SizedBox(
           height: 104,
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
@@ -44,9 +42,8 @@ class CategoryChipsSection extends ConsumerWidget {
                   ref.read(selectedCuisineProvider.notifier).toggle(value[i].id),
             ),
           ),
-        ),
-      _ => const _Skeleton(),
-    };
+        )
+    );
   }
 }
 

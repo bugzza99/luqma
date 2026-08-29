@@ -83,13 +83,10 @@ class _List extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    return switch (merchants) {
-      // An error arm comes first, and matches on `hasError` rather than on the
-      // `AsyncError` type: a stream that fails before it has ever emitted stays
-      // `AsyncLoading` with the error hanging off it, so a type match never fires
-      // and the screen spins for ever on a dropped connection.
-      AsyncValue(hasError: true, :final error?) => LuqmaErrorView(failure: error, onRetry: () => ref.invalidate(allMerchantsProvider)),
-      AsyncValue(hasValue: true, :final value?) when value.isEmpty => Center(
+    return LuqmaAsyncView(
+      value: merchants,
+      onRetry: () => ref.invalidate(allMerchantsProvider),
+      empty: Center(
           key: MerchantsScreen.emptyKey,
           child: Padding(
             padding: const EdgeInsets.all(Space.xl),
@@ -102,7 +99,8 @@ class _List extends ConsumerWidget {
             ),
           ),
         ),
-      AsyncValue(hasValue: true, :final value?) => ListView.separated(
+      isEmpty: (value) => value.isEmpty,
+      builder: (context, value) => ListView.separated(
           padding: const EdgeInsets.all(Space.gutter),
           itemCount: value.length,
           separatorBuilder: (_, _) => const SizedBox(height: Space.sm),
@@ -113,9 +111,8 @@ class _List extends ConsumerWidget {
                 .read(selectedMerchantProvider.notifier)
                 .select(value[i].id),
           ),
-        ),
-          _ => const Center(child: CircularProgressIndicator()),
-};
+        )
+    );
   }
 }
 

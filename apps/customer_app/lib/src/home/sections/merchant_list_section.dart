@@ -41,15 +41,12 @@ class MerchantListSection extends ConsumerWidget {
     // circle has no merchants in it yet — a different answer, and it has to stay one.
     final inCuisine = ref.watch(merchantsInSelectedCuisineProvider).value;
 
-    return switch (merchants) {
-      // An error here costs this section, not the screen: the home is assembled from
-      // several independent blocks, and one failing feed should not blank the others.
-      // First, and on `hasError`: a stream that fails before it has ever emitted stays
-      // `AsyncLoading`, and a skeleton that never resolves is worse than nothing.
-      AsyncValue(hasError: true) => const SizedBox.shrink(),
-      AsyncValue(hasValue: true, :final value?) when value.isEmpty =>
-        const SizedBox.shrink(),
-      AsyncValue(hasValue: true, :final value?) => Column(
+    return LuqmaAsyncView(
+      value: merchants,
+      empty: const SizedBox.shrink(),
+      isEmpty: (value) => value.isEmpty,
+      loading: const _Skeleton(),
+      builder: (context, value) => Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             SectionHeader(title: _title),
@@ -66,9 +63,8 @@ class MerchantListSection extends ConsumerWidget {
               ),
             ),
           ],
-        ),
-          _ => const _Skeleton(),
-};
+        )
+    );
   }
 
   /// Narrowed to the pressed cuisine, if one is pressed.

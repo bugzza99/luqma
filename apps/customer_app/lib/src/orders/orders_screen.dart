@@ -35,22 +35,18 @@ class OrdersScreen extends ConsumerWidget {
               child: const Text('سجّل دخول'),
             ),
           )
-          : switch (ref.watch(ordersForProvider(identity.uid))) {
-              // A failed read shown as an empty list tells the customer they never
-              // ordered anything, which is a lie they may act on. It comes first and
-              // matches on `hasError`, not on the `AsyncError` type: a stream that
-              // fails before it has ever emitted stays `AsyncLoading` with the error
-              // hanging off it, so a type match never fires.
-              AsyncValue(hasError: true, :final error?) => LuqmaErrorView(key: OrdersScreen.errorKey, failure: error, onRetry: () => ref.invalidate(ordersForProvider(identity.uid))),
-              AsyncValue(hasValue: true, :final value?) when value.isEmpty =>
-                LuqmaEmptyView(
-            key: OrdersScreen.emptyKey,
-            icon: Icons.receipt_long_outlined,
-            title: 'لسه مطلبتش حاجة.',
+          : LuqmaAsyncView(
+            value: ref.watch(ordersForProvider(identity.uid)),
+            errorKey: OrdersScreen.errorKey,
+            onRetry: () => ref.invalidate(ordersForProvider(identity.uid)),
+            empty: LuqmaEmptyView(
+                key: OrdersScreen.emptyKey,
+                icon: Icons.receipt_long_outlined,
+                title: 'لسه مطلبتش حاجة.',
+              ),
+            isEmpty: (value) => value.isEmpty,
+            builder: (context, value) => _List(orders: value)
           ),
-              AsyncValue(hasValue: true, :final value?) => _List(orders: value),
-                          _ => const Center(child: CircularProgressIndicator()),
-},
     );
   }
 }

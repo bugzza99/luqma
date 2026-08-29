@@ -40,23 +40,22 @@ class PromotionsScreen extends ConsumerWidget {
       backgroundColor: colors.background,
       appBar: AppBar(title: const Text('طلبات الإعلانات')),
       body: AdminContent(
-        child: switch (ref.watch(promotionQueueProvider)) {
-          // First, and on `hasError`: a stream that fails before it has ever emitted
-          // stays AsyncLoading with the error hanging off it, and an admin reading that
-          // as an empty queue stops checking.
-          AsyncValue(hasError: true, :final error?) => LuqmaErrorView(key: PromotionsScreen.errorKey, failure: error, onRetry: () => ref.invalidate(promotionQueueProvider)),
-          AsyncValue(hasValue: true, :final value?) when value.isEmpty => LuqmaEmptyView(
-            key: PromotionsScreen.emptyKey,
-            title: 'مفيش طلبات إعلانات مستنية.',
-          ),
-          AsyncValue(hasValue: true, :final value?) => ListView.separated(
+        child: LuqmaAsyncView(
+          value: ref.watch(promotionQueueProvider),
+          errorKey: PromotionsScreen.errorKey,
+          onRetry: () => ref.invalidate(promotionQueueProvider),
+          empty: LuqmaEmptyView(
+              key: PromotionsScreen.emptyKey,
+              title: 'مفيش طلبات إعلانات مستنية.',
+            ),
+          isEmpty: (value) => value.isEmpty,
+          builder: (context, value) => ListView.separated(
               padding: const EdgeInsets.all(Space.gutter),
               itemCount: value.length,
               separatorBuilder: (_, _) => const SizedBox(height: Space.md),
               itemBuilder: (context, i) => _Request(promotion: value[i]),
-            ),
-          _ => const Center(child: CircularProgressIndicator()),
-        },
+            )
+        ),
       ),
     );
   }

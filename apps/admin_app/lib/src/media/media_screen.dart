@@ -33,18 +33,15 @@ class MediaScreen extends ConsumerWidget {
     return Scaffold(
       appBar: AppBar(title: const Text('الصور')),
       body: AdminContent(
-        child: switch (pending) {
-          // An error arm comes first, and matches on `hasError` rather than on the
-          // `AsyncError` type: a stream that fails before it has ever emitted stays
-          // `AsyncLoading` with the error hanging off it, so a type match never fires
-          // and the screen spins for ever on a dropped connection.
-          AsyncValue(hasError: true, :final error?) => LuqmaErrorView(failure: error, onRetry: () => ref.invalidate(pendingMediaProvider)),
-          AsyncValue(hasValue: true, :final value?) when value.isEmpty =>
-            LuqmaEmptyView(
-            key: MediaScreen.emptyKey,
-            message: 'مفيش صور مستنية مراجعة.',
-          ),
-          AsyncValue(hasValue: true, :final value?) => GridView.builder(
+        child: LuqmaAsyncView(
+          value: pending,
+          onRetry: () => ref.invalidate(pendingMediaProvider),
+          empty: LuqmaEmptyView(
+              key: MediaScreen.emptyKey,
+              message: 'مفيش صور مستنية مراجعة.',
+            ),
+          isEmpty: (value) => value.isEmpty,
+          builder: (context, value) => GridView.builder(
               padding: const EdgeInsets.all(Space.gutter),
               gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
                 // Wide enough that a photo can actually be judged. A grid of thumbnails
@@ -56,9 +53,8 @@ class MediaScreen extends ConsumerWidget {
               ),
               itemCount: value.length,
               itemBuilder: (context, i) => _Card(media: value[i]),
-            ),
-                  _ => const Center(child: CircularProgressIndicator()),
-},
+            )
+        ),
       ),
     );
   }
