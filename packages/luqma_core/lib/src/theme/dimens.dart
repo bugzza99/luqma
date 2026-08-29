@@ -66,6 +66,13 @@ abstract final class Sizes {
   static const iconMd = 24.0;
   static const iconLg = 32.0;
 
+  /// The picture over an empty state — larger than an icon in a row, because it is
+  /// carrying a whole screen rather than labelling a control.
+  ///
+  /// It was `56` written by hand in seven separate empty states, which is how a number
+  /// becomes eight different numbers over a year.
+  static const emptyIcon = 56.0;
+
   static const appBarHeight = 56.0;
 
   /// Every promotion banner slot, whatever the render mode. A fixed ratio is what stops
