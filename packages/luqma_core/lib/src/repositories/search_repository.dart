@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../models/menu_item.dart';
@@ -114,6 +116,7 @@ class FakeSearchRepository implements SearchRepository {
     this.merchants = const [],
     this.menus = const {},
     this.failure,
+    this.gate,
   });
 
   /// The shops this fake knows about. Public, like every other fake's contents, so a
@@ -123,6 +126,12 @@ class FakeSearchRepository implements SearchRepository {
   /// Menus by merchant id.
   final Map<String, List<MenuItem>> menus;
   final Failure? failure;
+
+  /// Held open until a test completes it, so a response can be made to land *after*
+  /// something else the customer did. A real search takes long enough for somebody to
+  /// clear the box while it is in the air, and that is not reproducible against a fake
+  /// that answers within the same microtask.
+  final Completer<void>? gate;
 
   /// Every query this fake was asked, for assertions about debouncing.
   final List<String> queries = [];
@@ -135,6 +144,7 @@ class FakeSearchRepository implements SearchRepository {
     if (failure != null) return Result.err(failure!);
 
     queries.add(query);
+    if (gate != null) await gate!.future;
     final trimmed = query.trim();
     if (trimmed.isEmpty) return const Result.ok(SearchResults());
 

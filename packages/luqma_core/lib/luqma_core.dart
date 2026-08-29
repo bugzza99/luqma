@@ -4,6 +4,7 @@
 /// logo lockup. Models, repositories and `RemoteConfigService` land in Phase 1.
 library;
 
+export 'src/app/external_links.dart';
 export 'src/app/supabase_options.dart';
 export 'src/app/telemetry.dart';
 export 'src/auth/auth_service.dart';

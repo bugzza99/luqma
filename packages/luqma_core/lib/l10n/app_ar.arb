@@ -96,6 +96,8 @@
 
   "deliveringTo": "التوصيل إلى",
   "@deliveringTo": {},
+  "chooseZone": "اختار منطقتك",
+  "@chooseZone": {},
 
   "cashOnDelivery": "الدفع كاش عند الاستلام",
   "@cashOnDelivery": {},

@@ -35,4 +35,26 @@ abstract final class Phone {
   static String toAccountEmail(String raw) => '${normalize(raw)}@$accountDomain';
 
   static const accountDomain = 'phone.luqma.app';
+
+  /// The number in the shape `wa.me` accepts: country code, no plus, no leading zero.
+  ///
+  /// The support number is typed once by the owner in AdminApp and every spelling of it
+  /// is one somebody would reasonably use — `01…`, `+20…`, `0020…`, with spaces. `wa.me`
+  /// takes one of those and answers "phone number shared via url is invalid" for the
+  /// rest, which reads as the support line being broken.
+  ///
+  /// Anything that is not a number comes back empty, and the caller draws no control at
+  /// all rather than one that opens a page saying the number does not exist.
+  static String toWhatsapp(String raw) {
+    var digits = normalize(raw).replaceFirst(RegExp(r'^\+'), '');
+    if (digits.startsWith('00')) digits = digits.substring(2);
+    if (RegExp(r'^[0-9]+$').hasMatch(digits) == false) return '';
+    // A local `01…` gains the country code; anything that already starts with it keeps
+    // what it has, so a number entered internationally is not mangled into `2020…`.
+    if (digits.startsWith('0')) return '$_egypt${digits.substring(1)}';
+    if (digits.startsWith(_egypt)) return digits;
+    return '$_egypt$digits';
+  }
+
+  static const _egypt = '20';
 }
