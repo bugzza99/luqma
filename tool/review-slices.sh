@@ -52,10 +52,22 @@ slice() {
 
   GIT_INDEX_FILE="$index" git ls-tree -r HEAD -- "${paths[@]}" \
     | GIT_INDEX_FILE="$index" git update-index --index-info
-  local tree commit
+  local tree commit parent
   tree="$(GIT_INDEX_FILE="$index" git write-tree)"
-  # No parent: a slice is a view of master, never a branch with history to merge back.
-  commit="$(git commit-tree "$tree" -m "Refresh $branch to $(git rev-parse --short HEAD)")"
+
+  # Each refresh is a *child* of the previous slice tip, never a fresh orphan.
+  #
+  # It looks like a view of master and it is, but a reviewer's inline comments are
+  # anchored to the commit they were written against. Replacing the branch with an
+  # unrelated orphan makes those commits unreachable, and every reply is then refused
+  # with "commit_id is not part of the pull request" — the whole review becomes
+  # unanswerable in place. That cost a round of replies once; the parent is the fix.
+  parent="$(git rev-parse --verify --quiet "refs/heads/$branch" || true)"
+  if [ -n "$parent" ]; then
+    commit="$(git commit-tree "$tree" -p "$parent"       -m "Refresh $branch to $(git rev-parse --short HEAD)")"
+  else
+    commit="$(git commit-tree "$tree" -m "$branch at $(git rev-parse --short HEAD)")"
+  fi
   git branch -f "$branch" "$commit"
   rm -f "$index"
   printf '%-18s %s files\n' "$branch" "$count"
