@@ -1,6 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
-import 'package:url_launcher/url_launcher.dart';
+import 'package:luqma_core/luqma_core.dart';
 
 part 'navigation.g.dart';
 
@@ -26,7 +26,11 @@ class GoogleMapsNavigator implements MapNavigator {
     final uri = Uri.parse(
       'https://www.google.com/maps/search/?api=1&query=${Uri.encodeComponent(query)}',
     );
-    await launchUrl(uri, mode: LaunchMode.externalApplication);
+    // No maps app and no browser is possible on a cheap handset, and the courier is
+    // in the street. `ExternalLinks` swallows the PlatformException so the tap does not
+    // crash the delivery screen; the address is already written above the button, which
+    // is what a person falls back to.
+    await const PhoneExternalLinks().open(uri);
   }
 }
 

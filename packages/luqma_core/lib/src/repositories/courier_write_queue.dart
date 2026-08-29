@@ -203,18 +203,31 @@ class CourierWriteQueue {
     await load();
     if (_pending.isEmpty) return;
 
-    final remaining = <PendingCourierWrite>[];
-    for (final write in _pending) {
+    // A snapshot, and a reconcile rather than a replace.
+    //
+    // Both halves of the old version lost taps, and both situations are ordinary: this
+    // runs from a connectivity listener, and a courier keeps working while it does.
+    // Iterating `_pending` while awaiting inside the loop threw
+    // `ConcurrentModificationError` the moment a tap was added — leaving the queue
+    // unpersisted and no change announced — and `..clear()..addAll(remaining)` threw
+    // away anything that arrived after the last await. The second is exactly the loss
+    // this class exists to prevent, arriving through the code that prevents it.
+    final attempted = List.of(_pending);
+    final stillWaiting = <PendingCourierWrite>[];
+    for (final write in attempted) {
       final result = await _perform(write);
       if (result case Err(:final failure) when failure is OfflineFailure) {
-        remaining.add(write);
+        stillWaiting.add(write);
       } else if (result case Err()) {
         _rejected.add(write);
       }
     }
-    _pending
-      ..clear()
-      ..addAll(remaining);
+
+    // Only what was attempted *and* settled leaves the queue. Anything a courier tapped
+    // in the meantime is still there, in the order they tapped it.
+    final settled = Set<PendingCourierWrite>.identity()
+      ..addAll(attempted.where((w) => !stillWaiting.contains(w)));
+    _pending.removeWhere(settled.contains);
     await _persist();
     _notify();
   }

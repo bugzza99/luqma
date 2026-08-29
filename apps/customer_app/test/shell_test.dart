@@ -3,6 +3,9 @@ import 'package:customer_app/src/cart/cart.dart';
 import 'package:customer_app/src/cart/cart_controller.dart';
 import 'package:customer_app/src/cart/cart_screen.dart';
 import 'package:customer_app/src/checkout/checkout_screen.dart';
+import 'package:customer_app/src/home/sections/home_kitchen_section.dart';
+import 'package:customer_app/src/kitchen/meal_screen.dart';
+import 'package:customer_app/src/kitchen/preorder_checkout_screen.dart';
 import 'package:customer_app/src/merchant/merchant_screen.dart';
 import 'package:customer_app/src/orders/order_screen.dart';
 import 'package:customer_app/src/orders/orders_screen.dart';
@@ -24,6 +27,16 @@ void main() {
     OpeningWindow(weekday: DateTime.saturday, openMinute: 0, closeMinute: 1440),
     OpeningWindow(weekday: DateTime.sunday, openMinute: 0, closeMinute: 1440),
   ];
+
+  const kitchen = Merchant(
+    id: 'k1',
+    cityId: 'edku',
+    type: MerchantType.homeKitchen,
+    name: 'مطبخ أم أحمد',
+    zoneId: 'z1',
+    phone: '01000000000',
+    status: MerchantStatus.approved,
+  );
 
   const shore = Merchant(
     id: 'm1',
@@ -79,6 +92,7 @@ void main() {
       phone: '01000000000',
     ),
     List<HomeSection> sections = const [],
+    List<DailyMeal> meals = const [],
   }) async {
     phoneSized(tester);
 
@@ -88,7 +102,11 @@ void main() {
           authServiceProvider
               .overrideWithValue(FakeAuthService(restoring: signedInAs)),
           merchantRepositoryProvider
-              .overrideWithValue(FakeMerchantRepository(seed: const [shore])),
+              .overrideWithValue(
+                // The kitchen too: `MealScreen` reads the merchant behind a meal, so a
+                // reservation that cannot find it never reaches the checkout at all.
+                FakeMerchantRepository(seed: const [shore, kitchen]),
+              ),
           menuRepositoryProvider.overrideWithValue(FakeMenuRepository()),
           homeSectionRepositoryProvider
               .overrideWithValue(FakeHomeSectionRepository(seed: sections)),
@@ -99,6 +117,9 @@ void main() {
               seed: signedInAs == null ? const {} : {signedInAs.uid: const [home]},
             ),
           ),
+          dailyMealRepositoryProvider
+              .overrideWithValue(FakeDailyMealRepository(seed: meals)),
+          clockProvider.overrideWithValue(() => DateTime(2026, 8, 23, 11)),
           orderRepositoryProvider.overrideWithValue(FakeOrderRepository()),
           remoteConfigServiceProvider
               .overrideWithValue(RemoteConfigService(FakeConfigFetcher({}))),
@@ -259,6 +280,63 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byKey(AccountScreen.signInKey), findsOneWidget);
+    });
+  });
+
+  // The one route to a checkout that did not come from `openCart`.
+  //
+  // Every other way in — the basket button on the shell, the bar on a merchant screen —
+  // goes through `openCart`, which the shell hands its own `_goToAccount`. A meal is
+  // opened from a *registry section*, which is built from a server-chosen string and has
+  // no callbacks to hand it, so `openMeal` forwarded nothing. A signed-out customer
+  // reached a checkout whose "سجّل دخول" button was disabled: the app's own suggestion,
+  // greyed out, with nothing else on the screen to press.
+  group('reserving a meal without an account', () {
+    final mahshi = DailyMeal(
+      id: 'd1',
+      merchantId: 'k1',
+      cityId: 'edku',
+      name: 'محشي كرنب',
+      price: 9000,
+      date: '2026-08-23',
+      totalQty: 20,
+      remainingQty: 8,
+      pickupWindowStart: 13 * 60,
+      pickupWindowEnd: 16 * 60,
+      deliveryOption: DeliveryOption.pickup,
+      status: DailyMealStatus.published,
+    );
+
+    const kitchenSection = [
+      HomeSection(
+        key: 'kitchen',
+        type: 'homeKitchenToday',
+        sortOrder: 0,
+        cityId: 'edku',
+      ),
+    ];
+
+    testWidgets('lands on the account tab, not on a dead button', (tester) async {
+      await pump(
+        tester,
+        signedInAs: null,
+        sections: kitchenSection,
+        meals: [mahshi],
+      );
+
+      await tester.tap(find.byKey(MealCard.cardKey('d1')));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(MealScreen.reserveKey));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(PreorderCheckoutScreen.signInKey));
+      await tester.pumpAndSettle();
+
+      // And the checkout is gone rather than sitting behind the account: coming "back"
+      // to a checkout for a meal somebody has not signed in for is not a place to be.
+      expect(find.byType(AccountScreen), findsOneWidget);
+      expect(find.byType(PreorderCheckoutScreen), findsNothing);
     });
   });
 }

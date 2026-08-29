@@ -79,6 +79,13 @@ with the owner and cross-checked. If something here seems arbitrary, the reason 
 
 ## Status
 
+> **Phases 0–8 below are a record, not instructions.** They were written as each phase
+> closed and they describe the product as it stood on Firebase — so "waits on Blaze",
+> "Cloud Function" and "Firestore" appear in the present tense throughout. All five of
+> those blockers are gone: the migration replaced them with Postgres functions and
+> `pg_cron`, and nothing is waiting on a credit card. Read this section for *why* a thing
+> is the way it is; read everything from "Infrastructure" down for what is true today.
+
 **Phase 0 done.** Brand tokens, both themes, `LuqmaLockup`, `LuqmaSplash`, generated logo
 assets and the Android resource tree.
 
@@ -487,11 +494,11 @@ fewer tests proving considerably more.
 incremental compiler cannot close its caches on this drive and fails every plugin module
 without it.
 
-The rules tests need JDK 21+, which is not the system default here — Android Studio's
-bundled runtime is:
+The boundary tests need no JDK and no emulator any more. They are `supabase/test/stack`,
+run against the `luqma-test` project by `tool\run_tests.ps1`, or by hand:
 
 ```
-JAVA_HOME="C:\Program Files\Android\Android Studio\jbr" firebase emulators:exec --only firestore "node --test firebase/test/*.test.js"
+DATABASE_URL=<luqma-test session pooler> npm --prefix supabase run test:stack
 ```
 
 ## Where things are
@@ -601,24 +608,32 @@ JAVA_HOME="C:\Program Files\Android\Android Studio\jbr" firebase emulators:exec 
   their campaign meant everybody, not nobody.
 - The **push cap is on the city, not the merchant.** What is being rationed is a
   customer's patience, and it does not care which shop the third notification came from.
-- The merchant is derived from the **`merchantId` custom claim**, never from a Firestore
-  field — that is what `firestore.rules` checks, and only a server can issue a claim.
+- The merchant is derived from the **`merchant_id` claim on the token**, never from a
+  column the client can write. The access-token hook copies it out of `staff` at sign-in,
+  so only the server can issue one, and `is_merchant_owner()` reads it from
+  `auth.jwt()`.
 - **`ownsMerchant()` is not "runs this merchant".** An owner and their courier carry the
   same claim. Anything that acts for a merchant uses `isMerchantOwner()`.
-- **A rule that allows less than the query asks for returns nothing, not less.**
-  Firestore rejects a whole query it cannot prove is limited to readable documents. Every
-  query in a repository needs a rules test that runs *that query*, not a test that reads
-  one document — the two fail differently and only one of them resembles production.
-- **`allow write` covers delete, and on a delete `request.resource` is null.** A rule
-  written on `request.resource.data.merchantId` refuses every merchant and lets only the
-  admin through. Create and update are judged on what is arriving; delete can only be
-  judged on what is already there.
-- **On an update, check the owner already on the document.** `isMerchantOwner(request.
-  resource.data.merchantId)` reads the *incoming* value, so rewriting it to your own id
-  passes — one merchant could move another's menu item into their own shop.
-- **The fakes are not the system.** They are more permissive than Firestore plus the
-  rules, so a green suite proves the screens work against the fake and nothing more.
-  Anything that depends on a rule needs a rules test beside the widget test.
+- **A policy that allows less than the query asks for returns nothing, not less.**
+  Postgres filters rows silently, so a query the policy cannot satisfy comes back empty
+  rather than refused — and an empty list reads as "there is nothing here", which is a
+  sentence the product says for real. Every query in a repository needs a live test that
+  runs *that query* through a real token, not a test that reads one row: the two fail
+  differently and only one of them resembles production.
+- **`for all` covers delete, and a delete has no `with check`.** A policy written only
+  as `with check` refuses every delete and lets nobody through; one written only as
+  `using` lets a row be *changed* into something the writer could not have created.
+  `using` judges the row as it is, `with check` the row as it will be, and a write that
+  needs both must say both.
+- **On an update, judge the row that is already there as well as the one arriving.** A
+  policy whose `using` clause reads only ownership lets the writer change the columns that
+  decide ownership: `correct_own_rating` checked that a rating was yours and not that it
+  still pointed at an order you received, so a customer could move their stars onto a shop
+  they had never bought from.
+- **The fakes are not the system.** They are more permissive than Postgres plus the
+  policies, so a green suite proves the screens work against the fake and nothing more.
+  Anything that depends on a policy needs a live test beside the widget test — that is
+  what `test_live` and `supabase/test/stack` are for.
 - **Nothing writes `PromotionStatus.active`.** Whether a campaign is running is a
   question about `startAt`/`endAt` — use `isLiveAt`, never the status alone.
 - The nightly billing pass has **no memory except `subscriptions.settledAt`**. Downgrading
@@ -715,6 +730,37 @@ is a debt from the moment the order is placed, accrued as `pricing.platformOwesM
 
 Coupon documents are **unreadable by any client** — a readable collection is one anyone
 can enumerate. The app calls a function that returns the discount for one basket.
+
+## Revenue is recorded and never collected
+
+Found 2026-08-29, while checking a review finding about `onOrderDelivered`.
+
+**All three revenue models stop at the order.** `place_order` freezes the terms onto
+`orders.revenue` and computes `pricing.platformOwesMerchant`, the phone shows the figure,
+`Revenue` in Dart and the billing screens agree about it — and **nothing ever settles it**:
+
+- `merchants.wallet_balance` is only ever added to. `top_up_wallet` exists in three
+  migrations; no statement anywhere subtracts. Under `prepaid` the balance is *checked*
+  before an order and never spent, so the credit never runs out and intake is never
+  suspended.
+- `merchants.commission_owed` has been a column since the first schema and has never been
+  written by anything.
+- `pricing.platformOwesMerchant` — the coupon debt, which in a cash market is the whole
+  point of `fundedBy` — is computed, stored in jsonb, and read by no settlement.
+- The nightly pass only downgrades expired subscriptions. There is no per-order pass.
+
+`onOrderDelivered` was the Cloud Function that did this; it went with Firebase, and
+`docs/17` describes the trigger that replaces it as though it were built. It is not.
+
+**When it is built, atomicity is not idempotence.** A trigger inside the status
+transaction cannot be missed, but it can still run twice — a retry, a second
+`UPDATE … SET status = 'delivered'`, an admin touching a neighbouring column with status
+in the `SET` list. It needs `when (old.status is distinct from new.status)` *and* a
+settlement row keyed uniquely on the order. Deleting the guard because the write is
+atomic is the mistake `docs/17` used to prescribe.
+
+Survivable only because there is no live merchant. It is a launch blocker the moment one
+is onboarded at anything other than zero commission.
 
 ## Known debts from the audit
 

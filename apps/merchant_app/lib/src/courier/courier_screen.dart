@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:luqma_core/luqma_core.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import 'navigation.dart';
 
@@ -178,8 +177,15 @@ class _Card extends ConsumerWidget {
                     Expanded(
                       child: OutlinedButton.icon(
                         key: CourierScreen.callKey(order.id),
-                        onPressed: () => launchUrl(
+                        // The most expensive silent failure in the product: a courier
+                        // at the door taps to ring the customer, the dialer refuses,
+                        // and nothing on the screen changes.
+                        onPressed: () => openExternalLink(
+                          context,
+                          ref,
                           Uri(scheme: 'tel', path: order.customerPhone),
+                          whenUnavailable:
+                              'مقدرناش نفتح الاتصال. الرقم ${order.customerPhone}',
                         ),
                         icon: const Icon(Icons.phone_rounded, size: Sizes.iconSm),
                         label: Text(order.customerName, overflow: TextOverflow.ellipsis),

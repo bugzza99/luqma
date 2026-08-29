@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:luqma_core/luqma_core.dart';
 
 import '../../kitchen/open_meal.dart';
+import '../../shell/customer_tab.dart';
 import 'section_header.dart';
 
 /// Today's home-cooked meals.
@@ -53,7 +54,7 @@ class HomeKitchenSection extends ConsumerWidget {
 ///
 /// Wider and taller than a restaurant row on purpose: it is a different kind of thing,
 /// and it is the only thing in this product nobody else in Edku offers.
-class MealCard extends StatelessWidget {
+class MealCard extends ConsumerWidget {
   const MealCard({super.key, required this.meal});
 
   final DailyMeal meal;
@@ -64,7 +65,7 @@ class MealCard extends StatelessWidget {
   static Key soldOutKey(String id) => Key('meal.soldOut.$id');
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final colors = theme.luqma;
     final strings = LuqmaStrings.of(context);
@@ -73,7 +74,14 @@ class MealCard extends StatelessWidget {
       width: 236,
       child: InkWell(
         key: cardKey(meal.id),
-        onTap: () => openMeal(context, meal.id),
+        onTap: () => openMeal(
+          context,
+          meal.id,
+          // The registry builds this section from a server-chosen string and has no
+          // callbacks to hand it, so the account tab is reached through the provider
+          // the shell now reads.
+          onSignIn: () => ref.read(customerTabProvider.notifier).goToAccount(),
+        ),
         borderRadius: Radii.cardAll,
         child: Container(
           decoration: BoxDecoration(

@@ -503,15 +503,16 @@ void main() {
 
       // Both drafts read used_count = 0 below the limit; only the conditional update
       // serialises them. Exactly one order exists, and the counter says so too.
-      for (final r in results) {
-        final f = r.failureOrNull;
-        // ignore: avoid_print
-        print('COUPON-DBG ok=${r.valueOrNull != null} '
-            'total=${r.valueOrNull?.pricing.total} '
-            'fail=${f is UnknownFailure ? f.cause : f}');
-      }
       final wins = results.where((r) => r.valueOrNull != null).length;
-      expect(wins, 1);
+      expect(
+        wins,
+        1,
+        // The failures, not just the count: "expected 1, got 2" says the race was lost
+        // and nothing about how, and this test only ever fails in a way somebody has to
+        // reason about.
+        reason: 'the other outcomes were '
+            '${results.map((r) => r.failureOrNull ?? 'placed').toList()}',
+      );
 
       final coupon = await live.client
           .from('coupons')

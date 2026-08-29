@@ -2,8 +2,15 @@
 import java.util.Properties
 
 // The release keystore lives once, at the repo root, and every app signs with it.
-// Guarded: a machine without signing/key.properties (CI, a fresh clone) still builds
-// release against debug keys, which is what `--release` smoke tests want.
+//
+// A machine without signing/key.properties (CI, a fresh clone) cannot sign a release,
+// and the build says so rather than quietly reaching for the debug certificate. A
+// debug-signed APK installs, runs and looks finished — and is refused by Play, cannot be
+// updated by a properly signed build, and has a private key that is in every Android
+// SDK on earth. The one legitimate use of debug keys in release mode is a `--release`
+// smoke test on this desk, and that asks for itself:
+//
+//     flutter build apk --release -Pluqma.debugSigning=true
 val keystoreProperties = Properties().apply {
     val file = rootProject.file("../../../signing/key.properties")
     if (file.exists()) load(FileInputStream(file))
@@ -52,9 +59,14 @@ android {
         release {
             if (keystoreProperties.isNotEmpty()) {
                 signingConfig = signingConfigs.getByName("release")
+            } else if (project.findProperty("luqma.debugSigning") != "true") {
+                throw GradleException(
+                    "No signing/key.properties, so this release cannot be signed. " +
+                    "See signing/README.md. For a local smoke test only, pass " +
+                    "-Pluqma.debugSigning=true — never for anything anybody installs."
+                )
             } else {
-                // No keystore on this machine: sign with debug keys so lutter run
-                // --release still works. Never what ships.
+                // Explicitly asked for. Never what ships — see the note at the top.
                 signingConfig = signingConfigs.getByName("debug")
             }
         }

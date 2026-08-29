@@ -89,7 +89,20 @@ class MerchantPromotionsScreen extends ConsumerWidget {
     WidgetRef ref,
     String merchantId,
   ) async {
-    final pushOpen = await ref.read(pushSlotAvailableProvider.future);
+    // `.future` rethrows, and this is a tap handler: a dropped connection threw an
+    // unhandled async error, the sheet never opened, and the merchant got no word at
+    // all — the FAB simply stopped working.
+    //
+    // Unknown closes the slot rather than opening it, which is the same call
+    // `pushSlotAvailableProvider` already makes for an unreadable count: one push too
+    // many costs a city's notifications for good, and the other three channels are
+    // still there to ask for.
+    bool pushOpen;
+    try {
+      pushOpen = await ref.read(pushSlotAvailableProvider.future);
+    } on Object {
+      pushOpen = false;
+    }
     if (!context.mounted) return;
 
     final promotion = await showModalBottomSheet<Promotion>(

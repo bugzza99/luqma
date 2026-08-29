@@ -23,6 +23,9 @@ void main() {
     WidgetTester tester, {
     required List<HomeSection> sections,
     List<Merchant> seed = merchants,
+    LuqmaIdentity? signedInAs,
+    Map<String, List<Address>> addresses = const {},
+    List<Zone> zones = const [],
   }) async {
     await tester.pumpWidget(
       ProviderScope(
@@ -40,6 +43,12 @@ void main() {
               Cuisine(id: 'c1', cityId: 'edku', name: 'مشويات'),
             ]),
           ),
+          authServiceProvider
+              .overrideWithValue(FakeAuthService(restoring: signedInAs)),
+          addressRepositoryProvider
+              .overrideWithValue(FakeAddressRepository(seed: addresses)),
+          geographyRepositoryProvider
+              .overrideWithValue(FakeGeographyRepository(zones: zones)),
           // The card asks whether the shop is open, which is a question about the hour.
           clockProvider.overrideWithValue(() => DateTime(2026, 8, 27, 13)),
         ],
@@ -176,6 +185,65 @@ void main() {
       // One bad review must not sink a new merchant in a town where everyone knows
       // everyone; the default threshold is ten.
       expect(find.text('2.0'), findsNothing);
+    });
+  });
+
+  // The bar's zone control said `'المعمورة'` — compiled in — above an `onPressed: () {}`.
+  //
+  // Two failures at once, and the pair is worse than either. "المعمورة" is not a zone of
+  // Edku at all, so every customer in the city was told their food was going somewhere
+  // it was not; and the control that says so refused to be corrected, so there was no
+  // way to find out it was wrong or to do anything about it.
+  group('the delivery zone in the bar', () {
+    const home = Address(id: 'a1', zoneId: 'z1', label: 'البيت');
+    const zones = [
+      Zone(id: 'z1', cityId: 'edku', name: 'الشهداء'),
+      Zone(id: 'z2', cityId: 'edku', name: 'أبو قير البحري'),
+    ];
+    const ahmed = LuqmaIdentity(uid: 'u1', name: 'أحمد', phone: '01012345678');
+
+    testWidgets('names the zone the order would actually go to', (tester) async {
+      await pump(
+        tester,
+        sections: [],
+        signedInAs: ahmed,
+        addresses: const {'u1': [home]},
+        zones: zones,
+      );
+
+      expect(find.textContaining('الشهداء', findRichText: true), findsOneWidget);
+      // The other zone exists and is not the answer, so this is a lookup rather than a
+      // first-row-of-the-list coincidence.
+      expect(
+        find.textContaining('أبو قير البحري', findRichText: true),
+        findsNothing,
+      );
+    });
+
+    testWidgets('asks rather than asserts when it does not know', (tester) async {
+      // Signed out, no address saved, zones not arrived — all three are honestly "we do
+      // not know yet", and guessing is what produced the compiled-in answer.
+      await pump(tester, sections: [], zones: zones);
+
+      expect(
+        find.textContaining('اختار منطقتك', findRichText: true),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('and tapping it goes somewhere', (tester) async {
+      await pump(
+        tester,
+        sections: [],
+        signedInAs: ahmed,
+        addresses: const {'u1': [home]},
+        zones: zones,
+      );
+
+      await tester.tap(find.byKey(HomeScreen.zoneKey));
+      await tester.pumpAndSettle();
+
+      expect(find.text('عناويني'), findsOneWidget);
     });
   });
 }

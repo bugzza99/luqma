@@ -10,13 +10,17 @@ import 'preorder_checkout_screen.dart';
 /// One function rather than a callback threaded down through the home-section registry:
 /// the registry builds sections from a fixed map keyed by a server-chosen string and has
 /// no navigation to hand them.
-Future<void> openMeal(BuildContext context, String mealId) {
+Future<void> openMeal(
+  BuildContext context,
+  String mealId, {
+  VoidCallback? onSignIn,
+}) {
   return Navigator.of(context).push(
     MaterialPageRoute<void>(
       builder: (_) => MealScreen(
         mealId: mealId,
         onReserve: (meal, quantity) =>
-            openPreorderCheckout(context, meal, quantity),
+            openPreorderCheckout(context, meal, quantity, onSignIn: onSignIn),
       ),
     ),
   );
@@ -37,7 +41,15 @@ Future<void> openPreorderCheckout(
         // is torn down, so going "back" from a confirmed reservation never returns to a
         // checkout for one already made.
         onPlaced: (order) => openPlacedOrder(context, order),
-        onSignIn: onSignIn,
+        // And the same on the way in, matching `openCheckout`: the account lives on a
+        // tab of the shell, so the meal screen and this checkout have to come off the
+        // stack before that tab can be shown at all.
+        onSignIn: onSignIn == null
+            ? null
+            : () {
+                Navigator.of(context).popUntil((route) => route.isFirst);
+                onSignIn();
+              },
       ),
     ),
   );

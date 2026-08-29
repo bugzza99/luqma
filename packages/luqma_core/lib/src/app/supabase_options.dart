@@ -32,12 +32,16 @@ abstract final class LuqmaSupabase {
   /// The local default is still the demo *anon* JWT, because the local stack issues no
   /// publishable key. That is safe — it is the well-known demo value, worthless anywhere
   /// but a container on this machine.
+  /// The well-known anon key every local Supabase stack issues. Worthless anywhere but a
+  /// container on this machine, and named so [isMisbuilt] can recognise it.
+  static const localDemoKey =
+      'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9s'
+      'ZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMb'
+      'lYTn_I0';
+
   static const publishableKey = String.fromEnvironment(
     'LUQMA_SUPABASE_PUBLISHABLE_KEY',
-    defaultValue:
-        'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9s'
-        'ZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMb'
-        'lYTn_I0',
+    defaultValue: localDemoKey,
   );
 
   /// Whether this binary was built to talk to a real project but never given a key for
@@ -45,8 +49,17 @@ abstract final class LuqmaSupabase {
   /// request, which is exactly how the first release of this app behaved.
   ///
   /// Read by `main()` so a misbuild announces itself instead of looking like an outage.
+  /// Compared against [localDemoKey] rather than searched for a word inside it. The
+  /// first version of this check asked whether the key *contained* `supabase-demo` — and
+  /// that string lives in the JWT's decoded payload, never in the encoded text, so the
+  /// guard was false for every build ever made. A check that cannot fire is worse than
+  /// no check: it reads, in review and in a diff, exactly like one that works.
+  ///
+  /// An empty key counts too. `--dart-define=LUQMA_SUPABASE_PUBLISHABLE_KEY=` with
+  /// nothing after it is a shell that expanded a variable it did not have.
   static bool get isMisbuilt =>
-      !url.contains('127.0.0.1') && publishableKey.contains('supabase-demo');
+      !url.contains('127.0.0.1') &&
+      (publishableKey.isEmpty || publishableKey == localDemoKey);
 
   static Future<SupabaseClient> initialize() async {
     // Refused here rather than discovered screen by screen.

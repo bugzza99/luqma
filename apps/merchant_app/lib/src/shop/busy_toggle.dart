@@ -17,6 +17,7 @@ class BusyToggle extends ConsumerWidget {
   static const openKey = Key('busy.open');
   static const pausedKey = Key('busy.paused');
   static const closedKey = Key('busy.closed');
+  static const blockedKey = Key('busy.blocked');
   static const pauseKey = Key('busy.pause');
   static const resumeKey = Key('busy.resume');
   static const sheetKey = Key('busy.sheet');
@@ -44,6 +45,16 @@ class BusyToggle extends ConsumerWidget {
 
     if (!withinHours && !paused) return const _Closed();
     if (paused) return _Paused(merchant: merchant);
+    // The last question, and the one this screen used to skip: `acceptsOrdersAt` is
+    // where the whole product agrees on whether a shop can take an order, and it says
+    // no for two reasons that have nothing to do with the clock — the shop is not
+    // approved, or a prepaid wallet has run out.
+    //
+    // Deriving "open" from hours alone meant a merchant whose credit had gone read a
+    // green bar saying مفتوح وبتستقبل طلبات while `place_order` refused every single
+    // customer with "merchant not accepting orders". They would have spent the evening
+    // certain the app was broken, and been right that something was.
+    if (!merchant.acceptsOrdersAt(now)) return const _Blocked();
     return _Open(merchantId: merchantId);
   }
 }
@@ -200,6 +211,29 @@ class _Closed extends StatelessWidget {
       // No "reopen" here. The shop is outside the hours its owner set, and a button
       // that appears to override that would either lie or overwrite the schedule.
       title: 'مقفول حسب مواعيد الشغل',
+    );
+  }
+}
+
+/// Open by the clock, and refused by the server anyway.
+///
+/// Deliberately does not say which of the two reasons it is. A merchant cannot fix
+/// either from this screen — approval is the admin's and the wallet is a payment — so
+/// the useful sentence is the one that sends them to a person rather than one that
+/// names a mechanism they cannot reach.
+class _Blocked extends StatelessWidget {
+  const _Blocked();
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).luqma;
+
+    return _Bar(
+      barKey: BusyToggle.blockedKey,
+      background: colors.danger,
+      foreground: colors.onBrand,
+      icon: Icons.report_problem_rounded,
+      title: 'الطلبات موقوفة مؤقتاً — كلّم لقمة',
     );
   }
 }

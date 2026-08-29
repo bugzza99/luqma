@@ -189,6 +189,7 @@ class _IdentityState extends ConsumerState<_Identity> {
   }
 
   Future<void> _attachCover(Media media) async {
+    final previous = _coverUrl;
     setState(() {
       _coverUrl = media.url;
       _saving = true;
@@ -196,10 +197,22 @@ class _IdentityState extends ConsumerState<_Identity> {
 
     // The id goes on the merchant row; the picture stays invisible to customers until an
     // admin approves it, like every other image in the product.
-    await ref
+    final result = await ref
         .read(merchantRepositoryProvider)
         .saveMerchant(merchant.copyWith(coverMediaId: media.id));
-    if (mounted) setState(() => _saving = false);
+    if (!mounted) return;
+    setState(() => _saving = false);
+
+    // The result was discarded, and the new picture was already on the screen — so a
+    // save that failed looked exactly like one that worked. The merchant closes the app
+    // believing their shop has a cover; the row still carries the old id, or none, and
+    // the customer sees the tinted placeholder for ever.
+    if (result case Err()) {
+      setState(() => _coverUrl = previous);
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+        const SnackBar(content: Text('الصورة موصلتش. جرّب تاني.')),
+      );
+    }
   }
 
   @override
