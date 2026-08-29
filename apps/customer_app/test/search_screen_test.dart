@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:customer_app/src/home/sections/merchant_card.dart';
 import 'package:customer_app/src/search/search_screen.dart';
 import 'package:flutter/material.dart';
@@ -39,6 +41,7 @@ void main() {
   Future<void> pump(
     WidgetTester tester, {
     Failure? failure,
+    Completer<void>? gate,
   }) async {
     tester.view.physicalSize = const Size(400, 1200);
     tester.view.devicePixelRatio = 1.0;
@@ -50,6 +53,7 @@ void main() {
           searchRepositoryProvider.overrideWithValue(
             FakeSearchRepository(
               failure: failure,
+              gate: gate,
               merchants: [shop('m1', 'مطعم البحر'), shop('m2', 'كشري الأمير')],
               menus: {
                 'm1': [dish('i1', 'm1', 'سمك مشوي')],
@@ -148,5 +152,30 @@ void main() {
     await type(tester, 'البحر');
 
     expect(find.byType(LuqmaErrorView), findsOneWidget);
+  });
+
+  // A response for a query the customer has already deleted.
+  //
+  // `_run` guards on `query != _lastQuery` to drop a stale answer, and clearing the box
+  // cancelled the debounce and emptied the list — but left `_lastQuery` set. So a search
+  // already in the air passed that guard when it landed and repopulated the results
+  // under an empty box, with nothing to explain where they came from.
+  testWidgets('clearing the box also discards what is already in the air',
+      (tester) async {
+    final gate = Completer<void>();
+    await pump(tester, gate: gate);
+
+    await tester.enterText(find.byKey(SearchScreen.fieldKey), 'كشري');
+    await tester.pump(const Duration(milliseconds: 400));
+
+    // The request is out and waiting on the gate. Now the customer clears the box.
+    await tester.enterText(find.byKey(SearchScreen.fieldKey), '');
+    await tester.pump();
+
+    gate.complete();
+    await tester.pumpAndSettle();
+
+    expect(find.byType(MerchantCard), findsNothing);
+    expect(find.byKey(SearchScreen.emptyKey), findsOneWidget);
   });
 }

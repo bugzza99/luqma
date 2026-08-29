@@ -56,6 +56,7 @@ void main() {
 
   late FakeCourierOrderRepository deliveries;
   late FakeNavigator navigator;
+  late FakeExternalLinks links;
 
   Future<void> pump(
     WidgetTester tester, {
@@ -66,9 +67,11 @@ void main() {
       'scope': 'merchant',
       'merchantId': 'm1',
     },
+    bool phoneCanDial = true,
   }) async {
     deliveries = FakeCourierOrderRepository(seed: seed, failure: failure);
     navigator = FakeNavigator();
+    links = FakeExternalLinks(answer: phoneCanDial);
 
     await tester.pumpWidget(
       ProviderScope(
@@ -82,6 +85,7 @@ void main() {
           geographyRepositoryProvider
               .overrideWithValue(FakeGeographyRepository(zones: zones)),
           mapNavigatorProvider.overrideWithValue(navigator),
+          externalLinksProvider.overrideWithValue(links),
           remoteConfigServiceProvider
               .overrideWithValue(RemoteConfigService(FakeConfigFetcher({}))),
         ],
@@ -154,6 +158,31 @@ void main() {
 
       expect(find.byKey(CourierScreen.callKey('o1')), findsOneWidget);
       expect(find.byKey(CourierScreen.noAddressKey('o1')), findsOneWidget);
+    });
+
+    testWidgets('and the button actually dials', (tester) async {
+      await pump(tester, seed: [order()]);
+
+      await tester.tap(find.byKey(CourierScreen.callKey('o1')));
+      await tester.pumpAndSettle();
+
+      expect(links.opened.single.scheme, 'tel');
+      expect(links.opened.single.path, '01000000000');
+    });
+
+    // The most expensive silent failure in the product. `launchUrl` throws when no
+    // activity is registered for `tel:` and returns false when nothing handles it, and
+    // this button ignored both: the courier is at somebody's door holding their food,
+    // taps to ring them, and the screen does not change. Reading the number out is a
+    // worse answer than dialling and a far better one than nothing.
+    testWidgets('a handset that refuses tel: reads the number out',
+        (tester) async {
+      await pump(tester, seed: [order()], phoneCanDial: false);
+
+      await tester.tap(find.byKey(CourierScreen.callKey('o1')));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('01000000000'), findsWidgets);
     });
   });
 

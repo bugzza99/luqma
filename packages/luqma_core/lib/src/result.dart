@@ -17,8 +17,33 @@ sealed class Failure {
   ///
   /// Already-classified failures pass straight through, so a failure that crosses two
   /// layers is not wrapped twice and reduced to [UnknownFailure] on the way.
+  /// Errors that mean the request never reached a server.
+  ///
+  /// Matched by type *name* rather than by type, deliberately. `SocketException` and
+  /// `HandshakeException` live in `dart:io`, which AdminApp cannot import — it runs in a
+  /// browser, where the owner types six hundred menu items on a real keyboard. Importing
+  /// it here would take the whole shared package off the web to classify an error.
+  ///
+  /// This mattered more than it looks. `OfflineFailure` was declared and read in five
+  /// places — "مفيش نت — جرّب تاني" on the error view, the media picker, the admin gate —
+  /// and nothing produced it, so that sentence was unreachable and every dropped
+  /// connection said "حصل خطأ" instead. Worse: `CourierWriteQueue` queues a write only
+  /// when the failure `is OfflineFailure`, so the one class built to keep a courier's
+  /// "delivered" tap alive through a dead connection rejected every real one.
+  static const _offlineTypes = {
+    'SocketException',
+    'HandshakeException',
+    'ClientException',
+    'TimeoutException',
+    'AuthRetryableFetchException',
+  };
+
   static Failure from(Object error, [StackTrace? stackTrace]) {
     if (error is Failure) return error;
+
+    if (_offlineTypes.contains(error.runtimeType.toString())) {
+      return const OfflineFailure();
+    }
 
     if (error is PostgrestException) {
       // The reasons the order function raises by name: each one is a sentence a person

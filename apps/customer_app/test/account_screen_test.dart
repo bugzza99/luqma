@@ -7,6 +7,7 @@ import 'package:luqma_core/luqma_core.dart';
 /// حسابي — who you are, where you live, and the way out.
 void main() {
   late FakeAuthService auth;
+  late FakeExternalLinks links;
 
   Future<void> pump(
     WidgetTester tester, {
@@ -16,8 +17,17 @@ void main() {
       phone: '01012345678',
     ),
     Failure? failure,
+    String? supportWhatsapp,
+    bool phoneCanOpenLinks = true,
   }) async {
     auth = FakeAuthService(restoring: signedInAs, failure: failure);
+    links = FakeExternalLinks(answer: phoneCanOpenLinks);
+    // `AppConfig` starts on the compiled-in defaults; nothing reads the fetcher until
+    // somebody refreshes, so a value handed to the fake alone would never be seen.
+    final config = RemoteConfigService(FakeConfigFetcher({
+      'support_whatsapp': ?supportWhatsapp,
+    }));
+    await config.refresh();
 
     await tester.pumpWidget(
       ProviderScope(
@@ -26,8 +36,8 @@ void main() {
           addressRepositoryProvider.overrideWithValue(FakeAddressRepository()),
           geographyRepositoryProvider
               .overrideWithValue(FakeGeographyRepository()),
-          remoteConfigServiceProvider
-              .overrideWithValue(RemoteConfigService(FakeConfigFetcher({}))),
+          externalLinksProvider.overrideWithValue(links),
+          remoteConfigServiceProvider.overrideWithValue(config),
         ],
         child: MaterialApp(
           theme: LuqmaTheme.light,
@@ -243,11 +253,46 @@ void main() {
   group('what the app can always tell you', () {
     // A customer with a problem needs a way to reach a person, signed in or not.
     testWidgets('the way to reach us is there either way', (tester) async {
-      await pump(tester, signedInAs: null);
+      await pump(tester, signedInAs: null, supportWhatsapp: '01012345678');
       expect(find.byKey(AccountScreen.contactKey), findsOneWidget);
 
-      await pump(tester);
+      await pump(tester, supportWhatsapp: '01012345678');
       expect(find.byKey(AccountScreen.contactKey), findsOneWidget);
+    });
+
+    // The tile used to be drawn unconditionally over an empty `onTap`, which is how a
+    // support line can look staffed and answer nobody. `support_whatsapp` had been
+    // carried from AdminApp to the phone since Phase 1 and read by no screen at all.
+    testWidgets('and it actually opens the number the owner set', (tester) async {
+      await pump(tester, supportWhatsapp: '01012345678');
+
+      await tester.tap(find.byKey(AccountScreen.contactKey));
+      await tester.pumpAndSettle();
+
+      expect(links.opened.single, Uri.parse('https://wa.me/201012345678'));
+    });
+
+    testWidgets('a phone with no WhatsApp is told the number instead',
+        (tester) async {
+      // Silence after a tap is indistinguishable from a broken button, and the person
+      // tapping it is already having a problem — which is why they are on this tile.
+      await pump(
+        tester,
+        supportWhatsapp: '01012345678',
+        phoneCanOpenLinks: false,
+      );
+
+      await tester.tap(find.byKey(AccountScreen.contactKey));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('01012345678'), findsWidgets);
+    });
+
+    testWidgets('no number set is no tile', (tester) async {
+      // An icon that goes nowhere is worse than no icon — the rule حول لقمة already
+      // applies to its own links.
+      await pump(tester);
+      expect(find.byKey(AccountScreen.contactKey), findsNothing);
     });
   });
 }

@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:luqma_core/luqma_core.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import 'about_controller.dart';
 
@@ -109,7 +108,7 @@ class AboutScreen extends ConsumerWidget {
   static bool _has(String? link) => link != null && link.trim().isNotEmpty;
 }
 
-class _SocialIcon extends StatelessWidget {
+class _SocialIcon extends ConsumerWidget {
   const _SocialIcon({
     super.key,
     required this.icon,
@@ -122,7 +121,7 @@ class _SocialIcon extends StatelessWidget {
   final String url;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final colors = Theme.of(context).luqma;
 
     return Padding(
@@ -130,7 +129,14 @@ class _SocialIcon extends StatelessWidget {
       child: IconButton(
         tooltip: tooltip,
         icon: Icon(icon, color: colors.brand, size: Sizes.iconLg),
-        onPressed: () => launchUrl(Uri.parse(url)),
+        // A phone with no Facebook app and no browser handler took this tap and did
+        // nothing at all, which reads as a broken button rather than a missing app.
+        onPressed: () => openExternalLink(
+          context,
+          ref,
+          Uri.parse(url),
+          whenUnavailable: 'مقدرناش نفتح $tooltip من التليفون ده.',
+        ),
       ),
     );
   }

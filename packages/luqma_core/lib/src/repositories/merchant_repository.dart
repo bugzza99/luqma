@@ -108,6 +108,12 @@ class SupabaseMerchantRepository implements MerchantRepository {
         'revenue_value': m.revenueValue,
         'delivery_fee_override': m.deliveryFeeOverride,
         'min_order': m.minOrder,
+        // Omitted until 2026-08-29, and the customer read the consequence: every
+        // merchant card in the city says "٣٠ دقيقة تقريباً" because the column keeps its
+        // default and nothing has ever been able to write another number to it. The
+        // column is in the merchant's own writable list — see the guard in
+        // `20260827010000_images_and_cuisines.sql` — so this was a gap, not a boundary.
+        'prep_minutes': m.prepMinutes,
       };
 
   Merchant _toMerchant(Map<String, dynamic> row) {
@@ -239,6 +245,7 @@ class FakeMerchantRepository implements MerchantRepository {
     List<Merchant> seed = const [],
     Map<String, int> orderCounts = const {},
     this.failure,
+    this.saveFailure,
   })  : _merchants = {for (final m in seed) m.id: m},
         _orderCounts = Map.of(orderCounts);
 
@@ -250,6 +257,11 @@ class FakeMerchantRepository implements MerchantRepository {
   /// When set, every call fails with this — so the offline and permission paths can be
   /// exercised without unplugging anything.
   final Failure? failure;
+
+  /// Fails only the *writes*. A screen that loads fine and then cannot save is a
+  /// different situation from one that never loaded, and it is the one where an
+  /// ignored `Result` shows the person something that did not happen.
+  final Failure? saveFailure;
 
   @override
   Stream<List<Merchant>> watchMerchants({required String cityId}) {
@@ -290,6 +302,7 @@ class FakeMerchantRepository implements MerchantRepository {
   @override
   Future<Result<Merchant>> saveMerchant(Merchant merchant) async {
     if (failure != null) return Result.err(failure!);
+    if (saveFailure != null) return Result.err(saveFailure!);
     final saved = merchant.id.isEmpty
         ? merchant.copyWith(id: 'merchant-${_merchants.length + 1}')
         : merchant;

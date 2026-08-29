@@ -53,6 +53,11 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
     _timer?.cancel();
     if (value.trim().isEmpty) {
       setState(() {
+        // Clearing the box also has to invalidate whatever is already in the air.
+        // `_run` guards on `query != _lastQuery`, so leaving the old query here means a
+        // response that lands after the customer hits clear passes that guard and
+        // repopulates the list under an empty box.
+        _lastQuery = '';
         _results = null;
         _failure = null;
         _searching = false;

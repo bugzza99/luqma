@@ -19,16 +19,26 @@ void main() {
     OpeningWindow(weekday: DateTime.sunday, openMinute: 0, closeMinute: 1440),
   ];
 
-  Merchant shop({DateTime? pausedUntil}) => Merchant(
+  Merchant shop({
+    DateTime? pausedUntil,
+    MerchantStatus status = MerchantStatus.approved,
+    RevenueModel revenueModel = RevenueModel.subscription,
+    int revenueValue = 0,
+    int walletBalance = 0,
+  }) =>
+      Merchant(
         id: 'm1',
         cityId: 'edku',
         type: MerchantType.restaurant,
         name: 'مطعم الشاطئ',
         zoneId: 'z1',
         phone: '01000000000',
-        status: MerchantStatus.approved,
+        status: status,
         openingHours: alwaysOpen,
         pausedUntil: pausedUntil,
+        revenueModel: revenueModel,
+        revenueValue: revenueValue,
+        walletBalance: walletBalance,
       );
 
   late FakeMerchantRepository merchants;
@@ -153,6 +163,53 @@ void main() {
 
       expect(find.byKey(BusyToggle.closedKey), findsOneWidget);
       expect(find.byKey(BusyToggle.pauseKey), findsNothing);
+    });
+  });
+
+  // This bar answered "are we open" from the schedule alone, while `place_order` answers
+  // it from `Merchant.acceptsOrdersAt` — which also refuses a shop that is not approved
+  // and a prepaid shop whose wallet has run out.
+  //
+  // So a merchant whose credit had gone read a green bar saying مفتوح وبتستقبل طلبات
+  // while every customer in the city was refused with "merchant not accepting orders".
+  // They would have spent the evening certain the app was broken, and been right that
+  // something was — just not the thing they could see.
+  group('open by the clock, refused by the server', () {
+    testWidgets('an empty prepaid wallet is not open for business',
+        (tester) async {
+      await pump(
+        tester,
+        seed: shop(
+          revenueModel: RevenueModel.prepaid,
+          revenueValue: 500,
+          walletBalance: 100,
+        ),
+      );
+
+      expect(find.byKey(BusyToggle.blockedKey), findsOneWidget);
+      expect(find.byKey(BusyToggle.openKey), findsNothing);
+    });
+
+    testWidgets('and neither is a suspended shop', (tester) async {
+      await pump(tester, seed: shop(status: MerchantStatus.suspended));
+
+      expect(find.byKey(BusyToggle.blockedKey), findsOneWidget);
+      expect(find.byKey(BusyToggle.openKey), findsNothing);
+    });
+
+    testWidgets('a prepaid shop with credit is open as usual', (tester) async {
+      // The guard has to let the ordinary case through, or it is just a broken screen.
+      await pump(
+        tester,
+        seed: shop(
+          revenueModel: RevenueModel.prepaid,
+          revenueValue: 500,
+          walletBalance: 5000,
+        ),
+      );
+
+      expect(find.byKey(BusyToggle.openKey), findsOneWidget);
+      expect(find.byKey(BusyToggle.blockedKey), findsNothing);
     });
   });
 }

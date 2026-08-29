@@ -38,7 +38,11 @@ void main() {
     openingHours: alwaysOpen,
   );
 
-  Future<void> pump(WidgetTester tester, {Failure? failure}) async {
+  Future<void> pump(
+    WidgetTester tester, {
+    Failure? failure,
+    Failure? saveFailure,
+  }) async {
     // A phone, not the runner's 800x600 default — that window is wider than it is tall
     // and unlike anything this ships on.
     tester.view.physicalSize = const Size(1080, 2340);
@@ -57,7 +61,11 @@ void main() {
             ),
           ),
           merchantRepositoryProvider.overrideWithValue(
-            FakeMerchantRepository(seed: const [shop], failure: failure),
+            FakeMerchantRepository(
+              seed: const [shop],
+              failure: failure,
+              saveFailure: saveFailure,
+            ),
           ),
           remoteConfigServiceProvider
               .overrideWithValue(RemoteConfigService(FakeConfigFetcher({}))),
@@ -93,5 +101,27 @@ void main() {
     expect(find.byType(LuqmaErrorView), findsOneWidget,
         reason: 'an empty page is indistinguishable from a shop with nothing in it');
     expect(find.text('مطعم الشاطئ'), findsNothing);
+  });
+
+  // The cover is drawn from the picked file the moment it uploads, and the `Result` of
+  // the save that follows was thrown away. So a save that failed looked exactly like one
+  // that worked: the merchant sees their new cover, closes the app, and the row still
+  // carries the old id. The customer keeps seeing the tinted placeholder, and nobody
+  // involved has any reason to think anything went wrong.
+  testWidgets('a cover that could not be saved does not stay on the screen',
+      (tester) async {
+    await pump(tester, saveFailure: const OfflineFailure());
+
+    // Straight through the real handler: the picker itself needs a file, and what is
+    // under test is what the screen does with the upload rather than the picking.
+    final picker = tester.widget<MediaPicker>(find.byType(MediaPicker));
+    picker.onUploaded(const Media(
+      id: 'md1',
+      kind: MediaKind.merchantCover,
+      url: 'https://example.test/cover.jpg',
+    ));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('جرّب تاني'), findsOneWidget);
   });
 }

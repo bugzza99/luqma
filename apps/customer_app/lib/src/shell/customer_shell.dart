@@ -8,6 +8,7 @@ import '../cart/cart_controller.dart';
 import '../cart/open_cart.dart';
 import '../home/home_screen.dart';
 import '../orders/orders_screen.dart';
+import 'customer_tab.dart';
 
 /// The three tabs, and the basket that sits above all of them.
 ///
@@ -28,15 +29,14 @@ class CustomerShell extends ConsumerStatefulWidget {
 }
 
 class _CustomerShellState extends ConsumerState<CustomerShell> {
-  int _tab = 0;
-
-  void _goToAccount() => setState(() => _tab = 2);
+  void _goToAccount() => ref.read(customerTabProvider.notifier).goToAccount();
 
   void _openCart() => openCart(context, onSignIn: _goToAccount);
 
   @override
   Widget build(BuildContext context) {
     final cart = ref.watch(cartProvider);
+    final tab = ref.watch(customerTabProvider);
     final colors = Theme.of(context).luqma;
 
     return Scaffold(
@@ -45,7 +45,7 @@ class _CustomerShellState extends ConsumerState<CustomerShell> {
       // and its loaded data. Coming back to a half-scrolled home and finding it reset
       // is the app forgetting what somebody was doing.
       body: IndexedStack(
-        index: _tab,
+        index: tab,
         children: [
           const HomeScreen(),
           OrdersScreen(onSignIn: _goToAccount),
@@ -55,8 +55,9 @@ class _CustomerShellState extends ConsumerState<CustomerShell> {
       floatingActionButton:
           cart.isEmpty ? null : _CartButton(cart: cart, onTap: _openCart),
       bottomNavigationBar: NavigationBar(
-        selectedIndex: _tab,
-        onDestinationSelected: (i) => setState(() => _tab = i),
+        selectedIndex: tab,
+        onDestinationSelected: (i) =>
+            ref.read(customerTabProvider.notifier).show(i),
         destinations: const [
           NavigationDestination(
             key: CustomerShell.homeTabKey,

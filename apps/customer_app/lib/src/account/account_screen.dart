@@ -29,6 +29,11 @@ class AccountScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final identity = ref.watch(currentIdentityProvider).value;
     final colors = Theme.of(context).luqma;
+    // `support_whatsapp` has been carried from AdminApp to the phone since Phase 1 and
+    // read by nobody: this tile was drawn regardless and did nothing when tapped. Blank
+    // means the owner has not set a number, and then there is no tile — the same rule
+    // حول لقمة already applies to its own icons.
+    final support = ref.watch(appConfigProvider).supportWhatsapp.trim();
 
     return Scaffold(
       backgroundColor: colors.background,
@@ -59,14 +64,21 @@ class AccountScreen extends ConsumerWidget {
           ],
           // Reachable signed in or out: somebody with a problem needs a person, and a
           // problem is exactly the moment an account stops working.
-          _Tile(
-            tileKey: contactKey,
-            icon: Icons.support_agent_outlined,
-            title: 'كلّمنا',
-            subtitle: 'لو في مشكلة في طلب أو حاجة مش مظبوطة',
-            onTap: () {},
-          ),
-          const SizedBox(height: Space.sm),
+          if (support.isNotEmpty) ...[
+            _Tile(
+              tileKey: contactKey,
+              icon: Icons.support_agent_outlined,
+              title: 'كلّمنا',
+              subtitle: 'لو في مشكلة في طلب أو حاجة مش مظبوطة',
+              onTap: () => openExternalLink(
+                context,
+                ref,
+                Uri.parse('https://wa.me/${Phone.toWhatsapp(support)}'),
+                whenUnavailable: 'مفيش واتساب على التليفون ده. الرقم $support',
+              ),
+            ),
+            const SizedBox(height: Space.sm),
+          ],
           _Tile(
             tileKey: aboutKey,
             icon: Icons.info_outline,

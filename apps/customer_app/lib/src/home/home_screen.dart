@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:luqma_core/luqma_core.dart';
 
+import '../address/address_list_screen.dart';
 import '../search/search_screen.dart';
+import '../shell/customer_tab.dart';
 import 'section_registry.dart';
 
 /// The customer's home.
@@ -87,10 +89,27 @@ class _HomeBar extends ConsumerWidget implements PreferredSizeWidget {
   @override
   Size get preferredSize => const Size.fromHeight(Sizes.appBarHeight);
 
+  /// The zone of the address an order would actually go to.
+  ///
+  /// The address carries a `zoneId`; the name is on the zone. A zone the list does not
+  /// have — deleted, or not loaded yet — reads as unknown rather than as an id, which is
+  /// not a place anybody recognises.
+  static String? _zoneName(WidgetRef ref) {
+    final address = ref.watch(chosenAddressProvider).value;
+    if (address == null) return null;
+
+    final zones = ref.watch(zonesProvider).value ?? const <Zone>[];
+    return zones.where((z) => z.id == address.zoneId).firstOrNull?.name;
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final colors = Theme.of(context).luqma;
     final strings = LuqmaStrings.of(context);
+    // Null covers signed out, no address saved, and a zone list that has not arrived —
+    // all three are honestly "we do not know yet", and the label asks rather than
+    // asserts. Guessing here is what produced the compiled-in answer this replaced.
+    final zone = _zoneName(ref);
 
     return AppBar(
       // Drawn from the vector lockup, never typed: Lemonada is not a bundled font, so a
@@ -100,26 +119,41 @@ class _HomeBar extends ConsumerWidget implements PreferredSizeWidget {
       actions: [
         // The delivery zone belongs in the bar because it decides the delivery fee and
         // which merchants can even take the order — it is not a setting, it is context.
+        //
+        // It read `'المعمورة'`, compiled in, above an `onPressed: () {}`. A control that
+        // states the wrong fact and refuses to be corrected is worse than no control:
+        // "المعمورة" is not even a zone of Edku, so every customer in the city was told
+        // their food was going somewhere else and had no way to say otherwise.
         TextButton.icon(
           key: HomeScreen.zoneKey,
-          onPressed: () {},
+          onPressed: () => Navigator.of(context).push(
+            MaterialPageRoute<void>(
+              builder: (_) => AddressListScreen(
+                onSignIn: () {
+                  Navigator.of(context).pop();
+                  ref.read(customerTabProvider.notifier).goToAccount();
+                },
+              ),
+            ),
+          ),
           icon: Icon(Icons.expand_more_rounded, size: 18, color: colors.onBrand),
           label: RichText(
             text: TextSpan(
               children: [
                 TextSpan(
-                  text: '${strings.deliveringTo} ',
+                  text: '${zone == null ? strings.chooseZone : strings.deliveringTo} ',
                   style: LuqmaType.caption.copyWith(
                     color: colors.onBrand.withValues(alpha: 0.85),
                   ),
                 ),
-                TextSpan(
-                  text: 'المعمورة',
-                  style: LuqmaType.bodySmall.copyWith(
-                    color: colors.onBrand,
-                    fontWeight: FontWeight.w600,
+                if (zone != null)
+                  TextSpan(
+                    text: zone,
+                    style: LuqmaType.bodySmall.copyWith(
+                      color: colors.onBrand,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
-                ),
               ],
             ),
           ),

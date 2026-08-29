@@ -12,12 +12,20 @@ void main() {
     return s;
   }
 
-  Future<void> pump(WidgetTester tester, RemoteConfigService config) async {
+  late FakeExternalLinks links;
+
+  Future<void> pump(
+    WidgetTester tester,
+    RemoteConfigService config, {
+    bool phoneCanOpenLinks = true,
+  }) async {
+    links = FakeExternalLinks(answer: phoneCanOpenLinks);
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
           remoteConfigServiceProvider.overrideWithValue(config),
           mediaRepositoryProvider.overrideWithValue(FakeMediaRepository()),
+          externalLinksProvider.overrideWithValue(links),
         ],
         child: MaterialApp(
           theme: LuqmaTheme.light,
@@ -69,5 +77,34 @@ void main() {
     expect(find.text('أكل بيتي على أصوله.'), findsOneWidget);
     expect(find.byKey(AboutScreen.versionKey), findsOneWidget);
     expect(find.textContaining(kLuqmaVersion), findsOneWidget);
+  });
+
+  // `launchUrl` fails two ways and this screen ignored both: it returns `false` when
+  // nothing on the device handled the URL, and it *throws* when no activity is
+  // registered for the scheme at all. A tap that does neither of two things and says
+  // nothing reads as a broken button, and the person's next move is to tap it again.
+  testWidgets('an icon opens the link the owner set', (tester) async {
+    await pump(
+      tester,
+      await service({'about_facebook': 'https://facebook.com/luqma'}),
+    );
+
+    await tester.tap(find.byKey(AboutScreen.facebookKey));
+    await tester.pumpAndSettle();
+
+    expect(links.opened.single, Uri.parse('https://facebook.com/luqma'));
+  });
+
+  testWidgets('a phone that cannot open it says so', (tester) async {
+    await pump(
+      tester,
+      await service({'about_facebook': 'https://facebook.com/luqma'}),
+      phoneCanOpenLinks: false,
+    );
+
+    await tester.tap(find.byKey(AboutScreen.facebookKey));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('فيسبوك'), findsOneWidget);
   });
 }
