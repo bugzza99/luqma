@@ -33,7 +33,15 @@ class AddressListScreen extends ConsumerWidget {
     return Scaffold(
       appBar: AppBar(title: const Text('عناويني')),
       body: identity == null
-          ? _SignedOut(onSignIn: onSignIn)
+          ? LuqmaEmptyView(
+            title: 'العناوين محفوظة على حسابك.',
+            message: 'سجّل دخول عشان تحفظ عنوانك مرة واحدة وتستخدمه كل مرة.',
+            action: FilledButton(
+              key: AddressListScreen.signInKey,
+              onPressed: onSignIn,
+              child: const Text('سجّل دخول'),
+            ),
+          )
           : switch (addresses) {
               // An error arm comes first, and matches on `hasError` rather than on the
               // `AsyncError` type: a stream that fails before it has ever emitted stays
@@ -41,7 +49,12 @@ class AddressListScreen extends ConsumerWidget {
               // and the screen spins for ever on a dropped connection.
               AsyncValue(hasError: true, :final error?) => LuqmaErrorView(failure: error, onRetry: () => ref.invalidate(myAddressesProvider)),
               AsyncValue(hasValue: true, :final value?) when value.isEmpty =>
-                const _Empty(),
+                LuqmaEmptyView(
+            key: AddressListScreen.emptyKey,
+            icon: Icons.location_off_outlined,
+            title: 'لسه مفيش عناوين محفوظة.',
+            message: 'ضيف عنوانك مرة واحدة وهيفضل موجود.',
+          ),
               AsyncValue(hasValue: true, :final value?) => _List(
                   addresses: value,
                   chosenId: chosen?.id,
@@ -196,82 +209,5 @@ class _Row extends ConsumerWidget {
   }
 }
 
-class _SignedOut extends StatelessWidget {
-  const _SignedOut({this.onSignIn});
 
-  final VoidCallback? onSignIn;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(Space.xxl),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              'العناوين محفوظة على حسابك.',
-              style: theme.textTheme.titleLarge,
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: Space.sm),
-            Text(
-              'سجّل دخول عشان تحفظ عنوانك مرة واحدة وتستخدمه كل مرة.',
-              style: theme.textTheme.bodyMedium
-                  ?.copyWith(color: theme.luqma.textSecondary),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: Space.xl),
-            FilledButton(
-              key: AddressListScreen.signInKey,
-              onPressed: onSignIn,
-              child: const Text('سجّل دخول'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _Empty extends StatelessWidget {
-  const _Empty();
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return Center(
-      key: AddressListScreen.emptyKey,
-      child: Padding(
-        padding: const EdgeInsets.all(Space.xxl),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              Icons.location_off_outlined,
-              size: 56,
-              color: theme.luqma.textSecondary,
-            ),
-            const SizedBox(height: Space.lg),
-            Text(
-              'لسه مفيش عناوين محفوظة.',
-              style: theme.textTheme.titleLarge,
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: Space.sm),
-            Text(
-              'ضيف عنوانك مرة واحدة وهيفضل موجود.',
-              style: theme.textTheme.bodyMedium
-                  ?.copyWith(color: theme.luqma.textSecondary),
-              textAlign: TextAlign.center,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
 

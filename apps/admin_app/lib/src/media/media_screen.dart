@@ -40,7 +40,10 @@ class MediaScreen extends ConsumerWidget {
           // and the screen spins for ever on a dropped connection.
           AsyncValue(hasError: true, :final error?) => LuqmaErrorView(failure: error, onRetry: () => ref.invalidate(pendingMediaProvider)),
           AsyncValue(hasValue: true, :final value?) when value.isEmpty =>
-            const _Empty(),
+            LuqmaEmptyView(
+            key: MediaScreen.emptyKey,
+            message: 'مفيش صور مستنية مراجعة.',
+          ),
           AsyncValue(hasValue: true, :final value?) => GridView.builder(
               padding: const EdgeInsets.all(Space.gutter),
               gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
@@ -61,26 +64,6 @@ class MediaScreen extends ConsumerWidget {
   }
 }
 
-class _Empty extends StatelessWidget {
-  const _Empty();
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Center(
-      key: MediaScreen.emptyKey,
-      child: Padding(
-        padding: const EdgeInsets.all(Space.xl),
-        child: Text(
-          'مفيش صور مستنية مراجعة.',
-          textAlign: TextAlign.center,
-          style: theme.textTheme.bodyMedium
-              ?.copyWith(color: theme.luqma.textSecondary),
-        ),
-      ),
-    );
-  }
-}
 
 class _Card extends ConsumerWidget {
   const _Card({required this.media});

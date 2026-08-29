@@ -35,7 +35,12 @@ class CartScreen extends ConsumerWidget {
 
     return Scaffold(
       appBar: AppBar(title: const Text('السلة')),
-      body: cart.isEmpty ? const _Empty() : _Full(cart: cart),
+      body: cart.isEmpty ? LuqmaEmptyView(
+            key: CartScreen.emptyKey,
+            icon: Icons.shopping_basket_outlined,
+            title: 'السلة فاضية',
+            message: 'اختار من المطاعم والأكل البيتي وهيتحطّ هنا.',
+          ) : _Full(cart: cart),
       bottomNavigationBar:
           cart.isEmpty ? null : _Footer(cart: cart, onCheckout: onCheckout),
     );
@@ -224,19 +229,19 @@ class _Footer extends ConsumerWidget {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               if (merchant != null && !open)
-                _Notice(
-                  noticeKey: CartScreen.closedKey,
+                LuqmaNotice(
+                  key: CartScreen.closedKey,
                   icon: Icons.schedule_rounded,
-                  color: colors.danger,
+                  tone: NoticeTone.problem,
                   // The basket is kept: it is still what they wanted, and it will send
                   // itself fine tomorrow.
                   text: '${strings.merchantClosed} — سلتك محفوظة.',
                 )
               else if (shortfall > 0)
-                _Notice(
-                  noticeKey: CartScreen.shortfallKey,
+                LuqmaNotice(
+                  key: CartScreen.shortfallKey,
                   icon: Icons.add_shopping_cart_rounded,
-                  color: colors.textSecondary,
+                  tone: NoticeTone.information,
                   // The gap, not just the floor: otherwise the customer does the
                   // subtraction themselves to find out what would fix it.
                   text: 'ناقص ${strings.price(shortfall)} توصل لأقل طلب '
@@ -284,73 +289,4 @@ class _Footer extends ConsumerWidget {
   }
 }
 
-class _Notice extends StatelessWidget {
-  const _Notice({
-    required this.noticeKey,
-    required this.icon,
-    required this.color,
-    required this.text,
-  });
 
-  final Key noticeKey;
-  final IconData icon;
-  final Color color;
-  final String text;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      key: noticeKey,
-      children: [
-        Icon(icon, size: Sizes.iconSm, color: color),
-        const SizedBox(width: Space.sm),
-        Expanded(
-          child: Text(
-            text,
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(color: color),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _Empty extends StatelessWidget {
-  const _Empty();
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colors = theme.luqma;
-
-    return Center(
-      key: CartScreen.emptyKey,
-      child: Padding(
-        padding: const EdgeInsets.all(Space.xxl),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              Icons.shopping_basket_outlined,
-              size: 56,
-              color: colors.textSecondary,
-            ),
-            const SizedBox(height: Space.lg),
-            Text(
-              'السلة فاضية',
-              style: theme.textTheme.titleLarge,
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: Space.sm),
-            Text(
-              'اختار من المطاعم والأكل البيتي وهيتحطّ هنا.',
-              style: theme.textTheme.bodyMedium
-                  ?.copyWith(color: colors.textSecondary),
-              textAlign: TextAlign.center,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}

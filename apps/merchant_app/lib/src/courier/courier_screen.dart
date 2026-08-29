@@ -75,7 +75,11 @@ class CourierScreen extends ConsumerWidget {
               // First, and on `hasError`: a stream that fails before it has ever emitted
               // stays AsyncLoading with the error hanging off it.
               AsyncValue(hasError: true, :final error?) => LuqmaErrorView(key: CourierScreen.errorKey, failure: error, onRetry: () => retryDeliveries()),
-              AsyncValue(hasValue: true, :final value?) when value.isEmpty => const _Empty(),
+              AsyncValue(hasValue: true, :final value?) when value.isEmpty => LuqmaEmptyView(
+            key: CourierScreen.emptyKey,
+            icon: Icons.delivery_dining_outlined,
+            title: 'مفيش طلبات للتوصيل دلوقتي',
+          ),
               AsyncValue(hasValue: true, :final value?) => ListView.separated(
                   padding: const EdgeInsets.all(Space.gutter),
                   itemCount: value.length,
@@ -371,37 +375,6 @@ class _Card extends ConsumerWidget {
   }
 }
 
-class _Empty extends StatelessWidget {
-  const _Empty();
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return Center(
-      key: CourierScreen.emptyKey,
-      child: Padding(
-        padding: const EdgeInsets.all(Space.xxl),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              Icons.delivery_dining_outlined,
-              size: 56,
-              color: theme.luqma.textSecondary,
-            ),
-            const SizedBox(height: Space.lg),
-            Text(
-              'مفيش طلبات للتوصيل دلوقتي',
-              style: theme.textTheme.titleLarge,
-              textAlign: TextAlign.center,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
 
 /// The one banner that must never be missing: a courier whose tap was queued has to see
 /// that it is still waiting, and be given a way to try again. Nothing else on this

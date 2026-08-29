@@ -64,7 +64,11 @@ class HomeBuilderScreen extends ConsumerWidget {
       body: AdminContent(
         child: switch (sections) {
           AsyncValue(hasError: true, :final error?) => LuqmaErrorView(key: HomeBuilderScreen.errorKey, failure: error, onRetry: () => ref.invalidate(homeSectionsProvider)),
-          AsyncValue(hasValue: true, :final value?) when value.isEmpty => const _Empty(),
+          AsyncValue(hasValue: true, :final value?) when value.isEmpty => LuqmaEmptyView(
+            key: HomeBuilderScreen.emptyKey,
+            title: 'الرئيسية فاضية',
+            message: 'ضيف بلوك واحد على الأقل، وإلا العميل هيفتح على شاشة فاضية.',
+          ),
           AsyncValue(hasValue: true, :final value?) => ListView.separated(
               padding: const EdgeInsets.all(Space.gutter),
               itemCount: value.length,
@@ -270,36 +274,4 @@ class _Row extends ConsumerWidget {
   }
 }
 
-class _Empty extends StatelessWidget {
-  const _Empty();
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return Center(
-      key: HomeBuilderScreen.emptyKey,
-      child: Padding(
-        padding: const EdgeInsets.all(Space.xxl),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              'الرئيسية فاضية',
-              style: theme.textTheme.titleLarge,
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: Space.sm),
-            Text(
-              'ضيف بلوك واحد على الأقل، وإلا العميل هيفتح على شاشة فاضية.',
-              style: theme.textTheme.bodyMedium
-                  ?.copyWith(color: theme.luqma.textSecondary),
-              textAlign: TextAlign.center,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
 

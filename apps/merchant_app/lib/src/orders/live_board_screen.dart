@@ -48,7 +48,10 @@ class LiveBoardScreen extends ConsumerWidget {
         // First, and on `hasError`: a stream that fails before it has ever emitted
         // stays AsyncLoading with the error hanging off it.
         AsyncValue(hasError: true, :final error?) => LuqmaErrorView(key: LiveBoardScreen.errorKey, failure: error, onRetry: () => ref.invalidate(liveOrdersProvider(merchantId))),
-        AsyncValue(hasValue: true, :final value?) when value.isEmpty => const _Empty(),
+        AsyncValue(hasValue: true, :final value?) when value.isEmpty => LuqmaEmptyView(
+            key: LiveBoardScreen.emptyKey,
+            title: 'مفيش طلبات تحت التحضير دلوقتي.',
+          ),
         AsyncValue(hasValue: true, :final value?) => ListView.separated(
             padding: const EdgeInsets.all(Space.gutter),
             itemCount: value.length,
@@ -227,24 +230,4 @@ class _Stage extends StatelessWidget {
   }
 }
 
-class _Empty extends StatelessWidget {
-  const _Empty();
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return Center(
-      key: LiveBoardScreen.emptyKey,
-      child: Padding(
-        padding: const EdgeInsets.all(Space.xxl),
-        child: Text(
-          'مفيش طلبات تحت التحضير دلوقتي.',
-          style: theme.textTheme.titleLarge,
-          textAlign: TextAlign.center,
-        ),
-      ),
-    );
-  }
-}
 

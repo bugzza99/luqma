@@ -27,7 +27,14 @@ class OrdersScreen extends ConsumerWidget {
       backgroundColor: Theme.of(context).luqma.background,
       appBar: AppBar(title: const Text('طلباتي')),
       body: identity == null
-          ? _SignedOut(onSignIn: onSignIn)
+          ? LuqmaEmptyView(
+            title: 'طلباتك محفوظة على حسابك.',
+            action: FilledButton(
+              key: OrdersScreen.signInKey,
+              onPressed: onSignIn,
+              child: const Text('سجّل دخول'),
+            ),
+          )
           : switch (ref.watch(ordersForProvider(identity.uid))) {
               // A failed read shown as an empty list tells the customer they never
               // ordered anything, which is a lie they may act on. It comes first and
@@ -36,7 +43,11 @@ class OrdersScreen extends ConsumerWidget {
               // hanging off it, so a type match never fires.
               AsyncValue(hasError: true, :final error?) => LuqmaErrorView(key: OrdersScreen.errorKey, failure: error, onRetry: () => ref.invalidate(ordersForProvider(identity.uid))),
               AsyncValue(hasValue: true, :final value?) when value.isEmpty =>
-                const _Empty(),
+                LuqmaEmptyView(
+            key: OrdersScreen.emptyKey,
+            icon: Icons.receipt_long_outlined,
+            title: 'لسه مطلبتش حاجة.',
+          ),
               AsyncValue(hasValue: true, :final value?) => _List(orders: value),
                           _ => const Center(child: CircularProgressIndicator()),
 },
@@ -183,68 +194,5 @@ class _Row extends StatelessWidget {
   }
 }
 
-class _SignedOut extends StatelessWidget {
-  const _SignedOut({this.onSignIn});
 
-  final VoidCallback? onSignIn;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(Space.xxl),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              'طلباتك محفوظة على حسابك.',
-              style: theme.textTheme.titleLarge,
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: Space.xl),
-            FilledButton(
-              key: OrdersScreen.signInKey,
-              onPressed: onSignIn,
-              child: const Text('سجّل دخول'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _Empty extends StatelessWidget {
-  const _Empty();
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return Center(
-      key: OrdersScreen.emptyKey,
-      child: Padding(
-        padding: const EdgeInsets.all(Space.xxl),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              Icons.receipt_long_outlined,
-              size: 56,
-              color: theme.luqma.textSecondary,
-            ),
-            const SizedBox(height: Space.lg),
-            Text(
-              'لسه مطلبتش حاجة.',
-              style: theme.textTheme.titleLarge,
-              textAlign: TextAlign.center,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
 

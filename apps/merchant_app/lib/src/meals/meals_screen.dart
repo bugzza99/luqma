@@ -46,7 +46,12 @@ class MealsScreen extends ConsumerWidget {
         // AsyncLoading with the error hanging off it, and a cook reading that as "no
         // meals" thinks nothing published.
         AsyncValue(hasError: true, :final error?) => LuqmaErrorView(key: MealsScreen.errorKey, failure: error, onRetry: () => ref.invalidate(merchantMealsProvider(merchantId))),
-        AsyncValue(hasValue: true, :final value?) when value.isEmpty => const _Empty(),
+        AsyncValue(hasValue: true, :final value?) when value.isEmpty => LuqmaEmptyView(
+            key: MealsScreen.emptyKey,
+            icon: Icons.soup_kitchen_outlined,
+            title: 'لسه منشرتش أكلة',
+            message: 'قول بتطبخ إيه النهارده وكام طبق، والباقي علينا.',
+          ),
         AsyncValue(hasValue: true, :final value?) => ListView.separated(
             padding: const EdgeInsets.fromLTRB(
               Space.gutter,
@@ -477,42 +482,4 @@ class _WindowPicker extends StatelessWidget {
   }
 }
 
-class _Empty extends StatelessWidget {
-  const _Empty();
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return Center(
-      key: MealsScreen.emptyKey,
-      child: Padding(
-        padding: const EdgeInsets.all(Space.xxl),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              Icons.soup_kitchen_outlined,
-              size: 56,
-              color: theme.luqma.textSecondary,
-            ),
-            const SizedBox(height: Space.lg),
-            Text(
-              'لسه منشرتش أكلة',
-              style: theme.textTheme.titleLarge,
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: Space.sm),
-            Text(
-              'قول بتطبخ إيه النهارده وكام طبق، والباقي علينا.',
-              style: theme.textTheme.bodyMedium
-                  ?.copyWith(color: theme.luqma.textSecondary),
-              textAlign: TextAlign.center,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
 

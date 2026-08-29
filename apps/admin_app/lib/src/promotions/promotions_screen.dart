@@ -45,7 +45,10 @@ class PromotionsScreen extends ConsumerWidget {
           // stays AsyncLoading with the error hanging off it, and an admin reading that
           // as an empty queue stops checking.
           AsyncValue(hasError: true, :final error?) => LuqmaErrorView(key: PromotionsScreen.errorKey, failure: error, onRetry: () => ref.invalidate(promotionQueueProvider)),
-          AsyncValue(hasValue: true, :final value?) when value.isEmpty => const _Empty(),
+          AsyncValue(hasValue: true, :final value?) when value.isEmpty => LuqmaEmptyView(
+            key: PromotionsScreen.emptyKey,
+            title: 'مفيش طلبات إعلانات مستنية.',
+          ),
           AsyncValue(hasValue: true, :final value?) => ListView.separated(
               padding: const EdgeInsets.all(Space.gutter),
               itemCount: value.length,
@@ -253,24 +256,4 @@ class _ReasonDialogState extends State<_ReasonDialog> {
   }
 }
 
-class _Empty extends StatelessWidget {
-  const _Empty();
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return Center(
-      key: PromotionsScreen.emptyKey,
-      child: Padding(
-        padding: const EdgeInsets.all(Space.xxl),
-        child: Text(
-          'مفيش طلبات إعلانات مستنية.',
-          style: theme.textTheme.titleLarge,
-          textAlign: TextAlign.center,
-        ),
-      ),
-    );
-  }
-}
 

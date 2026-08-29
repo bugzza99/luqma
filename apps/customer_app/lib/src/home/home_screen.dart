@@ -63,7 +63,10 @@ class _Sections extends StatelessWidget {
     final plan = HomeSectionRegistry.plan(sections);
 
     if (plan.isEmpty) {
-      return const SliverToBoxAdapter(child: _Empty());
+      return const SliverToBoxAdapter(child: LuqmaEmptyView(
+            key: HomeScreen.emptyKey,
+            message: 'لسه مفيش مطاعم هنا.',
+          ));
     }
 
     return SliverList.separated(
@@ -179,24 +182,4 @@ class _Loading extends StatelessWidget {
   }
 }
 
-class _Empty extends StatelessWidget {
-  const _Empty();
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Padding(
-      key: HomeScreen.emptyKey,
-      padding: const EdgeInsets.all(Space.xxl),
-      child: Center(
-        child: Text(
-          'لسه مفيش مطاعم هنا.',
-          textAlign: TextAlign.center,
-          style: theme.textTheme.bodyMedium
-              ?.copyWith(color: theme.luqma.textSecondary),
-        ),
-      ),
-    );
-  }
-}
 
