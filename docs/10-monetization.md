@@ -87,8 +87,18 @@ stays, marked `reversed_at`: "charged and then returned" and "never charged" are
 answers. The reversal hands back what the row says was taken, not what would be taken
 today — a rate corrected since would otherwise return the wrong money.
 
-**Both sides read it.** MerchantApp's كشف الحساب lists the charges under a summary, and
-AdminApp's billing screen carries the same figures per merchant. Neither is offered under a
+**Both sides read it.** MerchantApp's كشف الحساب is two tabs under one summary —
+**الشحنات** and **المدفوعات**, what was taken and what was handed over — and AdminApp's
+billing screen carries the same figures per merchant. The receipts tab shows the note the
+admin wrote, because "دفع ٤٧٠ والباقي الأسبوع الجاي" is what decides an argument three
+weeks later and the merchant should be reading it rather than remembering it. A payment
+reads as money coming *off*, with the sign, which is the whole point of putting charges
+and collections in one statement.
+
+The second tab appears only where there can be collections. A prepaid merchant pays by
+topping up a wallet, which is not a commission receipt and never lands in that table — so
+the tab would be permanently empty, and a tab that is always empty teaches somebody the
+screen has nothing to say. Neither is offered under a
 subscription, where nothing is taken per order. What the platform owes back is shown as its
 own figure rather than netted against the commission: they are two different conversations,
 and one number that mixes them is a number nobody can check.

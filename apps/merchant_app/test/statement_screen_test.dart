@@ -55,9 +55,25 @@ void main() {
         reversedAt: reversedAt,
       );
 
+  CommissionPayment payment({
+    String id = 'pay-1',
+    int amount = 30000,
+    String? note,
+    DateTime? at,
+  }) =>
+      CommissionPayment(
+        id: id,
+        merchantId: 'm1',
+        amount: amount,
+        note: note,
+        recordedBy: 'admin1',
+        recordedAt: at ?? DateTime(2026, 8, 28),
+      );
+
   Future<void> pump(
     WidgetTester tester, {
     List<OrderSettlement> seed = const [],
+    List<CommissionPayment> payments = const [],
     Merchant? merchant,
     Failure? failure,
   }) async {
@@ -71,7 +87,11 @@ void main() {
       ProviderScope(
         overrides: [
           settlementRepositoryProvider.overrideWithValue(
-            FakeSettlementRepository(seed: seed, failure: failure),
+            FakeSettlementRepository(
+              seed: seed,
+              payments: payments,
+              failure: failure,
+            ),
           ),
           merchantRepositoryProvider.overrideWithValue(
             FakeMerchantRepository(seed: [merchant ?? shop()]),
@@ -243,6 +263,118 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byType(StatementScreen), findsOneWidget);
+    });
+  });
+
+  // The receipts. Until this existed a merchant could see every charge and no evidence
+  // that any of it had been paid — which is the half of a statement somebody actually
+  // wants when they are about to argue about a figure.
+  group('the receipts', () {
+    Future<void> openPayments(WidgetTester tester) async {
+      await tester.tap(find.byKey(StatementScreen.paymentsTabKey));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('a commission merchant gets both sides', (tester) async {
+      await pump(tester, seed: [settlement()]);
+
+      expect(find.byKey(StatementScreen.tabsKey), findsOneWidget);
+      expect(find.byKey(StatementScreen.chargesTabKey), findsOneWidget);
+      expect(find.byKey(StatementScreen.paymentsTabKey), findsOneWidget);
+    });
+
+    // A prepaid merchant pays by topping up a wallet, which is not a commission receipt
+    // and never lands in that table. A tab that is always empty teaches somebody that
+    // the screen has nothing to say.
+    testWidgets('a prepaid merchant gets one', (tester) async {
+      await pump(
+        tester,
+        merchant: shop(model: RevenueModel.prepaid, value: 500, wallet: 3000),
+        seed: [settlement(amount: 500)],
+      );
+
+      expect(find.byKey(StatementScreen.tabsKey), findsNothing);
+      expect(find.byKey(StatementScreen.rowKey('o1')), findsOneWidget);
+    });
+
+    testWidgets('a collection is shown with its date and note', (tester) async {
+      await pump(
+        tester,
+        seed: [settlement()],
+        payments: [payment(note: 'دفع كاش، الباقي الأسبوع الجاي')],
+      );
+
+      await openPayments(tester);
+
+      expect(find.byKey(StatementScreen.paymentRowKey('pay-1')), findsOneWidget);
+      expect(find.textContaining('300'), findsWidgets);
+      expect(find.text('دفع كاش، الباقي الأسبوع الجاي'), findsOneWidget);
+    });
+
+    // Money coming off the debt reads in the other direction from a charge. The sign is
+    // the whole point of putting the two in one statement.
+    testWidgets('and reads as money coming off, not on', (tester) async {
+      await pump(tester, seed: [settlement()], payments: [payment()]);
+
+      await openPayments(tester);
+
+      // The exact string, not a substring: `textContaining('- ')` would pass against any
+      // hyphen anywhere on the screen, which is a test that cannot fail for the reason
+      // it claims to.
+      expect(find.text('- 300 ج'), findsOneWidget);
+    });
+
+    testWidgets('nothing collected yet is a sentence, not a blank tab', (tester) async {
+      await pump(tester, seed: [settlement()]);
+
+      await openPayments(tester);
+
+      expect(find.byKey(StatementScreen.noPaymentsKey), findsOneWidget);
+    });
+
+    testWidgets('a failed read of the receipts offers a way out', (tester) async {
+      await pump(tester, seed: [settlement()], failure: const OfflineFailure());
+
+      // The charges failed too, so the error is the first thing on the screen — which is
+      // the honest result: a statement that cannot load either half is not a statement.
+      expect(find.byType(LuqmaErrorView), findsWidgets);
+    });
+  });
+
+  group('the summary with payments in it', () {
+    // The charge and the collection together are the arithmetic behind the balance. A
+    // merchant reading one figure without the other cannot check the third.
+    testWidgets('shows what was paid beside what was taken', (tester) async {
+      await pump(
+        tester,
+        merchant: shop(owed: 17500),
+        seed: [settlement()],
+        payments: [payment()],
+      );
+
+      expect(find.byKey(StatementScreen.paidKey), findsOneWidget);
+      expect(find.byKey(StatementScreen.owedKey), findsOneWidget);
+    });
+
+    testWidgets('and no paid line when nothing has been', (tester) async {
+      await pump(tester, seed: [settlement()]);
+
+      expect(find.byKey(StatementScreen.paidKey), findsNothing);
+    });
+
+    // Negative means the merchant handed over more than they owed. Said in words, not
+    // shown as a minus sign, which on a screen about money reads as a fault.
+    testWidgets('a credit is named as one', (tester) async {
+      await pump(
+        tester,
+        merchant: shop(owed: -2500),
+        seed: [settlement()],
+        payments: [payment(amount: 50000)],
+      );
+
+      expect(find.byKey(StatementScreen.creditKey), findsOneWidget);
+      expect(find.byKey(StatementScreen.owedKey), findsNothing);
+      expect(find.textContaining('-25'), findsNothing);
     });
   });
 }
