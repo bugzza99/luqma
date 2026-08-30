@@ -400,6 +400,19 @@ DailyMealRepository dailyMealRepository(Ref ref) =>
 @Riverpod(keepAlive: true)
 DateTime Function() clock(Ref ref) => DateTime.now;
 
+/// The version this install is running, as `1.4.0 (12)`.
+///
+/// Filled from `PackageInfo` in `main()` — which every app already reads for
+/// [LuqmaForceUpdateGate], so this costs no extra call. Only CustomerApp overrides it
+/// today, because حسابي is the only screen that shows a version at all; the other two are
+/// installed by hand from an APK by people who know which build they have.
+///
+/// Empty by default, and a screen showing it draws nothing when it is: a build that
+/// cannot say what it is should say nothing rather than a wrong number, which is what the
+/// hardcoded `1.0.0` on حول لقمة had already become.
+@Riverpod(keepAlive: true)
+String appVersion(Ref ref) => '';
+
 /// The day the app is showing, derived from [clock].
 @riverpod
 String today(Ref ref) => DailyMeal.dayKeyOf(ref.watch(clockProvider)());

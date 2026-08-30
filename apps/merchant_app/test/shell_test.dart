@@ -199,6 +199,34 @@ void main() {
 
       expect(find.byType(InboxScreen), findsOneWidget);
     });
+
+    // Switching tabs shows the next one in place rather than pushing a route, which is
+    // what keeps the inbox's live subscription alive — and what left the Navigator
+    // holding a single entry. System back then found nothing to pop and closed the app,
+    // taking the order alarm with it.
+    testWidgets('back from another tab returns to the inbox rather than exiting',
+        (tester) async {
+      await pump(tester);
+
+      await tester.tap(find.byKey(MerchantApp.shopTabKey));
+      await tester.pumpAndSettle();
+      expect(find.byType(ShopScreen), findsOneWidget);
+
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+
+      expect(find.byType(InboxScreen), findsOneWidget);
+    });
+
+    testWidgets('and back from the inbox is left to the system', (tester) async {
+      await pump(tester);
+
+      final popped = await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+
+      expect(popped, isFalse);
+      expect(find.byType(InboxScreen), findsOneWidget);
+    });
   });
 
   // A cook has no standing menu — what they sell is today's meal and a count of

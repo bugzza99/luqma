@@ -54,9 +54,17 @@ class MerchantListSection extends ConsumerWidget {
               padding: const EdgeInsets.symmetric(horizontal: Space.gutter),
               child: Column(
                 children: [
-                  for (final merchant
-                      in _sorted(_filtered(value, inCuisine), boosted)) ...[
-                    MerchantCard(merchant: merchant),
+                  // Indexed so the cards arrive in order rather than all at once. The
+                  // list is the first thing a customer sees, and `Motion.staggerMax`
+                  // caps it so a long one still lands as an arrival, not a wait.
+                  for (final (i, merchant) in _sorted(
+                    _filtered(value, inCuisine),
+                    boosted,
+                  ).indexed) ...[
+                    LuqmaEntrance(
+                      index: i,
+                      child: MerchantCard(merchant: merchant),
+                    ),
                     const SizedBox(height: Space.sm),
                   ],
                 ],

@@ -3,6 +3,7 @@ import 'package:customer_app/src/cart/cart.dart';
 import 'package:customer_app/src/cart/cart_controller.dart';
 import 'package:customer_app/src/cart/cart_screen.dart';
 import 'package:customer_app/src/checkout/checkout_screen.dart';
+import 'package:customer_app/src/home/home_screen.dart';
 import 'package:customer_app/src/home/sections/home_kitchen_section.dart';
 import 'package:customer_app/src/kitchen/meal_screen.dart';
 import 'package:customer_app/src/kitchen/preorder_checkout_screen.dart';
@@ -174,6 +175,39 @@ void main() {
 
       // All three live in one stack, so the other two are still in the tree.
       expect(find.byType(OrdersScreen, skipOffstage: false), findsOneWidget);
+    });
+
+    // Switching tabs shows the next one in place rather than pushing a route, which is
+    // what keeps scroll position — and what left the Navigator holding a single entry.
+    // System back then found nothing to pop and closed the app, which to a customer on
+    // طلباتي is the app crashing when they meant to step back to the home.
+    testWidgets('back from another tab returns to the home rather than exiting',
+        (tester) async {
+      await pump(tester);
+
+      await tester.tap(find.byKey(CustomerShell.accountTabKey));
+      await tester.pumpAndSettle();
+      expect(find.byType(AccountScreen), findsOneWidget);
+
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+
+      expect(find.byType(HomeScreen), findsOneWidget);
+      expect(find.byType(AccountScreen, skipOffstage: false), findsOneWidget,
+          reason: 'the tab is still in the stack, just no longer showing');
+    });
+
+    // From the home there is genuinely nowhere further back, and letting the system
+    // close the app is the right answer — trapping back there would make the app
+    // impossible to leave.
+    testWidgets('and back from the home is left to the system', (tester) async {
+      await pump(tester);
+
+      final popped = await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+
+      expect(popped, isFalse);
+      expect(find.byType(HomeScreen), findsOneWidget);
     });
   });
 

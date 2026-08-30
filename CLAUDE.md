@@ -572,6 +572,23 @@ DATABASE_URL=<luqma-test session pooler> npm --prefix supabase run test:stack
 - **Every `IconButton` carries a `tooltip`.** It is the accessible name as well as the
   long-press label. `packages/luqma_core/test/icon_labels_test.dart` scans the source and
   fails the build otherwise.
+- **Motion is set on the theme, never per screen.** `luqmaPageTransitionsTheme` is what
+  makes every push in all three apps 300ms easeOutCubic, and `LuqmaEntrance` is the
+  40ms-per-row stagger `docs/14` §4 has asked for since Phase 0. Both were published
+  numbers that nothing read until 2026-08-30 — screens ran on Material's platform
+  defaults, which on Android is a slower vertical fade belonging to no design system here.
+  A transition a screen has to remember to ask for is one that gets forgotten on the
+  twenty-sixth screen.
+- **Reduced motion is answered in two places, and both are needed.** `buildTransitions`
+  has a `BuildContext` and reads `MediaQuery`; a route's `transitionDuration` is asked for
+  before any context exists and reads the binding. Doing only the first skips the
+  *painting* while still holding the screen for 300ms, which leaves somebody who asked for
+  less motion staring at a frozen screen — worse than the slide.
+- **The build number is not the owner's.** It lives on حسابي, read from
+  `appVersionProvider` which `main()` fills from `PackageInfo`. It used to be a hardcoded
+  `1.0.0` on حول لقمة, directly under the owner's photo and description — a technical
+  detail presented as part of who they are, and a second source of truth that would
+  eventually disagree with the store.
 
 ## Rules that are easy to break by accident
 
@@ -691,6 +708,28 @@ DATABASE_URL=<luqma-test session pooler> npm --prefix supabase run test:stack
   its own auth never fires. Deploy anything cron-driven with `--no-verify-jwt` and let the
   function's own secret be the gate. That is least privilege too: a purpose-built secret
   that can only trigger a drain beats sending the service-role key every minute.
+- **`test_live` residue eventually breaks the suite at 1000 rows, not gradually.**
+  PostgREST caps a response at `db-max-rows` (1000 by default) and `watchStaff()` asks for
+  every row with no limit — so once accumulated test accounts pushed `staff` past 1098,
+  `staff_repository_test` started failing because the account it had *just created* fell
+  outside the returned page. Nothing about the code had changed; one run passed and the
+  next did not. `tool/cleanup-cloud-test-residue.sql` took it back to 54 staff and 999
+  auth users, from 1098 and 6410.
+  **That script has to be kept current with new tables.** It predated `order_settlements`
+  and `commission_payments`, both `on delete restrict` on `merchant_id`, so it would have
+  failed on `23503` partway through and left the residue half-cleared — worse than not
+  running. Run it inside a transaction, and add the delete for any new table that
+  references a merchant or an order.
+- **A tab switch is not a route, and Android back does not care.** All three shells show
+  the next tab in place — an `IndexedStack`, which is what keeps scroll position and the
+  inbox's live subscription — so once somebody is off the first tab the Navigator still
+  holds exactly one entry. Back finds nothing to pop and the OS closes the app, which
+  reads as a crash to whoever meant to step back one tab. `LuqmaTabPopScope` wraps each
+  shell and returns to the first tab first; only from there is back let through.
+  AdminApp had the same symptom by a different route: the module grid opened modules with
+  `context.go`, which *replaces* the stack, so back from any module exited. It is
+  `context.push` now. The rail on wide layouts still uses `go` on purpose — switching
+  destinations there is lateral, and the rail is always on screen to get back with.
 - **A test window is not a phone.** `flutter test` defaults to 800x600 — wider than it is
   tall, and unlike any device this ships on. Once merchant cards carried a picture the
   first card's name fell below 600 and every tap on it landed outside the render tree,

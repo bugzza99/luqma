@@ -4,6 +4,19 @@
 -- never touched.
 -->>
 
+-- Money first, and it has to be. `order_settlements.order_id` and
+-- `commission_payments.merchant_id` are both `on delete restrict`, because a record that
+-- somebody was charged must not be removable by deleting the order or the shop it belongs
+-- to. Nothing in the product deletes either; only this script and the test teardowns do,
+-- and one that forgets these two fails on `23503` partway through — leaving the residue
+-- half-cleared, which is worse than not having run it.
+delete from commission_payments
+ where merchant_id in (select id from merchants where city_id like 'live-%');
+-->>
+delete from order_settlements
+ where merchant_id in (select id from merchants where city_id like 'live-%')
+    or order_id in (select id from orders where city_id like 'live-%');
+-->>
 delete from coupon_redemptions
  where order_id in (select id from orders where city_id like 'live-%')
     or coupon_id in (select id from coupons where city_id like 'live-%');

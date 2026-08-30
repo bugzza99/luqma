@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'colors.dart';
 import 'dimens.dart';
 import 'motion.dart';
+import 'page_transitions.dart';
 import 'typography.dart';
 
 /// Builds the two themes every Luqma app runs on.
@@ -28,6 +29,9 @@ abstract final class LuqmaTheme {
       canvasColor: c.background,
       dividerColor: c.hairline,
       splashFactory: InkSparkle.splashFactory,
+      // One answer for how every screen arrives, rather than the platform's. See
+      // `page_transitions.dart` — it also honours reduced motion, so no screen has to.
+      pageTransitionsTheme: luqmaPageTransitionsTheme,
       textTheme: text,
       colorScheme: ColorScheme(
         brightness: brightness,
@@ -147,11 +151,6 @@ abstract final class LuqmaTheme {
         contentTextStyle: LuqmaType.body.copyWith(color: c.background),
         behavior: SnackBarBehavior.floating,
         shape: const RoundedRectangleBorder(borderRadius: Radii.fieldAll),
-      ),
-      pageTransitionsTheme: const PageTransitionsTheme(
-        builders: {
-          TargetPlatform.android: FadeForwardsPageTransitionsBuilder(),
-        },
       ),
     );
   }

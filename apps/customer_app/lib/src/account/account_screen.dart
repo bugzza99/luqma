@@ -24,6 +24,7 @@ class AccountScreen extends ConsumerWidget {
   static const passwordKey = Key('account.password');
   static const toggleModeKey = Key('account.toggleMode');
   static const errorKey = Key('account.error');
+  static const versionKey = Key('account.version');
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -34,6 +35,7 @@ class AccountScreen extends ConsumerWidget {
     // means the owner has not set a number, and then there is no tile — the same rule
     // حول لقمة already applies to its own icons.
     final support = ref.watch(appConfigProvider).supportWhatsapp.trim();
+    final version = ref.watch(appVersionProvider);
 
     return Scaffold(
       backgroundColor: colors.background,
@@ -98,6 +100,22 @@ class AccountScreen extends ConsumerWidget {
                 minimumSize: const Size.fromHeight(Sizes.minTarget),
               ),
               child: const Text('تسجيل الخروج'),
+            ),
+          ],
+          // The build number, where every app puts it. It used to sit on حول لقمة under
+          // the owner's own photo and description, which made a technical detail read as
+          // part of who they are — that page is theirs, this one is the app's.
+          //
+          // Drawn signed out too: the person who rings about a problem is often the one
+          // who cannot get in, and asking them for a number they cannot reach is asking
+          // them for nothing.
+          if (version.isNotEmpty) ...[
+            const SizedBox(height: Space.xl),
+            Text(
+              'نسخة $version',
+              key: versionKey,
+              textAlign: TextAlign.center,
+              style: LuqmaType.caption.copyWith(color: colors.textSecondary),
             ),
           ],
         ],

@@ -28,6 +28,11 @@ Future<void> main() async {
       overrides: [
         remoteConfigServiceProvider.overrideWithValue(config),
         authServiceProvider.overrideWithValue(SupabaseAuthService(supabase)),
+        // The one place the build number is read. حسابي shows it for support calls, and
+        // it comes from the package rather than a constant somebody has to remember to
+        // bump — a second copy is a copy that eventually disagrees with the store.
+        appVersionProvider
+            .overrideWithValue('${info.version} (${info.buildNumber})'),
       ],
       child: CustomerApp(currentVersion: info.version),
     ),

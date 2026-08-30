@@ -106,7 +106,13 @@ class _Tile extends StatelessWidget {
           borderRadius: Radii.cardAll,
           child: InkWell(
             key: ModuleGridScreen.tileKey(module.route),
-            onTap: () => context.go(module.route),
+            // `push`, not `go`. The grid is the home and a module opened from it is a
+            // drill-down, so it belongs on top of the grid rather than in place of it —
+            // `go` replaces the whole stack, which left system back with nothing to pop
+            // and closed the app instead of returning here. The rail on wider layouts
+            // still uses `go`, because switching destinations there is lateral and the
+            // rail itself is always on screen to get back with.
+            onTap: () => context.push(module.route),
             borderRadius: Radii.cardAll,
             child: Container(
               padding: const EdgeInsets.all(Space.md),

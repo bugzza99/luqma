@@ -86,11 +86,32 @@ Radius: card 12 · input and chip 10 · pill 999 · bottom sheet 16 top corners 
 Elevation: cards are white on cream with `y2 blur8 rgba(19,11,7,0.06)`; pressed drops to
 `y1 blur4`. No heavy Material shadows — they read as cheap against a warm palette.
 
+> **These radii supersede the hi-fi handoff**, which asks for card 16 · field 12 · sheet
+> 24. Both documents are real; this one is later and is what `Radii` implements. Checked
+> again on 2026-08-30 against `design_handoff_luqma_platform/` — the two also differ on
+> four dark-theme and status colours, and in every case the value here is the one carrying
+> a measured contrast ratio in §1 while the handoff's carries none. Nothing was changed to
+> match the handoff for that reason: it would trade verified contrast for a number nobody
+> has checked. If the handoff is ever reinstated as the authority, §1's ratios have to be
+> re-measured first, not assumed.
+
 ## 4. Motion
 Tap ripple 100ms · page transition 300ms easeOutCubic · bottom sheet 250ms ·
 list stagger 40ms per item, capped at 6 items · new-order alert pulse 800ms loop.
 Every non-essential animation is skipped when the OS reports reduced motion.
 Durations are tokens; one duration reused everywhere is what makes an app feel mechanical.
+
+**Where each one lives.** The tokens are `Motion` in `luqma_core`, and until 2026-08-30
+three of the five were read by nothing — the numbers were published and every screen used
+Material's platform defaults instead. The page transition is
+`luqmaPageTransitionsTheme`, set on the theme so no screen has to ask; the stagger is
+`LuqmaEntrance`, which takes a row's index and caps the delay itself; the tap ripple is
+`animationDuration` on the three button themes.
+
+Reduced motion is honoured in two different places for one reason: `buildTransitions`
+can read a `BuildContext`, but a route's `transitionDuration` is asked for before one
+exists, so that reads the binding directly. Skipping only the painting would hold the
+screen still for 300ms — worse than the slide it was meant to spare somebody.
 
 ## 5. Touch and feedback
 Minimum target 48×48dp (Android), 8dp minimum spacing between targets. Every tappable

@@ -88,7 +88,8 @@ class InboxScreen extends ConsumerWidget {
             padding: const EdgeInsets.all(Space.gutter),
             itemCount: value.length,
             separatorBuilder: (_, _) => const SizedBox(height: Space.md),
-            itemBuilder: (context, i) => _OrderCard(order: value[i]),
+            itemBuilder: (context, i) =>
+                LuqmaEntrance(index: i, child: _OrderCard(order: value[i])),
           )
       ),
     );

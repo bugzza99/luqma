@@ -68,15 +68,25 @@ void main() {
     expect(find.byKey(AboutScreen.instagramKey), findsOneWidget);
   });
 
-  testWidgets('the description and version are shown', (tester) async {
+  testWidgets('the description is shown', (tester) async {
     await pump(
       tester,
       await service({'about_description': 'أكل بيتي على أصوله.'}),
     );
 
     expect(find.text('أكل بيتي على أصوله.'), findsOneWidget);
-    expect(find.byKey(AboutScreen.versionKey), findsOneWidget);
-    expect(find.textContaining(kLuqmaVersion), findsOneWidget);
+  });
+
+  // This screen is the owner's, and only the owner's. The build number was sitting
+  // directly under their photo and description with nothing between them — technical
+  // detail presented as though it were part of who they are. It lives on حسابي now.
+  testWidgets('and the build number is not on it', (tester) async {
+    await pump(
+      tester,
+      await service({'about_description': 'أكل بيتي على أصوله.'}),
+    );
+
+    expect(find.textContaining('نسخة'), findsNothing);
   });
 
   // `launchUrl` fails two ways and this screen ignored both: it returns `false` when

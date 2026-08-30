@@ -19,6 +19,9 @@ void main() {
     Failure? failure,
     String? supportWhatsapp,
     bool phoneCanOpenLinks = true,
+    // What `main()` reads off the package. Set here so the footer is exercised the way
+    // it ships rather than against the empty default.
+    String appVersion = '1.0.0 (1)',
   }) async {
     auth = FakeAuthService(restoring: signedInAs, failure: failure);
     links = FakeExternalLinks(answer: phoneCanOpenLinks);
@@ -38,6 +41,7 @@ void main() {
               .overrideWithValue(FakeGeographyRepository()),
           externalLinksProvider.overrideWithValue(links),
           remoteConfigServiceProvider.overrideWithValue(config),
+          appVersionProvider.overrideWithValue(appVersion),
         ],
         child: MaterialApp(
           theme: LuqmaTheme.light,
@@ -293,6 +297,34 @@ void main() {
       // applies to its own links.
       await pump(tester);
       expect(find.byKey(AccountScreen.contactKey), findsNothing);
+    });
+  });
+
+  // The build number belongs to the app, not to the owner. It used to sit on حول لقمة
+  // directly beneath their photo and description, which made technical detail read as
+  // part of who they are. Here it is a quiet footer on the customer's own settings, the
+  // place every app puts it — still one tap from a support call.
+  group('the build number', () {
+    testWidgets('is a footer on حسابي', (tester) async {
+      await pump(tester);
+
+      expect(find.byKey(AccountScreen.versionKey), findsOneWidget);
+      expect(find.textContaining('نسخة'), findsOneWidget);
+    });
+
+    testWidgets('and is shown signed out too, because support calls come from anybody',
+        (tester) async {
+      await pump(tester, signedInAs: null);
+
+      expect(find.byKey(AccountScreen.versionKey), findsOneWidget);
+    });
+
+    // A build that cannot say what it is says nothing, rather than a wrong number —
+    // which is what a hardcoded second copy eventually becomes.
+    testWidgets('a build with no version draws no footer', (tester) async {
+      await pump(tester, appVersion: '');
+
+      expect(find.byKey(AccountScreen.versionKey), findsNothing);
     });
   });
 }

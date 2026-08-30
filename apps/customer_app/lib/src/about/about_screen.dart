@@ -4,19 +4,16 @@ import 'package:luqma_core/luqma_core.dart';
 
 import 'about_controller.dart';
 
-/// The version the store shows for this build.
-///
-/// Compiled rather than read from `package_info_plus`, which is not a dependency: the
-/// build is bumped by hand alongside `pubspec.yaml`'s version, and the screen is the one
-/// place that matters for a support call.
-const String kLuqmaVersion = '1.0.0';
-const String kLuqmaBuild = '1';
-
 /// حول لقمة.
 ///
-/// Read-only on the customer's side: the owner's photo, the links they set, the
-/// description, and the version. An icon with no link set is not drawn — an icon that
-/// goes nowhere is worse than no icon.
+/// The owner's page, and only the owner's: their photo, the links they set, and their
+/// description. An icon with no link set is not drawn — an icon that goes nowhere is
+/// worse than no icon.
+///
+/// The build number used to sit at the bottom of this, directly under the description
+/// with nothing between them, which made a technical detail read as part of who the
+/// owner is. It is a footer on حسابي now — the place every app puts it, and still one
+/// tap away when somebody rings about a problem.
 class AboutScreen extends ConsumerWidget {
   const AboutScreen({super.key});
 
@@ -24,7 +21,6 @@ class AboutScreen extends ConsumerWidget {
   static const whatsappKey = Key('about.whatsapp');
   static const instagramKey = Key('about.instagram');
   static const descriptionKey = Key('about.description');
-  static const versionKey = Key('about.version');
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -92,13 +88,6 @@ class AboutScreen extends ConsumerWidget {
                   url: config.aboutInstagram!,
                 ),
             ],
-          ),
-          const SizedBox(height: Space.xl),
-          Text(
-            'نسخة $kLuqmaVersion ($kLuqmaBuild)',
-            key: AboutScreen.versionKey,
-            textAlign: TextAlign.center,
-            style: theme.textTheme.bodySmall?.copyWith(color: colors.textSecondary),
           ),
         ],
       ),

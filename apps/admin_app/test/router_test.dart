@@ -4,6 +4,7 @@ import 'package:admin_app/src/auth/gate_screens.dart';
 import 'package:admin_app/src/auth/identity_provider.dart';
 import 'package:admin_app/src/dashboard/module_grid_screen.dart';
 import 'package:admin_app/src/places/places_screen.dart';
+import 'package:admin_app/src/settings/settings_screen.dart';
 import 'package:admin_app/src/shell/layout.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -16,8 +17,15 @@ import 'package:luqma_core/luqma_core.dart';
 /// to the router and that each answer lands on a real screen. A redirect pointing at a
 /// path the router does not serve is a blank page with no error anywhere.
 void main() {
-  Future<void> pumpWith(WidgetTester tester, AdminAccess access) async {
-    tester.view.physicalSize = const Size(1400, 1000);
+  Future<void> pumpWith(
+    WidgetTester tester,
+    AdminAccess access, {
+    // Desktop by default, which is where the rail exists at all. A phone gets no rail
+    // and reaches every module through the grid instead, so the two widths are
+    // genuinely different navigation models rather than the same one reflowed.
+    Size size = const Size(1400, 1000),
+  }) async {
+    tester.view.physicalSize = size;
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
 
@@ -96,5 +104,58 @@ void main() {
       // still being here is what says the destination resolved.
       expect(find.byType(AdminShell), findsOneWidget, reason: label);
     }
+  });
+
+  // On a phone there is no rail: every module is reached by tapping the grid, which is a
+  // drill-down and not a lateral switch. Opening one with `go` replaces the stack instead
+  // of adding to it, so system back had nothing left to pop and closed the app outright
+  // — from the owner's side, the admin app quitting whenever they backed out of a module.
+  group('back on a phone', () {
+    const phone = Size(400, 900);
+
+    // Settings rather than a busier module on purpose: this is a test about navigation,
+    // and a screen that overflows at 400dp would fail it for a reason that has nothing to
+    // do with the back button.
+    testWidgets('a module opened from the grid can be backed out of', (tester) async {
+      await pumpWith(tester, AdminAccess.granted, size: phone);
+      expect(find.byType(ModuleGridScreen), findsOneWidget);
+
+      // Fourteen tiles, two columns: settings is below the fold on a phone, which is
+      // exactly how the owner reaches it.
+      final settingsTile = find.byKey(ModuleGridScreen.tileKey(Routes.settings));
+      await tester.scrollUntilVisible(
+        settingsTile,
+        200,
+        scrollable: find.descendant(
+          of: find.byKey(ModuleGridScreen.gridKey),
+          matching: find.byType(Scrollable),
+        ),
+      );
+      // `scrollUntilVisible` stops as soon as the tile is attached, which can leave it
+      // half under the edge — enough for a tap to miss the InkWell and land on nothing.
+      await tester.ensureVisible(settingsTile);
+      await tester.pumpAndSettle();
+      await tester.tap(settingsTile);
+      await tester.pumpAndSettle();
+      expect(find.byType(SettingsScreen), findsOneWidget);
+
+      final popped = await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+
+      expect(popped, isTrue, reason: 'the app must not be left to exit instead');
+      expect(find.byType(ModuleGridScreen), findsOneWidget);
+      expect(find.byType(SettingsScreen), findsNothing);
+    });
+
+    // The grid is the home. Back from there has genuinely nowhere to go, and the app is
+    // right to let the system have it — that is the one place exiting is correct.
+    testWidgets('and back from the grid itself is left to the system', (tester) async {
+      await pumpWith(tester, AdminAccess.granted, size: phone);
+
+      final popped = await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+
+      expect(popped, isFalse);
+    });
   });
 }
