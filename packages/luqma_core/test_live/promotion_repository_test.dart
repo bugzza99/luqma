@@ -274,4 +274,218 @@ void main() {
       expect(await repository.watchQueue(cityId).first, isEmpty);
     });
   });
+
+  // A merchant could ask for a banner and never touch it again: `merchant_requests_promotion`
+  // grants insert and nothing else, so a typo in the headline meant asking for a second
+  // one and hoping somebody rejected the first.
+  group('a merchant correcting their own', () {
+    Future<(SupabasePromotionRepository, String)> asOwner() async {
+      final (db, _) = await live.openAsStaff(
+          scope: 'merchant', role: 'owner', merchantId: merchantId);
+      addTearDown(db.dispose);
+      return (SupabasePromotionRepository(db), merchantId);
+    }
+
+    /// A promotion that has not started yet, which is the only kind a merchant may edit.
+    Future<Promotion> unstarted({
+      PromotionStatus status = PromotionStatus.requested,
+    }) async {
+      final now = DateTime.now();
+      final made = await repository.request(promotion(
+        startAt: now.add(const Duration(days: 2)),
+        endAt: now.add(const Duration(days: 9)),
+      ));
+      final asked = made.valueOrThrow;
+      if (status == PromotionStatus.approved) {
+        await repository.approve(asked.id, approvedBy: customerUid);
+        return asked.copyWith(status: PromotionStatus.approved);
+      }
+      return asked;
+    }
+
+    test('the headline can be fixed before it starts', () async {
+      final asked = await unstarted();
+      final (owner, _) = await asOwner();
+
+      final edited = await owner.editRequest(asked.copyWith(title: 'عرض متصلّح'));
+
+      expect(edited.failureOrNull, isNull);
+      expect(edited.valueOrNull?.title, 'عرض متصلّح');
+    });
+
+    // An edit is a fresh ask. A merchant who could edit an approved banner could put
+    // words nobody reviewed in front of the whole city — which is the one asymmetry the
+    // promotions design exists to hold.
+    test('and editing an approved one sends it back to the queue', () async {
+      final approved = await unstarted(status: PromotionStatus.approved);
+      final (owner, _) = await asOwner();
+
+      final edited = await owner.editRequest(approved.copyWith(title: 'نص تاني'));
+
+      expect(edited.valueOrNull?.status, PromotionStatus.requested);
+      expect(await repository.watchQueue(cityId).first, hasLength(1));
+    });
+
+    test('a merchant cannot approve their own by claiming the status', () async {
+      final asked = await unstarted();
+      final (owner, _) = await asOwner();
+
+      final edited = await owner.editRequest(
+        asked.copyWith(title: 'محاولة', status: PromotionStatus.approved),
+      );
+
+      expect(edited.valueOrNull?.status, PromotionStatus.requested);
+    });
+
+    // A live campaign taken dark to fix a typo is a worse answer than the typo, and a
+    // live one edited without review is worse than both.
+    test('one that has already started is refused outright', () async {
+      final now = DateTime.now();
+      final running = (await repository.request(promotion(
+        startAt: now.subtract(const Duration(days: 1)),
+        endAt: now.add(const Duration(days: 6)),
+      )))
+          .valueOrThrow;
+      final (owner, _) = await asOwner();
+
+      final refused = await owner.editRequest(running.copyWith(title: 'متأخر'));
+
+      expect(refused.failureOrNull, isNotNull);
+    });
+
+    test('and nobody edits the shop next door', () async {
+      final asked = await unstarted();
+      final otherMerchant = await live.client.from('merchants').insert({
+        'city_id': cityId,
+        'type': 'restaurant',
+        'name': 'مطعم تاني',
+        'zone_id': zoneId,
+        'phone': '01000000001',
+        'status': 'approved',
+      }).select().single().then((row) => row['id'] as String);
+      final (otherDb, _) = await live.openAsStaff(
+          scope: 'merchant', role: 'owner', merchantId: otherMerchant);
+      addTearDown(otherDb.dispose);
+
+      final refused = await SupabasePromotionRepository(otherDb)
+          .editRequest(asked.copyWith(title: 'مش بتاعي'));
+
+      expect(refused.failureOrNull, isNotNull);
+    });
+  });
+
+  // The admin's screen read the *queue*, so a banner left their view the moment they
+  // approved it — nobody could see a scheduled one, let alone move its dates.
+  group('the admin seeing and moving them', () {
+    test('everything in the city, not only what is waiting', () async {
+      final asked = (await repository.request(promotion())).valueOrThrow;
+      await repository.approve(asked.id, approvedBy: customerUid);
+      await repository.request(promotion());
+
+      expect(await repository.watchQueue(cityId).first, hasLength(1),
+          reason: 'one is still waiting');
+      expect(await repository.watchAll(cityId).first, hasLength(2),
+          reason: 'and both exist');
+    });
+
+    test('the dates can be moved', () async {
+      final now = DateTime.now();
+      final asked = (await repository.request(promotion(
+        startAt: now.add(const Duration(days: 5)),
+        endAt: now.add(const Duration(days: 12)),
+      )))
+          .valueOrThrow;
+      final admin = await live.openAsAdmin();
+      addTearDown(admin.dispose);
+      final adminRepo = SupabasePromotionRepository(admin);
+
+      await adminRepo.approve(asked.id, approvedBy: admin.auth.currentUser!.id);
+      final moved = await adminRepo.reschedule(
+        asked.id,
+        startAt: now.subtract(const Duration(minutes: 1)),
+        endAt: now.add(const Duration(days: 7)),
+      );
+
+      expect(moved.failureOrNull, isNull);
+      final live_ = await repository.watchLive(cityId: cityId, now: now).first;
+      expect(live_, hasLength(1), reason: 'moved into now, so it is on screen');
+    });
+
+    // Moving dates is what decides who sees what and when. It is the admin's alone.
+    test('and a merchant cannot move them', () async {
+      final asked = (await repository.request(promotion())).valueOrThrow;
+      final (ownerDb, _) = await live.openAsStaff(
+          scope: 'merchant', role: 'owner', merchantId: merchantId);
+      addTearDown(ownerDb.dispose);
+      final before = asked.startAt;
+
+      await SupabasePromotionRepository(ownerDb).reschedule(
+        asked.id,
+        startAt: DateTime.now().subtract(const Duration(days: 1)),
+        endAt: DateTime.now().add(const Duration(days: 30)),
+      );
+
+      final after = (await repository.watchAll(cityId).first).single;
+      expect(after.startAt.difference(before).inMinutes, 0,
+          reason: 'the policy refuses the write, so nothing moved');
+    });
+  });
+
+  // The picture is the point of a paid banner, and for two phases nothing carried it.
+  //
+  // `media_id` is a uuid; the model had no url column and the query embedded nothing, so
+  // the customer's slot fell back to its gradient for every banner in the city — which
+  // looks like a design choice rather than a missing photograph.
+  group('the picture on the banner', () {
+    Future<String> approvedMedia() async {
+      final row = await live.client.from('media').insert({
+        'kind': 'promotion',
+        'owner_id': merchantId,
+        'url': 'https://example.test/banner.jpg',
+        'status': 'approved',
+        'uploaded_by': customerUid,
+      }).select().single();
+      return row['id'] as String;
+    }
+
+    test('a live banner carries the url of its approved image', () async {
+      final mediaId = await approvedMedia();
+      final asked = (await repository.request(
+        promotion().copyWith(
+          mediaId: mediaId,
+          renderMode: PromotionRender.imageWithText,
+        ),
+      )).valueOrNull!;
+      await repository.approve(asked.id, approvedBy: customerUid);
+
+      final live_ =
+          await repository.watchLive(cityId: cityId, now: DateTime.now()).first;
+
+      expect(live_.single.imageUrl, 'https://example.test/banner.jpg');
+    });
+
+    // The moderation queue is worth nothing if the picture reaches the home screen
+    // before anybody has looked at it.
+    test('an image still waiting for review resolves to nothing', () async {
+      final row = await live.client.from('media').insert({
+        'kind': 'promotion',
+        'owner_id': merchantId,
+        'url': 'https://example.test/pending.jpg',
+        'status': 'pending',
+        'uploaded_by': customerUid,
+      }).select().single();
+      final asked = (await repository.request(
+        promotion().copyWith(
+          mediaId: row['id'] as String,
+          renderMode: PromotionRender.imageWithText,
+        ),
+      )).valueOrNull!;
+      await repository.approve(asked.id, approvedBy: customerUid);
+
+      final shown =
+          await repository.watchLive(cityId: cityId, now: DateTime.now()).first;
+
+      expect(shown.single.imageUrl, isNull);
+    });
+  });
 }

@@ -76,6 +76,14 @@ abstract class Promotion with _$Promotion {
     @Default('') String body,
     String? mediaId,
 
+    /// The url of [mediaId], once it has been resolved and approved.
+    ///
+    /// Not a column: the query embeds `media(url, status)` and this is what comes back.
+    /// It is null both when there is no picture and when the one there is has not been
+    /// approved yet — an unapproved image must never reach a customer's home screen,
+    /// and that rule belongs here rather than in whichever screen happens to draw it.
+    @JsonKey(includeToJson: false) String? imageUrl,
+
     /// Which `adSlot` section this belongs in, or null for any of them.
     String? sectionKey,
 
@@ -115,6 +123,17 @@ abstract class Promotion with _$Promotion {
     }
     return !now.isBefore(startAt) && now.isBefore(endAt);
   }
+
+  /// Whether the merchant who asked for this may still correct it.
+  ///
+  /// The same two conditions `merchant_edits_unstarted_promotion` enforces, so a screen
+  /// cannot offer a button the database will refuse. A rejected or finished placement is
+  /// not a draft, and a running one is in front of customers — editing it would either
+  /// change what the city sees without review or take a live campaign dark mid-flight.
+  bool isEditableAt(DateTime now) =>
+      (status == PromotionStatus.requested ||
+          status == PromotionStatus.approved) &&
+      startAt.isAfter(now);
 
   bool reaches(String zoneId) => zoneIds.isEmpty || zoneIds.contains(zoneId);
 

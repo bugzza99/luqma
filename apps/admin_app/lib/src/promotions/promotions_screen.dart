@@ -20,6 +20,16 @@ class PromotionsScreen extends ConsumerWidget {
   static const startNowKey = Key('promotions.startNow');
   static const keepDateKey = Key('promotions.keepDate');
 
+  static const tabQueueKey = Key('promotions.tab.queue');
+  static const tabAllKey = Key('promotions.tab.all');
+  static const boardEmptyKey = Key('promotions.board.empty');
+  static const boardErrorKey = Key('promotions.board.error');
+  static const startFieldKey = Key('promotions.dates.start');
+  static const endFieldKey = Key('promotions.dates.end');
+  static const saveDatesKey = Key('promotions.dates.save');
+
+  static Key datesKey(String id) => Key('promotions.dates.$id');
+
   static const createKey = Key('promotions.create');
   static const formMerchantKey = Key('promotions.form.merchant');
   static const formChannelKey = Key('promotions.form.channel');
@@ -46,35 +56,71 @@ class PromotionsScreen extends ConsumerWidget {
     // made it, so the session has to be live before any of this runs.
     ref.watch(currentIdentityProvider);
 
-    return Scaffold(
-      backgroundColor: colors.background,
-      appBar: AppBar(
-        title: const Text('الإعلانات'),
-        actions: [
-          IconButton(
-            key: createKey,
-            tooltip: 'إعلان جديد',
-            icon: const Icon(Icons.add),
-            onPressed: () => _create(context, ref),
-          ),
-        ],
-      ),
-      body: AdminContent(
-        child: LuqmaAsyncView(
-          value: ref.watch(promotionQueueProvider),
-          errorKey: PromotionsScreen.errorKey,
-          onRetry: () => ref.invalidate(promotionQueueProvider),
-          empty: LuqmaEmptyView(
-              key: PromotionsScreen.emptyKey,
-              title: 'مفيش طلبات إعلانات مستنية.',
+    // Two questions, not one. The queue is what needs a decision today; the board is
+    // what exists — and the board is the half that was missing, so an approved campaign
+    // scheduled for next week vanished from the admin's view the moment they signed it
+    // off, with no way back to it and no way to move its dates.
+    return DefaultTabController(
+      length: 2,
+      child: Scaffold(
+        backgroundColor: colors.background,
+        appBar: AppBar(
+          title: const Text('الإعلانات'),
+          actions: [
+            IconButton(
+              key: createKey,
+              tooltip: 'إعلان جديد',
+              icon: const Icon(Icons.add),
+              onPressed: () => _create(context, ref),
             ),
-          isEmpty: (value) => value.isEmpty,
-          builder: (context, value) => ListView.separated(
-              padding: const EdgeInsets.all(Space.gutter),
-              itemCount: value.length,
-              separatorBuilder: (_, _) => const SizedBox(height: Space.md),
-              itemBuilder: (context, i) => _Request(promotion: value[i]),
-            )
+          ],
+          bottom: const TabBar(
+            tabs: [
+              Tab(key: tabQueueKey, text: 'طلبات'),
+              Tab(key: tabAllKey, text: 'كل الإعلانات'),
+            ],
+          ),
+        ),
+        body: TabBarView(
+          children: [
+            AdminContent(
+              child: LuqmaAsyncView(
+                value: ref.watch(promotionQueueProvider),
+                errorKey: PromotionsScreen.errorKey,
+                onRetry: () => ref.invalidate(promotionQueueProvider),
+                empty: LuqmaEmptyView(
+                  key: PromotionsScreen.emptyKey,
+                  title: 'مفيش طلبات إعلانات مستنية.',
+                ),
+                isEmpty: (value) => value.isEmpty,
+                builder: (context, value) => ListView.separated(
+                  padding: const EdgeInsets.all(Space.gutter),
+                  itemCount: value.length,
+                  separatorBuilder: (_, _) => const SizedBox(height: Space.md),
+                  itemBuilder: (context, i) => _Request(promotion: value[i]),
+                ),
+              ),
+            ),
+            AdminContent(
+              child: LuqmaAsyncView(
+                value: ref.watch(allPromotionsProvider),
+                errorKey: PromotionsScreen.boardErrorKey,
+                onRetry: () => ref.invalidate(allPromotionsProvider),
+                empty: LuqmaEmptyView(
+                  key: PromotionsScreen.boardEmptyKey,
+                  icon: Icons.campaign_outlined,
+                  title: 'مفيش إعلانات لسه.',
+                ),
+                isEmpty: (value) => value.isEmpty,
+                builder: (context, value) => ListView.separated(
+                  padding: const EdgeInsets.all(Space.gutter),
+                  itemCount: value.length,
+                  separatorBuilder: (_, _) => const SizedBox(height: Space.md),
+                  itemBuilder: (context, i) => _Placement(promotion: value[i]),
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -301,6 +347,231 @@ class _Request extends ConsumerWidget {
         .reject(promotion.id, reason: reason, by: by);
   }
 }
+
+/// One placement on the board, with the control the admin was missing.
+///
+/// Deliberately not the queue card: there is nothing to approve or reject here — those
+/// decisions are already taken — and repeating them would give an admin two places to
+/// make the same call and two answers when they disagree. What is here is the one thing
+/// only they can do: decide when it appears and when it goes away.
+class _Placement extends ConsumerWidget {
+  const _Placement({required this.promotion});
+
+  final Promotion promotion;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
+    final colors = theme.luqma;
+    final now = ref.watch(clockProvider)();
+    final merchant = ref.watch(merchantProvider(promotion.merchantId)).value;
+
+    // Approved is not live, and the board is the one screen where that distinction has
+    // to be legible at a glance — it is the whole reason a scheduled banner looked to
+    // the owner like a broken one.
+    final (tone, label) = switch (promotion.status) {
+      PromotionStatus.requested => (colors.textSecondary, 'مستني مراجعة'),
+      PromotionStatus.approved || PromotionStatus.active => promotion.isLiveAt(now)
+          ? (colors.success, 'شغال دلوقتي')
+          : (colors.textSecondary, 'هيبدأ ${_day(promotion.startAt)}'),
+      PromotionStatus.rejected => (colors.danger, 'مرفوض'),
+      PromotionStatus.ended => (colors.textSecondary, 'خلص'),
+    };
+
+    return Container(
+      key: PromotionsScreen.cardKey(promotion.id),
+      padding: const EdgeInsets.all(Space.md),
+      decoration: BoxDecoration(
+        color: colors.card,
+        borderRadius: Radii.cardAll,
+        border: Border.all(color: colors.hairline),
+        boxShadow: Elevations.card,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  merchant?.name ?? promotion.merchantId,
+                  style: theme.textTheme.titleMedium,
+                ),
+              ),
+              Text(
+                label,
+                style: LuqmaType.bodySmall
+                    .copyWith(color: tone, fontWeight: FontWeight.w600),
+              ),
+            ],
+          ),
+          const SizedBox(height: Space.xs),
+          Text(
+            PromotionsScreen.channelNames[promotion.channel]!,
+            style: LuqmaType.caption.copyWith(color: colors.textSecondary),
+          ),
+          if (promotion.title.isNotEmpty) ...[
+            const SizedBox(height: Space.xs),
+            Text(promotion.title, style: theme.textTheme.bodyMedium),
+          ],
+          const SizedBox(height: Space.sm),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'من ${_day(promotion.startAt)} لـ ${_day(promotion.endAt)}',
+                  style: LuqmaType.caption.copyWith(color: colors.textSecondary),
+                ),
+              ),
+              TextButton.icon(
+                key: PromotionsScreen.datesKey(promotion.id),
+                onPressed: () => _moveDates(context, ref),
+                icon: const Icon(Icons.event_outlined, size: Sizes.iconSm),
+                label: const Text('المواعيد'),
+                style: TextButton.styleFrom(
+                  minimumSize: const Size(Sizes.minTarget, Sizes.minTarget),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _moveDates(BuildContext context, WidgetRef ref) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final window = await showModalBottomSheet<({DateTime start, DateTime end})>(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => _DatesSheet(promotion: promotion),
+    );
+    if (window == null) return;
+
+    final moved = await ref.read(promotionRepositoryProvider).reschedule(
+          promotion.id,
+          startAt: window.start,
+          endAt: window.end,
+        );
+
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(switch (moved) {
+          Ok() => 'المواعيد اتغيرت.',
+          Err(:final failure) => switch (failure) {
+              OfflineFailure() => 'مفيش نت — جرّب تاني.',
+              PermissionFailure() => 'مش مسموحلك تغيّر المواعيد.',
+              _ => 'معرفناش نغيّر المواعيد. جرّب تاني.',
+            },
+        }),
+      ),
+    );
+  }
+}
+
+/// When it appears, and when it goes away.
+///
+/// Two dates rather than one range picker because they answer two questions the admin
+/// asks at different moments — "put this up now" and "take this down" — and a range
+/// picker turns moving one of them into a re-selection of both.
+class _DatesSheet extends StatefulWidget {
+  const _DatesSheet({required this.promotion});
+
+  final Promotion promotion;
+
+  @override
+  State<_DatesSheet> createState() => _DatesSheetState();
+}
+
+class _DatesSheetState extends State<_DatesSheet> {
+  late DateTime _start = widget.promotion.startAt;
+
+  /// Normalized on the way in, not only when the admin picks a new one.
+  ///
+  /// The sheet talks in whole days — it says (يختفي 25/9) — so a stored end of midnight on the
+  /// 25th would be labelled as the 25th while actually taking the banner down as that
+  /// day began. Reading it as the end of that day is what makes the label true.
+  late DateTime _end = _endOfDay(widget.promotion.endAt);
+
+  Future<void> _pick({required bool start}) async {
+    final current = start ? _start : _end;
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: current,
+      // Wide on both sides: a banner can be pulled back to today or pushed into next
+      // season, and a range that refuses either is a control that only half works.
+      firstDate: DateTime(current.year - 1),
+      lastDate: DateTime(current.year + 2),
+    );
+    if (picked == null) return;
+    setState(() {
+      if (start) {
+        _start = DateTime(picked.year, picked.month, picked.day);
+        // A window that ends before it starts shows nothing, silently — the placement
+        // simply never appears and there is no error anywhere to read.
+        if (!_end.isAfter(_start)) _end = _endOfDay(picked);
+      } else {
+        _end = _endOfDay(picked);
+        if (!_end.isAfter(_start)) {
+          _start = DateTime(picked.year, picked.month, picked.day);
+        }
+      }
+    });
+  }
+
+  /// The end of the chosen day rather than its beginning: "until the 25th" means through
+  /// the 25th, and midnight would take the banner down as that day started.
+  static DateTime _endOfDay(DateTime day) =>
+      DateTime(day.year, day.month, day.day, 23, 59, 59);
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.all(Space.gutter),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text('مواعيد الإعلان', style: theme.textTheme.titleLarge),
+            const SizedBox(height: Space.md),
+            ListTile(
+              key: PromotionsScreen.startFieldKey,
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.play_arrow_outlined),
+              title: const Text('يظهر'),
+              subtitle: Text(_day(_start)),
+              onTap: () => _pick(start: true),
+            ),
+            ListTile(
+              key: PromotionsScreen.endFieldKey,
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.stop_outlined),
+              title: const Text('يختفي'),
+              subtitle: Text(_day(_end)),
+              onTap: () => _pick(start: false),
+            ),
+            const SizedBox(height: Space.md),
+            FilledButton(
+              key: PromotionsScreen.saveDatesKey,
+              onPressed: () =>
+                  Navigator.of(context).pop((start: _start, end: _end)),
+              style: FilledButton.styleFrom(
+                minimumSize: const Size.fromHeight(Sizes.minTarget),
+              ),
+              child: const Text('احفظ'),
+            ),
+            const SizedBox(height: Space.sm),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+String _day(DateTime date) => '${date.day}/${date.month}';
 
 /// Refusing costs a sentence.
 ///

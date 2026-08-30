@@ -387,4 +387,82 @@ void main() {
       expect(promotions.all.single.status, PromotionStatus.approved);
     });
   });
+
+  group('the whole board', () {
+    // The queue is what needs a decision; this is what exists. An approved banner left
+    // the admin's screen the moment it was approved, so a campaign scheduled for next
+    // week could not be seen at all, let alone moved.
+    testWidgets('shows placements the queue has already dealt with', (tester) async {
+      await pump(tester, seed: [
+        promotion(
+          id: 'p2',
+          status: PromotionStatus.approved,
+          title: 'أسبوع المشويات',
+          startAt: now.add(const Duration(days: 5)),
+        ),
+      ]);
+
+      expect(find.byKey(PromotionsScreen.emptyKey), findsOneWidget);
+
+      await tester.tap(find.byKey(PromotionsScreen.tabAllKey));
+      await tester.pumpAndSettle();
+
+      expect(find.text('أسبوع المشويات'), findsOneWidget);
+    });
+
+    testWidgets('an empty board says so on its own terms', (tester) async {
+      await pump(tester);
+
+      await tester.tap(find.byKey(PromotionsScreen.tabAllKey));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(PromotionsScreen.boardEmptyKey), findsOneWidget);
+    });
+
+    Future<void> openDates(WidgetTester tester) async {
+      await tester.tap(find.byKey(PromotionsScreen.tabAllKey));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(PromotionsScreen.datesKey('p2')));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('the dates sheet opens on the window the placement already has',
+        (tester) async {
+      await pump(tester, seed: [
+        promotion(
+          id: 'p2',
+          status: PromotionStatus.approved,
+          startAt: DateTime(2026, 8, 25),
+        ),
+      ]);
+
+      await openDates(tester);
+
+      expect(find.byKey(PromotionsScreen.startFieldKey), findsOneWidget);
+      expect(find.byKey(PromotionsScreen.endFieldKey), findsOneWidget);
+      expect(find.textContaining('25/8'), findsWidgets);
+    });
+
+    // The whole point: the admin owns when it appears and when it goes away.
+    testWidgets('saving writes the window through to the placement', (tester) async {
+      await pump(tester, seed: [
+        promotion(
+          id: 'p2',
+          status: PromotionStatus.approved,
+          startAt: DateTime(2026, 8, 25),
+        ),
+      ]);
+
+      await openDates(tester);
+      await tester.tap(find.byKey(PromotionsScreen.saveDatesKey));
+      await tester.pumpAndSettle();
+
+      final moved = promotions.all.single;
+      expect(moved.startAt, DateTime(2026, 8, 25));
+      // The sheet's own state is what flows, not the row it was opened on: a placement
+      // runs to the end of its last day rather than expiring as that day begins.
+      expect(moved.endAt.hour, 23);
+      expect(moved.endAt.minute, 59);
+    });
+  });
 }

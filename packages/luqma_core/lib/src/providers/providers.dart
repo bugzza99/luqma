@@ -290,6 +290,15 @@ Set<String> boostedMerchants(Ref ref) {
 Stream<List<Promotion>> promotionQueue(Ref ref) =>
     ref.watch(promotionRepositoryProvider).watchQueue(ref.watch(currentCityProvider));
 
+/// Every placement in the city, whatever became of it. Live.
+///
+/// The queue is what needs a decision; this is what exists. An approved banner left the
+/// admin's screen the moment it was approved, so a scheduled one could not be seen and
+/// its dates could not be moved.
+@riverpod
+Stream<List<Promotion>> allPromotions(Ref ref) =>
+    ref.watch(promotionRepositoryProvider).watchAll(ref.watch(currentCityProvider));
+
 /// One merchant's own campaigns, whatever became of them. Live.
 @riverpod
 Stream<List<Promotion>> merchantPromotions(Ref ref, String merchantId) =>

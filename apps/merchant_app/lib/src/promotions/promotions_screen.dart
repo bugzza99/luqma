@@ -23,6 +23,7 @@ class MerchantPromotionsScreen extends ConsumerWidget {
   static const pushFullKey = Key('promo.pushFull');
 
   static Key cardKey(String id) => Key('promo.card.$id');
+  static Key editKey(String id) => Key('promo.edit.$id');
   static Key scheduledKey(String id) => Key('promo.scheduled.$id');
   static Key channelKey(PromotionChannel channel) =>
       Key('promo.channel.${channel.name}');
@@ -84,58 +85,83 @@ class MerchantPromotionsScreen extends ConsumerWidget {
     );
   }
 
-  Future<void> _ask(
-    BuildContext context,
-    WidgetRef ref,
-    String merchantId,
-  ) async {
-    // `.future` rethrows, and this is a tap handler: a dropped connection threw an
-    // unhandled async error, the sheet never opened, and the merchant got no word at
-    // all — the FAB simply stopped working.
-    //
-    // Unknown closes the slot rather than opening it, which is the same call
-    // `pushSlotAvailableProvider` already makes for an unreadable count: one push too
-    // many costs a city's notifications for good, and the other three channels are
-    // still there to ask for.
-    bool pushOpen;
+}
+
+/// Asking for a placement, or correcting one already asked for.
+///
+/// One form for both, because to a merchant they are one thing — what this banner
+/// says. The only difference is where it lands, and that is [existing]: null asks for
+/// something new, and anything else is a correction that goes back to the queue.
+Future<void> _ask(
+  BuildContext context,
+  WidgetRef ref,
+  String merchantId, {
+  Promotion? existing,
+}) async {
+  // `.future` rethrows, and this is a tap handler: a dropped connection threw an
+  // unhandled async error, the sheet never opened, and the merchant got no word at
+  // all — the FAB simply stopped working.
+  //
+  // Unknown closes the slot rather than opening it, which is the same call
+  // `pushSlotAvailableProvider` already makes for an unreadable count: one push too
+  // many costs a city's notifications for good, and the other three channels are
+  // still there to ask for.
+  // An edit is not a new claim on the week's one push: the slot was counted when the
+  // request was first made, and refusing to let somebody fix a typo because the cap is
+  // full would strand the very banner that most needs correcting.
+  bool pushOpen;
+  if (existing != null) {
+    pushOpen = true;
+  } else {
     try {
       pushOpen = await ref.read(pushSlotAvailableProvider.future);
     } on Object {
       pushOpen = false;
     }
-    if (!context.mounted) return;
-
-    final promotion = await showModalBottomSheet<Promotion>(
-      context: context,
-      isScrollControlled: true,
-      builder: (_) => _RequestForm(
-        merchantId: merchantId,
-        // The person, not the shop. `requested_by` references `auth.users`, and a
-        // merchant id is a row in `merchants` — sending it meant every request a
-        // merchant made was refused by the foreign key.
-        requestedBy: ref.read(currentIdentityProvider).value?.uid ?? '',
-        cityId: ref.read(currentCityProvider),
-        now: ref.read(clockProvider)(),
-        pushOpen: pushOpen,
-      ),
-    );
-
-    if (promotion == null || !context.mounted) return;
-
-    final result = await ref.read(promotionRepositoryProvider).request(promotion);
-    if (!context.mounted) return;
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          switch (result) {
-            Ok() => 'وصل طلبك. هنراجعه ونرد عليك.',
-            Err() => 'مقدرناش نبعت الطلب. جرّب تاني.',
-          },
-        ),
-      ),
-    );
   }
+  if (!context.mounted) return;
+
+  final promotion = await showModalBottomSheet<Promotion>(
+    context: context,
+    isScrollControlled: true,
+    builder: (_) => _RequestForm(
+      existing: existing,
+      merchantId: merchantId,
+      // The person, not the shop. `requested_by` references `auth.users`, and a
+      // merchant id is a row in `merchants` — sending it meant every request a
+      // merchant made was refused by the foreign key.
+      requestedBy: ref.read(currentIdentityProvider).value?.uid ?? '',
+      cityId: ref.read(currentCityProvider),
+      now: ref.read(clockProvider)(),
+      pushOpen: pushOpen,
+    ),
+  );
+
+  if (promotion == null || !context.mounted) return;
+
+  final repository = ref.read(promotionRepositoryProvider);
+  final result = existing == null
+      ? await repository.request(promotion)
+      : await repository.editRequest(promotion);
+  if (!context.mounted) return;
+
+  ScaffoldMessenger.of(context).showSnackBar(
+    SnackBar(
+      content: Text(
+        switch (result) {
+          // An edit is a fresh ask, and saying so is what stops a merchant expecting
+          // their correction to be live already.
+          Ok() when existing != null => 'التعديل وصل. هنراجعه تاني ونرد عليك.',
+          Ok() => 'وصل طلبك. هنراجعه ونرد عليك.',
+          Err(:final failure) => switch (failure) {
+              OfflineFailure() => 'مفيش نت — جرّب تاني.',
+              PermissionFailure() => 'الإعلان ده بدأ خلاص، مش هينفع يتعدّل.',
+              _ => 'مقدرناش نبعت الطلب. جرّب تاني.',
+            },
+        },
+      ),
+    ),
+  );
 }
 
 class _Card extends ConsumerWidget {
@@ -228,6 +254,30 @@ class _Card extends ConsumerWidget {
               ),
             ),
           ],
+          // Only while it is still theirs to change. `isEditableAt` is the same pair of
+          // conditions the policy holds, so this button is never offered for something
+          // the database would refuse — a merchant told "no" by a policy has no way to
+          // tell that from the app being broken.
+          if (promotion.isEditableAt(now)) ...[
+            const SizedBox(height: Space.sm),
+            Align(
+              alignment: AlignmentDirectional.centerStart,
+              child: TextButton.icon(
+                key: MerchantPromotionsScreen.editKey(promotion.id),
+                onPressed: () => _ask(
+                  context,
+                  ref,
+                  promotion.merchantId,
+                  existing: promotion,
+                ),
+                icon: const Icon(Icons.edit_outlined, size: Sizes.iconSm),
+                label: const Text('عدّل'),
+                style: TextButton.styleFrom(
+                  minimumSize: const Size(Sizes.minTarget, Sizes.minTarget),
+                ),
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -238,12 +288,16 @@ class _Card extends ConsumerWidget {
 
 class _RequestForm extends ConsumerStatefulWidget {
   const _RequestForm({
+    this.existing,
     required this.merchantId,
     required this.requestedBy,
     required this.cityId,
     required this.now,
     required this.pushOpen,
   });
+
+  /// The placement being corrected, or null when asking for a new one.
+  final Promotion? existing;
 
   final String merchantId;
 
@@ -263,8 +317,8 @@ class _RequestForm extends ConsumerStatefulWidget {
 }
 
 class _RequestFormState extends ConsumerState<_RequestForm> {
-  final _title = TextEditingController();
-  final _body = TextEditingController();
+  late final _title = TextEditingController(text: widget.existing?.title ?? '');
+  late final _body = TextEditingController(text: widget.existing?.body ?? '');
 
   PromotionChannel? _channel;
 
@@ -277,6 +331,20 @@ class _RequestFormState extends ConsumerState<_RequestForm> {
   /// picked separately.
   String? _mediaId;
   String? _mediaUrl;
+
+  @override
+  void initState() {
+    super.initState();
+    final existing = widget.existing;
+    if (existing != null) {
+      // A correction opens on what was asked for. Making the merchant re-pick the
+      // channel and re-upload the picture to fix a headline is how an edit affordance
+      // ends up unused.
+      _channel = existing.channel;
+      _mediaId = existing.mediaId;
+      _mediaUrl = existing.imageUrl;
+    }
+  }
 
   /// A boost has nothing to write: no headline is ever shown for one. Asking for text
   /// would be asking for something nobody will ever read.
@@ -298,7 +366,9 @@ class _RequestFormState extends ConsumerState<_RequestForm> {
 
     Navigator.of(context).pop(
       Promotion(
-        id: '',
+        // A correction keeps its id — that is what makes it the same placement rather
+        // than a second one in the queue beside the first.
+        id: widget.existing?.id ?? '',
         cityId: widget.cityId,
         merchantId: widget.merchantId,
         channel: channel,
@@ -321,9 +391,12 @@ class _RequestFormState extends ConsumerState<_RequestForm> {
         // A campaign genuinely meant for next week still must not go live early — that
         // rule is `isLiveAt`'s and it is untouched. What is missing is a way to *ask* for
         // next week, which is a date picker neither screen has yet.
-        startAt: widget.now,
-        endAt: widget.now.add(const Duration(days: 7)),
-        requestedBy: widget.requestedBy,
+        // A correction leaves the window alone. The dates are the admin's — they are
+        // what decides when it appears — and resetting them to "a week from now" every
+        // time somebody fixed a typo would quietly undo the admin's scheduling.
+        startAt: widget.existing?.startAt ?? widget.now,
+        endAt: widget.existing?.endAt ?? widget.now.add(const Duration(days: 7)),
+        requestedBy: widget.existing?.requestedBy ?? widget.requestedBy,
       ),
     );
   }
@@ -342,7 +415,10 @@ class _RequestFormState extends ConsumerState<_RequestForm> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text('اطلب إعلان', style: theme.textTheme.titleLarge),
+              Text(
+                widget.existing == null ? 'اطلب إعلان' : 'عدّل الإعلان',
+                style: theme.textTheme.titleLarge,
+              ),
               const SizedBox(height: Space.md),
               Flexible(
                 child: SingleChildScrollView(
@@ -439,7 +515,9 @@ class _RequestFormState extends ConsumerState<_RequestForm> {
                 style: FilledButton.styleFrom(
                   minimumSize: const Size.fromHeight(50),
                 ),
-                child: const Text('ابعت الطلب'),
+                child: Text(
+                  widget.existing == null ? 'ابعت الطلب' : 'ابعت التعديل',
+                ),
               ),
             ],
           ),

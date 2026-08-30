@@ -656,6 +656,20 @@ DATABASE_URL=<luqma-test session pooler> npm --prefix supabase run test:stack
   policies, so a green suite proves the screens work against the fake and nothing more.
   Anything that depends on a policy needs a live test beside the widget test — that is
   what `test_live` and `supabase/test/stack` are for.
+- **A banner's picture needs an embed, and for two phases it had none.** The ad slot
+  drew `SizedBox.shrink()` where the image belongs — a placeholder from before Storage
+  existed — and `Promotion` had no url field for it to draw anyway. A merchant who paid
+  for a banner, uploaded artwork and had it approved got the burgundy gradient, which is
+  a real render mode and so looked deliberate rather than broken. The query embeds
+  `media(url, status)` now and `imageUrl` is null unless the row says `approved`: an
+  unapproved image must never reach a home screen, and that rule belongs in the mapper
+  rather than in whichever screen happens to draw it.
+- **An edit is a fresh ask.** `merchant_edits_unstarted_promotion` lets a merchant
+  correct a placement they asked for, and `with check` forces it back to `requested` —
+  so nobody approves their own words by editing something already signed off. It is
+  refused once `start_at` has passed, because an edit sends it back to the queue and
+  that would take a running campaign dark to fix a typo. `Promotion.isEditableAt` is the
+  same pair of conditions, so no screen offers a button the database will refuse.
 - **Nothing writes `PromotionStatus.active`.** Whether a campaign is running is a
   question about `startAt`/`endAt` — use `isLiveAt`, never the status alone.
 - The nightly billing pass has **no memory except `subscriptions.settledAt`**. Downgrading

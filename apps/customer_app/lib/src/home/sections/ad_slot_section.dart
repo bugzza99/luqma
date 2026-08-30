@@ -215,10 +215,21 @@ class _Banner extends StatelessWidget {
                 ),
               ),
             ),
-            if (promotion.renderMode != PromotionRender.text)
-              // The image itself arrives with Storage; until then the gradient stands in
-              // rather than a grey box, so the slot never looks broken.
-              const SizedBox.shrink(),
+            // Storage arrived; this did not follow it. For two phases the slot drew
+            // `SizedBox.shrink()` here, so a merchant who paid for a banner, uploaded
+            // artwork and had it approved got the gradient — indistinguishable from a
+            // banner that never had a picture.
+            //
+            // The gradient stays underneath as the fallback: an image that is missing,
+            // unapproved or slow to arrive leaves a banner that still looks made on
+            // purpose rather than a grey box.
+            if (promotion.renderMode != PromotionRender.text &&
+                promotion.imageUrl != null)
+              Image.network(
+                promotion.imageUrl!,
+                fit: BoxFit.cover,
+                errorBuilder: (_, _, _) => const SizedBox.shrink(),
+              ),
             if (promotion.renderMode == PromotionRender.imageWithText)
               DecoratedBox(
                 decoration: BoxDecoration(color: colors.scrim),

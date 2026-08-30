@@ -33,8 +33,30 @@ abstract interface class PromotionRepository {
     required String approvedBy,
   });
 
+  /// A merchant corrects a placement they asked for, before it starts.
+  ///
+  /// Lands back as `requested` whatever the document claims — an edit is a fresh ask, so
+  /// a merchant cannot approve their own words by changing something already signed off.
+  /// The policy refuses anything else, and refuses the edit entirely once the banner has
+  /// started: a live campaign taken dark to fix a typo is a worse answer than the typo.
+  Future<Result<Promotion>> editRequest(Promotion promotion);
+
+  /// Moves when a placement appears and disappears. The admin's, and only theirs.
+  Future<Result<void>> reschedule(
+    String promotionId, {
+    required DateTime startAt,
+    required DateTime endAt,
+  });
+
   /// What is waiting for a decision. Live.
   Stream<List<Promotion>> watchQueue(String cityId);
+
+  /// Every placement in the city, whatever became of it. Live.
+  ///
+  /// The queue is what needs a decision; this is what exists. An approved banner left
+  /// the admin's screen the moment it was approved, so nobody could see a scheduled one
+  /// or move its dates.
+  Stream<List<Promotion>> watchAll(String cityId);
 
   /// What should be on screen right now, best placement first. Live.
   Stream<List<Promotion>> watchLive({required String cityId, required DateTime now});
@@ -86,8 +108,23 @@ class SupabasePromotionRepository implements PromotionRepository {
   static String? _uuidOrNull(String? id) =>
       (id == null || id.isEmpty) ? null : id;
 
+  /// Everything on the row, plus the picture the banner is supposed to draw.
+  ///
+  /// The embed is the whole reason the column can be rendered: `media_id` is a uuid and
+  /// a uuid draws nothing. Without this the ad slot fell back to its gradient for every
+  /// banner in the city, which looks like a design choice rather than a missing picture.
+  static const _columns = '*, media(url, status)';
+
   Promotion _toPromotion(Map<String, dynamic> row) {
-    final model = ColumnNames.toModel(row)
+    final media = row['media'] as Map<String, dynamic>?;
+    final row2 = Map<String, dynamic>.from(row)..remove('media');
+    // Unapproved is the same as absent. `read_media` already hides another merchant's
+    // pending row, but an admin reading this list can see their own — and the moderation
+    // queue is worth nothing if the picture is on screen before it is reviewed.
+    if (media != null && media['status'] == 'approved') {
+      row2['image_url'] = media['url'];
+    }
+    final model = ColumnNames.toModel(row2)
       ..update('zoneIds', (zones) => [for (final z in zones as List) z],
           ifAbsent: () => <String>[]);
     // Local, like Firestore's Timestamp.toDate() handed back: `isLiveAt` compares
@@ -173,10 +210,55 @@ class SupabasePromotionRepository implements PromotionRepository {
   }
 
   @override
+  Future<Result<Promotion>> editRequest(Promotion promotion) {
+    return Result.guard(() async {
+      // Forced back to `requested`, exactly as `request` forces it on the way in. The
+      // policy refuses any other status from a merchant, so writing what it will refuse
+      // would only turn a clear rule into an error somebody has to read.
+      final asked = promotion.copyWith(
+        status: PromotionStatus.requested,
+        approvedBy: null,
+        rejectionReason: null,
+      );
+      final saved = await _db
+          .from('promotions')
+          .update({
+            'channel': asked.channel.name,
+            'render_mode': asked.renderMode.name,
+            'title': asked.title,
+            'body': asked.body,
+            'media_id': _uuidOrNull(asked.mediaId),
+            'status': asked.status.name,
+            'approved_by': null,
+            'rejection_reason': null,
+          })
+          .eq('id', asked.id)
+          .select()
+          .single();
+      return _toPromotion(saved);
+    });
+  }
+
+  @override
+  Future<Result<void>> reschedule(
+    String promotionId, {
+    required DateTime startAt,
+    required DateTime endAt,
+  }) {
+    return Result.guard(
+      () => _db.from('promotions').update({
+        'start_at': startAt.toUtc().toIso8601String(),
+        'end_at': endAt.toUtc().toIso8601String(),
+      }).eq('id', promotionId),
+    );
+  }
+
+  @override
   Stream<List<Promotion>> watchQueue(String cityId) {
     return watchRows(
       db: _db,
       table: 'promotions',
+      columns: _columns,
       map: _toPromotion,
       filters: [
         RowFilter('city_id', cityId),
@@ -187,6 +269,19 @@ class SupabasePromotionRepository implements PromotionRepository {
   }
 
   @override
+  Stream<List<Promotion>> watchAll(String cityId) {
+    return watchRows(
+      db: _db,
+      table: 'promotions',
+      columns: _columns,
+      map: _toPromotion,
+      filters: [RowFilter('city_id', cityId)],
+    ).map((promotions) => promotions
+      // Soonest first: what is running now, then what is about to, then what is done.
+      ..sort((a, b) => b.startAt.compareTo(a.startAt)));
+  }
+
+  @override
   Stream<List<Promotion>> watchLive({
     required String cityId,
     required DateTime now,
@@ -194,6 +289,7 @@ class SupabasePromotionRepository implements PromotionRepository {
     return watchRows(
       db: _db,
       table: 'promotions',
+      columns: _columns,
       map: _toPromotion,
       filters: [RowFilter('city_id', cityId)],
       // Live-ness is a date range plus a status pair — filtered here rather than in the
@@ -211,6 +307,7 @@ class SupabasePromotionRepository implements PromotionRepository {
     return watchRows(
       db: _db,
       table: 'promotions',
+      columns: _columns,
       map: _toPromotion,
       filters: [RowFilter('merchant_id', merchantId)],
     ).map((promotions) => promotions..sort((a, b) => b.startAt.compareTo(a.startAt)));
@@ -356,6 +453,60 @@ class FakePromotionRepository implements PromotionRepository {
     _promotions[ready.id] = ready;
     _notify();
     return Result.ok(ready);
+  }
+
+  @override
+  Future<Result<Promotion>> editRequest(Promotion promotion) async {
+    if (failure != null) return Result.err(failure!);
+    if (failNext != null) {
+      final refusal = failNext!;
+      failNext = null;
+      return Result.err(refusal);
+    }
+
+    final existing = _promotions[promotion.id];
+    if (existing == null) return const Result.err(NotFoundFailure());
+
+    // The same two rules the policy enforces, so a screen cannot pass against the fake
+    // and be refused by the database: only before it starts, and always back to the
+    // queue.
+    if (!existing.startAt.isAfter(_clock())) {
+      return const Result.err(PermissionFailure());
+    }
+
+    final asked = promotion.copyWith(
+      status: PromotionStatus.requested,
+      approvedBy: null,
+      rejectionReason: null,
+    );
+    _promotions[asked.id] = asked;
+    _notify();
+    return Result.ok(asked);
+  }
+
+  @override
+  Future<Result<void>> reschedule(
+    String promotionId, {
+    required DateTime startAt,
+    required DateTime endAt,
+  }) async {
+    if (failure != null) return Result.err(failure!);
+
+    final existing = _promotions[promotionId];
+    if (existing == null) return const Result.err(NotFoundFailure());
+
+    _promotions[promotionId] = existing.copyWith(startAt: startAt, endAt: endAt);
+    _notify();
+    return const Result.ok(null);
+  }
+
+  @override
+  Stream<List<Promotion>> watchAll(String cityId) {
+    if (failure != null) return Stream.error(failure!);
+    return _live(
+      () => _promotions.values.where((p) => p.cityId == cityId).toList()
+        ..sort((a, b) => b.startAt.compareTo(a.startAt)),
+    );
   }
 
   @override

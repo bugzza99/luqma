@@ -353,4 +353,108 @@ void main() {
       expect(find.text('شغال دلوقتي'), findsNothing);
     });
   });
+
+  group('correcting one before it starts', () {
+    // A merchant who mistyped a headline had exactly one move: ask again and hope
+    // somebody rejected the first one. Two banners in the queue for one campaign.
+    testWidgets('a scheduled banner can be edited', (tester) async {
+      await pump(tester, seed: [
+        promotion(
+          status: PromotionStatus.approved,
+          startAt: now.add(const Duration(days: 3)),
+          endAt: now.add(const Duration(days: 10)),
+        ),
+      ]);
+
+      expect(
+        find.byKey(MerchantPromotionsScreen.editKey('p1')),
+        findsOneWidget,
+      );
+    });
+
+    // Not a live one. Editing it would either change what the city sees without review,
+    // or — since an edit goes back to the queue — take their own running campaign dark.
+    testWidgets('a running banner offers no edit', (tester) async {
+      await pump(tester, seed: [
+        promotion(
+          status: PromotionStatus.approved,
+          startAt: now.subtract(const Duration(days: 1)),
+          endAt: now.add(const Duration(days: 10)),
+        ),
+      ]);
+
+      expect(find.byKey(MerchantPromotionsScreen.editKey('p1')), findsNothing);
+    });
+
+    testWidgets('a rejected one is not a draft', (tester) async {
+      await pump(tester, seed: [
+        promotion(
+          status: PromotionStatus.rejected,
+          rejectionReason: 'الصورة مش واضحة',
+          startAt: now.add(const Duration(days: 3)),
+        ),
+      ]);
+
+      expect(find.byKey(MerchantPromotionsScreen.editKey('p1')), findsNothing);
+    });
+
+    testWidgets('the form opens on what was asked for', (tester) async {
+      await pump(tester, seed: [
+        promotion(
+          status: PromotionStatus.approved,
+          startAt: now.add(const Duration(days: 3)),
+        ),
+      ]);
+
+      await tester.tap(find.byKey(MerchantPromotionsScreen.editKey('p1')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('خصم النهارده'), findsWidgets);
+    });
+
+    // The asymmetry the whole design rests on: an edit is a fresh ask, so a merchant
+    // cannot approve their own words by changing something already signed off.
+    testWidgets('saving an edit sends it back to the queue', (tester) async {
+      await pump(tester, seed: [
+        promotion(
+          status: PromotionStatus.approved,
+          startAt: now.add(const Duration(days: 3)),
+        ),
+      ]);
+
+      await tester.tap(find.byKey(MerchantPromotionsScreen.editKey('p1')));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(
+        find.byKey(MerchantPromotionsScreen.titleKey),
+        'خصم ٢٠٪',
+      );
+      await tester.tap(find.byKey(MerchantPromotionsScreen.submitKey));
+      await tester.pumpAndSettle();
+
+      final edited = promotions.all.single;
+      expect(edited.title, 'خصم ٢٠٪');
+      expect(edited.status, PromotionStatus.requested);
+      expect(edited.approvedBy, isNull);
+    });
+
+    // Silence after a tap is indistinguishable from a broken button.
+    testWidgets('a refused edit says so', (tester) async {
+      await pump(tester, seed: [
+        promotion(
+          status: PromotionStatus.approved,
+          startAt: now.add(const Duration(days: 3)),
+        ),
+      ]);
+      promotions.failNext = const OfflineFailure();
+
+      await tester.tap(find.byKey(MerchantPromotionsScreen.editKey('p1')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(MerchantPromotionsScreen.submitKey));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(SnackBar), findsOneWidget);
+      expect(promotions.all.single.status, PromotionStatus.approved);
+    });
+  });
 }
