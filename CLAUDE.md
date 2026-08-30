@@ -713,6 +713,27 @@ DATABASE_URL=<luqma-test session pooler> npm --prefix supabase run test:stack
   its own auth never fires. Deploy anything cron-driven with `--no-verify-jwt` and let the
   function's own secret be the gate. That is least privilege too: a purpose-built secret
   that can only trigger a drain beats sending the service-role key every minute.
+- **PostgREST cannot embed across a foreign key that does not exist.**
+  `merchants.logo_media_id` and `cover_media_id` were plain `uuid` columns with no
+  `references media` — `cuisines.media_id` got one when it was added and merchants never
+  did. So `cover:cover_media_id(url, status)` is not a slow query or an empty result, it
+  is `PGRST200` and the whole merchants query fails. The customer app could not fetch a
+  shop's picture at all, and `merchant_card.dart` passed a literal `LuqmaImage(url: null)`
+  because there was nothing else to pass: the bucket, the upload, the moderation queue and
+  the approval all worked, and every card in the city drew the tinted placeholder anyway.
+  Added in `20260830010000_merchant_media_foreign_keys.sql`, `on delete set null` to match
+  cuisines.
+- **`watchRows` selects `*` unless told otherwise.** An embedded relation is fetched only
+  if the caller passes `columns:` — so a repository that adds a join to `_readColumns` and
+  forgets the watch fixes `getMerchant` and leaves the *customer's home list* with no
+  picture, which is the screen that mattered.
+- **A promotion that starts tomorrow is invisible today, and nothing could move it.**
+  The merchant's request form set `startAt` to `now + 1 day` on the reasoning that "the
+  admin moves it when they approve" — and the admin screen has no date control, so nobody
+  ever could. The owner approved a banner and watched nothing happen: correct by
+  `isLiveAt`, wrong as a product. It starts `now` now. **`isLiveAt`'s rule is untouched** —
+  a campaign genuinely meant for next week must still not go live early; what is missing
+  is a way to *ask* for next week, which is a date picker neither screen has.
 - **A merchant id is not a person, and both are uuids.** `promotions.requested_by` is
   `references auth.users`, and MerchantApp sent the *merchant's* id — so every promotion a
   merchant ever asked for was refused with `23503`, and the screen showed them the
@@ -727,6 +748,17 @@ DATABASE_URL=<luqma-test session pooler> npm --prefix supabase run test:stack
   account could be created at all**. It is a picker of shop names now. The same rule holds
   for the promotions form: an id is something the app knows and a name is something the
   owner knows, and the form asks for the second.
+- **A `test_live` failure that names a different test each run is the network, not the
+  code.** The suite talks to a hosted project over the internet, and a request
+  occasionally stalls and dies with `ClientException: Connection closed before full header
+  was received`. Caught in the act on 2026-08-30: a test that began at `00:16` failed at
+  `25:03` — a twenty-five minute hang on one request, against a file that passes on its
+  own every time. Two settlement tests failed the same way an hour earlier and passed on
+  three consecutive re-runs.
+  Before hunting a bug: **re-run the file alone.** If it passes, and the failing name
+  moves between runs, it is this. A real regression fails the same test every time. (In
+  the app that same exception is classified as `OfflineFailure` and reaches somebody as
+  "مفيش نت" — which is correct, and is why nothing in the product needs changing for it.)
 - **`test_live` residue eventually breaks the suite at 1000 rows, not gradually.**
   PostgREST caps a response at `db-max-rows` (1000 by default) and `watchStaff()` asks for
   every row with no limit — so once accumulated test accounts pushed `staff` past 1098,

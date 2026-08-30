@@ -63,6 +63,11 @@ Stream<List<T>> watchRows<T>({
   List<RowIn> ins = const [],
   String? orderBy,
   bool ascending = true,
+  // What to select. `*` for almost everything; a repository whose rows carry embedded
+  // relations passes its own list, because a bare `select()` fetches none of them — and
+  // a *watched* list that quietly lacks the merchant's photograph is the same list the
+  // customer's home is built from.
+  String columns = '*',
 }) {
   // Counts up on every fetch, so a slow fetch overtaken by a newer one cannot deliver
   // an older snapshot after a newer one has already been delivered.
@@ -81,7 +86,7 @@ Stream<List<T>> watchRows<T>({
     final token = ++inFlight;
     try {
       Future<List<Map<String, dynamic>>> run() async {
-        var query = db.from(table).select();
+        var query = db.from(table).select(columns);
         for (final f in filters) {
           query = query.eq(f.column, f.value);
         }

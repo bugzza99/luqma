@@ -310,10 +310,19 @@ class _RequestFormState extends ConsumerState<_RequestForm> {
         mediaId: _mediaId,
         title: title,
         body: _body.text.trim(),
-        // A week from tomorrow, which is what a merchant asking today means. The admin
-        // moves it when they approve; a date picker for the common case is a step.
-        startAt: widget.now.add(const Duration(days: 1)),
-        endAt: widget.now.add(const Duration(days: 8)),
+        // A week from now, so that approving it is what puts it up.
+        //
+        // This used to ask for *tomorrow*, reasoning that the admin would move the date
+        // when they approved — and the admin screen has no date control, so nobody ever
+        // could. The owner approved a banner and watched nothing happen: correct by
+        // `isLiveAt`, which reads `startAt`, and wrong as a product. A merchant asking
+        // today means "as soon as you say yes".
+        //
+        // A campaign genuinely meant for next week still must not go live early — that
+        // rule is `isLiveAt`'s and it is untouched. What is missing is a way to *ask* for
+        // next week, which is a date picker neither screen has yet.
+        startAt: widget.now,
+        endAt: widget.now.add(const Duration(days: 7)),
         requestedBy: widget.requestedBy,
       ),
     );

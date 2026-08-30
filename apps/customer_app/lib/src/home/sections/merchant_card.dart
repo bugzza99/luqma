@@ -60,7 +60,11 @@ class MerchantCard extends ConsumerWidget {
                   aspectRatio: 16 / 9,
                   child: Opacity(
                     opacity: open ? 1 : 0.45,
-                    child: LuqmaImage(url: null, name: merchant.name),
+                    // The shop's own photograph, once an admin has approved it. This was
+                    // a literal `null` — so the media pipeline ran end to end, the owner
+                    // approved covers in the queue, and every card in the city still drew
+                    // the tinted mark because nothing ever asked for the address.
+                    child: LuqmaImage(url: merchant.coverUrl, name: merchant.name),
                   ),
                 ),
                 if (merchant.ratingCount >= config.minRatingsToShow)

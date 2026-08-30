@@ -84,6 +84,19 @@ abstract class Merchant with _$Merchant {
     String? logoMediaId,
     String? coverMediaId,
 
+    /// The approved picture's address, resolved by the query that read this merchant.
+    ///
+    /// Null covers three different things and deliberately collapses them: no picture
+    /// was ever uploaded, one was uploaded and is still waiting for an admin, or one was
+    /// refused. All three mean the same thing to a customer — there is no photograph —
+    /// and `LuqmaImage` draws the tinted mark from the shop's name instead.
+    ///
+    /// Not written back: `_row` never carries these, exactly as it never carries
+    /// `walletBalance`. The id is the merchant's to set; the URL and whether it may be
+    /// shown are the media table's answer.
+    String? logoUrl,
+    String? coverUrl,
+
     /// Zones this merchant will deliver to. Empty means its own zone only.
     @Default(<String>[]) List<String> servedZones,
 

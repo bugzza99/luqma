@@ -156,6 +156,37 @@ void main() {
       expect(promotions.all.single.merchantId, 'm1');
     });
 
+    // It used to ask for tomorrow, on the reasoning that "the admin moves it when they
+    // approve" — and the admin screen has no date control at all, so nobody ever could.
+    // The owner approved a banner and watched nothing happen, because it was correctly
+    // not live until the next day.
+    //
+    // A merchant asking today means "as soon as you say yes". Starting now is what makes
+    // approving it the thing that puts it up.
+    testWidgets('and it starts now, so approving it is what makes it live',
+        (tester) async {
+      await pump(tester);
+
+      await ask(tester);
+
+      final asked = promotions.all.single;
+      expect(asked.startAt, now);
+      expect(asked.isLiveAt(now), isFalse, reason: 'requested is still not live');
+      expect(
+        asked.copyWith(status: PromotionStatus.approved).isLiveAt(now),
+        isTrue,
+        reason: 'and the moment it is approved, it is',
+      );
+    });
+
+    testWidgets('and runs for a week', (tester) async {
+      await pump(tester);
+
+      await ask(tester);
+
+      expect(promotions.all.single.endAt, now.add(const Duration(days: 7)));
+    });
+
     // `requested_by` is `uuid not null references auth.users`. It was being sent the
     // *merchant's* id — a row in `merchants`, which is not a row in `auth.users` — so
     // every request a merchant ever made was refused by the foreign key with 23503, and

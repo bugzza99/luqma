@@ -65,8 +65,18 @@ class SupabaseMerchantRepository implements MerchantRepository {
 
   /// Categories and served zones hang off their own tables, so they ride along on reads
   /// as embedded rows rather than being queried per screen.
+  ///
+  /// The two pictures ride along the same way, as *aliased* embeds. Two foreign keys
+  /// point at the same table, so PostgREST needs the column named on each —
+  /// `logo:logo_media_id(…)` — or it cannot tell which relationship is meant and refuses
+  /// the query outright.
+  ///
+  /// `status` comes with the URL because the address alone is not permission to show it:
+  /// a picture waiting for the moderation queue has a perfectly good URL, and the whole
+  /// point of the queue is that it stays unseen until an admin says otherwise.
   static const _readColumns =
-      '*, menu_categories(*), merchant_served_zones(zone_id)';
+      '*, menu_categories(*), merchant_served_zones(zone_id), '
+      'logo:logo_media_id(url, status), cover:cover_media_id(url, status)';
 
   /// An empty id means "none" everywhere else in this codebase, and an empty string is
   /// not a uuid — the column would refuse it before any policy had spoken.
@@ -116,10 +126,23 @@ class SupabaseMerchantRepository implements MerchantRepository {
         'prep_minutes': m.prepMinutes,
       };
 
+  /// The address of an embedded picture, but only once somebody has approved it.
+  ///
+  /// Null for all three of "never uploaded", "still in the queue" and "refused" — a
+  /// customer cannot act on the difference, and every one of them means the card draws
+  /// the tinted mark from the shop's name instead.
+  static String? _approvedUrl(Object? embedded) {
+    final media = embedded as Map<String, dynamic>?;
+    if (media == null || media['status'] != 'approved') return null;
+    return media['url'] as String?;
+  }
+
   Merchant _toMerchant(Map<String, dynamic> row) {
     final base = ColumnNames.toModel(row)
       ..remove('menu_categories')
-      ..remove('merchant_served_zones');
+      ..remove('merchant_served_zones')
+      ..remove('logo')
+      ..remove('cover');
     // Local, like Firestore's Timestamp.toDate() handed back: screens compare this
     // against clockProvider's local now, and Dart's DateTime equality insists on the
     // same zone, not merely the same moment.
@@ -136,6 +159,8 @@ class SupabaseMerchantRepository implements MerchantRepository {
         for (final raw in (row['merchant_served_zones'] as List? ?? const []))
           (raw as Map)['zone_id'],
       ],
+      'logoUrl': _approvedUrl(row['logo']),
+      'coverUrl': _approvedUrl(row['cover']),
     });
   }
 
@@ -145,6 +170,8 @@ class SupabaseMerchantRepository implements MerchantRepository {
       db: _db,
       table: 'merchants',
       map: _toMerchant,
+      // The embedded pictures, or the watched list carries no photograph at all.
+      columns: _readColumns,
       filters: [
         RowFilter('city_id', cityId),
         RowFilter('status', MerchantStatus.approved.name),
@@ -181,6 +208,8 @@ class SupabaseMerchantRepository implements MerchantRepository {
       db: _db,
       table: 'merchants',
       map: _toMerchant,
+      // The embedded pictures, or the watched list carries no photograph at all.
+      columns: _readColumns,
       filters: [RowFilter('city_id', cityId)],
       orderBy: 'created_at',
       // Sorted in Dart: the attention order is a policy about people, not an index.

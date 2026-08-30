@@ -396,4 +396,82 @@ void main() {
       expect(read.valueOrThrow.prepMinutes, 15);
     });
   });
+
+  // The whole media pipeline existed and the customer could not see a single photograph:
+  // the bucket, the upload, the moderation queue and the approval all worked, and no
+  // query the customer app runs ever fetched the picture's address. A merchant uploaded
+  // a cover, the owner approved it, and the card still drew the tinted placeholder.
+  group('the photograph of a shop', () {
+    Future<String> media(String kind, {String status = 'approved'}) => live.client
+        .from('media')
+        .insert({
+          'kind': kind,
+          'url': 'https://example.test/$kind-$status.jpg',
+          'status': status,
+        })
+        .select()
+        .single()
+        .then((row) => row['id'] as String);
+
+    test('an approved cover comes back with its address', () async {
+      final coverId = await media('merchantCover');
+      final saved = (await adminRepository
+              .saveMerchant(merchant('مطعم').copyWith(coverMediaId: coverId)))
+          .valueOrThrow;
+
+      final read = (await repository.getMerchant(saved.id)).valueOrThrow;
+
+      expect(read.coverUrl, 'https://example.test/merchantCover-approved.jpg');
+    });
+
+    // The moderation queue is the whole point: a picture nobody has looked at yet must
+    // not reach a customer just because a merchant uploaded it.
+    test('one still waiting for the admin does not', () async {
+      final coverId = await media('merchantCover', status: 'pending');
+      final saved = (await adminRepository
+              .saveMerchant(merchant('مطعم').copyWith(coverMediaId: coverId)))
+          .valueOrThrow;
+
+      final read = (await repository.getMerchant(saved.id)).valueOrThrow;
+
+      expect(read.coverUrl, isNull);
+      expect(read.coverMediaId, coverId, reason: 'the id is still on the row');
+    });
+
+    test('and neither does one that was refused', () async {
+      final coverId = await media('merchantCover', status: 'rejected');
+      final saved = (await adminRepository
+              .saveMerchant(merchant('مطعم').copyWith(coverMediaId: coverId)))
+          .valueOrThrow;
+
+      expect((await repository.getMerchant(saved.id)).valueOrThrow.coverUrl, isNull);
+    });
+
+    test('a logo is resolved the same way, and kept apart from the cover', () async {
+      final logoId = await media('merchantLogo');
+      final coverId = await media('merchantCover');
+      final saved = (await adminRepository.saveMerchant(
+        merchant('مطعم').copyWith(logoMediaId: logoId, coverMediaId: coverId),
+      ))
+          .valueOrThrow;
+
+      final read = (await repository.getMerchant(saved.id)).valueOrThrow;
+
+      expect(read.logoUrl, contains('merchantLogo'));
+      expect(read.coverUrl, contains('merchantCover'));
+    });
+
+    // The customer's home reads the *watched* list, not `getMerchant`. It runs through
+    // `watchRows`, which issued a bare `select()` — so even once the join existed the
+    // list would have carried no picture at all.
+    test('and the customer list carries it too', () async {
+      final coverId = await media('merchantCover');
+      await adminRepository
+          .saveMerchant(merchant('مطعم').copyWith(coverMediaId: coverId));
+
+      final listed = await repository.watchMerchants(cityId: cityId).first;
+
+      expect(listed.single.coverUrl, contains('merchantCover'));
+    });
+  });
 }

@@ -22,6 +22,7 @@ void main() {
     int prepMinutes = 30,
     int minOrder = 0,
     List<OpeningWindow>? hours,
+    String? coverUrl,
   }) =>
       Merchant(
         id: 'm1',
@@ -32,6 +33,7 @@ void main() {
         phone: '0100',
         status: MerchantStatus.approved,
         openingHours: hours ?? openAllWeek,
+        coverUrl: coverUrl,
         ratingAvg: ratingAvg,
         ratingCount: ratingCount,
         prepMinutes: prepMinutes,
@@ -135,6 +137,29 @@ void main() {
       await pump(tester, shop(), now: DateTime(2026, 8, 27, 13));
 
       expect(find.byKey(MerchantCard.closedKey), findsNothing);
+    });
+  });
+
+  // The card passed `LuqmaImage(url: null)` — a literal, not a value — so a merchant who
+  // uploaded a cover and had it approved still got the tinted placeholder. The whole
+  // media pipeline worked and nothing the customer runs ever asked for the address.
+  group('the shop photograph', () {
+    testWidgets('an approved cover is what the card draws', (tester) async {
+      await pump(tester, shop(coverUrl: 'https://example.test/cover.jpg'));
+
+      final image = tester.widget<LuqmaImage>(find.byType(LuqmaImage));
+      expect(image.url, 'https://example.test/cover.jpg');
+    });
+
+    // Null covers "never uploaded", "still in the queue" and "refused" alike — a
+    // customer cannot act on the difference, and `LuqmaImage` draws the mark from the
+    // shop's name rather than a broken frame.
+    testWidgets('and no picture is still a card, not a gap', (tester) async {
+      await pump(tester, shop());
+
+      final image = tester.widget<LuqmaImage>(find.byType(LuqmaImage));
+      expect(image.url, isNull);
+      expect(find.byType(LuqmaImage), findsOneWidget);
     });
   });
 }
