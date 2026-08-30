@@ -87,7 +87,11 @@ class _Card extends ConsumerWidget {
               color: colors.surface,
               child: Image.network(
                 media.url,
-                fit: BoxFit.cover,
+                // Whole, on a moderation screen above all: an admin cropped to the
+                // middle of a photograph approves the middle of it, and whatever is at
+                // the edges — a competitor logo, a phone number, something worse —
+                // reaches the city unseen.
+                fit: BoxFit.contain,
                 // A photo that will not load is itself a reason to refuse it, so the
                 // failure is shown rather than hidden behind a blank box.
                 errorBuilder: (context, _, _) => Center(

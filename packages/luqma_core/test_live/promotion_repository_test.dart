@@ -453,7 +453,7 @@ void main() {
       final asked = (await repository.request(
         promotion().copyWith(
           mediaId: mediaId,
-          renderMode: PromotionRender.imageWithText,
+          renderMode: PromotionRender.image,
         ),
       )).valueOrNull!;
       await repository.approve(asked.id, approvedBy: customerUid);
@@ -477,7 +477,7 @@ void main() {
       final asked = (await repository.request(
         promotion().copyWith(
           mediaId: row['id'] as String,
-          renderMode: PromotionRender.imageWithText,
+          renderMode: PromotionRender.image,
         ),
       )).valueOrNull!;
       await repository.approve(asked.id, approvedBy: customerUid);

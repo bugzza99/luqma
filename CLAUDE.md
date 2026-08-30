@@ -656,6 +656,19 @@ DATABASE_URL=<luqma-test session pooler> npm --prefix supabase run test:stack
   policies, so a green suite proves the screens work against the fake and nothing more.
   Anything that depends on a policy needs a live test beside the widget test — that is
   what `test_live` and `supabase/test/stack` are for.
+- **A banner is a picture or it is words, never both.** `imageWithText` laid the
+  headline over the artwork, and it is the one mode nobody can design for: the
+  merchant's photograph decides where its own dark parts are, so white text is legible
+  on the picture it was tested against and invisible on the next one. Removed
+  2026-08-31. A text banner carries `background_color` instead — eight swatches, and the
+  ink is **computed from the ground** (`PromotionPalette.inkOn`) rather than stored, so
+  there is no combination of columns that holds pale words on a pale colour.
+- **`BoxFit.cover` is a crop, and a crop of somebody else's photograph throws away the
+  part they cared about.** Every picture in the product used it: merchant covers, menu
+  items, meals, banners, and the *moderation queue* — where an admin approving the
+  middle of an image lets whatever is at its edges reach the city unseen. `LuqmaImage`
+  defaults to `contain` on a warm mat now, and a caller framing something deliberately —
+  a face in a circle — passes `cover` and means it.
 - **A banner's picture needs an embed, and for two phases it had none.** The ad slot
   drew `SizedBox.shrink()` where the image belongs — a placeholder from before Storage
   existed — and `Promotion` had no url field for it to draw anyway. A merchant who paid

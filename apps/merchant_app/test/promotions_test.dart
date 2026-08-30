@@ -457,4 +457,78 @@ void main() {
       expect(promotions.all.single.status, PromotionStatus.approved);
     });
   });
+
+  group('a picture or words, never both', () {
+    Future<void> openForm(WidgetTester tester) async {
+      await tester.tap(find.byKey(MerchantPromotionsScreen.askKey));
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(
+          MerchantPromotionsScreen.channelKey(PromotionChannel.homeBanner),
+        ),
+      );
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('words is what a banner opens on', (tester) async {
+      await pump(tester);
+      await openForm(tester);
+
+      expect(find.byKey(MerchantPromotionsScreen.titleKey), findsOneWidget);
+      expect(find.byType(BannerColorPicker), findsOneWidget);
+    });
+
+    // The mode is chosen, not inferred. Deriving it from what happened to be filled in
+    // is how somebody who uploaded artwork and typed a headline got both, laid over each
+    // other, without ever asking for that.
+    testWidgets('choosing a picture takes the words away', (tester) async {
+      await pump(tester);
+      await openForm(tester);
+
+      await tester.tap(find.text('صورة'));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(MerchantPromotionsScreen.titleKey), findsNothing);
+      expect(find.byType(BannerColorPicker), findsNothing);
+    });
+
+    testWidgets('the colour is carried through to the request', (tester) async {
+      await pump(tester);
+      await openForm(tester);
+
+      await tester.enterText(
+        find.byKey(MerchantPromotionsScreen.titleKey),
+        'خصم',
+      );
+      // The swatches sit below four channel buttons and two text fields in a sheet
+      // taller than the test window, and a tap on something scrolled off screen lands
+      // somewhere else entirely rather than failing.
+      await tester.ensureVisible(
+        find.byKey(BannerColorPicker.swatchKey('#1B4332')),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(BannerColorPicker.swatchKey('#1B4332')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(MerchantPromotionsScreen.submitKey));
+      await tester.pumpAndSettle();
+
+      final asked = promotions.all.single;
+      expect(asked.backgroundColor, '#1B4332');
+      expect(asked.renderMode, PromotionRender.text);
+    });
+
+    // A picture banner with no picture is a slot the customer sees nothing in, and the
+    // merchant has paid for it.
+    testWidgets('a picture banner with no picture is not sent', (tester) async {
+      await pump(tester);
+      await openForm(tester);
+
+      await tester.tap(find.text('صورة'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(MerchantPromotionsScreen.submitKey));
+      await tester.pumpAndSettle();
+
+      expect(promotions.all, isEmpty);
+    });
+  });
 }

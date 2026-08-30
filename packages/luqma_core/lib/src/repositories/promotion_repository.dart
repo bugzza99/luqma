@@ -153,6 +153,7 @@ class SupabasePromotionRepository implements PromotionRepository {
         'merchant_id': asked.merchantId,
         'channel': asked.channel.name,
         'render_mode': asked.renderMode.name,
+        'background_color': asked.backgroundColor,
         'title': asked.title,
         'body': asked.body,
         'media_id': _uuidOrNull(asked.mediaId),
@@ -191,6 +192,7 @@ class SupabasePromotionRepository implements PromotionRepository {
         'merchant_id': ready.merchantId,
         'channel': ready.channel.name,
         'render_mode': ready.renderMode.name,
+        'background_color': ready.backgroundColor,
         'title': ready.title,
         'body': ready.body,
         'media_id': _uuidOrNull(ready.mediaId),
@@ -225,6 +227,7 @@ class SupabasePromotionRepository implements PromotionRepository {
           .update({
             'channel': asked.channel.name,
             'render_mode': asked.renderMode.name,
+            'background_color': asked.backgroundColor,
             'title': asked.title,
             'body': asked.body,
             'media_id': _uuidOrNull(asked.mediaId),

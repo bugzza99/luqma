@@ -651,6 +651,9 @@ class _CreateFormState extends ConsumerState<_CreateForm> {
   String? _merchantId;
   PromotionChannel _channel = PromotionChannel.homeBanner;
 
+  /// The ground the words sit on. Null is the brand gradient.
+  String? _backgroundColor;
+
   /// A boost lifts a shop in the ranking and shows no words at all, so asking for a
   /// headline it will never render would be asking for nothing.
   bool get _needsText => _channel != PromotionChannel.boost;
@@ -678,6 +681,7 @@ class _CreateFormState extends ConsumerState<_CreateForm> {
         // and `promotions_image_has_media` refuses a row whose mode promises a picture
         // it does not carry — so the mode follows what is actually here.
         renderMode: PromotionRender.text,
+        backgroundColor: _needsText ? _backgroundColor : null,
         title: _title.text.trim(),
         body: _body.text.trim(),
         startAt: now,
@@ -766,6 +770,17 @@ class _CreateFormState extends ConsumerState<_CreateForm> {
                       controller: _body,
                       decoration:
                           const InputDecoration(labelText: 'التفاصيل (اختياري)'),
+                    ),
+                    const SizedBox(height: Space.md),
+                    Text(
+                      'لون الخلفية',
+                      style: LuqmaType.button
+                          .copyWith(color: Theme.of(context).luqma.textSecondary),
+                    ),
+                    const SizedBox(height: Space.sm),
+                    BannerColorPicker(
+                      selected: _backgroundColor,
+                      onPicked: (hex) => setState(() => _backgroundColor = hex),
                     ),
                   ],
                   const SizedBox(height: Space.lg),

@@ -194,6 +194,12 @@ class _Banner extends StatelessWidget {
     final theme = Theme.of(context);
     final colors = theme.luqma;
 
+    // A picture, or words. Never words over a picture: the merchant's photograph decides
+    // where its own dark parts are, so a headline laid over it lands somewhere nobody
+    // chose — legible on the artwork it was tested against and gone on the next one.
+    final chosen = PromotionPalette.parse(promotion.backgroundColor);
+    final ink = chosen == null ? colors.onBrand : PromotionPalette.inkOn(chosen);
+
     return InkWell(
       key: AdSlotSection.bannerKey(promotion.id),
       onTap: () => openMerchant(context, promotion.merchantId),
@@ -203,38 +209,33 @@ class _Banner extends StatelessWidget {
         child: Stack(
           fit: StackFit.expand,
           children: [
-            // The gradient is the fallback as well as the text mode's background: a
-            // merchant with no artwork gets a banner that still looks made on purpose,
-            // which is the whole commercial point of the text mode.
+            // The ground: the merchant's colour when they picked one, and the brand
+            // gradient when they did not — which is what every text banner drew before
+            // the colour existed, and what somebody who does not care should still get.
             DecoratedBox(
               decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.centerRight,
-                  end: Alignment.centerLeft,
-                  colors: [colors.brand, colors.brandPressed],
-                ),
+                color: chosen,
+                gradient: chosen != null
+                    ? null
+                    : LinearGradient(
+                        begin: Alignment.centerRight,
+                        end: Alignment.centerLeft,
+                        colors: [colors.brand, colors.brandPressed],
+                      ),
               ),
             ),
-            // Storage arrived; this did not follow it. For two phases the slot drew
-            // `SizedBox.shrink()` here, so a merchant who paid for a banner, uploaded
-            // artwork and had it approved got the gradient — indistinguishable from a
-            // banner that never had a picture.
-            //
-            // The gradient stays underneath as the fallback: an image that is missing,
-            // unapproved or slow to arrive leaves a banner that still looks made on
-            // purpose rather than a grey box.
-            if (promotion.renderMode != PromotionRender.text &&
+            // Whole, not cropped. `cover` fills the slot by throwing away whatever does
+            // not fit, and what does not fit on a banner is usually the half the merchant
+            // paid a designer for — the dish, or the price. `contain` keeps all of it and
+            // lets the ground show at the edges, which is a frame rather than a bug.
+            if (promotion.renderMode == PromotionRender.image &&
                 promotion.imageUrl != null)
               Image.network(
                 promotion.imageUrl!,
-                fit: BoxFit.cover,
+                fit: BoxFit.contain,
                 errorBuilder: (_, _, _) => const SizedBox.shrink(),
               ),
-            if (promotion.renderMode == PromotionRender.imageWithText)
-              DecoratedBox(
-                decoration: BoxDecoration(color: colors.scrim),
-              ),
-            if (promotion.renderMode != PromotionRender.image)
+            if (promotion.renderMode == PromotionRender.text)
               Padding(
                 padding: const EdgeInsets.all(Space.lg),
                 child: Column(
@@ -245,9 +246,9 @@ class _Banner extends StatelessWidget {
                       promotion.title,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.titleLarge?.copyWith(
-                        color: colors.onBrand,
-                      ),
+                      // Never a stored colour: the ink is computed from the ground, so
+                      // there is no way to end up with pale words on a pale banner.
+                      style: theme.textTheme.titleLarge?.copyWith(color: ink),
                     ),
                     if (promotion.body.isNotEmpty) ...[
                       const SizedBox(height: Space.xs),
@@ -255,9 +256,8 @@ class _Banner extends StatelessWidget {
                         promotion.body,
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          color: colors.onBrand.withValues(alpha: 0.9),
-                        ),
+                        style: theme.textTheme.bodyMedium
+                            ?.copyWith(color: ink.withValues(alpha: 0.9)),
                       ),
                     ],
                   ],

@@ -20,6 +20,8 @@ void main() {
     PromotionRender render = PromotionRender.text,
     String title = 'خصم النهارده',
     String? mediaId,
+    String? imageUrl,
+    String? backgroundColor,
     String? sectionKey,
     int priority = 0,
     DateTime? startAt,
@@ -35,6 +37,8 @@ void main() {
         title: title,
         body: 'كل الفراخ ١٥٪ أقل',
         mediaId: mediaId,
+        imageUrl: imageUrl,
+        backgroundColor: backgroundColor,
         sectionKey: sectionKey,
         priority: priority,
         startAt: startAt ?? DateTime(2026, 8, 1),
@@ -150,6 +154,91 @@ void main() {
       );
 
       expect(find.byKey(AdSlotSection.slotKey('top')), findsNothing);
+    });
+
+
+    // A picture, or words. Never words over a picture: the merchant's photograph decides
+    // where its own dark parts are, so a headline laid over it is legible on the artwork
+    // it was tested against and gone on the next one.
+    testWidgets('an image banner draws no headline over the picture', (tester) async {
+      await pump(
+        tester,
+        sections: [slot()],
+        promotions: [
+          promotion(
+            render: PromotionRender.image,
+            mediaId: 'md1',
+            imageUrl: 'https://example.test/banner.jpg',
+          ),
+        ],
+      );
+
+      expect(find.byKey(AdSlotSection.bannerKey('p1')), findsOneWidget);
+      expect(find.text('خصم النهارده'), findsNothing);
+    });
+
+    // Whole, not cropped. What `cover` throws away on a banner is usually the half the
+    // merchant paid a designer for — the dish, or the price.
+    testWidgets('the picture is shown whole', (tester) async {
+      await pump(
+        tester,
+        sections: [slot()],
+        promotions: [
+          promotion(
+            render: PromotionRender.image,
+            mediaId: 'md1',
+            imageUrl: 'https://example.test/banner.jpg',
+          ),
+        ],
+      );
+
+      final image = tester.widget<Image>(find.byType(Image));
+      expect(image.fit, BoxFit.contain);
+    });
+
+    testWidgets('a text banner sits on the colour it was given', (tester) async {
+      await pump(
+        tester,
+        sections: [slot()],
+        promotions: [promotion(backgroundColor: '#1B4332')],
+      );
+
+      final ground = tester.widgetList<DecoratedBox>(
+        find.descendant(
+          of: find.byKey(AdSlotSection.bannerKey('p1')),
+          matching: find.byType(DecoratedBox),
+        ),
+      ).map((d) => d.decoration).whereType<BoxDecoration>();
+
+      expect(
+        ground.any((d) => d.color == const Color(0xFF1B4332)),
+        isTrue,
+        reason: 'the chosen ground is what the banner is painted on',
+      );
+    });
+
+    // The ink is computed, never stored, so a pale ground cannot end up carrying pale
+    // words — which is the banner a merchant with a colour wheel would build.
+    testWidgets('words on a pale colour are dark', (tester) async {
+      await pump(
+        tester,
+        sections: [slot()],
+        promotions: [promotion(backgroundColor: '#F5EBE2')],
+      );
+
+      final title = tester.widget<Text>(find.text('خصم النهارده'));
+      expect(title.style?.color, const Color(0xFF130B07));
+    });
+
+    testWidgets('and on a dark colour are light', (tester) async {
+      await pump(
+        tester,
+        sections: [slot()],
+        promotions: [promotion(backgroundColor: '#130B07')],
+      );
+
+      final title = tester.widget<Text>(find.text('خصم النهارده'));
+      expect(title.style?.color, const Color(0xFFF5EBE2));
     });
 
     testWidgets('a text banner needs no artwork at all', (tester) async {

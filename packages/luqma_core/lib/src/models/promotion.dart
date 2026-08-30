@@ -44,10 +44,14 @@ enum PromotionStatus {
 /// artwork and no designer buy a banner the same day they ask for one, which is most of
 /// Edku. Without it, selling banners would mean first finding every merchant a designer.
 enum PromotionRender {
-  /// Brand gradient, title and body. No artwork needed.
+  /// A colour, a title and a body. No artwork needed.
+  ///
+  /// The commercial half of the decision: this is what lets a merchant with no designer
+  /// buy a banner the same day they ask for one, which is most of Edku.
   text,
+
+  /// The artwork, whole, and nothing written over it.
   image,
-  imageWithText,
 }
 
 /// One paid placement.
@@ -72,6 +76,14 @@ abstract class Promotion with _$Promotion {
     @Default(PromotionRender.text)
     @JsonKey(unknownEnumValue: PromotionRender.text)
     PromotionRender renderMode,
+
+    /// The ground the words sit on, as `#RRGGBB`. Null is the brand gradient.
+    ///
+    /// Only a text banner has one — a picture brings its own. The text colour is not
+    /// stored beside it on purpose: see [PromotionPalette.inkOn], which computes it, so
+    /// there is no way to save a pale headline onto a pale ground.
+    String? backgroundColor,
+
     @Default('') String title,
     @Default('') String body,
     String? mediaId,

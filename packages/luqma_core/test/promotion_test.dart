@@ -16,6 +16,8 @@ void main() {
     List<String> zoneIds = const [],
     String? mediaId,
     String? sectionKey,
+    String? backgroundColor,
+    String title = 'خصم النهارده',
     int priority = 0,
   }) =>
       Promotion(
@@ -25,7 +27,8 @@ void main() {
         channel: channel,
         status: status,
         renderMode: render,
-        title: 'خصم النهارده',
+        backgroundColor: backgroundColor,
+        title: title,
         body: 'كل الفراخ ١٥٪ أقل',
         mediaId: mediaId,
         sectionKey: sectionKey,
@@ -103,10 +106,14 @@ void main() {
       );
     });
 
-    test('image with text needs the image too', () {
+    // A banner is a picture or it is words, and the ink on the words is computed from
+    // the ground rather than stored — so there is no state that holds pale text on a
+    // pale colour, and none that lays a headline over somebody's photograph.
+    test('a colour is never needed to draw words', () {
+      expect(promotion(title: 'خصم').canRender, isTrue);
       expect(
-        promotion(render: PromotionRender.imageWithText).canRender,
-        isFalse,
+        promotion(title: 'خصم', backgroundColor: '#761812').canRender,
+        isTrue,
       );
     });
   });

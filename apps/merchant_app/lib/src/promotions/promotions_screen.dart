@@ -21,6 +21,7 @@ class MerchantPromotionsScreen extends ConsumerWidget {
   static const bodyKey = Key('promo.body');
   static const submitKey = Key('promo.submit');
   static const pushFullKey = Key('promo.pushFull');
+  static const modeKey = Key('promo.mode');
 
   static Key cardKey(String id) => Key('promo.card.$id');
   static Key editKey(String id) => Key('promo.edit.$id');
@@ -322,15 +323,20 @@ class _RequestFormState extends ConsumerState<_RequestForm> {
 
   PromotionChannel? _channel;
 
-  /// The banner's picture, if the merchant supplied one.
+  /// The banner's picture, when the merchant chose a picture banner.
   ///
-  /// Optional: a text banner on the burgundy gradient is a real render mode and the
-  /// cheapest thing to ask for. What the schema refuses is the middle case — a banner
-  /// that claims a picture and carries none renders as a broken box on the home screen
-  /// of every customer in the city — so the render mode is derived from this rather than
-  /// picked separately.
+  /// A banner is one thing or the other. `imageWithText` used to lay the headline over
+  /// the artwork, and it is the one mode nobody can design for: the photograph decides
+  /// where its own dark parts are, so white text is legible on the picture it was tested
+  /// against and gone on the next one.
   String? _mediaId;
   String? _mediaUrl;
+
+  /// The ground the words sit on. Null is the brand gradient.
+  String? _backgroundColor;
+
+  /// Which of the two this banner is.
+  bool _picture = false;
 
   @override
   void initState() {
@@ -343,12 +349,14 @@ class _RequestFormState extends ConsumerState<_RequestForm> {
       _channel = existing.channel;
       _mediaId = existing.mediaId;
       _mediaUrl = existing.imageUrl;
+      _backgroundColor = existing.backgroundColor;
+      _picture = existing.renderMode == PromotionRender.image;
     }
   }
 
-  /// A boost has nothing to write: no headline is ever shown for one. Asking for text
-  /// would be asking for something nobody will ever read.
-  bool get _needsText => _channel != null && _channel != PromotionChannel.boost;
+  /// A boost has nothing to show: no headline and no artwork is ever drawn for one, so
+  /// neither half of the choice applies.
+  bool get _isBanner => _channel != null && _channel != PromotionChannel.boost;
 
   @override
   void dispose() {
@@ -362,7 +370,9 @@ class _RequestFormState extends ConsumerState<_RequestForm> {
     if (channel == null) return;
 
     final title = _title.text.trim();
-    if (_needsText && title.isEmpty) return;
+    // Each mode has one thing it cannot be sent without, and it is not the same thing.
+    if (_isBanner && _picture && _mediaId == null) return;
+    if (_isBanner && !_picture && title.isEmpty) return;
 
     Navigator.of(context).pop(
       Promotion(
@@ -372,25 +382,14 @@ class _RequestFormState extends ConsumerState<_RequestForm> {
         cityId: widget.cityId,
         merchantId: widget.merchantId,
         channel: channel,
-        // Derived, never chosen: `promotions_image_has_media` refuses a row whose mode
-        // promises a picture it does not have, so the mode follows the picture.
-        renderMode: _mediaId == null
-            ? PromotionRender.text
-            : (title.isEmpty ? PromotionRender.image : PromotionRender.imageWithText),
-        mediaId: _mediaId,
-        title: title,
-        body: _body.text.trim(),
-        // A week from now, so that approving it is what puts it up.
-        //
-        // This used to ask for *tomorrow*, reasoning that the admin would move the date
-        // when they approved — and the admin screen has no date control, so nobody ever
-        // could. The owner approved a banner and watched nothing happen: correct by
-        // `isLiveAt`, which reads `startAt`, and wrong as a product. A merchant asking
-        // today means "as soon as you say yes".
-        //
-        // A campaign genuinely meant for next week still must not go live early — that
-        // rule is `isLiveAt`'s and it is untouched. What is missing is a way to *ask* for
-        // next week, which is a date picker neither screen has yet.
+        renderMode:
+            _isBanner && _picture ? PromotionRender.image : PromotionRender.text,
+        // Only what the chosen mode actually draws is carried. A text banner keeping a
+        // media id is a picture the merchant thinks they are still paying for.
+        mediaId: _isBanner && _picture ? _mediaId : null,
+        backgroundColor: _isBanner && !_picture ? _backgroundColor : null,
+        title: _picture && _isBanner ? '' : title,
+        body: _picture && _isBanner ? '' : _body.text.trim(),
         // A correction leaves the window alone. The dates are the admin's — they are
         // what decides when it appears — and resetting them to "a week from now" every
         // time somebody fixed a typo would quietly undo the admin's scheduling.
@@ -467,7 +466,32 @@ class _RequestFormState extends ConsumerState<_RequestForm> {
                           ),
                         const SizedBox(height: Sizes.targetGap),
                       ],
-                      if (_needsText) ...[
+                      // Picture or words, and it is a choice rather than something
+                      // inferred from what the merchant happened to fill in. Deriving it
+                      // meant somebody who uploaded artwork *and* typed a headline got
+                      // both, laid on top of each other, without ever asking for that.
+                      if (_isBanner) ...[
+                        const SizedBox(height: Space.md),
+                        SegmentedButton<bool>(
+                          key: MerchantPromotionsScreen.modeKey,
+                          segments: const [
+                            ButtonSegment(
+                              value: false,
+                              label: Text('كلام'),
+                              icon: Icon(Icons.title_outlined),
+                            ),
+                            ButtonSegment(
+                              value: true,
+                              label: Text('صورة'),
+                              icon: Icon(Icons.image_outlined),
+                            ),
+                          ],
+                          selected: {_picture},
+                          onSelectionChanged: (picked) =>
+                              setState(() => _picture = picked.first),
+                        ),
+                      ],
+                      if (_isBanner && !_picture) ...[
                         const SizedBox(height: Space.sm),
                         TextField(
                           key: MerchantPromotionsScreen.titleKey,
@@ -486,16 +510,26 @@ class _RequestFormState extends ConsumerState<_RequestForm> {
                             labelText: 'سطر تاني (اختياري)',
                           ),
                         ),
+                        const SizedBox(height: Space.md),
+                        Text(
+                          'لون الخلفية',
+                          style: LuqmaType.button.copyWith(
+                            color: colors.textSecondary,
+                          ),
+                        ),
+                        const SizedBox(height: Space.sm),
+                        BannerColorPicker(
+                          selected: _backgroundColor,
+                          onPicked: (hex) =>
+                              setState(() => _backgroundColor = hex),
+                        ),
                       ],
-                      // A boost has no banner to carry a picture on.
-                      if (_needsText) ...[
+                      if (_isBanner && _picture) ...[
                         const SizedBox(height: Space.md),
                         MediaPicker(
                           kind: MediaKind.promotion,
                           url: _mediaUrl,
-                          name: _title.text.trim().isEmpty
-                              ? 'إعلان'
-                              : _title.text.trim(),
+                          name: 'إعلان',
                           ownerId: widget.merchantId,
                           height: 120,
                           onUploaded: (media) => setState(() {
@@ -503,6 +537,16 @@ class _RequestFormState extends ConsumerState<_RequestForm> {
                             _mediaUrl = media.url;
                           }),
                         ),
+                        // The one thing a picture banner cannot be sent without, said
+                        // before the button refuses rather than after.
+                        if (_mediaId == null) ...[
+                          const SizedBox(height: Space.xs),
+                          Text(
+                            'اختار صورة الإعلان.',
+                            style: LuqmaType.bodySmall
+                                .copyWith(color: colors.textSecondary),
+                          ),
+                        ],
                       ],
                     ],
                   ),
