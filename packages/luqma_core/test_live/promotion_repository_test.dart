@@ -66,6 +66,24 @@ void main() {
       );
 
   group('asking', () {
+    // `requested_by` is `uuid not null references auth.users`, and the merchant app was
+    // sending the *merchant's* id — a row in `merchants`, which is not a row in
+    // `auth.users`. Every request a merchant ever made was refused by the foreign key.
+    //
+    // This suite did not catch it because it supplies `customerUid` here: a valid uid
+    // the app never had. The two ids are both uuids, so nothing about the shape gave it
+    // away, and the assertion that existed only checked `merchantId`. Pinned now, so a
+    // merchant id can never be mistaken for a person again.
+    test('a merchant id is not a person, and the foreign key says so', () async {
+      final refused = await repository.request(
+        promotion().copyWith(requestedBy: merchantId),
+      );
+
+      expect(refused.failureOrNull, isA<ConflictFailure>(),
+          reason: '23503 — merchants.id is not a row in auth.users');
+      expect(await repository.watchQueue(cityId).first, isEmpty);
+    });
+
     // A merchant may ask; only an admin may approve. The status is forced whatever the
     // caller claimed.
     test('a request always lands as requested', () async {
@@ -200,6 +218,60 @@ void main() {
         (await repository.pushSlotAvailable(cityId: cityId, limit: 1)).valueOrNull,
         isFalse,
       );
+    });
+  });
+
+  // The other half of the asymmetry, and the one AdminApp had no way to reach: the owner
+  // could approve and reject what merchants asked for, and could not put up a banner of
+  // their own. Announcing free delivery meant signing into a merchant account to ask
+  // themselves for it first.
+  group('the admin putting one up', () {
+    test('an admin creates one already approved', () async {
+      final admin = await live.openAsAdmin();
+      addTearDown(admin.dispose);
+      final adminUid = admin.auth.currentUser!.id;
+
+      final made = await SupabasePromotionRepository(admin)
+          .createApproved(promotion(), approvedBy: adminUid);
+
+      expect(made.failureOrNull, isNull);
+      expect(made.valueOrNull?.status, PromotionStatus.approved);
+      expect(made.valueOrNull?.approvedBy, adminUid);
+      // And it is not sitting in the queue waiting for the person who just made it.
+      expect(await repository.watchQueue(cityId).first, isEmpty);
+    });
+
+    // Approved is not live. A banner made today for next week must not appear the moment
+    // it is saved — that is `startAt`'s question and it stays `startAt`'s question.
+    test('and approved is still not live before it starts', () async {
+      final admin = await live.openAsAdmin();
+      addTearDown(admin.dispose);
+
+      final now = DateTime.now();
+      await SupabasePromotionRepository(admin).createApproved(
+        promotion(
+          startAt: now.add(const Duration(days: 3)),
+          endAt: now.add(const Duration(days: 10)),
+        ),
+        approvedBy: admin.auth.currentUser!.id,
+      );
+
+      final live_ = await repository.watchLive(cityId: cityId, now: now).first;
+      expect(live_, isEmpty, reason: 'startAt decides, not the status');
+    });
+
+    // The policy, asked directly. `merchant_requests_promotion` permits `requested` and
+    // nothing else, so an owner writing `approved` is refused rather than downgraded.
+    test('a merchant owner cannot put up an approved one', () async {
+      final (ownerDb, ownerUid) = await live.openAsStaff(
+        scope: 'merchant', role: 'owner', merchantId: merchantId);
+      addTearDown(ownerDb.dispose);
+
+      final refused = await SupabasePromotionRepository(ownerDb)
+          .createApproved(promotion(), approvedBy: ownerUid);
+
+      expect(refused.failureOrNull, isA<PermissionFailure>());
+      expect(await repository.watchQueue(cityId).first, isEmpty);
     });
   });
 }

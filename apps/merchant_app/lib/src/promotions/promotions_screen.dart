@@ -110,6 +110,10 @@ class MerchantPromotionsScreen extends ConsumerWidget {
       isScrollControlled: true,
       builder: (_) => _RequestForm(
         merchantId: merchantId,
+        // The person, not the shop. `requested_by` references `auth.users`, and a
+        // merchant id is a row in `merchants` — sending it meant every request a
+        // merchant made was refused by the foreign key.
+        requestedBy: ref.read(currentIdentityProvider).value?.uid ?? '',
         cityId: ref.read(currentCityProvider),
         now: ref.read(clockProvider)(),
         pushOpen: pushOpen,
@@ -235,12 +239,19 @@ class _Card extends ConsumerWidget {
 class _RequestForm extends ConsumerStatefulWidget {
   const _RequestForm({
     required this.merchantId,
+    required this.requestedBy,
     required this.cityId,
     required this.now,
     required this.pushOpen,
   });
 
   final String merchantId;
+
+  /// The signed-in owner's uid. `requested_by` references `auth.users`, so this is a
+  /// person and never the shop — those are two different uuids and only one of them is
+  /// a row the foreign key can find.
+  final String requestedBy;
+
   final String cityId;
   final DateTime now;
 
@@ -303,7 +314,7 @@ class _RequestFormState extends ConsumerState<_RequestForm> {
         // moves it when they approve; a date picker for the common case is a step.
         startAt: widget.now.add(const Duration(days: 1)),
         endAt: widget.now.add(const Duration(days: 8)),
-        requestedBy: widget.merchantId,
+        requestedBy: widget.requestedBy,
       ),
     );
   }

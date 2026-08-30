@@ -619,6 +619,11 @@ DATABASE_URL=<luqma-test session pooler> npm --prefix supabase run test:stack
   merchant inbox that bug reads as a quiet evening.
 - **A merchant asks; only an admin approves.** `PromotionRepository.request()` forces the
   status whatever the document says, and the rules refuse anything else.
+- **And an admin can put one up themselves** — `createApproved`, added 2026-08-30. The
+  screen was an approve/reject queue only, so the owner could act on what merchants asked
+  for and had no way to announce anything of their own; putting up "التوصيل مجاني
+  النهارده" meant signing into a merchant account to ask themselves for it first. The
+  `admin_promotions` policy always allowed the write — only the UI was missing.
 - **Approved is not live.** `startAt` decides that — a campaign signed off today for next
   week must not appear the moment somebody approved it.
 - A promotion with **no zones reaches the whole city.** A merchant who did not narrow
@@ -708,6 +713,20 @@ DATABASE_URL=<luqma-test session pooler> npm --prefix supabase run test:stack
   its own auth never fires. Deploy anything cron-driven with `--no-verify-jwt` and let the
   function's own secret be the gate. That is least privilege too: a purpose-built secret
   that can only trigger a drain beats sending the service-role key every minute.
+- **A merchant id is not a person, and both are uuids.** `promotions.requested_by` is
+  `references auth.users`, and MerchantApp sent the *merchant's* id — so every promotion a
+  merchant ever asked for was refused with `23503`, and the screen showed them the
+  sentence for "somebody got there first". Nothing caught it because both values are
+  uuids and every test on that path supplied a valid uid of its own instead of the app's:
+  the live test passed `customerUid`, and the widget test asserted `merchantId` and never
+  `requestedBy`. When a column references `auth.users`, the value is a *person* — assert
+  which one, not merely that it is a uuid.
+- **Never ask anybody to type a uuid.** The staff form's shop field was a free-text box
+  labelled `رقم المطعم (UUID)`, and no screen in AdminApp displays a merchant's uuid or
+  lets anyone copy one — so it could not be filled correctly and **no merchant or courier
+  account could be created at all**. It is a picker of shop names now. The same rule holds
+  for the promotions form: an id is something the app knows and a name is something the
+  owner knows, and the form asks for the second.
 - **`test_live` residue eventually breaks the suite at 1000 rows, not gradually.**
   PostgREST caps a response at `db-max-rows` (1000 by default) and `watchStaff()` asks for
   every row with no limit — so once accumulated test accounts pushed `staff` past 1098,

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:luqma_core/luqma_core.dart';
 
 import '../shell/layout.dart';
+import '../merchants/merchants_controller.dart';
 import 'staff_controller.dart';
 
 /// The platform's own accounts: admins, moderators, and the shops' owners and couriers.
@@ -175,51 +176,43 @@ class _StaffRow extends StatelessWidget {
 ///
 /// Everything here is checked twice — once for shape on the phone, once for truth on
 /// the server — because a password of three letters should not survive the trip.
-class _CreateStaffDialog extends StatefulWidget {
+class _CreateStaffDialog extends ConsumerStatefulWidget {
   const _CreateStaffDialog();
 
   @override
-  State<_CreateStaffDialog> createState() => _CreateStaffDialogState();
+  ConsumerState<_CreateStaffDialog> createState() => _CreateStaffDialogState();
 }
 
-class _CreateStaffDialogState extends State<_CreateStaffDialog> {
+class _CreateStaffDialogState extends ConsumerState<_CreateStaffDialog> {
   final _form = GlobalKey<FormState>();
   final _email = TextEditingController();
   final _password = TextEditingController();
   final _name = TextEditingController();
-  final _merchantId = TextEditingController();
-  late final ProviderContainer _container;
   String _scope = 'merchant';
   String _role = 'owner';
 
-  bool get _isMerchantScope => _scope == 'merchant';
+  /// The shop this account belongs to, chosen from the list rather than typed.
+  String? _merchantId;
 
-  @override
-  void initState() {
-    super.initState();
-    // Read at submit time through the scope's container: the dialog sits above the
-    // app's providers, not inside a ConsumerWidget of its own.
-    _container = ProviderScope.containerOf(context, listen: false);
-  }
+  bool get _isMerchantScope => _scope == 'merchant';
 
   @override
   void dispose() {
     _email.dispose();
     _password.dispose();
     _name.dispose();
-    _merchantId.dispose();
     super.dispose();
   }
 
   Future<void> _submit() async {
     if (!_form.currentState!.validate()) return;
-    final result = await _container.read(staffRepositoryProvider).createAccount(
+    final result = await ref.read(staffRepositoryProvider).createAccount(
           email: _email.text.trim(),
           password: _password.text,
           name: _name.text.trim(),
           scope: _scope,
           role: _role,
-          merchantId: _isMerchantScope ? _merchantId.text.trim() : null,
+          merchantId: _isMerchantScope ? _merchantId : null,
         );
     if (!mounted) return;
     Navigator.of(context).pop(result);
@@ -286,14 +279,14 @@ class _CreateStaffDialogState extends State<_CreateStaffDialog> {
                       ],
                 onChanged: (v) => setState(() => _role = v ?? _role),
               ),
+              // Picked by name, never typed. This was a free-text box labelled
+              // "رقم المطعم (UUID)" — and no screen in this app shows a merchant's uuid
+              // or lets anybody copy one, so there was no way to fill it correctly and
+              // no merchant or courier account could be created at all.
               if (_isMerchantScope)
-                TextFormField(
-                  key: const Key('staff.merchant-id'),
-                  controller: _merchantId,
-                  decoration:
-                      const InputDecoration(labelText: 'رقم المطعم (UUID)'),
-                  validator: (v) =>
-                      v != null && v.isNotEmpty ? null : 'الحساب محتاج رقم مطعم',
+                _MerchantPicker(
+                  selected: _merchantId,
+                  onChanged: (id) => setState(() => _merchantId = id),
                 ),
             ],
           ),
@@ -311,5 +304,52 @@ class _CreateStaffDialogState extends State<_CreateStaffDialog> {
         ),
       ],
     );
+  }
+}
+
+/// Which shop an account belongs to, chosen from the list of them.
+///
+/// A dropdown of names rather than a box for a uuid. The owner knows their shops by
+/// name — "مطعم الشاطئ" — and has no way to learn a uuid from anywhere in this app,
+/// which is what made creating a merchant or courier account impossible.
+///
+/// A failed read of the merchants leaves the field disabled with a sentence rather than
+/// an empty menu: a picker with nothing in it and no explanation reads as a shop list
+/// that is genuinely empty, and the answer to that is to go and add a shop.
+class _MerchantPicker extends ConsumerWidget {
+  const _MerchantPicker({required this.selected, required this.onChanged});
+
+  final String? selected;
+  final ValueChanged<String?> onChanged;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final merchants = ref.watch(allMerchantsProvider);
+
+    return switch (merchants) {
+      AsyncValue(hasError: true) => const InputDecorator(
+          decoration: InputDecoration(labelText: 'المطعم'),
+          child: Text('مقدرناش نجيب المطاعم. اقفل وافتح تاني.'),
+        ),
+      AsyncValue(hasValue: true, :final value?) => DropdownButtonFormField<String>(
+          key: const Key('staff.merchant'),
+          initialValue: selected,
+          isExpanded: true,
+          decoration: const InputDecoration(labelText: 'المطعم'),
+          items: [
+            for (final merchant in value)
+              DropdownMenuItem(
+                value: merchant.id,
+                child: Text(merchant.name, overflow: TextOverflow.ellipsis),
+              ),
+          ],
+          onChanged: onChanged,
+          validator: (v) => v != null && v.isNotEmpty ? null : 'اختار المطعم',
+        ),
+      _ => const InputDecorator(
+          decoration: InputDecoration(labelText: 'المطعم'),
+          child: Text('بنجيب المطاعم…'),
+        ),
+    };
   }
 }

@@ -18,6 +18,21 @@ abstract interface class PromotionRepository {
   /// offering a write that is about to be rejected.
   Future<Result<Promotion>> request(Promotion promotion);
 
+  /// The admin puts up a placement themselves, already approved.
+  ///
+  /// The other half of `request`, and the one that was missing: AdminApp could approve
+  /// and reject what merchants asked for and could not put up a banner of its own, so
+  /// the owner had no way to announce anything — free delivery today, a new kitchen —
+  /// without signing into a merchant account to ask themselves for it first.
+  ///
+  /// Approved on arrival because the admin *is* the approval. Whether it is on screen is
+  /// still `startAt`/`endAt`'s question, not this one — a banner made today for next week
+  /// must not appear the moment it is saved.
+  Future<Result<Promotion>> createApproved(
+    Promotion promotion, {
+    required String approvedBy,
+  });
+
   /// What is waiting for a decision. Live.
   Stream<List<Promotion>> watchQueue(String cityId);
 
@@ -101,6 +116,45 @@ class SupabasePromotionRepository implements PromotionRepository {
         'price': asked.price,
         'requested_by': asked.requestedBy,
         'status': asked.status.name,
+      }).select().single();
+      return _toPromotion(saved);
+    });
+  }
+
+  @override
+  Future<Result<Promotion>> createApproved(
+    Promotion promotion, {
+    required String approvedBy,
+  }) {
+    return Result.guard(() async {
+      // Approved on arrival: the admin writing it *is* the approval, and a queue entry
+      // waiting for the person who just made it is a step that means nothing. The
+      // `admin_promotions` policy is what allows the status — `merchant_requests_promotion`
+      // permits `requested` and nothing else, so this write is refused outright for
+      // anybody who is not an admin.
+      final ready = promotion.copyWith(
+        status: PromotionStatus.approved,
+        approvedBy: approvedBy,
+        rejectionReason: null,
+      );
+      final saved = await _db.from('promotions').insert({
+        'city_id': ready.cityId,
+        'merchant_id': ready.merchantId,
+        'channel': ready.channel.name,
+        'render_mode': ready.renderMode.name,
+        'title': ready.title,
+        'body': ready.body,
+        'media_id': _uuidOrNull(ready.mediaId),
+        'section_key': ready.sectionKey,
+        'category_id': _uuidOrNull(ready.categoryId),
+        'zone_ids': ready.zoneIds,
+        'start_at': ready.startAt.toUtc().toIso8601String(),
+        'end_at': ready.endAt.toUtc().toIso8601String(),
+        'priority': ready.priority,
+        'price': ready.price,
+        'requested_by': ready.requestedBy,
+        'status': ready.status.name,
+        'approved_by': approvedBy,
       }).select().single();
       return _toPromotion(saved);
     });
@@ -221,6 +275,13 @@ class FakePromotionRepository implements PromotionRepository {
 
   final _changed = StreamController<void>.broadcast();
 
+  /// Fails the *next* write only, then clears itself.
+  ///
+  /// Separate from [failure], which fails everything including the reads a screen needs
+  /// to draw at all: a form whose list never loaded cannot be filled in, so a refusal on
+  /// submit can only be tested by letting the screen load first.
+  Failure? failNext;
+
   /// Everything held right now. A widget test runs on a fake clock and cannot await one
   /// of the streams below.
   List<Promotion> get all => List.unmodifiable(_promotions.values);
@@ -252,6 +313,29 @@ class FakePromotionRepository implements PromotionRepository {
     _promotions[asked.id] = asked;
     _notify();
     return Result.ok(asked);
+  }
+
+  @override
+  Future<Result<Promotion>> createApproved(
+    Promotion promotion, {
+    required String approvedBy,
+  }) async {
+    if (failure != null) return Result.err(failure!);
+    if (failNext != null) {
+      final refusal = failNext!;
+      failNext = null;
+      return Result.err(refusal);
+    }
+
+    final ready = promotion.copyWith(
+      id: 'promo-${_promotions.length + 1}',
+      status: PromotionStatus.approved,
+      approvedBy: approvedBy,
+      rejectionReason: null,
+    );
+    _promotions[ready.id] = ready;
+    _notify();
+    return Result.ok(ready);
   }
 
   @override

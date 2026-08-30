@@ -156,6 +156,24 @@ void main() {
       expect(promotions.all.single.merchantId, 'm1');
     });
 
+    // `requested_by` is `uuid not null references auth.users`. It was being sent the
+    // *merchant's* id — a row in `merchants`, which is not a row in `auth.users` — so
+    // every request a merchant ever made was refused by the foreign key with 23503, and
+    // the screen showed them the sentence for "somebody got there first".
+    //
+    // Nothing caught it because the two ids are both uuids and every test that touched
+    // this path supplied a valid one of its own instead of the app's: the live test
+    // passes `customerUid`, and the assertion above only ever checked `merchantId`.
+    testWidgets('and it is asked for by the person, not by the shop', (tester) async {
+      await pump(tester);
+
+      await ask(tester);
+
+      expect(promotions.all.single.requestedBy, 'owner1',
+          reason: 'the signed-in uid — a merchant id is not a row in auth.users');
+      expect(promotions.all.single.requestedBy, isNot('m1'));
+    });
+
     // A boost has nothing to write. Asking for a headline would be asking for something
     // that is never shown.
     testWidgets('a boost needs no text at all', (tester) async {

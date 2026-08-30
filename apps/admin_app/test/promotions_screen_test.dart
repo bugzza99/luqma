@@ -213,4 +213,100 @@ void main() {
       expect(find.byKey(PromotionsScreen.emptyKey), findsOneWidget);
     });
   });
+
+  // The other half of the screen, and the half that did not exist: this was an
+  // approve/reject queue only, so the owner could act on what merchants asked for and
+  // could not put up a banner of their own. Announcing free delivery meant signing into
+  // a merchant account to ask themselves for it first.
+  group('putting one up', () {
+    Future<void> openForm(WidgetTester tester) async {
+      await tester.tap(find.byKey(PromotionsScreen.createKey));
+      await tester.pumpAndSettle();
+    }
+
+    Future<void> chooseMerchant(WidgetTester tester, String name) async {
+      await tester.tap(find.byKey(PromotionsScreen.formMerchantKey));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(name).last);
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('the screen offers a way to make one', (tester) async {
+      await pump(tester);
+
+      expect(find.byKey(PromotionsScreen.createKey), findsOneWidget);
+    });
+
+    testWidgets('a filled form creates it, already approved', (tester) async {
+      await pump(tester);
+      await openForm(tester);
+
+      await chooseMerchant(tester, 'مطعم الشاطئ');
+      await tester.enterText(
+          find.byKey(PromotionsScreen.formTitleKey), 'التوصيل مجاني النهارده');
+      await tester.tap(find.byKey(PromotionsScreen.formSubmitKey));
+      await tester.pumpAndSettle();
+
+      final made = promotions.all.single;
+      expect(made.title, 'التوصيل مجاني النهارده');
+      expect(made.merchantId, 'm1');
+      // Approved on arrival: the admin writing it is the approval, and a queue entry
+      // waiting for the person who just made it means nothing.
+      expect(made.status, PromotionStatus.approved);
+      expect(made.approvedBy, 'admin1');
+    });
+
+    // It does not then sit in the queue asking to be approved by whoever just approved
+    // it — the queue is for what merchants asked for.
+    testWidgets('and it does not land back in the queue', (tester) async {
+      await pump(tester);
+      await openForm(tester);
+
+      await chooseMerchant(tester, 'مطعم الشاطئ');
+      await tester.enterText(find.byKey(PromotionsScreen.formTitleKey), 'عرض');
+      await tester.tap(find.byKey(PromotionsScreen.formSubmitKey));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(PromotionsScreen.emptyKey), findsOneWidget);
+    });
+
+    testWidgets('a banner with no words never reaches the repository', (tester) async {
+      await pump(tester);
+      await openForm(tester);
+
+      await chooseMerchant(tester, 'مطعم الشاطئ');
+      await tester.tap(find.byKey(PromotionsScreen.formSubmitKey));
+      await tester.pumpAndSettle();
+
+      expect(promotions.all, isEmpty);
+    });
+
+    testWidgets('and neither does one with no shop picked', (tester) async {
+      await pump(tester);
+      await openForm(tester);
+
+      await tester.enterText(find.byKey(PromotionsScreen.formTitleKey), 'عرض');
+      await tester.tap(find.byKey(PromotionsScreen.formSubmitKey));
+      await tester.pumpAndSettle();
+
+      expect(promotions.all, isEmpty);
+    });
+
+    // Silence after a tap is indistinguishable from a broken button.
+    testWidgets('a refused create is said out loud', (tester) async {
+      await pump(tester);
+      await openForm(tester);
+
+      await chooseMerchant(tester, 'مطعم الشاطئ');
+      await tester.enterText(find.byKey(PromotionsScreen.formTitleKey), 'عرض');
+      promotions.failNext = const PermissionFailure();
+      await tester.tap(find.byKey(PromotionsScreen.formSubmitKey));
+      await tester.pumpAndSettle();
+
+      // The refusal earns its own sentence rather than a shrug: "you are not allowed"
+      // and "it did not go through" ask for completely different next moves.
+      expect(find.text('مش مسموحلك تحط إعلانات.'), findsOneWidget);
+      expect(promotions.all, isEmpty);
+    });
+  });
 }
