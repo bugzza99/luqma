@@ -146,7 +146,9 @@ void main() {
 
   group('deciding', () {
     testWidgets('approving names the admin who did it', (tester) async {
-      await pump(tester, seed: [promotion()]);
+      // Starting today, so approving asks no question about the date — that path has
+      // its own group below.
+      await pump(tester, seed: [promotion(startAt: now)]);
 
       await tester.tap(find.byKey(PromotionsScreen.approveKey('p1')));
       await tester.pumpAndSettle();
@@ -155,11 +157,15 @@ void main() {
       expect(promotions['p1']!.approvedBy, 'admin1');
     });
 
-    // Approved, not active. The campaign starts on its own date.
+    // Approved, not active. The campaign starts on its own date — and now that the
+    // admin is *asked* which date is meant, keeping it is the answer that preserves the
+    // rule.
     testWidgets('approving does not start it early', (tester) async {
       await pump(tester, seed: [promotion(startAt: DateTime(2026, 9, 10))]);
 
       await tester.tap(find.byKey(PromotionsScreen.approveKey('p1')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(PromotionsScreen.keepDateKey));
       await tester.pumpAndSettle();
 
       expect(promotions['p1']!.isLiveAt(now), isFalse);
@@ -205,7 +211,7 @@ void main() {
     });
 
     testWidgets('a decided request leaves the queue', (tester) async {
-      await pump(tester, seed: [promotion()]);
+      await pump(tester, seed: [promotion(startAt: now)]);
 
       await tester.tap(find.byKey(PromotionsScreen.approveKey('p1')));
       await tester.pumpAndSettle();
@@ -307,6 +313,78 @@ void main() {
       // and "it did not go through" ask for completely different next moves.
       expect(find.text('مش مسموحلك تحط إعلانات.'), findsOneWidget);
       expect(promotions.all, isEmpty);
+    });
+  });
+
+  // The owner approved a banner and watched nothing happen. It was correct — the request
+  // was dated tomorrow and `startAt` decides — but the code that set that date said "the
+  // admin moves it when they approve", and the admin had no way to move anything.
+  group('when a request starts later', () {
+    Future<void> approve(WidgetTester tester) async {
+      await tester.tap(find.byKey(PromotionsScreen.approveKey('p1')));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('approving one dated ahead asks which date is meant', (tester) async {
+      await pump(tester, seed: [promotion(startAt: now.add(const Duration(days: 1)))]);
+
+      await approve(tester);
+
+      expect(find.byKey(PromotionsScreen.startNowKey), findsOneWidget);
+      expect(find.byKey(PromotionsScreen.keepDateKey), findsOneWidget);
+    });
+
+    testWidgets('and starting it now makes it live immediately', (tester) async {
+      await pump(tester, seed: [promotion(startAt: now.add(const Duration(days: 1)))]);
+
+      await approve(tester);
+      await tester.tap(find.byKey(PromotionsScreen.startNowKey));
+      await tester.pumpAndSettle();
+
+      final approved = promotions.all.single;
+      expect(approved.status, PromotionStatus.approved);
+      expect(approved.isLiveAt(now), isTrue);
+    });
+
+    // A campaign shortened for the crime of being approved would be a worse bug than the
+    // one this fixes.
+    testWidgets('and it keeps the length that was asked for', (tester) async {
+      await pump(tester, seed: [
+        promotion(startAt: now.add(const Duration(days: 1))),
+      ]);
+      final asked = promotions.all.single;
+      final wanted = asked.endAt.difference(asked.startAt);
+
+      await approve(tester);
+      await tester.tap(find.byKey(PromotionsScreen.startNowKey));
+      await tester.pumpAndSettle();
+
+      final approved = promotions.all.single;
+      expect(approved.endAt.difference(approved.startAt), wanted);
+    });
+
+    // The rule stands: a campaign genuinely meant for next week must not jump the queue.
+    testWidgets('keeping the date leaves it dark until then', (tester) async {
+      await pump(tester, seed: [promotion(startAt: now.add(const Duration(days: 1)))]);
+
+      await approve(tester);
+      await tester.tap(find.byKey(PromotionsScreen.keepDateKey));
+      await tester.pumpAndSettle();
+
+      final approved = promotions.all.single;
+      expect(approved.status, PromotionStatus.approved);
+      expect(approved.isLiveAt(now), isFalse);
+    });
+
+    // One that already starts now needs no question asked.
+    testWidgets('a request that starts today is approved without a dialog',
+        (tester) async {
+      await pump(tester, seed: [promotion(startAt: now)]);
+
+      await approve(tester);
+
+      expect(find.byKey(PromotionsScreen.startNowKey), findsNothing);
+      expect(promotions.all.single.status, PromotionStatus.approved);
     });
   });
 }

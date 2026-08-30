@@ -17,6 +17,8 @@ class PromotionsScreen extends ConsumerWidget {
   static const errorKey = Key('promotions.error');
   static const reasonKey = Key('promotions.reason');
   static const confirmRejectKey = Key('promotions.confirmReject');
+  static const startNowKey = Key('promotions.startNow');
+  static const keepDateKey = Key('promotions.keepDate');
 
   static const createKey = Key('promotions.create');
   static const formMerchantKey = Key('promotions.form.merchant');
@@ -211,7 +213,7 @@ class _Request extends ConsumerWidget {
                 flex: 2,
                 child: FilledButton(
                   key: PromotionsScreen.approveKey(promotion.id),
-                  onPressed: () => _approve(ref),
+                  onPressed: () => _approve(context, ref),
                   style: FilledButton.styleFrom(
                     minimumSize: const Size.fromHeight(Sizes.minTarget),
                   ),
@@ -228,13 +230,59 @@ class _Request extends ConsumerWidget {
   static String _day(DateTime date) =>
       '${date.day}/${date.month}';
 
-  Future<void> _approve(WidgetRef ref) async {
+  Future<void> _approve(BuildContext context, WidgetRef ref) async {
     final by = ref.read(currentIdentityProvider).value?.uid;
     if (by == null) return;
 
-    // Approved, never active: the campaign starts on its own date. Making it live here
-    // would put next week's offer in front of customers today.
-    await ref.read(promotionRepositoryProvider).approve(promotion.id, approvedBy: by);
+    final now = ref.read(clockProvider)();
+
+    // A request dated in the future is approved into that future date, and the admin
+    // sees nothing happen. That is correct — `startAt` decides, and a campaign meant for
+    // next week must not jump the queue — but it is also exactly what the owner hit:
+    // they approved a banner and it stayed invisible with no way to move it.
+    //
+    // So they are asked, once, and only when it matters. A request that already starts
+    // now goes straight through without a dialog.
+    DateTime? startAt;
+    DateTime? endAt;
+    if (promotion.startAt.isAfter(now)) {
+      final startNow = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('يبدأ إمتى؟'),
+          content: Text(
+            'الطلب ده مكتوب إنه يبدأ ${_day(promotion.startAt)}. '
+            'تحب يشتغل من دلوقتي؟',
+          ),
+          actions: [
+            TextButton(
+              key: PromotionsScreen.keepDateKey,
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: Text('سيبه ${_day(promotion.startAt)}'),
+            ),
+            FilledButton(
+              key: PromotionsScreen.startNowKey,
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: const Text('من دلوقتي'),
+            ),
+          ],
+        ),
+      );
+      if (startNow == null) return;
+      if (startNow) {
+        startAt = now;
+        // The window keeps the length the merchant asked for rather than ending on the
+        // original date, which would otherwise shorten a campaign for being approved.
+        endAt = now.add(promotion.endAt.difference(promotion.startAt));
+      }
+    }
+
+    await ref.read(promotionRepositoryProvider).approve(
+          promotion.id,
+          approvedBy: by,
+          startAt: startAt,
+          endAt: endAt,
+        );
   }
 
   Future<void> _reject(BuildContext context, WidgetRef ref) async {

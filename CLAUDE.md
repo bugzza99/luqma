@@ -727,6 +727,13 @@ DATABASE_URL=<luqma-test session pooler> npm --prefix supabase run test:stack
   if the caller passes `columns:` — so a repository that adds a join to `_readColumns` and
   forgets the watch fixes `getMerchant` and leaves the *customer's home list* with no
   picture, which is the screen that mattered.
+- **An admin approving a future-dated promotion is asked which date is meant.** The
+  merchant's form asks for a week from now; a request dated ahead is approved *into* that
+  date, which is right and is also exactly what looked broken — the owner approved a
+  banner and watched nothing happen. Starting it now keeps the length the merchant asked
+  for rather than ending on the original date, which would shorten a campaign for the
+  crime of being approved. The rule itself is unchanged: keep the date and it stays dark
+  until then.
 - **A promotion that starts tomorrow is invisible today, and nothing could move it.**
   The merchant's request form set `startAt` to `now + 1 day` on the reasoning that "the
   admin moves it when they approve" — and the admin screen has no date control, so nobody
@@ -795,6 +802,15 @@ DATABASE_URL=<luqma-test session pooler> npm --prefix supabase run test:stack
   the way a phone does rather than with the service key ("can an administrator make an
   account" is a different question), so the whole thing reads as *signup is broken* in
   exactly one file while the other 132 tests pass. `tool\run_tests.ps1` passes all three.
+- **`opening_hours` had no editor anywhere, and it decides whether a shop trades.**
+  The column has existed since the first schema; no screen in any of the three apps could
+  write it. So a merchant whose hours were wrong — or empty — was shut with nothing on any
+  screen that changed it, and `BusyToggle` correctly offered nothing, because a pause is a
+  decision made two minutes ago and a schedule is not something a pause may override.
+  `HoursScreen` in MerchantApp is the editor, and the closed bar now links to it: it still
+  offers no "open now", which would silently rewrite the schedule, but it is no longer a
+  dead end. **It writes 1..7 and can never emit a 0** — see the bullet below for why that
+  matters.
 - **A weekday is 1..7 on the server, and `generate_series(0,6)` is the wrong seven.**
   `merchant_open_at` maps Sunday to 7 exactly as `DateTime.weekday` does, so a fixture
   built from `generate_series(0, 6)` covers Monday to Saturday and leaves the shop **shut

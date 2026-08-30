@@ -42,7 +42,19 @@ abstract interface class PromotionRepository {
   /// Everything one merchant asked for, whatever became of it. Live.
   Stream<List<Promotion>> watchForMerchant(String merchantId);
 
-  Future<Result<void>> approve(String promotionId, {required String approvedBy});
+  /// Signs a request off.
+  ///
+  /// [startAt] and [endAt] move the window when given. The merchant's form asks for a
+  /// week from now, and the admin is the one who knows when the slot is actually free —
+  /// the original code said "the admin moves it when they approve" and gave them no way
+  /// to, so a banner requested for a future date could only ever be approved into that
+  /// future date and the owner watched nothing happen.
+  Future<Result<void>> approve(
+    String promotionId, {
+    required String approvedBy,
+    DateTime? startAt,
+    DateTime? endAt,
+  });
 
   /// Refuses it. The reason is required: without one the merchant has nothing to fix
   /// and will ask again with the same thing.
@@ -205,14 +217,22 @@ class SupabasePromotionRepository implements PromotionRepository {
   }
 
   @override
-  Future<Result<void>> approve(String promotionId, {required String approvedBy}) {
+  Future<Result<void>> approve(
+    String promotionId, {
+    required String approvedBy,
+    DateTime? startAt,
+    DateTime? endAt,
+  }) {
     return Result.guard(
       () => _db.from('promotions').update({
         // Approved, not active. `startAt` decides when it runs — a campaign signed off
-        // today for next week must not appear the moment somebody approved it.
+        // today for next week must not appear the moment somebody approved it. What is
+        // new is that the admin can *set* that date rather than only inherit it.
         'status': PromotionStatus.approved.name,
         'approved_by': _uuidOrNull(approvedBy),
         'rejection_reason': null,
+        if (startAt != null) 'start_at': startAt.toUtc().toIso8601String(),
+        if (endAt != null) 'end_at': endAt.toUtc().toIso8601String(),
       }).eq('id', promotionId),
     );
   }
@@ -374,7 +394,12 @@ class FakePromotionRepository implements PromotionRepository {
   }
 
   @override
-  Future<Result<void>> approve(String promotionId, {required String approvedBy}) async {
+  Future<Result<void>> approve(
+    String promotionId, {
+    required String approvedBy,
+    DateTime? startAt,
+    DateTime? endAt,
+  }) async {
     if (failure != null) return Result.err(failure!);
 
     final promotion = _promotions[promotionId];
@@ -384,6 +409,8 @@ class FakePromotionRepository implements PromotionRepository {
       status: PromotionStatus.approved,
       approvedBy: approvedBy,
       rejectionReason: null,
+      startAt: startAt ?? promotion.startAt,
+      endAt: endAt ?? promotion.endAt,
     );
     _notify();
     return const Result.ok(null);

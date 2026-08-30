@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:luqma_core/luqma_core.dart';
 
+import 'hours_screen.dart';
+
 /// Whether this kitchen is taking orders, and the one control that changes it.
 ///
 /// Pausing writes a **timestamp**, never a flag. A flag produces merchants stuck closed
@@ -17,6 +19,7 @@ class BusyToggle extends ConsumerWidget {
   static const openKey = Key('busy.open');
   static const pausedKey = Key('busy.paused');
   static const closedKey = Key('busy.closed');
+  static const editHoursKey = Key('busy.editHours');
   static const blockedKey = Key('busy.blocked');
   static const pauseKey = Key('busy.pause');
   static const resumeKey = Key('busy.resume');
@@ -43,7 +46,7 @@ class BusyToggle extends ConsumerWidget {
     // offering to reopen it then would be offering something that does nothing.
     final withinHours = merchant.openingHours.any((w) => w.contains(now));
 
-    if (!withinHours && !paused) return const _Closed();
+    if (!withinHours && !paused) return _Closed(merchantId: merchantId);
     if (paused) return _Paused(merchant: merchant);
     // The last question, and the one this screen used to skip: `acceptsOrdersAt` is
     // where the whole product agrees on whether a shop can take an order, and it says
@@ -197,7 +200,9 @@ class _Paused extends ConsumerWidget {
 }
 
 class _Closed extends StatelessWidget {
-  const _Closed();
+  const _Closed({required this.merchantId});
+
+  final String merchantId;
 
   @override
   Widget build(BuildContext context) {
@@ -208,9 +213,21 @@ class _Closed extends StatelessWidget {
       background: colors.surface,
       foreground: colors.textPrimary,
       icon: Icons.schedule_rounded,
-      // No "reopen" here. The shop is outside the hours its owner set, and a button
-      // that appears to override that would either lie or overwrite the schedule.
       title: 'مقفول حسب مواعيد الشغل',
+      // Still no "open now" — the shop is outside the hours its owner set, and a button
+      // that appeared to override that would either lie or silently rewrite the schedule.
+      // What was missing is the way *to* the schedule: there was no editor anywhere, so
+      // this bar named a reason the merchant had no means of acting on and the screen
+      // was a dead end.
+      trailing: TextButton(
+        key: BusyToggle.editHoursKey,
+        onPressed: () => Navigator.of(context).push(
+          MaterialPageRoute<void>(
+            builder: (_) => HoursScreen(merchantId: merchantId),
+          ),
+        ),
+        child: const Text('المواعيد'),
+      ),
     );
   }
 }

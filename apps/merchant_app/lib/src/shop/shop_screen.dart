@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:luqma_core/luqma_core.dart';
 
+import 'hours_screen.dart';
 import 'statement_screen.dart';
 
 
@@ -25,6 +26,7 @@ class ShopScreen extends ConsumerWidget {
   static const statementKey = Key('shop.statement');
   static const walletKey = Key('shop.wallet');
   static const promotionsKey = Key('shop.promotions');
+  static const hoursKey = Key('shop.hours');
   static const noFeedbackKey = Key('shop.noFeedback');
 
   @override
@@ -77,6 +79,23 @@ class ShopScreen extends ConsumerWidget {
                 if (merchant != null) ...[
                   const SizedBox(height: Space.lg),
                   _Billing(merchant: merchant),
+                ],
+                if (staff.merchantId != null) ...[
+                  const SizedBox(height: Space.lg),
+                  // The schedule the whole product derives "can this shop take an order"
+                  // from. It had no editor anywhere, so a merchant whose hours were wrong
+                  // — or empty — was shut with nothing on any screen that changed it.
+                  _Tile(
+                    tileKey: ShopScreen.hoursKey,
+                    icon: Icons.schedule_rounded,
+                    title: 'مواعيد الشغل',
+                    subtitle: 'إمتى المطعم بيستقبل طلبات',
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => HoursScreen(merchantId: staff.merchantId!),
+                      ),
+                    ),
+                  ),
                 ],
                 const SizedBox(height: Space.lg),
                 _Tile(

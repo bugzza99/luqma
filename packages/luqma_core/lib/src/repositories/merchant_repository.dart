@@ -280,6 +280,10 @@ class FakeMerchantRepository implements MerchantRepository {
 
   final Map<String, Merchant> _merchants;
 
+  /// Everything held right now. A widget test runs on a fake clock and cannot await one
+  /// of the streams below, so a screen that *writes* a merchant is checked through this.
+  List<Merchant> get all => List.unmodifiable(_merchants.values);
+
   /// Orders already taken, per merchant id — the thing the real delete is refused by.
   final Map<String, int> _orderCounts;
 

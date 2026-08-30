@@ -25,6 +25,7 @@ void main() {
     RevenueModel revenueModel = RevenueModel.subscription,
     int revenueValue = 0,
     int walletBalance = 0,
+    List<OpeningWindow>? hours,
   }) =>
       Merchant(
         id: 'm1',
@@ -34,7 +35,7 @@ void main() {
         zoneId: 'z1',
         phone: '01000000000',
         status: status,
-        openingHours: alwaysOpen,
+        openingHours: hours ?? alwaysOpen,
         pausedUntil: pausedUntil,
         revenueModel: revenueModel,
         revenueValue: revenueValue,
@@ -211,5 +212,16 @@ void main() {
       expect(find.byKey(BusyToggle.openKey), findsOneWidget);
       expect(find.byKey(BusyToggle.blockedKey), findsNothing);
     });
+  });
+
+  // The bar named a reason the merchant had no way to act on: `opening_hours` had no
+  // editor in any of the three apps, so "مقفول حسب مواعيد الشغل" was a dead end and the
+  // shop stayed shut. It still offers no "open now" — that would rewrite the schedule
+  // behind the owner's back — but it offers the schedule.
+  testWidgets('a shop closed by its schedule can reach the schedule', (tester) async {
+    await pump(tester, seed: shop(hours: const []));
+
+    expect(find.byKey(BusyToggle.closedKey), findsOneWidget);
+    expect(find.byKey(BusyToggle.editHoursKey), findsOneWidget);
   });
 }
