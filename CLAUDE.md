@@ -684,6 +684,23 @@ DATABASE_URL=<luqma-test session pooler> npm --prefix supabase run test:stack
   `PGRST200`, and they are the two that matter most — the dish and the meal are the
   things being sold. Six hundred photographs the owner will shoot personally had nowhere
   to arrive.
+- **A data-only FCM message displays nothing by itself.** It needs the Flutter
+  background isolate to wake and render, and that isolate does not run when the app has
+  been swiped away, in battery saver, or on most OEM Android builds — so the merchant's
+  alarm arrived only while the app was already open, which is the one case needing no
+  notification. Every message carries a `notification` block now, with
+  `android.notification.channel_id`. **The alarm never came from the app drawing it** —
+  it comes from the channel, created natively at MAX importance with the sound, so a
+  system-drawn alert on `orders_critical` sounds identical. `luqmaBackgroundMessage`
+  returns early when `message.notification != null`, or the same order is drawn twice.
+- **The FCM default channel was never in any manifest**, though the merchant's Kotlin
+  said it was since Phase 4. Harmless while messages were data-only; the day Android
+  started drawing them, a channel the device has not created yet means a silent
+  "Miscellaneous" notification instead of the alarm.
+- **Who may act and who to address are different questions.** Policies read
+  `auth.jwt()`; the push triggers read `staff`. A courier with a valid token and no
+  active `staff` row passes every policy in the app and is sent nothing — which is why
+  `supabase/test/stack` had to grow staff rows it had never needed.
 - **Push was built for one message and is general.** `push_outbox`, the drain, the token
   pruning and the channels were never merchant-specific; what was missing was rows. The
   customer is told three things — accepted, out for delivery, cancelled — on the `orders`

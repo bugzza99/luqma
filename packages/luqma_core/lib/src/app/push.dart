@@ -35,6 +35,17 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 /// only ever reached from native code.
 @pragma('vm:entry-point')
 Future<void> luqmaBackgroundMessage(RemoteMessage message) async {
+  // Android already drew it.
+  //
+  // Every message carries a `notification` block now, so the system renders the alert
+  // itself on the channel the payload names — which is what makes one arrive at all when
+  // the app has been swiped away. This isolate still wakes, and if it drew as well the
+  // merchant would get the same order twice, with the alarm playing over itself.
+  //
+  // The guard is on the message rather than a flag, so a payload that genuinely carries
+  // no notification — one sent by hand, or an older row — still gets rendered here.
+  if (message.notification != null) return;
+
   await Firebase.initializeApp();
   await LuqmaPush.render(message);
 }
@@ -99,16 +110,23 @@ abstract final class LuqmaPush {
       tappedOrder.value = launch!.notificationResponse?.payload;
     }
 
-    // The message carries data only, never a `notification` block — with one, Android
-    // draws the alert itself and this app never runs, so the looping alarm on the
-    // critical channel would never play.
+    // The foreground. Android never draws a `notification` block itself while the app is
+    // on screen, so this is the one case where the app has to — and it is also the case
+    // where it can do better than the system, because it knows which screen is open.
     FirebaseMessaging.onMessage.listen(_show);
 
-    // The one that matters. A data-only message renders nothing by itself, and
-    // `onMessage` only fires in the foreground — so without this, a message arriving at a
-    // phone in a pocket with the app closed does nothing at all, which is the entire case
-    // this feature exists for.
+    // Still registered, and it is the *tap* this earns rather than the drawing.
+    // `getInitialMessage` and this handler are how the app learns which order somebody
+    // tapped; the alert itself is Android's now.
     FirebaseMessaging.onBackgroundMessage(luqmaBackgroundMessage);
+
+    // A notification tapped while the app was in the background, drawn by Android rather
+    // than by us — so it never went through `flutter_local_notifications` and its launch
+    // details know nothing about it. Without this the merchant taps the alarm, the app
+    // comes forward, and the order they were told about is not on screen.
+    FirebaseMessaging.onMessageOpenedApp.listen(_openedFrom);
+    final initial = await FirebaseMessaging.instance.getInitialMessage();
+    if (initial != null) _openedFrom(initial);
 
     return true;
   }
@@ -124,6 +142,12 @@ abstract final class LuqmaPush {
     } catch (_) {
       return null;
     }
+  }
+
+  /// Records which order a tapped notification was about.
+  static void _openedFrom(RemoteMessage message) {
+    final id = message.data['orderId'];
+    if (id is String && id.isNotEmpty) tappedOrder.value = id;
   }
 
   /// Sets the plugin up. Safe to call twice, and called again in the background isolate,

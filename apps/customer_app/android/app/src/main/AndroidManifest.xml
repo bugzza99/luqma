@@ -46,6 +46,17 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+        <!-- Where an alert lands when the payload names a channel this device has not
+             created yet. Without it Android drops the message onto a "Miscellaneous"
+             channel at default importance with no sound, which for the kitchen's alarm
+             is the same as not sending it.
+
+             The channel itself is created in MainActivity, so this only covers the gap
+             before the app has ever been opened — but naming it here is what the Kotlin
+             has always claimed and never actually had. -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_channel_id"
+            android:value="orders" />
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and

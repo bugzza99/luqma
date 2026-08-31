@@ -66,8 +66,12 @@ class MainActivity : FlutterActivity() {
     companion object {
         /**
          * Also named in AndroidManifest.xml as the FCM default channel, so a message
-         * that arrives with the app closed lands here rather than on a channel Android
-         * invents with default importance and no sound.
+         * that arrives before this activity has ever run lands here rather than on a
+         * channel Android invents with default importance and no sound.
+         *
+         * That claim was false until 2026-08-31 — the meta-data was never in the
+         * manifest — and it stopped being harmless the day messages started carrying a
+         * `notification` block, because that is when Android began drawing them itself.
          */
         const val ORDERS_CHANNEL_ID = "orders_critical"
     }

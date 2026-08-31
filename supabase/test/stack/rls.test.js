@@ -776,6 +776,143 @@ describe('popular_items', () => {
   });
 });
 
+// Who gets told what, and when.
+//
+// `push_outbox` was written for one message — an order arriving at a shop — and for four
+// phases that was the only row anything produced. A courier's phone registered its token
+// exactly as the owner's did and then sat there with nothing ever addressed to it: the
+// order arrived, the shop cooked it, and the person who had to carry it found out by
+// opening the app and looking.
+describe('who the outbox wakes', () => {
+  const placedOrder = async (deliveryBy = 'merchant') => (await q(
+    `insert into orders (city_id, customer_uid, customer_name, customer_phone, merchant_id,
+                         merchant_name, zone_id, type, items, pricing, status, delivery_by)
+     values ($1, $2, 'ع', '0100', $3, 'م', $4, 'instant', '[]'::jsonb, '{}'::jsonb,
+             'placed', $5) returning id`,
+    [edku, customer.uid, merchant, zone, deliveryBy])).rows[0].id;
+
+  /// Through the state machine, not around it.
+  ///
+  /// `guard_order_status` refuses a raw `update … set status` outright — "nobody may not
+  /// move an order from accepted to preparing" — because the actor is read from the
+  /// token and a bare connection carries none. `app.server_mode` is the same declaration
+  /// the real server functions make, and it is what the push triggers see too, so this
+  /// exercises the trigger on the transition it actually fires on.
+  const moveTo = (orderId, status) =>
+    asServer('update orders set status = $2 where id = $1', [orderId, status]);
+
+  const outboxFor = async (uid, orderId) => (await q(
+    `select title, channel from push_outbox
+      where uid = $1 and data ->> 'orderId' = $2`, [uid, orderId])).rows;
+
+  // The cast in this file carries JWT claims and, until here, no `staff` rows — because
+  // every policy reads `auth.jwt()` and none of them needs the table.
+  //
+  // The push triggers do. Who may *act* is the token's answer; who to *address* is the
+  // table's, and they are not the same question — a courier whose staff row is missing
+  // or switched off passes every policy in the app and is never sent anything, which is
+  // exactly how a rider ends up finding out about orders by opening the app and looking.
+  before(async () => {
+    for (const [person, role, scope, m] of [
+      [owner, 'owner', 'merchant', merchant],
+      [courier, 'courier', 'merchant', merchant],
+      [platformCourier, 'courier', 'platform', null],
+      [admin, 'admin', 'platform', null],
+    ]) {
+      await q(
+        'insert into staff (uid, scope, role, merchant_id) values ($1, $2, $3, $4) ' +
+        'on conflict (uid) do nothing',
+        [person.uid, scope, role, m]);
+    }
+  });
+
+  beforeEach(() => q('delete from push_outbox'));
+
+  it('the courier is told when the food starts', async () => {
+    const order = await placedOrder();
+    await moveTo(order, 'accepted');
+    await moveTo(order, 'preparing');
+
+    const rows = await outboxFor(courier.uid, order);
+    assert.equal(rows.length, 1);
+    // A rider with the phone in a pocket is the same problem the alarm was built for.
+    assert.equal(rows[0].channel, 'orders_critical');
+  });
+
+  // `accepted` is too early — the food has not been started, and a courier sent then
+  // waits in the shop.
+  it('and not merely when the shop says yes', async () => {
+    const order = await placedOrder();
+    await moveTo(order, 'accepted');
+    assert.equal((await outboxFor(courier.uid, order)).length, 0);
+  });
+
+  // Whose rider it is depends on who is delivering, and the order carries that frozen.
+  it('a platform delivery wakes the platform rider, not the shop-s own', async () => {
+    const order = await placedOrder('platform');
+    await moveTo(order, 'accepted');
+    await moveTo(order, 'preparing');
+
+    assert.equal((await outboxFor(platformCourier.uid, order)).length, 1);
+    assert.equal((await outboxFor(courier.uid, order)).length, 0);
+  });
+
+  it('and a merchant delivery wakes their own rider, not the platform-s', async () => {
+    const order = await placedOrder();
+    await moveTo(order, 'accepted');
+    await moveTo(order, 'preparing');
+
+    assert.equal((await outboxFor(courier.uid, order)).length, 1);
+    assert.equal((await outboxFor(platformCourier.uid, order)).length, 0);
+  });
+
+  // The customer hears about three transitions and no more. A phone that buzzes at every
+  // one of six steps is a phone whose owner turns notifications off, and the two that
+  // matter go with them.
+  it('the customer is told the order was accepted', async () => {
+    const order = await placedOrder();
+    await moveTo(order, 'accepted');
+    assert.equal((await outboxFor(customer.uid, order)).length, 1);
+  });
+
+  it('and when it is on the way', async () => {
+    const order = await placedOrder();
+    await moveTo(order, 'accepted');
+    await moveTo(order, 'preparing');
+    await moveTo(order, 'outForDelivery');
+
+    const titles = (await outboxFor(customer.uid, order)).map((r) => r.title);
+    assert.ok(titles.includes('الأوردر في الطريق'));
+  });
+
+  it('but never that the kitchen has started', async () => {
+    const order = await placedOrder();
+    await moveTo(order, 'accepted');
+    await moveTo(order, 'preparing');
+
+    const titles = (await outboxFor(customer.uid, order)).map((r) => r.title);
+    assert.deepEqual(titles, ['اتقبل طلبك']);
+  });
+
+  it('the customer is on the quiet channel, never the alarm', async () => {
+    const order = await placedOrder();
+    await moveTo(order, 'accepted');
+    const rows = await outboxFor(customer.uid, order);
+    assert.equal(rows[0].channel, 'orders');
+  });
+
+  // An order reaching `needsAttention` means the merchant's own alarm rang in their
+  // kitchen and was missed. There is nobody after the admin.
+  it('the admin hears about an order nobody answered', async () => {
+    const order = await placedOrder();
+    await moveTo(order, 'needsAttention');
+
+    const rows = await outboxFor(admin.uid, order);
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].channel, 'orders_critical');
+  });
+});
+
 describe('who can read the staff list', () => {
   // `belongs_to_merchant` is true for an owner *and* for their courier — they carry the
   // same merchant. It is the distinction the first audit found in the order rules and
