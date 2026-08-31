@@ -94,7 +94,7 @@ abstract class Promotion with _$Promotion {
     /// It is null both when there is no picture and when the one there is has not been
     /// approved yet — an unapproved image must never reach a customer's home screen,
     /// and that rule belongs here rather than in whichever screen happens to draw it.
-    @JsonKey(includeToJson: false) String? imageUrl,
+    String? imageUrl,
 
     /// Which `adSlot` section this belongs in, or null for any of them.
     String? sectionKey,

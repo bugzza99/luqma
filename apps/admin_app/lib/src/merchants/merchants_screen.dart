@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:luqma_core/luqma_core.dart';
@@ -18,6 +20,7 @@ class MerchantsScreen extends ConsumerWidget {
   static const addKey = Key('merchants.add');
   static const emptyKey = Key('merchants.empty');
   static const detailKey = Key('merchants.detail');
+  static const identityKey = Key('merchants.identity');
   static const billingKey = Key('merchants.billing');
   static const approveKey = Key('merchants.approve');
   static const suspendKey = Key('merchants.suspend');
@@ -251,6 +254,16 @@ class _Detail extends ConsumerWidget {
               ),
         actions: [
           IconButton(
+            key: MerchantsScreen.identityKey,
+            tooltip: 'اللوجو والغلاف والوصف',
+            icon: Icon(Icons.badge_outlined, color: colors.onBrand),
+            onPressed: () => showModalBottomSheet<void>(
+              context: context,
+              isScrollControlled: true,
+              builder: (_) => MerchantIdentitySheet(merchant: merchant),
+            ),
+          ),
+          IconButton(
             key: MerchantsScreen.billingKey,
             tooltip: 'الحساب والاشتراك',
             icon: Icon(Icons.receipt_long_outlined, color: colors.onBrand),
@@ -476,6 +489,194 @@ class _NewMerchantDialogState extends State<_NewMerchantDialog> {
           child: const Text('احفظ'),
         ),
       ],
+    );
+  }
+}
+
+/// The shop's own face: its mark, its cover, and the line under its name.
+///
+/// Here as well as in MerchantApp because the owner onboards every shop personally —
+/// they type the menus and shoot the photographs — so the person who will actually fill
+/// these in for the first fifteen merchants is sitting in AdminApp, not on the
+/// merchant's phone.
+///
+/// A sheet rather than fields on the detail panel: that screen is the menu editor, which
+/// is what it is open for, and three controls set once each should not take space from
+/// six hundred menu items entered over a fortnight.
+class MerchantIdentitySheet extends ConsumerStatefulWidget {
+  const MerchantIdentitySheet({super.key, required this.merchant});
+
+  final Merchant merchant;
+
+  static const logoKey = Key('merchant.identity.logo');
+  static const coverKey = Key('merchant.identity.cover');
+  static const descriptionKey = Key('merchant.identity.description');
+  static const saveKey = Key('merchant.identity.save');
+
+  @override
+  ConsumerState<MerchantIdentitySheet> createState() =>
+      _MerchantIdentitySheetState();
+}
+
+class _MerchantIdentitySheetState extends ConsumerState<MerchantIdentitySheet> {
+  late final _description =
+      TextEditingController(text: widget.merchant.description ?? '');
+
+  late String? _logoId = widget.merchant.logoMediaId;
+  late String? _coverId = widget.merchant.coverMediaId;
+  String? _logoUrl;
+  String? _coverUrl;
+  bool _saving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_loadPictures());
+  }
+
+  @override
+  void dispose() {
+    _description.dispose();
+    super.dispose();
+  }
+
+  /// The row carries ids; the picker needs addresses.
+  ///
+  /// Nothing is read when there is nothing to read: a shop added a minute ago has neither
+  /// picture, and resolving two ids that do not exist is two requests for nothing.
+  Future<void> _loadPictures() async {
+    final wanted = [
+      for (final (id, isLogo) in [(_coverId, false), (_logoId, true)])
+        if (id != null && id.isNotEmpty) (id, isLogo),
+    ];
+    if (wanted.isEmpty) return;
+
+    final media = ref.read(mediaRepositoryProvider);
+    for (final (id, isLogo) in wanted) {
+      final result = await media.get(id);
+      if (!mounted) return;
+      setState(() {
+        if (isLogo) {
+          _logoUrl = result.valueOrNull?.url;
+        } else {
+          _coverUrl = result.valueOrNull?.url;
+        }
+      });
+    }
+  }
+
+  Future<void> _save() async {
+    setState(() => _saving = true);
+    final typed = _description.text.trim();
+
+    // One write for all three. Three separate saves is three chances for the second to
+    // fail after the first landed, leaving a shop with a new logo and the old description
+    // and nothing on screen saying which half went through.
+    final result = await ref.read(merchantRepositoryProvider).saveMerchant(
+          widget.merchant.copyWith(
+            logoMediaId: _logoId,
+            coverMediaId: _coverId,
+            description: typed.isEmpty ? null : typed,
+          ),
+        );
+    if (!mounted) return;
+    setState(() => _saving = false);
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(switch (result) {
+          Ok() => 'اتحفظ.',
+          Err(:final failure) => switch (failure) {
+              OfflineFailure() => 'مفيش نت — جرّب تاني.',
+              PermissionFailure() => 'مش مسموحلك تعدّل المطعم ده.',
+              _ => 'مقدرناش نحفظ. جرّب تاني.',
+            },
+        }),
+      ),
+    );
+    if (result is Ok) Navigator.of(context).pop();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = theme.luqma;
+
+    return Padding(
+      padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
+      child: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(Space.gutter),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(widget.merchant.name, style: theme.textTheme.titleLarge),
+                Text(
+                  // An admin's upload arrives approved — `admin_media` is `for all` and
+                  // policies are OR'd — so unlike the merchant's own upload there is no
+                  // wait, and saying so stops somebody re-uploading to "fix" it.
+                  'صورك بتظهر على طول من غير مراجعة.',
+                  style: LuqmaType.caption.copyWith(color: colors.textSecondary),
+                ),
+                const SizedBox(height: Space.lg),
+                Text('لوجو المطعم', style: theme.textTheme.titleSmall),
+                const SizedBox(height: Space.sm),
+                MediaPicker(
+                  key: MerchantIdentitySheet.logoKey,
+                  kind: MediaKind.merchantLogo,
+                  url: _logoUrl,
+                  name: widget.merchant.name,
+                  ownerId: widget.merchant.id,
+                  height: 96,
+                  onUploaded: (media) => setState(() {
+                    _logoId = media.id;
+                    _logoUrl = media.url;
+                  }),
+                ),
+                const SizedBox(height: Space.lg),
+                Text('صورة الغلاف', style: theme.textTheme.titleSmall),
+                const SizedBox(height: Space.sm),
+                MediaPicker(
+                  key: MerchantIdentitySheet.coverKey,
+                  kind: MediaKind.merchantCover,
+                  url: _coverUrl,
+                  name: widget.merchant.name,
+                  ownerId: widget.merchant.id,
+                  height: 120,
+                  onUploaded: (media) => setState(() {
+                    _coverId = media.id;
+                    _coverUrl = media.url;
+                  }),
+                ),
+                const SizedBox(height: Space.lg),
+                TextField(
+                  key: MerchantIdentitySheet.descriptionKey,
+                  controller: _description,
+                  maxLength: 120,
+                  maxLines: 2,
+                  decoration: const InputDecoration(
+                    labelText: 'وصف قصير',
+                    hintText: 'مشويات وحلويات شرقية',
+                    helperText: 'بيظهر تحت اسم المطعم في الصفحة الرئيسية.',
+                  ),
+                ),
+                const SizedBox(height: Space.md),
+                FilledButton(
+                  key: MerchantIdentitySheet.saveKey,
+                  onPressed: _saving ? null : _save,
+                  style: FilledButton.styleFrom(
+                    minimumSize: const Size.fromHeight(Sizes.minTarget),
+                  ),
+                  child: Text(_saving ? 'بنحفظ…' : 'احفظ'),
+                ),
+                const SizedBox(height: Space.sm),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

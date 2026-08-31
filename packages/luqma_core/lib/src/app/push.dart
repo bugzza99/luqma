@@ -5,15 +5,22 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
-/// The merchant's phone ringing when an order arrives.
+/// A phone ringing, in whichever of the three apps is holding it.
 ///
-/// The one notification this business genuinely depends on. Everything else in the
-/// product degrades when it fails; this one fails as an order nobody cooked.
+/// It began as the merchant's alarm — the one notification this business genuinely
+/// depends on, since everything else degrades when it fails and that one fails as an
+/// order nobody cooked. Nothing about the transport was ever merchant-specific though:
+/// the channel, the token registration and the pruning are the same three problems for a
+/// customer being told their food left the kitchen and for an admin being told nobody
+/// answered an order.
 ///
-/// This is the only file in the app that knows Firebase exists. The backend is Supabase —
-/// Messaging is the single Google product left, because Supabase has no push transport,
-/// and the Android channel and the looping alarm have been sitting here since Phase 4
-/// waiting for something to send them a message.
+/// So it lives here, and each app supplies the one thing that genuinely differs — which
+/// Android channel its alerts belong on, created natively in that app's MainActivity
+/// before Flutter starts.
+///
+/// This is the only file in the workspace that knows Firebase exists. The backend is
+/// Supabase; Messaging is the single Google product left, because Supabase has no push
+/// transport of its own.
 ///
 /// Everything here is inert without `google-services.json`: [start] returns quietly, so a
 /// developer without the file gets an app that runs rather than an app that crashes on
@@ -37,7 +44,15 @@ abstract final class LuqmaPush {
 
   /// The channel created natively in MainActivity, at max importance with the alarm
   /// sound. Named here so the payload and the channel cannot drift apart.
+  ///
+  /// Not every app has it. A customer's phone is told their food is on the way, and
+  /// waking somebody with a looping alarm to say so is how they turn the app's
+  /// notifications off — taking the two messages that matter with them. The server picks
+  /// the channel per message; this is the fallback when it names none.
   static const ordersChannel = 'orders_critical';
+
+  /// The ordinary channel: a sound, once, and no bypassing Do Not Disturb.
+  static const quietChannel = 'orders';
 
   static final _local = FlutterLocalNotificationsPlugin();
 
@@ -51,7 +66,7 @@ abstract final class LuqmaPush {
   /// Starts Messaging and asks for permission.
   ///
   /// It deliberately does **not** register a token. `users.fcm_tokens` is written by the
-  /// signed-in account under RLS, and at launch nobody is signed in — a merchant who
+  /// signed-in account under RLS, and at launch nobody is signed in — somebody who
   /// installs the app, opens it and then signs in would have had registration run and be
   /// refused, silently. `keepPushTokenRegistered` follows the session instead.
   ///
@@ -62,21 +77,23 @@ abstract final class LuqmaPush {
       await Firebase.initializeApp();
     } catch (error) {
       // No google-services.json, or a build that never registered. Said once, loudly
-      // enough to find in a log, and then out of the way.
+      // enough to find in a log, and then out of the way. This is a normal state for a
+      // developer's machine and for any app whose config has not been added yet — the
+      // rest of the app works without it.
       debugPrint('Push is off: Firebase is not configured in this build ($error)');
       return false;
     }
 
     final messaging = FirebaseMessaging.instance;
-    // Android 13 and up will not show a notification without this, and the merchant
-    // would never know why nothing rang.
+    // Android 13 and up will not show a notification without this, and nobody would ever
+    // learn why nothing rang.
     await messaging.requestPermission(alert: true, sound: true, badge: true);
 
     await _initLocal();
 
     // A notification tapped while the app was dead is waiting here at launch. Without
-    // this the merchant taps the alarm, the app opens on whatever it opened on last, and
-    // the order they were told about is not on the screen.
+    // this somebody taps the alert, the app opens on whatever it opened on last, and the
+    // order they were told about is not on the screen.
     final launch = await _local.getNotificationAppLaunchDetails();
     if (launch?.didNotificationLaunchApp ?? false) {
       tappedOrder.value = launch!.notificationResponse?.payload;
@@ -88,9 +105,9 @@ abstract final class LuqmaPush {
     FirebaseMessaging.onMessage.listen(_show);
 
     // The one that matters. A data-only message renders nothing by itself, and
-    // `onMessage` only fires in the foreground — so without this, an order arriving at a
-    // phone in a merchant's pocket, with the app closed, does nothing at all. Which is
-    // the entire case this feature exists for.
+    // `onMessage` only fires in the foreground — so without this, a message arriving at a
+    // phone in a pocket with the app closed does nothing at all, which is the entire case
+    // this feature exists for.
     FirebaseMessaging.onBackgroundMessage(luqmaBackgroundMessage);
 
     return true;
@@ -99,8 +116,8 @@ abstract final class LuqmaPush {
   /// This device's token, or null when Firebase is not configured here.
   ///
   /// Asked for on every sign-in rather than cached: Android reissues it after a
-  /// reinstall, a restore, or a long silence, and a stale one is a merchant who has gone
-  /// quiet with nothing saying so.
+  /// reinstall, a restore, or a long silence, and a stale one is a phone that has gone
+  /// quiet with nothing anywhere saying so.
   static Future<String?> token() async {
     try {
       return await FirebaseMessaging.instance.getToken();
@@ -138,12 +155,19 @@ abstract final class LuqmaPush {
       NotificationDetails(
         android: AndroidNotificationDetails(
           channel,
-          'أوردرات',
+          channel == ordersChannel ? 'أوردرات' : 'تنبيهات',
           importance: Importance.max,
           priority: Priority.high,
           // The channel already carries the sound and the vibration; setting them here
           // as well is how two definitions start disagreeing.
-          category: AndroidNotificationCategory.call,
+          //
+          // The full-screen intent and the call category are the alarm's, and only the
+          // alarm's: they take over the lock screen, which is right for a kitchen that
+          // has to answer in ninety seconds and wrong for telling a customer their food
+          // has left the shop.
+          category: channel == ordersChannel
+              ? AndroidNotificationCategory.call
+              : AndroidNotificationCategory.status,
           fullScreenIntent: channel == ordersChannel,
         ),
       ),

@@ -1,5 +1,5 @@
 import 'package:customer_app/src/home/sections/category_chips_section.dart';
-import 'package:customer_app/src/home/sections/merchant_card.dart';
+import 'package:customer_app/src/home/sections/merchant_tile.dart';
 import 'package:customer_app/src/home/sections/merchant_list_section.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -17,7 +17,10 @@ import 'package:luqma_core/luqma_core.dart';
 /// the two sections: it renders both, the way the home does, and presses one.
 void main() {
   final openAllWeek = [
-    for (var d = 0; d < 7; d++)
+    // 1..7, not 0..6. `DateTime.weekday` is Monday 1 through Sunday 7 and never 0, so
+    // the obvious range covers Monday to Saturday and leaves every shop in the fixture
+    // shut one day in seven — six runs green, and the seventh reads as a flake.
+    for (var d = 1; d <= 7; d++)
       OpeningWindow(weekday: d, openMinute: 0, closeMinute: 1439),
   ];
 
@@ -108,7 +111,7 @@ void main() {
   testWidgets('everything shows until a circle is pressed', (tester) async {
     await pump(tester);
 
-    expect(find.byType(MerchantCard), findsNWidgets(2));
+    expect(find.byType(MerchantTile), findsNWidgets(2));
   });
 
   testWidgets('pressing one narrows the list', (tester) async {
@@ -117,7 +120,7 @@ void main() {
     await tester.tap(find.text('مشويات'));
     await tester.pumpAndSettle();
 
-    expect(find.byType(MerchantCard), findsOneWidget);
+    expect(find.byType(MerchantTile), findsOneWidget);
     expect(find.text('مطعم البحر'), findsOneWidget);
   });
 
@@ -131,7 +134,7 @@ void main() {
     await tester.tap(find.text('مشويات'));
     await tester.pumpAndSettle();
 
-    expect(find.byType(MerchantCard), findsNWidgets(2));
+    expect(find.byType(MerchantTile), findsNWidgets(2));
   });
 
   // Empty and "no filter" are different answers. Collapsing them would show the whole
@@ -142,6 +145,6 @@ void main() {
     await tester.tap(find.text('أسماك'));
     await tester.pumpAndSettle();
 
-    expect(find.byType(MerchantCard), findsNothing);
+    expect(find.byType(MerchantTile), findsNothing);
   });
 }

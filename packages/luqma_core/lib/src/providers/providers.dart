@@ -35,6 +35,7 @@ import '../repositories/menu_repository.dart';
 import '../repositories/merchant_order_repository.dart';
 import '../repositories/merchant_repository.dart';
 import '../repositories/order_repository.dart';
+import '../repositories/popular_items_repository.dart';
 import '../repositories/profile_repository.dart';
 import '../repositories/promotion_repository.dart';
 import '../repositories/push_token_repository.dart';
@@ -100,6 +101,23 @@ Future<List<CommissionPayment>> commissionPayments(Ref ref, String merchantId) a
 @riverpod
 Future<SettlementSummary> settlementSummary(Ref ref, String merchantId) async =>
     SettlementSummary.of(await ref.watch(merchantSettlementsProvider(merchantId).future));
+
+@Riverpod(keepAlive: true)
+PopularItemsRepository popularItemsRepository(Ref ref) =>
+    SupabasePopularItemsRepository(ref.watch(supabaseProvider));
+
+/// The city's most-ordered dishes, for the home shelf.
+///
+/// Auto-disposed: it is a snapshot of what has been delivered, it changes as slowly as
+/// people eat, and holding it for the session would mean a customer who ordered an hour
+/// ago still sees the shelf they saw before.
+@riverpod
+Future<List<MenuItem>> popularItems(Ref ref) async {
+  final result = await ref
+      .watch(popularItemsRepositoryProvider)
+      .forCity(ref.watch(currentCityProvider));
+  return result.valueOrThrow;
+}
 
 @Riverpod(keepAlive: true)
 SearchRepository searchRepository(Ref ref) =>

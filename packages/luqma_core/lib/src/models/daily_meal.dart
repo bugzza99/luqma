@@ -50,6 +50,12 @@ abstract class DailyMeal with _$DailyMeal {
     String? description,
     String? mediaId,
 
+    /// The approved picture's address, resolved by the query that read this meal.
+    ///
+    /// A cook's photograph of today's food is the whole pitch for a home kitchen, and
+    /// until the query embedded it every meal in أكل بيتي drew a tinted placeholder.
+    String? imageUrl,
+
     /// Piastres.
     required int price,
 

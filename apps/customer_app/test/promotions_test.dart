@@ -1,5 +1,6 @@
 import 'package:customer_app/src/home/home_screen.dart';
 import 'package:customer_app/src/home/sections/ad_slot_section.dart';
+import 'package:customer_app/src/home/sections/merchant_tile.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -277,6 +278,16 @@ void main() {
   });
 
   group('a boost', () {
+    /// The shops in the order the section drew them.
+    ///
+    /// Read from the tree rather than measured in pixels. The list is a two-column grid
+    /// now, so the lifted merchant and the one it overtook share a row and share a `dy` —
+    /// and a boost is about position in a list, which is what this asks.
+    List<String> shown(WidgetTester tester) => tester
+        .widgetList<MerchantTile>(find.byType(MerchantTile))
+        .map((tile) => tile.merchant.name)
+        .toList();
+
     testWidgets('lifts the merchant who paid for it', (tester) async {
       await pump(
         tester,
@@ -287,9 +298,7 @@ void main() {
         ],
       );
 
-      final boosted = tester.getTopLeft(find.text('مطعم ب')).dy;
-      final other = tester.getTopLeft(find.text('مطعم أ')).dy;
-      expect(boosted, lessThan(other));
+      expect(shown(tester), ['مطعم ب', 'مطعم أ']);
     });
 
     // A boost is a lift, not a badge. Telling customers which merchant paid would make
@@ -324,9 +333,7 @@ void main() {
         ],
       );
 
-      final first = tester.getTopLeft(find.text('مطعم أ')).dy;
-      final second = tester.getTopLeft(find.text('مطعم ب')).dy;
-      expect(first, lessThan(second));
+      expect(shown(tester), ['مطعم أ', 'مطعم ب']);
     });
   });
 

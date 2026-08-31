@@ -2,31 +2,34 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:luqma_core/luqma_core.dart';
 
+import '../see_all_screen.dart';
 import '../selected_cuisine.dart';
-import 'merchant_card.dart';
+import 'merchant_tile.dart';
 
 import 'section_header.dart';
 
 /// A list of merchants, ordered by whatever the section asked for.
 ///
-/// One widget behind three section types — `merchantList`, `mostOrdered`, `topRated` —
-/// because they differ only in sort order. Three near-identical widgets would be three
-/// places to fix the same card.
+/// One widget behind two section types — `merchantList` and `topRated` — because they
+/// differ only in sort order. `mostOrdered` used to be the third, and it is not a
+/// merchant list at all: what a customer wants under "the most ordered" is food they can
+/// tap. It is [PopularItemsSection] now.
+///
+/// Two across rather than one. A full-width card gives each shop a 16:9 photograph and
+/// most of the fold, so the home showed two shops before the screen ran out — which on a
+/// list of forty is a list nobody reaches the end of.
 class MerchantListSection extends ConsumerWidget {
   const MerchantListSection({
     super.key,
     required this.section,
-    this.mostOrdered = false,
     this.topRated = false,
   });
 
   final HomeSection section;
-  final bool mostOrdered;
   final bool topRated;
 
   String get _title {
     if (section.titleAr.isNotEmpty) return section.titleAr;
-    if (mostOrdered) return 'الأكتر طلباً';
     if (topRated) return 'الأعلى تقييماً';
     return 'كل المطاعم';
   }
@@ -49,31 +52,55 @@ class MerchantListSection extends ConsumerWidget {
       builder: (context, value) => Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            SectionHeader(title: _title),
+            SectionHeader(
+              title: _title,
+              onSeeAll: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) =>
+                      SeeAllScreen(title: _title, showing: SeeAll.merchants),
+                ),
+              ),
+            ),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: Space.gutter),
-              child: Column(
-                children: [
-                  // Indexed so the cards arrive in order rather than all at once. The
-                  // list is the first thing a customer sees, and `Motion.staggerMax`
-                  // caps it so a long one still lands as an arrival, not a wait.
-                  for (final (i, merchant) in _sorted(
-                    _filtered(value, inCuisine),
-                    boosted,
-                  ).indexed) ...[
-                    LuqmaEntrance(
-                      index: i,
-                      child: MerchantCard(merchant: merchant),
-                    ),
-                    const SizedBox(height: Space.sm),
-                  ],
-                ],
+              // `shrinkWrap` with the scroll off: this grid sits inside the home's own
+              // scroll view, and a nested scrollable would trap the gesture — a drag
+              // starting on a shop would move the grid a pixel instead of the page.
+              child: GridView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                padding: EdgeInsets.zero,
+                gridDelegate:
+                    const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 2,
+                  mainAxisSpacing: Space.sm,
+                  crossAxisSpacing: Space.sm,
+                  childAspectRatio: 1.55,
+                ),
+                itemCount: _shown(value, inCuisine, boosted).length,
+                itemBuilder: (context, i) => LuqmaEntrance(
+                  // Indexed so the tiles arrive in order rather than all at once.
+                  // `Motion.staggerMax` caps it, so a long list still lands as an
+                  // arrival rather than a wait.
+                  index: i,
+                  child: MerchantTile(
+                    merchant: _shown(value, inCuisine, boosted)[i],
+                  ),
+                ),
               ),
             ),
           ],
         )
     );
   }
+
+  /// What this section actually draws: filtered, sorted, boosted.
+  List<Merchant> _shown(
+    List<Merchant> all,
+    Set<String>? inCuisine,
+    Set<String> boosted,
+  ) =>
+      _sorted(_filtered(all, inCuisine), boosted);
 
   /// Narrowed to the pressed cuisine, if one is pressed.
   List<Merchant> _filtered(List<Merchant> merchants, Set<String>? inCuisine) =>
@@ -85,9 +112,6 @@ class MerchantListSection extends ConsumerWidget {
     final list = [...merchants];
     if (topRated) {
       list.sort((a, b) => b.ratingAvg.compareTo(a.ratingAvg));
-    } else if (mostOrdered) {
-      // Standing in for an order count, which arrives with the first real orders.
-      list.sort((a, b) => b.ratingCount.compareTo(a.ratingCount));
     }
     // Applied last, on top of whatever order this section asked for. A boost lifts; it
     // does not reshuffle — a merchant who bought nothing finds the list as they expect.
@@ -111,8 +135,8 @@ class _Skeleton extends StatelessWidget {
         children: [
           for (var i = 0; i < 3; i++) ...[
             Container(
-              // A card is a 16:9 picture plus two lines; the skeleton matches it.
-              height: 230,
+              // A row of two tiles, at the height the grid gives them.
+              height: 116,
               decoration: BoxDecoration(
                 color: colors.surface,
                 borderRadius: Radii.cardAll,

@@ -288,6 +288,70 @@ void main() {
       expect(orders.ratings.single['stars'], 4);
     });
 
+
+    // One number for a whole order cannot say the grill was good and the rice was cold —
+    // and that second half is what another customer scrolling the menu needs.
+    testWidgets('a dish can be rated on its own', (tester) async {
+      await pump(
+        tester,
+        const OrderScreen(orderId: 'o1'),
+        seed: [order(status: OrderStatus.delivered)],
+      );
+
+      await reveal(tester, find.byKey(OrderScreen.starKey(4)));
+      await tester.tap(find.byKey(OrderScreen.starKey(4)));
+      await tester.pumpAndSettle();
+
+      await reveal(tester, find.byKey(OrderScreen.itemStarKey('i1', 5)));
+      await tester.tap(find.byKey(OrderScreen.itemStarKey('i1', 5)));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(OrderScreen.sendRatingKey));
+      await tester.pumpAndSettle();
+
+      expect(orders.ratings.single['items'], {'i1': 5});
+    });
+
+    // Silence, not a zero: a dish nobody commented on must not have its average dragged
+    // down for not being mentioned.
+    testWidgets('a dish left alone is not rated at all', (tester) async {
+      await pump(
+        tester,
+        const OrderScreen(orderId: 'o1'),
+        seed: [order(status: OrderStatus.delivered)],
+      );
+
+      await reveal(tester, find.byKey(OrderScreen.starKey(4)));
+      await tester.tap(find.byKey(OrderScreen.starKey(4)));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(OrderScreen.sendRatingKey));
+      await tester.pumpAndSettle();
+
+      expect(orders.ratings.single['items'], isEmpty);
+    });
+
+    // Somebody who pressed a star by accident needs a way back to having said nothing.
+    testWidgets('pressing the same star again clears it', (tester) async {
+      await pump(
+        tester,
+        const OrderScreen(orderId: 'o1'),
+        seed: [order(status: OrderStatus.delivered)],
+      );
+
+      await reveal(tester, find.byKey(OrderScreen.starKey(4)));
+      await tester.tap(find.byKey(OrderScreen.starKey(4)));
+      await tester.pumpAndSettle();
+
+      await reveal(tester, find.byKey(OrderScreen.itemStarKey('i1', 3)));
+      await tester.tap(find.byKey(OrderScreen.itemStarKey('i1', 3)));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(OrderScreen.itemStarKey('i1', 3)));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(OrderScreen.sendRatingKey));
+      await tester.pumpAndSettle();
+
+      expect(orders.ratings.single['items'], isEmpty);
+    });
+
     // A rating with no stars is not a rating.
     testWidgets('cannot be sent without stars', (tester) async {
       await pump(

@@ -114,7 +114,10 @@ void main() {
 
     // Straight through the real handler: the picker itself needs a file, and what is
     // under test is what the screen does with the upload rather than the picking.
-    final picker = tester.widget<MediaPicker>(find.byType(MediaPicker));
+    //
+    // By key, not by type: the identity card carries two pickers now — the cover and the
+    // logo — and `find.byType` on its own picks between them by luck.
+    final picker = tester.widget<MediaPicker>(find.byKey(const Key('shop.cover')));
     picker.onUploaded(const Media(
       id: 'md1',
       kind: MediaKind.merchantCover,

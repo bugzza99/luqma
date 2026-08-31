@@ -75,6 +75,13 @@ abstract class Merchant with _$Merchant {
     required String zoneId,
     required String phone,
     @Default(MerchantStatus.pending) MerchantStatus status,
+
+    /// One line the shop writes about itself, shown on its card.
+    ///
+    /// Bounded at 120 characters in the database because the card is not: longer prose
+    /// does not overflow the box, it truncates silently, and whoever wrote it never
+    /// learns which half was thrown away.
+    String? description,
     @Default(<OpeningWindow>[]) List<OpeningWindow> openingHours,
 
     /// Set from MerchantApp when a rush hits. A timestamp rather than a flag, so it

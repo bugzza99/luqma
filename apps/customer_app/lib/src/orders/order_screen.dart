@@ -25,6 +25,8 @@ class OrderScreen extends ConsumerWidget {
 
   static Key stepKey(OrderStatus status) => Key('order.step.${status.name}');
   static Key starKey(int stars) => Key('order.star.$stars');
+  static Key itemStarKey(String itemId, int stars) =>
+      Key('order.itemStar.$itemId.$stars');
 
   /// The path an order walks, in order. `needsAttention` and `cancelled` are not steps
   /// on it — they are the two ways it stops — so they are shown as their own state
@@ -456,6 +458,12 @@ class _RatingCardState extends ConsumerState<_RatingCard> {
   int _stars = 0;
   bool _sent = false;
 
+  /// Stars per dish, by `menu_items.id`. Absent means not rated.
+  ///
+  /// A dish left out is silence rather than a zero: writing a zero for food somebody
+  /// simply did not comment on would drag its average down for not being mentioned.
+  final _itemStars = <String, int>{};
+
   @override
   void dispose() {
     _comment.dispose();
@@ -469,6 +477,7 @@ class _RatingCardState extends ConsumerState<_RatingCard> {
           merchantId: widget.order.merchantId,
           stars: _stars,
           comment: _comment.text.trim(),
+          items: _itemStars,
         );
     if (mounted) setState(() => _sent = true);
   }
@@ -520,6 +529,66 @@ class _RatingCardState extends ConsumerState<_RatingCard> {
                       ),
                   ],
                 ),
+                // And the food itself, dish by dish.
+                //
+                // One number for a whole order cannot say that the grill was good and the
+                // rice was cold — and "the rice was cold" is the thing another customer
+                // scrolling the menu actually needs. Optional throughout: somebody who
+                // rates the shop and stops has rated the shop.
+                if (widget.order.items.isNotEmpty) ...[
+                  const SizedBox(height: Space.md),
+                  Text(
+                    'وكل صنف؟ (اختياري)',
+                    style: theme.textTheme.titleSmall
+                        ?.copyWith(color: colors.textSecondary),
+                  ),
+                  for (final line in widget.order.items)
+                    Padding(
+                      padding: const EdgeInsets.only(top: Space.xs),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              line.name,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: theme.textTheme.bodyMedium,
+                            ),
+                          ),
+                          for (var i = 1; i <= 5; i++)
+                            IconButton(
+                              key: OrderScreen.itemStarKey(line.itemId, i),
+                              tooltip: '${line.name}: $i من 5',
+                              onPressed: () => setState(() {
+                                // Tapping the star already chosen clears it: a customer
+                                // who pressed one by accident otherwise has no way back
+                                // to having said nothing.
+                                if (_itemStars[line.itemId] == i) {
+                                  _itemStars.remove(line.itemId);
+                                } else {
+                                  _itemStars[line.itemId] = i;
+                                }
+                              }),
+                              visualDensity: VisualDensity.compact,
+                              padding: EdgeInsets.zero,
+                              constraints: const BoxConstraints(
+                                minWidth: Sizes.minTarget - 12,
+                                minHeight: Sizes.minTarget - 12,
+                              ),
+                              icon: Icon(
+                                i <= (_itemStars[line.itemId] ?? 0)
+                                    ? Icons.star_rounded
+                                    : Icons.star_border_rounded,
+                                color: i <= (_itemStars[line.itemId] ?? 0)
+                                    ? colors.accent
+                                    : colors.border,
+                                size: Sizes.iconSm,
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                ],
                 const SizedBox(height: Space.sm),
                 TextField(
                   controller: _comment,

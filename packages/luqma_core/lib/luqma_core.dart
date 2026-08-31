@@ -6,6 +6,7 @@ library;
 
 export 'src/app/external_links.dart';
 export 'src/app/supabase_options.dart';
+export 'src/app/push.dart';
 export 'src/app/telemetry.dart';
 export 'src/auth/auth_service.dart';
 export 'src/auth/staff_identity.dart';
@@ -46,6 +47,7 @@ export 'src/repositories/media_repository.dart';
 export 'src/repositories/menu_repository.dart';
 export 'src/repositories/merchant_order_repository.dart';
 export 'src/repositories/order_repository.dart';
+export 'src/repositories/popular_items_repository.dart';
 export 'src/repositories/profile_repository.dart';
 export 'src/repositories/promotion_repository.dart';
 export 'src/repositories/staff_repository.dart';

@@ -6,7 +6,6 @@ import 'package:luqma_core/luqma_core.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
 import 'src/app/gallery.dart';
-import 'src/app/push.dart';
 import 'src/app/merchant_app.dart';
 import 'src/courier/courier_write_store.dart';
 

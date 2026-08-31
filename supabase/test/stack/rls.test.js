@@ -590,6 +590,192 @@ describe('ratings', () => {
   });
 });
 
+// The number under a merchant's name, and the one under a dish.
+//
+// `merchants.rating_avg` and `rating_count` existed from the first schema and nothing
+// ever wrote them: a customer rated, the row landed in `ratings`, the merchant read the
+// comment on their shop screen, and the figure on the customer's card stayed 0.0 for
+// ever. Every shop in the city showed the same zero, which reads as "nobody has rated
+// this" rather than as a column with no writer.
+describe('ratings that reach a number', () => {
+  // Every case here asserts an average, and an average is a fact about every row in the
+  // table — so a rating left behind by the previous test is not noise, it is a different
+  // question being answered. Deleting them re-runs the trigger, which puts the merchant
+  // back to zero as a side effect worth knowing about.
+  beforeEach(async () => {
+    await q('delete from item_ratings');
+    await q('delete from ratings');
+  });
+
+  const deliveredOrder = async (who = customer, m = merchant, items = '[]') => (await q(
+    `insert into orders (city_id, customer_uid, customer_name, customer_phone, merchant_id,
+                         merchant_name, zone_id, type, items, pricing, status)
+     values ($1, $2, 'ع', '0100', $3, 'م', $4, 'instant', $5::jsonb, '{}'::jsonb,
+             'delivered') returning id`,
+    [edku, who.uid, m, zone, items])).rows[0].id;
+
+  const menuItem = async (m = merchant, name = 'فراخ') => (await q(
+    `insert into menu_items (merchant_id, name, price) values ($1, $2, 5000) returning id`,
+    [m, name])).rows[0].id;
+
+  it('a rating moves the merchant average', async () => {
+    const first = await deliveredOrder();
+    await q('insert into ratings (order_id, merchant_id, customer_uid, stars) values ($1, $2, $3, 4)',
+      [first, merchant, customer.uid]);
+
+    const after = await q('select rating_avg, rating_count from merchants where id = $1', [merchant]);
+    assert.equal(Number(after.rows[0].rating_avg), 4);
+    assert.equal(after.rows[0].rating_count, 1);
+  });
+
+  // The average is recomputed from the rows rather than nudged, so a correction lands as
+  // a correction instead of a second opinion.
+  it('correcting a rating does not count it twice', async () => {
+    const order = await deliveredOrder();
+    await q('insert into ratings (order_id, merchant_id, customer_uid, stars) values ($1, $2, $3, 1)',
+      [order, merchant, customer.uid]);
+    await q('update ratings set stars = 5 where order_id = $1', [order]);
+
+    const after = await q('select rating_avg, rating_count from merchants where id = $1', [merchant]);
+    assert.equal(Number(after.rows[0].rating_avg), 5);
+    assert.equal(after.rows[0].rating_count, 1);
+  });
+
+  // The trigger runs as whoever ran the statement — the customer — and calls a function
+  // revoked from `authenticated`. Without `security definer` on both, rating a shop fails
+  // outright with "permission denied for function", which is the trap the delivery
+  // settlement fell into and the reason this test rates through a real token.
+  // Written *and* read inside the one transaction, because `as` rolls back — which is
+  // what stops these tests leaving residue, and would otherwise make this assertion read
+  // a merchant whose rating had been undone a moment earlier.
+  it('a real customer token can rate without touching merchants directly', async () => {
+    const order = await deliveredOrder();
+
+    const count = await as(customer, async () => {
+      await db.query(
+        'insert into ratings (order_id, merchant_id, customer_uid, stars) values ($1, $2, $3, 5)',
+        [order, merchant, customer.uid]);
+      const after = await db.query(
+        'select rating_count from merchants where id = $1', [merchant]);
+      return after.rows[0].rating_count;
+    });
+
+    assert.equal(count, 1);
+  });
+
+  it('a customer rates a dish from an order they received', async () => {
+    const item = await menuItem();
+    const order = await deliveredOrder();
+
+    const after = await as(customer, async () => {
+      await db.query(
+        `insert into item_ratings (order_id, item_id, merchant_id, customer_uid, stars)
+         values ($1, $2, $3, $4, 5)`, [order, item, merchant, customer.uid]);
+      return (await db.query(
+        'select rating_avg, rating_count from menu_items where id = $1', [item])).rows[0];
+    });
+
+    assert.equal(Number(after.rating_avg), 5);
+    assert.equal(after.rating_count, 1);
+  });
+
+  it('cannot rate a dish from somebody else order', async () => {
+    const item = await menuItem();
+    const order = await deliveredOrder(otherCustomer);
+
+    const error = await refused(customer, () => db.query(
+      `insert into item_ratings (order_id, item_id, merchant_id, customer_uid, stars)
+       values ($1, $2, $3, $4, 1)`, [order, item, merchant, customer.uid]));
+
+    assert.ok(error);
+  });
+
+  // Rating a dish that has not arrived rates a guess, and the kitchen carries it.
+  it('cannot rate a dish before it is delivered', async () => {
+    const item = await menuItem();
+    const order = (await q(
+      `insert into orders (city_id, customer_uid, customer_name, customer_phone, merchant_id,
+                           merchant_name, zone_id, type, items, pricing, status)
+       values ($1, $2, 'ع', '0100', $3, 'م', $4, 'instant', '[]'::jsonb, '{}'::jsonb,
+               'preparing') returning id`, [edku, customer.uid, merchant, zone])).rows[0].id;
+
+    const error = await refused(customer, () => db.query(
+      `insert into item_ratings (order_id, item_id, merchant_id, customer_uid, stars)
+       values ($1, $2, $3, $4, 5)`, [order, item, merchant, customer.uid]));
+
+    assert.ok(error);
+  });
+
+  // The same lesson as `correct_own_rating`: a policy resting on the uid alone lets the
+  // writer move their stars onto a shop they never bought from.
+  it('cannot name a merchant the order was not from', async () => {
+    const item = await menuItem(otherMerchant);
+    const order = await deliveredOrder();
+
+    const error = await refused(customer, () => db.query(
+      `insert into item_ratings (order_id, item_id, merchant_id, customer_uid, stars)
+       values ($1, $2, $3, $4, 5)`, [order, item, otherMerchant, customer.uid]));
+
+    assert.ok(error);
+  });
+});
+
+// What the shelf on the customer's home is built from.
+describe('popular_items', () => {
+  it('ranks by what was actually delivered', async () => {
+    const quiet = (await q(
+      `insert into menu_items (merchant_id, name, price) values ($1, 'صنف هادي', 1000)
+       returning id`, [merchant])).rows[0].id;
+    const busy = (await q(
+      `insert into menu_items (merchant_id, name, price) values ($1, 'صنف مطلوب', 1000)
+       returning id`, [merchant])).rows[0].id;
+
+    await q(
+      `insert into orders (city_id, customer_uid, customer_name, customer_phone, merchant_id,
+                           merchant_name, zone_id, type, items, pricing, status)
+       values ($1, $2, 'ع', '0100', $3, 'م', $4, 'instant', $5::jsonb, '{}'::jsonb, 'delivered')`,
+      [edku, customer.uid, merchant, zone,
+       JSON.stringify([{ itemId: busy, name: 'صنف مطلوب', unitPrice: 1000, quantity: 3 }])]);
+
+    const rows = (await q('select id, ordered_count from popular_items($1, 50)', [edku])).rows;
+    const top = rows.find((r) => r.id === busy);
+    const other = rows.find((r) => r.id === quiet);
+
+    assert.equal(Number(top.ordered_count), 3);
+    assert.equal(Number(other.ordered_count), 0);
+    assert.ok(rows.indexOf(top) < rows.indexOf(other), 'the ordered one comes first');
+  });
+
+  // The reason the join is a LEFT one. On launch day nothing has been delivered, and an
+  // inner join returns an empty shelf under a heading the admin deliberately put on the
+  // home screen.
+  it('still returns food when nothing has been ordered yet', async () => {
+    await q(`insert into menu_items (merchant_id, name, price) values ($1, 'صنف', 1000)`,
+      [merchant]);
+
+    const rows = (await q('select id from popular_items($1, 50)', [edku])).rows;
+    assert.ok(rows.length > 0);
+  });
+
+  // A cancelled order is not evidence that anybody wanted the food, and counting it would
+  // let a shop rank itself by failing.
+  it('does not count an order that was cancelled', async () => {
+    const item = (await q(
+      `insert into menu_items (merchant_id, name, price) values ($1, 'صنف ملغي', 1000)
+       returning id`, [merchant])).rows[0].id;
+
+    await q(
+      `insert into orders (city_id, customer_uid, customer_name, customer_phone, merchant_id,
+                           merchant_name, zone_id, type, items, pricing, status)
+       values ($1, $2, 'ع', '0100', $3, 'م', $4, 'instant', $5::jsonb, '{}'::jsonb, 'cancelled')`,
+      [edku, customer.uid, merchant, zone,
+       JSON.stringify([{ itemId: item, name: 'صنف ملغي', unitPrice: 1000, quantity: 9 }])]);
+
+    const rows = (await q('select id, ordered_count from popular_items($1, 50)', [edku])).rows;
+    assert.equal(Number(rows.find((r) => r.id === item).ordered_count), 0);
+  });
+});
+
 describe('who can read the staff list', () => {
   // `belongs_to_merchant` is true for an owner *and* for their courier — they carry the
   // same merchant. It is the distinction the first audit found in the order rules and

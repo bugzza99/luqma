@@ -44,6 +44,10 @@ class SupabaseMenuRepository implements MenuRepository {
       db: _db,
       table: 'menu_items',
       map: _toItem,
+      // The picture, resolved. `watchRows` selects `*` unless told otherwise, so without
+      // this every dish on every menu draws the tinted placeholder however many
+      // photographs the owner has taken and approved.
+      columns: '*, media(url, status)',
       filters: [RowFilter('merchant_id', merchantId)],
       orderBy: 'sort_order',
     );
@@ -102,7 +106,16 @@ class SupabaseMenuRepository implements MenuRepository {
   }
 }
 
-MenuItem _toItem(Map<String, dynamic> row) => MenuItem.fromRow(row);
+MenuItem _toItem(Map<String, dynamic> row) {
+  final media = row['media'] as Map<String, dynamic>?;
+  final flat = Map<String, dynamic>.from(row)..remove('media');
+  // Unapproved is the same as absent: the moderation queue is worth nothing if the
+  // photograph is on a menu before anybody has looked at it.
+  if (media != null && media['status'] == 'approved') {
+    flat['image_url'] = media['url'];
+  }
+  return MenuItem.fromRow(flat);
+}
 
 /// In-memory menu, for tests and for entering data before the backend exists.
 class FakeMenuRepository implements MenuRepository {

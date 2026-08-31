@@ -87,6 +87,13 @@ abstract interface class OrderRepository {
     required String merchantId,
     required int stars,
     String? comment,
+
+    /// Stars per dish, keyed by `menu_items.id`.
+    ///
+    /// Optional, and empty is the ordinary case: somebody who rates the shop and skips
+    /// the food has rated the shop. A dish left out is not a zero — it is silence, and
+    /// writing a zero would drag the item's average down for not being commented on.
+    Map<String, int> items,
   });
 
   /// Prices one coupon against one basket, placing nothing. The verdict is what the
@@ -214,18 +221,35 @@ class SupabaseOrderRepository implements OrderRepository {
     required String merchantId,
     required int stars,
     String? comment,
+    Map<String, int> items = const {},
   }) {
-    return Result.guard(
+    return Result.guard(() async {
       // Keyed by the order, so rating again corrects the first rating instead of
       // letting one customer move a merchant's average as far as they like.
-      () => _db.from('ratings').upsert({
+      await _db.from('ratings').upsert({
         'order_id': orderId,
         'customer_uid': customerUid,
         'merchant_id': merchantId,
         'stars': stars,
         'comment': (comment == null || comment.isEmpty) ? null : comment,
-      }, onConflict: 'order_id'),
-    );
+      }, onConflict: 'order_id');
+
+      if (items.isEmpty) return;
+
+      // The shop's rating is written first and on its own. If the dishes fail — a menu
+      // item deleted since the order, a policy that refuses one of them — the verdict
+      // the customer typed is already saved rather than lost with them.
+      await _db.from('item_ratings').upsert([
+        for (final entry in items.entries)
+          {
+            'order_id': orderId,
+            'item_id': entry.key,
+            'merchant_id': merchantId,
+            'customer_uid': customerUid,
+            'stars': entry.value,
+          },
+      ], onConflict: 'order_id,item_id');
+    });
   }
   @override
   Future<Result<CouponEvaluation>> evaluateCoupon({
@@ -374,6 +398,7 @@ class FakeOrderRepository implements OrderRepository {
     required String merchantId,
     required int stars,
     String? comment,
+    Map<String, int> items = const {},
   }) async {
     if (failure != null) return Result.err(failure!);
     ratings
@@ -384,6 +409,7 @@ class FakeOrderRepository implements OrderRepository {
         'merchantId': merchantId,
         'stars': stars,
         'comment': comment,
+        'items': Map<String, int>.from(items),
       });
     return const Result.ok(null);
   }

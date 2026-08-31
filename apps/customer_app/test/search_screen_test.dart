@@ -15,7 +15,10 @@ import 'package:luqma_core/luqma_core.dart';
 /// place, and these are the properties it has to have to actually do that job.
 void main() {
   final openAllWeek = [
-    for (var d = 0; d < 7; d++)
+    // 1..7, not 0..6. `DateTime.weekday` is Monday 1 through Sunday 7 and never 0, so
+    // the obvious range covers Monday to Saturday and leaves every shop in the fixture
+    // shut one day in seven — six runs green, and the seventh reads as a flake.
+    for (var d = 1; d <= 7; d++)
       OpeningWindow(weekday: d, openMinute: 0, closeMinute: 1439),
   ];
 

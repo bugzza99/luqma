@@ -54,6 +54,7 @@ class SupabaseDailyMealRepository implements DailyMealRepository {
       db: _db,
       table: 'daily_meals',
       map: _toMeal,
+      columns: _columns,
       filters: [
         RowFilter('city_id', cityId),
         RowFilter('date', day),
@@ -73,6 +74,7 @@ class SupabaseDailyMealRepository implements DailyMealRepository {
       db: _db,
       table: 'daily_meals',
       map: _toMeal,
+      columns: _columns,
       filters: [RowFilter('merchant_id', merchantId)],
       // Newest day first: a cook opens this to deal with today, not with last week.
       orderBy: 'date',
@@ -124,8 +126,18 @@ class SupabaseDailyMealRepository implements DailyMealRepository {
     );
   }
 
-  DailyMeal _toMeal(Map<String, dynamic> row) =>
-      DailyMeal.fromJson(ColumnNames.toModel(row));
+  /// The row plus the picture it points at. See `_toMeal` for why the status matters.
+  static const _columns = '*, media(url, status)';
+
+  DailyMeal _toMeal(Map<String, dynamic> row) {
+    final media = row['media'] as Map<String, dynamic>?;
+    final flat = Map<String, dynamic>.from(row)..remove('media');
+    // Unapproved is the same as absent, everywhere in the product.
+    if (media != null && media['status'] == 'approved') {
+      flat['image_url'] = media['url'];
+    }
+    return DailyMeal.fromJson(ColumnNames.toModel(flat));
+  }
 }
 
 /// In-memory meals, for tests and for building the screens before the backend exists.

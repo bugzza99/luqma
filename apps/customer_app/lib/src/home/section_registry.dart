@@ -5,6 +5,7 @@ import 'sections/ad_slot_section.dart';
 import 'sections/category_chips_section.dart';
 import 'sections/home_kitchen_section.dart';
 import 'sections/merchant_list_section.dart';
+import 'sections/popular_items_section.dart';
 
 /// The fixed map of section types the app is willing to draw.
 ///
@@ -20,7 +21,7 @@ abstract final class HomeSectionRegistry {
     'categoryChips': (s) => CategoryChipsSection(section: s),
     'adSlot': (s) => AdSlotSection(section: s),
     'homeKitchenToday': (s) => HomeKitchenSection(section: s),
-    'mostOrdered': (s) => MerchantListSection(section: s, mostOrdered: true),
+    'mostOrdered': (s) => PopularItemsSection(section: s),
     'merchantList': (s) => MerchantListSection(section: s),
     'topRated': (s) => MerchantListSection(section: s, topRated: true),
   };

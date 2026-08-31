@@ -259,6 +259,11 @@ void main() {
     testWidgets('and tapping it opens the statement', (tester) async {
       await pumpShop(tester, shop());
 
+      // The identity card above it carries two picture pickers and the description now,
+      // so the billing card sits below the fold — and a tap on something scrolled off
+      // screen lands somewhere else rather than failing.
+      await tester.ensureVisible(find.byKey(ShopScreen.statementKey));
+      await tester.pumpAndSettle();
       await tester.tap(find.byKey(ShopScreen.statementKey));
       await tester.pumpAndSettle();
 

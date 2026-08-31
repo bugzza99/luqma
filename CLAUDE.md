@@ -656,6 +656,41 @@ DATABASE_URL=<luqma-test session pooler> npm --prefix supabase run test:stack
   policies, so a green suite proves the screens work against the fake and nothing more.
   Anything that depends on a policy needs a live test beside the widget test — that is
   what `test_live` and `supabase/test/stack` are for.
+- **A rating was collected, stored, and never counted.** `merchants.rating_avg` and
+  `rating_count` existed from the first schema and **nothing ever wrote them** — the
+  customer rated, the row landed in `ratings`, the merchant read the comment on their
+  shop screen, and the number on the card stayed 0.0 for ever. Every shop in the city
+  showed the same zero, which reads as "nobody has rated this" rather than as a column
+  with no writer. `refresh_merchant_rating` is that writer, and it recomputes from the
+  rows rather than nudging an average that can only drift. Dishes have their own stars
+  now too (`item_ratings`), which is what makes "الأكتر طلباً" answerable.
+- **`security definer` on the trigger *and* on what it calls.** Both refresh functions
+  are revoked from `authenticated` and the trigger runs as whoever ran the statement —
+  the customer — so without it on both, rating a shop fails with "permission denied for
+  function". Same trap as the delivery settlement, found the same way: by rating through
+  a real customer token instead of a service key.
+- **`as()` in the stack tests rolls back.** That is what keeps them from leaving residue,
+  and it means an assertion *after* a write through a real token reads a database where
+  the write never happened. Anything that checks a trigger's effect has to read it inside
+  the same `as()` block.
+- **The section named after ordering was ranked by review count.** `mostOrdered` sorted
+  *merchants* by `ratingCount`, with a comment admitting it stood in for an order count
+  that did not exist — so on a launch with no reviews it was every shop in arbitrary
+  order under a heading promising otherwise. It is `popular_items` now: dishes, counted
+  from delivered orders' `items` jsonb, with a LEFT join to rating so the shelf is full
+  on day one instead of empty.
+- **Two `media_id` columns still had no foreign key.** `merchants` got theirs on
+  2026-08-30; `menu_items` and `daily_meals` are the same omission and the same
+  `PGRST200`, and they are the two that matter most — the dish and the meal are the
+  things being sold. Six hundred photographs the owner will shoot personally had nowhere
+  to arrive.
+- **Push was built for one message and is general.** `push_outbox`, the drain, the token
+  pruning and the channels were never merchant-specific; what was missing was rows. The
+  customer is told three things — accepted, out for delivery, cancelled — on the `orders`
+  channel, and the admin gets `needsAttention` on `orders_critical`. **Not every status**:
+  a phone that buzzes at six steps is a phone whose owner turns notifications off, taking
+  the two that matter with them. `LuqmaPush` lives in `luqma_core` now; each app supplies
+  only its own native channel.
 - **A banner is a picture or it is words, never both.** `imageWithText` laid the
   headline over the artwork, and it is the one mode nobody can design for: the
   merchant's photograph decides where its own dark parts are, so white text is legible

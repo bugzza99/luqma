@@ -21,6 +21,17 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin")
 }
 
+// Applied only when google-services.json is actually present.
+//
+// The plugin fails the build outright if the file is missing, and this app has to keep
+// building for anyone who has not been given one — a developer, CI, a fresh clone. With
+// the file, Messaging works; without it, LuqmaPush says so once in the log and the app
+// runs.
+if (rootProject.file("app/google-services.json").exists() ||
+    project.file("google-services.json").exists()) {
+    apply(plugin = "com.google.gms.google-services")
+}
+
 android {
     namespace = "com.luqma.admin"
     compileSdk = flutter.compileSdkVersion

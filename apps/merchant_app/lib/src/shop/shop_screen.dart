@@ -178,63 +178,145 @@ class _Identity extends ConsumerStatefulWidget {
   final Merchant merchant;
 
   static const coverKey = Key('shop.cover');
+  static const logoKey = Key('shop.logo');
+  static const descriptionKey = Key('shop.description');
+  static const saveDescriptionKey = Key('shop.description.save');
 
   @override
   ConsumerState<_Identity> createState() => _IdentityState();
 }
 
 class _IdentityState extends ConsumerState<_Identity> {
-  /// The cover as it stands, replaced the moment a new one is uploaded so the merchant
-  /// sees what they picked rather than the old picture until they reopen the screen.
+  /// The pictures as they stand, replaced the moment a new one is uploaded so the
+  /// merchant sees what they picked rather than the old one until they reopen the screen.
   String? _coverUrl;
+  String? _logoUrl;
   bool _saving = false;
+
+  late final _description =
+      TextEditingController(text: widget.merchant.description ?? '');
+
+  /// Whether the typed line differs from the saved one.
+  ///
+  /// A save button that is always live is a save button somebody presses to find out
+  /// whether it did anything.
+  bool _descriptionChanged = false;
 
   Merchant get merchant => widget.merchant;
 
   @override
   void initState() {
     super.initState();
-    unawaited(_loadCover());
+    unawaited(_loadPictures());
+    _description.addListener(() {
+      final changed =
+          _description.text.trim() != (merchant.description?.trim() ?? '');
+      if (changed != _descriptionChanged) {
+        setState(() => _descriptionChanged = changed);
+      }
+    });
   }
 
-  /// Resolves the id the merchant row carries into a URL.
+  @override
+  void dispose() {
+    _description.dispose();
+    super.dispose();
+  }
+
+  /// Resolves the ids the merchant row carries into URLs.
   ///
   /// The row stores the id, never the address — that is the rule for every image in the
   /// product, and it is what lets a rejected picture disappear everywhere at once.
-  Future<void> _loadCover() async {
-    final id = merchant.coverMediaId;
-    if (id == null || id.isEmpty) return;
+  Future<void> _loadPictures() async {
+    final wanted = [
+      for (final (id, isLogo) in [
+        (merchant.coverMediaId, false),
+        (merchant.logoMediaId, true),
+      ])
+        if (id != null && id.isNotEmpty) (id, isLogo),
+    ];
+    // Nothing to resolve, nothing to reach for. Reading the repository first looks
+    // harmless and is not: a shop with no pictures yet — which is every shop on the day
+    // it is added — would build the media repository, and through it the Supabase client,
+    // for two ids that do not exist.
+    if (wanted.isEmpty) return;
 
-    final result = await ref.read(mediaRepositoryProvider).get(id);
-    if (!mounted) return;
-    setState(() => _coverUrl = result.valueOrNull?.url);
+    final media = ref.read(mediaRepositoryProvider);
+    for (final (id, isLogo) in wanted) {
+      final result = await media.get(id);
+      if (!mounted) return;
+      setState(() {
+        if (isLogo) {
+          _logoUrl = result.valueOrNull?.url;
+        } else {
+          _coverUrl = result.valueOrNull?.url;
+        }
+      });
+    }
   }
 
-  Future<void> _attachCover(Media media) async {
-    final previous = _coverUrl;
+  Future<void> _attach(Media media, {required bool isLogo}) async {
+    final previous = isLogo ? _logoUrl : _coverUrl;
     setState(() {
-      _coverUrl = media.url;
+      if (isLogo) {
+        _logoUrl = media.url;
+      } else {
+        _coverUrl = media.url;
+      }
       _saving = true;
     });
 
     // The id goes on the merchant row; the picture stays invisible to customers until an
     // admin approves it, like every other image in the product.
-    final result = await ref
-        .read(merchantRepositoryProvider)
-        .saveMerchant(merchant.copyWith(coverMediaId: media.id));
+    final result = await ref.read(merchantRepositoryProvider).saveMerchant(
+          isLogo
+              ? merchant.copyWith(logoMediaId: media.id)
+              : merchant.copyWith(coverMediaId: media.id),
+        );
     if (!mounted) return;
     setState(() => _saving = false);
 
-    // The result was discarded, and the new picture was already on the screen — so a
+    // The result was once discarded, and the new picture was already on the screen — so a
     // save that failed looked exactly like one that worked. The merchant closes the app
-    // believing their shop has a cover; the row still carries the old id, or none, and
+    // believing their shop has a picture; the row still carries the old id, or none, and
     // the customer sees the tinted placeholder for ever.
     if (result case Err()) {
-      setState(() => _coverUrl = previous);
+      setState(() {
+        if (isLogo) {
+          _logoUrl = previous;
+        } else {
+          _coverUrl = previous;
+        }
+      });
       ScaffoldMessenger.maybeOf(context)?.showSnackBar(
         const SnackBar(content: Text('الصورة موصلتش. جرّب تاني.')),
       );
     }
+  }
+
+  Future<void> _saveDescription() async {
+    setState(() => _saving = true);
+    final typed = _description.text.trim();
+    final result = await ref.read(merchantRepositoryProvider).saveMerchant(
+          merchant.copyWith(description: typed.isEmpty ? null : typed),
+        );
+    if (!mounted) return;
+    setState(() {
+      _saving = false;
+      _descriptionChanged = result is Err;
+    });
+
+    ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+      SnackBar(
+        content: Text(switch (result) {
+          Ok() => 'اتحفظ.',
+          Err(:final failure) => switch (failure) {
+              OfflineFailure() => 'مفيش نت — جرّب تاني.',
+              _ => 'مقدرناش نحفظ. جرّب تاني.',
+            },
+        }),
+      ),
+    );
   }
 
   @override
@@ -250,24 +332,8 @@ class _IdentityState extends ConsumerState<_Identity> {
         border: Border.all(color: colors.hairline),
       ),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // The picture at the top of this shop's page on the customer's home. Until now
-          // there was no way for a merchant to have one at all.
-          MediaPicker(
-            key: _Identity.coverKey,
-            kind: MediaKind.merchantCover,
-            url: _coverUrl,
-            name: merchant.name,
-            ownerId: merchant.id,
-            height: 120,
-            onUploaded: _attachCover,
-          ),
-          if (_saving)
-            const Padding(
-              padding: EdgeInsets.only(top: Space.sm),
-              child: LinearProgressIndicator(minHeight: 2),
-            ),
-          const SizedBox(height: Space.md),
           Row(
             children: [
               Icon(
@@ -294,8 +360,93 @@ class _IdentityState extends ConsumerState<_Identity> {
               ),
             ],
           ),
+          if (_saving)
+            const Padding(
+              padding: EdgeInsets.only(top: Space.sm),
+              child: LinearProgressIndicator(minHeight: 2),
+            ),
+          const SizedBox(height: Space.lg),
+          // Labelled, because there are two of them now and a merchant looking at two
+          // picture boxes has no way to tell which one ends up where.
+          _Label(text: 'صورة الغلاف', hint: 'الصورة الكبيرة فوق صفحة المطعم'),
+          const SizedBox(height: Space.sm),
+          MediaPicker(
+            key: _Identity.coverKey,
+            kind: MediaKind.merchantCover,
+            url: _coverUrl,
+            name: merchant.name,
+            ownerId: merchant.id,
+            height: 120,
+            onUploaded: (media) => _attach(media, isLogo: false),
+          ),
+          const SizedBox(height: Space.lg),
+          // The mark.
+          //
+          // `logo_media_id` has been a column since the first schema and no screen in any
+          // of the three apps could write it — so a shop got a cover photograph and, in
+          // the place its own mark belongs, a storefront glyph identical to every other
+          // restaurant in the city. The logo is what a regular customer recognises in a
+          // list without reading, which is what the tile on their home is built around.
+          _Label(text: 'لوجو المطعم', hint: 'بيظهر جنب اسمك في القوايم'),
+          const SizedBox(height: Space.sm),
+          MediaPicker(
+            key: _Identity.logoKey,
+            kind: MediaKind.merchantLogo,
+            url: _logoUrl,
+            name: merchant.name,
+            ownerId: merchant.id,
+            height: 96,
+            onUploaded: (media) => _attach(media, isLogo: true),
+          ),
+          const SizedBox(height: Space.md),
+          TextField(
+            key: _Identity.descriptionKey,
+            controller: _description,
+            maxLength: 120,
+            maxLines: 2,
+            decoration: const InputDecoration(
+              labelText: 'وصف قصير',
+              hintText: 'مشويات وحلويات شرقية',
+              // Said here rather than discovered on the customer's home: this line is
+              // what tells somebody scrolling past what kind of food this shop sells.
+              helperText: 'بيظهر تحت اسم المطعم في الصفحة الرئيسية.',
+            ),
+          ),
+          Align(
+            alignment: AlignmentDirectional.centerStart,
+            child: FilledButton(
+              key: _Identity.saveDescriptionKey,
+              onPressed: _descriptionChanged && !_saving ? _saveDescription : null,
+              child: const Text('احفظ الوصف'),
+            ),
+          ),
         ],
       ),
+    );
+  }
+}
+
+/// A heading for one control, with the sentence that says where it lands.
+class _Label extends StatelessWidget {
+  const _Label({required this.text, required this.hint});
+
+  final String text;
+  final String hint;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = theme.luqma;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(text, style: theme.textTheme.titleSmall),
+        Text(
+          hint,
+          style: LuqmaType.caption.copyWith(color: colors.textSecondary),
+        ),
+      ],
     );
   }
 }

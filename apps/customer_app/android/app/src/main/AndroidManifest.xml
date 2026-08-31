@@ -9,6 +9,12 @@
          this in the debug and profile manifests alone, which is why `flutter run` never
          showed it. -->
     <uses-permission android:name="android.permission.INTERNET"/>
+
+    <!-- Three messages reach a customer: their order was accepted, it left the shop, or
+         it was cancelled. Without this, Android 13 and up shows none of them and there
+         is nothing anywhere to say why. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.VIBRATE" />
     <application
         android:label="@string/app_name"
         android:name="${applicationName}"

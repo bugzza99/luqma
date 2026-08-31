@@ -103,6 +103,7 @@ class SupabaseMerchantRepository implements MerchantRepository {
         'zone_id': m.zoneId,
         'phone': m.phone,
         'status': m.status.name,
+        'description': m.description,
         // jsonb whose inner keys the app itself wrote, already camelCase.
         'opening_hours': [for (final w in m.openingHours) w.toJson()],
         // UTC, spelled: Dart writes local times without a zone suffix, and timestamptz
