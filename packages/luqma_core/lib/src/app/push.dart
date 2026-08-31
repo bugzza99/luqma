@@ -67,6 +67,26 @@ abstract final class LuqmaPush {
 
   static final _local = FlutterLocalNotificationsPlugin();
 
+  /// The in-flight (or finished) [start], so [token] can wait for it.
+  ///
+  /// `start()` is deliberately not awaited by any `main` — it asks for the notification
+  /// permission, and awaiting a system dialog before `runApp` holds the first frame on a
+  /// white screen until somebody answers it. That leaves a race: the session can restore
+  /// and ask for a token before Firebase has finished initialising, `getToken()` throws,
+  /// and registration gives up **silently and for the whole session**.
+  ///
+  /// The merchant app never showed it because a merchant signs in by hand, seconds after
+  /// launch. A customer or an admin with a restored session asks within milliseconds.
+  static Future<bool>? _starting;
+
+  /// Fires when Android reissues this device's token.
+  ///
+  /// It does so after a reinstall, a restore, a clear-data, or on its own after a long
+  /// silence — and nothing listened, so a phone whose token changed mid-session went
+  /// quiet with the old one still on the account and nothing anywhere saying so.
+  static Stream<String> get tokenRefreshes =>
+      FirebaseMessaging.instance.onTokenRefresh;
+
   /// The order behind the notification somebody just tapped, or null.
   ///
   /// A `ValueNotifier` rather than a route: the tap can arrive while the app is starting,
@@ -83,7 +103,13 @@ abstract final class LuqmaPush {
   ///
   /// Returns false when Firebase is not configured in this build, which is a normal
   /// state and not an error — the rest of the app works without it.
-  static Future<bool> start() async {
+  static Future<bool> start() {
+    final started = _starting;
+    if (started != null) return started;
+    return _starting = _start();
+  }
+
+  static Future<bool> _start() async {
     try {
       await Firebase.initializeApp();
     } catch (error) {
@@ -138,6 +164,10 @@ abstract final class LuqmaPush {
   /// quiet with nothing anywhere saying so.
   static Future<String?> token() async {
     try {
+      // Waits for [start] rather than racing it. Without this the first ask can land
+      // before `Firebase.initializeApp` has returned, and the exception is swallowed
+      // below into a null that reads exactly like "this build has no Firebase".
+      if (await (_starting ?? Future.value(true)) == false) return null;
       return await FirebaseMessaging.instance.getToken();
     } catch (_) {
       return null;

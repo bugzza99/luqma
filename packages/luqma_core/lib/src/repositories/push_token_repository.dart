@@ -108,26 +108,54 @@ StreamSubscription<LuqmaIdentity?> keepPushTokenRegistered({
   required Stream<LuqmaIdentity?> identities,
   required PushTokenRepository repository,
   required Future<String?> Function() token,
+  Stream<String>? refreshes,
 }) {
   String? registered;
+  var signedIn = false;
 
-  return identities.listen((identity) async {
+  Future<void> put(String fresh) async {
+    if (fresh == registered) return;
+    final was = registered;
+    registered = fresh;
+    await repository.register(fresh);
+    // The old one is dropped only once the new one is on the account. The other order
+    // leaves a phone with no token at all if the second call fails.
+    if (was != null) await repository.forget(was);
+  }
+
+  // Android reissues a token after a reinstall, a restore, a clear-data, or on its own
+  // after a long silence. Nothing listened for that, so a phone whose token changed while
+  // the app was open went quiet with the stale one still on the account — and it fails
+  // the way every push bug here fails: no error, no screen, just silence.
+  final refreshed = refreshes?.listen((fresh) async {
+    if (!signedIn) return;
+    try {
+      await put(fresh);
+    } catch (_) {
+      // Same reasoning as below: never worth an exception on a working app.
+    }
+  });
+
+  final subscription = identities.listen((identity) async {
     try {
       if (identity == null) {
+        signedIn = false;
         final was = registered;
         registered = null;
         if (was != null) await repository.forget(was);
         return;
       }
 
+      signedIn = true;
       final fresh = await token();
       if (fresh == null) return;
-
-      registered = fresh;
-      await repository.register(fresh);
+      await put(fresh);
     } catch (_) {
       // Deliberately swallowed. This runs on every sign-in, and the worst outcome it may
-      // cause is a merchant who is not woken — never one who cannot sign in.
+      // cause is somebody who is not woken — never one who cannot sign in.
     }
   });
+
+  subscription.onDone(() => refreshed?.cancel());
+  return subscription;
 }

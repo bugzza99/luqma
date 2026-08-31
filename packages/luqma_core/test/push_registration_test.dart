@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:luqma_core/luqma_core.dart';
 
@@ -123,6 +125,58 @@ void main() {
     addTearDown(sub.cancel);
 
     await auth.signInWithPassword(email: 'a@b.c', password: 'x');
+    await Future<void>.delayed(Duration.zero);
+
+    expect(tokens.tokens, isEmpty);
+  });
+
+  // Android reissues a token after a reinstall, a restore, a clear-data, or on its own
+  // after a long silence. Nothing listened for that, so a phone whose token changed while
+  // the app was open went quiet with the stale one still on the account — and it fails
+  // the way every push bug here fails: no error, no screen, just silence.
+  test('a reissued token replaces the one on the account', () async {
+    final auth = FakeAuthService();
+    final tokens = FakePushTokenRepository();
+    final refreshes = StreamController<String>.broadcast();
+    addTearDown(refreshes.close);
+
+    final sub = keepPushTokenRegistered(
+      identities: auth.changes,
+      repository: tokens,
+      token: () async => 'tok-1',
+      refreshes: refreshes.stream,
+    );
+    addTearDown(sub.cancel);
+
+    await auth.signInWithPassword(email: 'a@b.c', password: 'x');
+    await Future<void>.delayed(Duration.zero);
+    expect(tokens.tokens, ['tok-1']);
+
+    refreshes.add('tok-2');
+    await Future<void>.delayed(Duration.zero);
+
+    expect(tokens.tokens, ['tok-2'],
+        reason: 'the stale one is dropped, not left beside the new one');
+  });
+
+  // A token arriving for nobody is a token filed against nobody. `users.fcm_tokens` is
+  // written by the signed-in account under RLS, so the write would be refused anyway —
+  // silently, which is how it would go unnoticed.
+  test('a refresh before anybody signs in registers nothing', () async {
+    final auth = FakeAuthService();
+    final tokens = FakePushTokenRepository();
+    final refreshes = StreamController<String>.broadcast();
+    addTearDown(refreshes.close);
+
+    final sub = keepPushTokenRegistered(
+      identities: auth.changes,
+      repository: tokens,
+      token: () async => 'tok-1',
+      refreshes: refreshes.stream,
+    );
+    addTearDown(sub.cancel);
+
+    refreshes.add('tok-2');
     await Future<void>.delayed(Duration.zero);
 
     expect(tokens.tokens, isEmpty);

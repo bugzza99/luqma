@@ -34,6 +34,7 @@ Future<void> main() async {
     identities: container.read(authServiceProvider).changes,
     repository: container.read(pushTokenRepositoryProvider),
     token: LuqmaPush.token,
+    refreshes: LuqmaPush.tokenRefreshes,
   );
 
   runApp(
