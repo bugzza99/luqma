@@ -13,7 +13,7 @@ void main() {
     test('an empty source yields the compiled-in defaults', () {
       final config = configFrom({});
       expect(config.acceptTimeoutMinutes, 5);
-      expect(config.marketingPushPerWeek, 3);
+      expect(config.marketingPushPerWeek, 0);
       expect(config.rejectionBanThreshold, 3);
       expect(config.minRatingsToShow, 10);
     });
@@ -24,6 +24,10 @@ void main() {
       expect(config.admobEnabled, isFalse);
       expect(config.publicCommentsEnabled, isFalse);
       expect(config.onlinePaymentEnabled, isFalse);
+    });
+
+    test('marketing push is closed until a real delivery pipeline ships', () {
+      expect(LuqmaConfig.defaults.marketingPushPerWeek, 0);
     });
   });
 
@@ -59,7 +63,7 @@ void main() {
 
     test('a negative push cap is rejected', () {
       final config = configFrom({'marketing_push_per_week': -1});
-      expect(config.marketingPushPerWeek, 3);
+      expect(config.marketingPushPerWeek, 0);
     });
 
     test('a rejection threshold below one is rejected', () {
@@ -69,7 +73,10 @@ void main() {
     });
 
     test('a delivery fee range with max below min is ignored entirely', () {
-      final config = configFrom({'delivery_fee_min': 3000, 'delivery_fee_max': 500});
+      final config = configFrom({
+        'delivery_fee_min': 3000,
+        'delivery_fee_max': 500,
+      });
       expect(config.deliveryFeeMin, LuqmaConfig.defaults.deliveryFeeMin);
       expect(config.deliveryFeeMax, LuqmaConfig.defaults.deliveryFeeMax);
     });
@@ -102,8 +109,12 @@ void main() {
 
     test('a newer build is not asked to update', () {
       final config = configFrom({'min_supported_version': '1.4.0'});
-      expect(config.requiresUpdate('1.10.0'), isFalse,
-          reason: '1.10 is above 1.4 — comparing as text would get this backwards');
+      expect(
+        config.requiresUpdate('1.10.0'),
+        isFalse,
+        reason:
+            '1.10 is above 1.4 — comparing as text would get this backwards',
+      );
     });
 
     test('an unparseable minimum version blocks nobody', () {

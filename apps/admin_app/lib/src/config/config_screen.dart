@@ -29,7 +29,7 @@ class ConfigScreen extends ConsumerWidget {
         child: LuqmaAsyncView(
           value: config,
           onRetry: () => ref.invalidate(adminConfigProvider),
-          builder: (context, value) => _ConfigForm(initial: value)
+          builder: (context, value) => _ConfigForm(initial: value),
         ),
       ),
     );
@@ -46,27 +46,45 @@ class _ConfigForm extends ConsumerStatefulWidget {
 }
 
 class _ConfigFormState extends ConsumerState<_ConfigForm> {
-  late bool _otp = _flag('otp_enabled', LuqmaConfig.defaults.otpEnabled);
-  late bool _admob = _flag('admob_enabled', LuqmaConfig.defaults.admobEnabled);
-  late bool _publicComments =
-      _flag('public_comments_enabled', LuqmaConfig.defaults.publicCommentsEnabled);
-  late bool _onlinePayment =
-      _flag('online_payment_enabled', LuqmaConfig.defaults.onlinePaymentEnabled);
+  late final bool _otp = _flag('otp_enabled', LuqmaConfig.defaults.otpEnabled);
+  late final bool _admob = _flag('admob_enabled', LuqmaConfig.defaults.admobEnabled);
+  late final bool _publicComments = _flag(
+    'public_comments_enabled',
+    LuqmaConfig.defaults.publicCommentsEnabled,
+  );
+  late final bool _onlinePayment = _flag(
+    'online_payment_enabled',
+    LuqmaConfig.defaults.onlinePaymentEnabled,
+  );
 
   late final _acceptTimeout = _intField(
-      'accept_timeout_minutes', LuqmaConfig.defaults.acceptTimeoutMinutes);
+    'accept_timeout_minutes',
+    LuqmaConfig.defaults.acceptTimeoutMinutes,
+  );
   late final _push = _intField(
-      'marketing_push_per_week', LuqmaConfig.defaults.marketingPushPerWeek);
+    'marketing_push_per_week',
+    LuqmaConfig.defaults.marketingPushPerWeek,
+  );
   late final _rejection = _intField(
-      'rejection_ban_threshold', LuqmaConfig.defaults.rejectionBanThreshold);
+    'rejection_ban_threshold',
+    LuqmaConfig.defaults.rejectionBanThreshold,
+  );
   late final _minRatings = _intField(
-      'min_ratings_to_show', LuqmaConfig.defaults.minRatingsToShow);
+    'min_ratings_to_show',
+    LuqmaConfig.defaults.minRatingsToShow,
+  );
   late final _feeMin = _moneyField(
-      'delivery_fee_min', LuqmaConfig.defaults.deliveryFeeMin);
+    'delivery_fee_min',
+    LuqmaConfig.defaults.deliveryFeeMin,
+  );
   late final _feeMax = _moneyField(
-      'delivery_fee_max', LuqmaConfig.defaults.deliveryFeeMax);
+    'delivery_fee_max',
+    LuqmaConfig.defaults.deliveryFeeMax,
+  );
   late final _splash = _intField(
-      'splash_min_millis', LuqmaConfig.defaults.splashMinMillis);
+    'splash_min_millis',
+    LuqmaConfig.defaults.splashMinMillis,
+  );
   late final _minVersion = _textField('min_supported_version');
   late final _updateMessage = _textField('update_message');
   late final _whatsapp = _textField('support_whatsapp');
@@ -93,14 +111,22 @@ class _ConfigFormState extends ConsumerState<_ConfigForm> {
   }
 
   TextEditingController _textField(String key) => TextEditingController(
-        text: widget.initial[key] is String ? widget.initial[key] as String : '',
-      );
+    text: widget.initial[key] is String ? widget.initial[key] as String : '',
+  );
 
   @override
   void dispose() {
     for (final c in [
-      _acceptTimeout, _push, _rejection, _minRatings, _feeMin, _feeMax,
-      _splash, _minVersion, _updateMessage, _whatsapp,
+      _acceptTimeout,
+      _push,
+      _rejection,
+      _minRatings,
+      _feeMin,
+      _feeMax,
+      _splash,
+      _minVersion,
+      _updateMessage,
+      _whatsapp,
     ]) {
       c.dispose();
     }
@@ -127,12 +153,10 @@ class _ConfigFormState extends ConsumerState<_ConfigForm> {
 
     setState(() => _busy = true);
     final result = await ref.read(configActionsProvider.notifier).save({
-      'otp_enabled': _otp,
-      'admob_enabled': _admob,
-      'public_comments_enabled': _publicComments,
-      'online_payment_enabled': _onlinePayment,
+      // Phase 0 containment: these controls stay visible so an operator knows they were
+      // considered, but they are not product capabilities yet and must not be written
+      // into the control plane as if changing them changed the apps.
       'accept_timeout_minutes': int.parse(_acceptTimeout.text.trim()),
-      'marketing_push_per_week': int.parse(_push.text.trim()),
       'rejection_ban_threshold': int.parse(_rejection.text.trim()),
       'min_ratings_to_show': int.parse(_minRatings.text.trim()),
       'delivery_fee_min': Money.parse(_feeMin.text.trim())!,
@@ -146,22 +170,21 @@ class _ConfigFormState extends ConsumerState<_ConfigForm> {
     setState(() => _busy = false);
 
     if (result case Err(:final failure)) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(_sentence(failure))),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(_sentence(failure))));
     }
   }
 
   String _sentence(Failure failure) => switch (failure) {
-        OfflineFailure() => 'مفيش نت — جرّب تاني.',
-        PermissionFailure() => 'مش مسموح ليك تعدّل الإعدادات.',
-        _ => 'مقدرناش نحفظ. جرّب تاني.',
-      };
+    OfflineFailure() => 'مفيش نت — جرّب تاني.',
+    PermissionFailure() => 'مش مسموح ليك تعدّل الإعدادات.',
+    _ => 'مقدرناش نحفظ. جرّب تاني.',
+  };
 
   bool _valid() {
     final errors = [
       _validInt(_acceptTimeout),
-      _validInt(_push),
       _validInt(_rejection),
       _validInt(_minRatings),
       _validMoney(_feeMin),
@@ -175,8 +198,7 @@ class _ConfigFormState extends ConsumerState<_ConfigForm> {
       return false;
     }
     // The pair is validated together: a max below a min describes no valid fee at all.
-    if (Money.parse(_feeMin.text.trim())! >
-        Money.parse(_feeMax.text.trim())!) {
+    if (Money.parse(_feeMin.text.trim())! > Money.parse(_feeMax.text.trim())!) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('أقصى رسوم أقل من أقل رسوم — راجعهم.')),
       );
@@ -194,64 +216,93 @@ class _ConfigFormState extends ConsumerState<_ConfigForm> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-        _Section(
-          title: 'الميزات',
-          children: [
-            SwitchListTile(
-              title: const Text('تفعيل الـ OTP'),
-              subtitle: const Text('التحقق بالرقم عند الطلب'),
-              value: _otp,
-              onChanged: (v) => setState(() => _otp = v),
-            ),
-            SwitchListTile(
-              title: const Text('إعلانات AdMob'),
-              value: _admob,
-              onChanged: (v) => setState(() => _admob = v),
-            ),
-            SwitchListTile(
-              title: const Text('التعليقات العامة'),
-              value: _publicComments,
-              onChanged: (v) => setState(() => _publicComments = v),
-            ),
-            SwitchListTile(
-              title: const Text('الدفع أونلاين'),
-              value: _onlinePayment,
-              onChanged: (v) => setState(() => _onlinePayment = v),
-            ),
-          ],
-        ),
-        const SizedBox(height: Space.lg),
-        _Section(
-          title: 'الحدود',
-          children: [
-            _IntTile(controller: _acceptTimeout, label: 'مهلة قبول الطلب (دقايق)'),
-            _IntTile(fieldKey: ConfigScreen.pushKey, controller: _push, label: 'إشعارات التسويق أسبوعيًا'),
-            _IntTile(controller: _rejection, label: 'الرفض قبل الحظر'),
-            _IntTile(controller: _minRatings, label: 'أقل تقييمات لعرض النجوم'),
-            _IntTile(controller: _feeMin, label: 'أقل رسوم توصيل (جنيه)'),
-            _IntTile(controller: _feeMax, label: 'أقصى رسوم توصيل (جنيه)'),
-            _IntTile(controller: _splash, label: 'مدة الشاشة الافتتاحية (مللي ثانية)'),
-          ],
-        ),
-        const SizedBox(height: Space.lg),
-        _Section(
-          title: 'الدعم والتحديث',
-          children: [
-            _TextTile(controller: _whatsapp, label: 'رقم واتساب الدعم', fieldKey: ConfigScreen.whatsappKey),
-            _TextTile(controller: _minVersion, label: 'أقل نسخة مدعومة (مثال 1.4.0)'),
-            _TextTile(controller: _updateMessage, label: 'رسالة التحديث', maxLines: 3),
-          ],
-        ),
-        const SizedBox(height: Space.xl),
-        FilledButton.icon(
-          key: ConfigScreen.saveKey,
-          onPressed: _busy ? null : _save,
-          icon: const Icon(Icons.save_outlined, size: Sizes.iconSm),
-          label: Text(_busy ? 'جاري…' : 'احفظ الإعدادات'),
-          style: FilledButton.styleFrom(
-            minimumSize: const Size.fromHeight(Sizes.minTarget),
+          _Section(
+            title: 'الميزات',
+            children: [
+              SwitchListTile(
+                title: const Text('تفعيل الـ OTP'),
+                subtitle: const Text('غير متاح في الإصدار الحالي'),
+                value: _otp,
+                onChanged: null,
+              ),
+              SwitchListTile(
+                title: const Text('إعلانات AdMob'),
+                subtitle: const Text('غير متاح في الإصدار الحالي'),
+                value: _admob,
+                onChanged: null,
+              ),
+              SwitchListTile(
+                title: const Text('التعليقات العامة'),
+                subtitle: const Text('غير متاح في الإصدار الحالي'),
+                value: _publicComments,
+                onChanged: null,
+              ),
+              SwitchListTile(
+                title: const Text('الدفع أونلاين'),
+                subtitle: const Text('غير متاح في الإصدار الحالي'),
+                value: _onlinePayment,
+                onChanged: null,
+              ),
+            ],
           ),
-        ),
+          const SizedBox(height: Space.lg),
+          _Section(
+            title: 'الحدود',
+            children: [
+              _IntTile(
+                controller: _acceptTimeout,
+                label: 'مهلة قبول الطلب (دقايق)',
+              ),
+              _IntTile(
+                fieldKey: ConfigScreen.pushKey,
+                controller: _push,
+                label: 'إشعارات التسويق أسبوعيًا',
+                subtitle: 'غير متاح في الإصدار الحالي',
+                enabled: false,
+              ),
+              _IntTile(controller: _rejection, label: 'الرفض قبل الحظر'),
+              _IntTile(
+                controller: _minRatings,
+                label: 'أقل تقييمات لعرض النجوم',
+              ),
+              _IntTile(controller: _feeMin, label: 'أقل رسوم توصيل (جنيه)'),
+              _IntTile(controller: _feeMax, label: 'أقصى رسوم توصيل (جنيه)'),
+              _IntTile(
+                controller: _splash,
+                label: 'مدة الشاشة الافتتاحية (مللي ثانية)',
+              ),
+            ],
+          ),
+          const SizedBox(height: Space.lg),
+          _Section(
+            title: 'الدعم والتحديث',
+            children: [
+              _TextTile(
+                controller: _whatsapp,
+                label: 'رقم واتساب الدعم',
+                fieldKey: ConfigScreen.whatsappKey,
+              ),
+              _TextTile(
+                controller: _minVersion,
+                label: 'أقل نسخة مدعومة (مثال 1.4.0)',
+              ),
+              _TextTile(
+                controller: _updateMessage,
+                label: 'رسالة التحديث',
+                maxLines: 3,
+              ),
+            ],
+          ),
+          const SizedBox(height: Space.xl),
+          FilledButton.icon(
+            key: ConfigScreen.saveKey,
+            onPressed: _busy ? null : _save,
+            icon: const Icon(Icons.save_outlined, size: Sizes.iconSm),
+            label: Text(_busy ? 'جاري…' : 'احفظ الإعدادات'),
+            style: FilledButton.styleFrom(
+              minimumSize: const Size.fromHeight(Sizes.minTarget),
+            ),
+          ),
         ],
       ),
     );
@@ -295,24 +346,32 @@ class _IntTile extends StatelessWidget {
     required this.controller,
     required this.label,
     this.fieldKey,
+    this.subtitle,
+    this.enabled = true,
   });
 
   final TextEditingController controller;
   final String label;
   final Key? fieldKey;
+  final String? subtitle;
+  final bool enabled;
 
   @override
   Widget build(BuildContext context) {
     return ListTile(
       title: Text(label),
+      subtitle: subtitle == null ? null : Text(subtitle!),
       trailing: SizedBox(
         width: 140,
         child: TextField(
           key: fieldKey,
           controller: controller,
+          enabled: enabled,
           textAlign: TextAlign.center,
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]'))],
+          inputFormatters: [
+            FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]')),
+          ],
           decoration: const InputDecoration(isDense: true),
         ),
       ),

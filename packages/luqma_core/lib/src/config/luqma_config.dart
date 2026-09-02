@@ -92,7 +92,9 @@ class LuqmaConfig {
     publicCommentsEnabled: false,
     onlinePaymentEnabled: false,
     acceptTimeoutMinutes: 5,
-    marketingPushPerWeek: 3,
+    // Contained at launch: approval currently records a campaign but no sender queues
+    // it. A non-zero default advertises a paid capability that does not exist yet.
+    marketingPushPerWeek: 0,
     rejectionBanThreshold: 3,
     minRatingsToShow: 10,
     deliveryFeeMin: 500,
@@ -126,8 +128,18 @@ class LuqmaConfig {
 
     // The fee bounds are validated as a pair: a max below a min describes no valid fee
     // at all, so neither half of a contradictory range is trusted.
-    var feeMin = ranged('delivery_fee_min', defaults.deliveryFeeMin, min: 0, max: 100000);
-    var feeMax = ranged('delivery_fee_max', defaults.deliveryFeeMax, min: 0, max: 100000);
+    var feeMin = ranged(
+      'delivery_fee_min',
+      defaults.deliveryFeeMin,
+      min: 0,
+      max: 100000,
+    );
+    var feeMax = ranged(
+      'delivery_fee_max',
+      defaults.deliveryFeeMax,
+      min: 0,
+      max: 100000,
+    );
     if (feeMax < feeMin) {
       feeMin = defaults.deliveryFeeMin;
       feeMax = defaults.deliveryFeeMax;
@@ -136,10 +148,14 @@ class LuqmaConfig {
     return LuqmaConfig(
       otpEnabled: flag('otp_enabled', defaults.otpEnabled),
       admobEnabled: flag('admob_enabled', defaults.admobEnabled),
-      publicCommentsEnabled:
-          flag('public_comments_enabled', defaults.publicCommentsEnabled),
-      onlinePaymentEnabled:
-          flag('online_payment_enabled', defaults.onlinePaymentEnabled),
+      publicCommentsEnabled: flag(
+        'public_comments_enabled',
+        defaults.publicCommentsEnabled,
+      ),
+      onlinePaymentEnabled: flag(
+        'online_payment_enabled',
+        defaults.onlinePaymentEnabled,
+      ),
       acceptTimeoutMinutes: ranged(
         'accept_timeout_minutes',
         defaults.acceptTimeoutMinutes,

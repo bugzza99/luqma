@@ -19,19 +19,18 @@ void main() {
     String? rejectionReason,
     DateTime? startAt,
     DateTime? endAt,
-  }) =>
-      Promotion(
-        id: id,
-        cityId: 'edku',
-        merchantId: 'm1',
-        channel: channel,
-        status: status,
-        title: 'خصم النهارده',
-        rejectionReason: rejectionReason,
-        startAt: startAt ?? DateTime(2026, 8, 20),
-        endAt: endAt ?? DateTime(2026, 9, 20),
-        requestedBy: 'owner1',
-      );
+  }) => Promotion(
+    id: id,
+    cityId: 'edku',
+    merchantId: 'm1',
+    channel: channel,
+    status: status,
+    title: 'خصم النهارده',
+    rejectionReason: rejectionReason,
+    startAt: startAt ?? DateTime(2026, 8, 20),
+    endAt: endAt ?? DateTime(2026, 9, 20),
+    requestedBy: 'owner1',
+  );
 
   late FakePromotionRepository promotions;
 
@@ -60,7 +59,11 @@ void main() {
             FakeAuthService(
               restoring: const LuqmaIdentity(
                 uid: 'owner1',
-                claims: {'role': 'owner', 'scope': 'merchant', 'merchantId': 'm1'},
+                claims: {
+                  'role': 'owner',
+                  'scope': 'merchant',
+                  'merchantId': 'm1',
+                },
               ),
             ),
           ),
@@ -84,41 +87,60 @@ void main() {
 
   group('what a merchant sees of their own', () {
     testWidgets('every campaign, whatever became of it', (tester) async {
-      await pump(tester, seed: [
-        promotion(id: 'live', status: PromotionStatus.approved),
-        promotion(id: 'waiting'),
-      ]);
+      await pump(
+        tester,
+        seed: [
+          promotion(id: 'live', status: PromotionStatus.approved),
+          promotion(id: 'waiting'),
+        ],
+      );
 
-      expect(find.byKey(MerchantPromotionsScreen.cardKey('live')), findsOneWidget);
-      expect(find.byKey(MerchantPromotionsScreen.cardKey('waiting')), findsOneWidget);
+      expect(
+        find.byKey(MerchantPromotionsScreen.cardKey('live')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(MerchantPromotionsScreen.cardKey('waiting')),
+        findsOneWidget,
+      );
     });
 
     // The whole point of requiring a reason. A merchant who is told only "rejected"
     // asks again with the same thing.
     testWidgets('a refusal shows why', (tester) async {
-      await pump(tester, seed: [
-        promotion(
-          status: PromotionStatus.rejected,
-          rejectionReason: 'الصورة مش واضحة',
-        ),
-      ]);
+      await pump(
+        tester,
+        seed: [
+          promotion(
+            status: PromotionStatus.rejected,
+            rejectionReason: 'الصورة مش واضحة',
+          ),
+        ],
+      );
 
       expect(find.text('الصورة مش واضحة'), findsOneWidget);
     });
 
     // Approved is not live: the merchant needs to know it starts on Tuesday, not that
     // something is wrong today.
-    testWidgets('an approved campaign that has not started says when it will',
-        (tester) async {
-      await pump(tester, seed: [
-        promotion(
-          status: PromotionStatus.approved,
-          startAt: DateTime(2026, 9, 1),
-          endAt: DateTime(2026, 9, 30),
-        ),
-      ]);
+    testWidgets('an approved campaign that has not started says when it will', (
+      tester,
+    ) async {
+      await pump(
+        tester,
+        seed: [
+          promotion(
+            status: PromotionStatus.approved,
+            startAt: DateTime(2026, 9, 1),
+            endAt: DateTime(2026, 9, 30),
+          ),
+        ],
+      );
 
-      expect(find.byKey(MerchantPromotionsScreen.scheduledKey('p1')), findsOneWidget);
+      expect(
+        find.byKey(MerchantPromotionsScreen.scheduledKey('p1')),
+        findsOneWidget,
+      );
     });
 
     testWidgets('nothing bought yet invites a first one', (tester) async {
@@ -137,7 +159,9 @@ void main() {
     }) async {
       await tester.tap(find.byKey(MerchantPromotionsScreen.askKey));
       await tester.pumpAndSettle();
-      await tester.tap(find.byKey(MerchantPromotionsScreen.channelKey(channel)));
+      await tester.tap(
+        find.byKey(MerchantPromotionsScreen.channelKey(channel)),
+      );
       await tester.pumpAndSettle();
       await tester.enterText(
         find.byKey(MerchantPromotionsScreen.titleKey),
@@ -163,15 +187,20 @@ void main() {
     //
     // A merchant asking today means "as soon as you say yes". Starting now is what makes
     // approving it the thing that puts it up.
-    testWidgets('and it starts now, so approving it is what makes it live',
-        (tester) async {
+    testWidgets('and it starts now, so approving it is what makes it live', (
+      tester,
+    ) async {
       await pump(tester);
 
       await ask(tester);
 
       final asked = promotions.all.single;
       expect(asked.startAt, now);
-      expect(asked.isLiveAt(now), isFalse, reason: 'requested is still not live');
+      expect(
+        asked.isLiveAt(now),
+        isFalse,
+        reason: 'requested is still not live',
+      );
       expect(
         asked.copyWith(status: PromotionStatus.approved).isLiveAt(now),
         isTrue,
@@ -195,13 +224,18 @@ void main() {
     // Nothing caught it because the two ids are both uuids and every test that touched
     // this path supplied a valid one of its own instead of the app's: the live test
     // passes `customerUid`, and the assertion above only ever checked `merchantId`.
-    testWidgets('and it is asked for by the person, not by the shop', (tester) async {
+    testWidgets('and it is asked for by the person, not by the shop', (
+      tester,
+    ) async {
       await pump(tester);
 
       await ask(tester);
 
-      expect(promotions.all.single.requestedBy, 'owner1',
-          reason: 'the signed-in uid — a merchant id is not a row in auth.users');
+      expect(
+        promotions.all.single.requestedBy,
+        'owner1',
+        reason: 'the signed-in uid — a merchant id is not a row in auth.users',
+      );
       expect(promotions.all.single.requestedBy, isNot('m1'));
     });
 
@@ -232,19 +266,30 @@ void main() {
   group('the weekly push cap', () {
     // Unmoderated, uncapped push is the fastest way to make customers disable
     // notifications — and every operational alert goes with them.
-    testWidgets('push is offered while the city is under the cap', (tester) async {
-      await pump(tester, config: {'marketing_push_per_week': 3});
+    testWidgets(
+      'push stays disabled while its delivery pipeline is incomplete',
+      (tester) async {
+        await pump(tester, config: {'marketing_push_per_week': 3});
 
-      await tester.tap(find.byKey(MerchantPromotionsScreen.askKey));
-      await tester.pumpAndSettle();
+        await tester.tap(find.byKey(MerchantPromotionsScreen.askKey));
+        await tester.pumpAndSettle();
 
-      expect(
-        find.byKey(MerchantPromotionsScreen.channelKey(PromotionChannel.push)),
-        findsOneWidget,
-      );
-    });
+        final button = tester.widget<OutlinedButton>(
+          find.byKey(
+            MerchantPromotionsScreen.channelKey(PromotionChannel.push),
+          ),
+        );
+        expect(button.onPressed, isNull);
+        expect(
+          find.byKey(MerchantPromotionsScreen.pushUnavailableKey),
+          findsOneWidget,
+        );
+      },
+    );
 
-    testWidgets('and refused once the week is full', (tester) async {
+    testWidgets('a previous push does not bypass launch containment', (
+      tester,
+    ) async {
       await pump(
         tester,
         config: {'marketing_push_per_week': 1},
@@ -262,7 +307,10 @@ void main() {
       await tester.tap(find.byKey(MerchantPromotionsScreen.askKey));
       await tester.pumpAndSettle();
 
-      expect(find.byKey(MerchantPromotionsScreen.pushFullKey), findsOneWidget);
+      expect(
+        find.byKey(MerchantPromotionsScreen.pushUnavailableKey),
+        findsOneWidget,
+      );
       final button = tester.widget<OutlinedButton>(
         find.byKey(MerchantPromotionsScreen.channelKey(PromotionChannel.push)),
       );
@@ -271,7 +319,9 @@ void main() {
 
     // The cap is on the week, not for ever. A merchant told "no" with no horizon
     // assumes it is permanent and stops asking.
-    testWidgets('the banner channels stay open when push is full', (tester) async {
+    testWidgets('the banner channels stay open when push is full', (
+      tester,
+    ) async {
       await pump(
         tester,
         config: {'marketing_push_per_week': 1},
@@ -303,50 +353,66 @@ void main() {
   // ever writes — nothing on the server promotes it to `active` — so a label keyed on
   // the status told a merchant whose banner was live that it had merely been signed off.
   group('is it running right now', () {
-    testWidgets('an approved campaign inside its dates says it is live', (tester) async {
-      await pump(tester, seed: [
-        promotion(
-          id: 'running',
-          status: PromotionStatus.approved,
-          startAt: DateTime(2026, 8, 20),
-          endAt: DateTime(2026, 9, 20),
-        ),
-      ]);
+    testWidgets('an approved campaign inside its dates says it is live', (
+      tester,
+    ) async {
+      await pump(
+        tester,
+        seed: [
+          promotion(
+            id: 'running',
+            status: PromotionStatus.approved,
+            startAt: DateTime(2026, 8, 20),
+            endAt: DateTime(2026, 9, 20),
+          ),
+        ],
+      );
 
       expect(find.text('شغال دلوقتي'), findsOneWidget);
     });
 
     // Approved is not live. A campaign signed off today for next week must not tell the
     // merchant it is already running, or they will ask why it is not on their screen.
-    testWidgets('one approved for next week says it is approved, not live',
-        (tester) async {
-      await pump(tester, seed: [
-        promotion(
-          id: 'later',
-          status: PromotionStatus.approved,
-          startAt: DateTime(2026, 9, 1),
-          endAt: DateTime(2026, 9, 20),
-        ),
-      ]);
+    testWidgets('one approved for next week says it is approved, not live', (
+      tester,
+    ) async {
+      await pump(
+        tester,
+        seed: [
+          promotion(
+            id: 'later',
+            status: PromotionStatus.approved,
+            startAt: DateTime(2026, 9, 1),
+            endAt: DateTime(2026, 9, 20),
+          ),
+        ],
+      );
 
       expect(find.text('اتوافق عليه'), findsOneWidget);
       expect(find.text('شغال دلوقتي'), findsNothing);
     });
 
-    testWidgets('one whose dates have passed does not claim to be live', (tester) async {
-      await pump(tester, seed: [
-        promotion(
-          id: 'over',
-          status: PromotionStatus.approved,
-          startAt: DateTime(2026, 7, 1),
-          endAt: DateTime(2026, 8, 1),
-        ),
-      ]);
+    testWidgets('one whose dates have passed does not claim to be live', (
+      tester,
+    ) async {
+      await pump(
+        tester,
+        seed: [
+          promotion(
+            id: 'over',
+            status: PromotionStatus.approved,
+            startAt: DateTime(2026, 7, 1),
+            endAt: DateTime(2026, 8, 1),
+          ),
+        ],
+      );
 
       expect(find.text('شغال دلوقتي'), findsNothing);
     });
 
-    testWidgets('one still waiting is never live, whatever its dates', (tester) async {
+    testWidgets('one still waiting is never live, whatever its dates', (
+      tester,
+    ) async {
       await pump(tester, seed: [promotion(id: 'waiting')]);
 
       expect(find.text('تحت المراجعة'), findsOneWidget);
@@ -358,13 +424,16 @@ void main() {
     // A merchant who mistyped a headline had exactly one move: ask again and hope
     // somebody rejected the first one. Two banners in the queue for one campaign.
     testWidgets('a scheduled banner can be edited', (tester) async {
-      await pump(tester, seed: [
-        promotion(
-          status: PromotionStatus.approved,
-          startAt: now.add(const Duration(days: 3)),
-          endAt: now.add(const Duration(days: 10)),
-        ),
-      ]);
+      await pump(
+        tester,
+        seed: [
+          promotion(
+            status: PromotionStatus.approved,
+            startAt: now.add(const Duration(days: 3)),
+            endAt: now.add(const Duration(days: 10)),
+          ),
+        ],
+      );
 
       expect(
         find.byKey(MerchantPromotionsScreen.editKey('p1')),
@@ -375,36 +444,45 @@ void main() {
     // Not a live one. Editing it would either change what the city sees without review,
     // or — since an edit goes back to the queue — take their own running campaign dark.
     testWidgets('a running banner offers no edit', (tester) async {
-      await pump(tester, seed: [
-        promotion(
-          status: PromotionStatus.approved,
-          startAt: now.subtract(const Duration(days: 1)),
-          endAt: now.add(const Duration(days: 10)),
-        ),
-      ]);
+      await pump(
+        tester,
+        seed: [
+          promotion(
+            status: PromotionStatus.approved,
+            startAt: now.subtract(const Duration(days: 1)),
+            endAt: now.add(const Duration(days: 10)),
+          ),
+        ],
+      );
 
       expect(find.byKey(MerchantPromotionsScreen.editKey('p1')), findsNothing);
     });
 
     testWidgets('a rejected one is not a draft', (tester) async {
-      await pump(tester, seed: [
-        promotion(
-          status: PromotionStatus.rejected,
-          rejectionReason: 'الصورة مش واضحة',
-          startAt: now.add(const Duration(days: 3)),
-        ),
-      ]);
+      await pump(
+        tester,
+        seed: [
+          promotion(
+            status: PromotionStatus.rejected,
+            rejectionReason: 'الصورة مش واضحة',
+            startAt: now.add(const Duration(days: 3)),
+          ),
+        ],
+      );
 
       expect(find.byKey(MerchantPromotionsScreen.editKey('p1')), findsNothing);
     });
 
     testWidgets('the form opens on what was asked for', (tester) async {
-      await pump(tester, seed: [
-        promotion(
-          status: PromotionStatus.approved,
-          startAt: now.add(const Duration(days: 3)),
-        ),
-      ]);
+      await pump(
+        tester,
+        seed: [
+          promotion(
+            status: PromotionStatus.approved,
+            startAt: now.add(const Duration(days: 3)),
+          ),
+        ],
+      );
 
       await tester.tap(find.byKey(MerchantPromotionsScreen.editKey('p1')));
       await tester.pumpAndSettle();
@@ -415,12 +493,15 @@ void main() {
     // The asymmetry the whole design rests on: an edit is a fresh ask, so a merchant
     // cannot approve their own words by changing something already signed off.
     testWidgets('saving an edit sends it back to the queue', (tester) async {
-      await pump(tester, seed: [
-        promotion(
-          status: PromotionStatus.approved,
-          startAt: now.add(const Duration(days: 3)),
-        ),
-      ]);
+      await pump(
+        tester,
+        seed: [
+          promotion(
+            status: PromotionStatus.approved,
+            startAt: now.add(const Duration(days: 3)),
+          ),
+        ],
+      );
 
       await tester.tap(find.byKey(MerchantPromotionsScreen.editKey('p1')));
       await tester.pumpAndSettle();
@@ -440,12 +521,15 @@ void main() {
 
     // Silence after a tap is indistinguishable from a broken button.
     testWidgets('a refused edit says so', (tester) async {
-      await pump(tester, seed: [
-        promotion(
-          status: PromotionStatus.approved,
-          startAt: now.add(const Duration(days: 3)),
-        ),
-      ]);
+      await pump(
+        tester,
+        seed: [
+          promotion(
+            status: PromotionStatus.approved,
+            startAt: now.add(const Duration(days: 3)),
+          ),
+        ],
+      );
       promotions.failNext = const OfflineFailure();
 
       await tester.tap(find.byKey(MerchantPromotionsScreen.editKey('p1')));

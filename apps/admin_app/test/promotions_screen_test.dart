@@ -19,20 +19,19 @@ void main() {
     PromotionStatus status = PromotionStatus.requested,
     String title = 'خصم النهارده',
     DateTime? startAt,
-  }) =>
-      Promotion(
-        id: id,
-        cityId: 'edku',
-        merchantId: merchantId,
-        channel: channel,
-        status: status,
-        title: title,
-        body: 'كل الفراخ ١٥٪ أقل',
-        startAt: startAt ?? DateTime(2026, 8, 25),
-        endAt: DateTime(2026, 9, 25),
-        price: 30000,
-        requestedBy: 'owner1',
-      );
+  }) => Promotion(
+    id: id,
+    cityId: 'edku',
+    merchantId: merchantId,
+    channel: channel,
+    status: status,
+    title: title,
+    body: 'كل الفراخ ١٥٪ أقل',
+    startAt: startAt ?? DateTime(2026, 8, 25),
+    endAt: DateTime(2026, 9, 25),
+    price: 30000,
+    requestedBy: 'owner1',
+  );
 
   const merchants = [
     Merchant(
@@ -48,7 +47,10 @@ void main() {
 
   late FakePromotionRepository promotions;
 
-  Future<void> pump(WidgetTester tester, {List<Promotion> seed = const []}) async {
+  Future<void> pump(
+    WidgetTester tester, {
+    List<Promotion> seed = const [],
+  }) async {
     promotions = FakePromotionRepository(seed: seed);
 
     await tester.pumpWidget(
@@ -61,10 +63,12 @@ void main() {
             ),
           ),
           promotionRepositoryProvider.overrideWithValue(promotions),
-          merchantRepositoryProvider
-              .overrideWithValue(FakeMerchantRepository(seed: merchants)),
-          remoteConfigServiceProvider
-              .overrideWithValue(RemoteConfigService(FakeConfigFetcher({}))),
+          merchantRepositoryProvider.overrideWithValue(
+            FakeMerchantRepository(seed: merchants),
+          ),
+          remoteConfigServiceProvider.overrideWithValue(
+            RemoteConfigService(FakeConfigFetcher({})),
+          ),
         ],
         child: MaterialApp(
           theme: LuqmaTheme.light,
@@ -82,7 +86,9 @@ void main() {
   }
 
   group('the queue', () {
-    testWidgets('shows what is waiting, with who asked and for what', (tester) async {
+    testWidgets('shows what is waiting, with who asked and for what', (
+      tester,
+    ) async {
       await pump(tester, seed: [promotion()]);
 
       expect(find.text('خصم النهارده'), findsOneWidget);
@@ -94,7 +100,9 @@ void main() {
       expect(find.byKey(PromotionsScreen.emptyKey), findsOneWidget);
     });
 
-    testWidgets('a failed read never looks like an empty queue', (tester) async {
+    testWidgets('a failed read never looks like an empty queue', (
+      tester,
+    ) async {
       promotions = FakePromotionRepository(failure: const OfflineFailure());
       await tester.pumpWidget(
         ProviderScope(
@@ -106,10 +114,12 @@ void main() {
               ),
             ),
             promotionRepositoryProvider.overrideWithValue(promotions),
-            merchantRepositoryProvider
-                .overrideWithValue(FakeMerchantRepository(seed: merchants)),
-            remoteConfigServiceProvider
-                .overrideWithValue(RemoteConfigService(FakeConfigFetcher({}))),
+            merchantRepositoryProvider.overrideWithValue(
+              FakeMerchantRepository(seed: merchants),
+            ),
+            remoteConfigServiceProvider.overrideWithValue(
+              RemoteConfigService(FakeConfigFetcher({})),
+            ),
           ],
           child: MaterialApp(
             theme: LuqmaTheme.light,
@@ -136,6 +146,22 @@ void main() {
 
       expect(find.byKey(PromotionsScreen.pushWarningKey('p1')), findsOneWidget);
     });
+
+    testWidgets(
+      'a push request cannot be approved while delivery is disabled',
+      (tester) async {
+        await pump(
+          tester,
+          seed: [promotion(channel: PromotionChannel.push, startAt: now)],
+        );
+
+        final approve = tester.widget<FilledButton>(
+          find.byKey(PromotionsScreen.approveKey('p1')),
+        );
+        expect(approve.onPressed, isNull);
+        expect(find.textContaining('الإرسال متوقف مؤقتًا'), findsOneWidget);
+      },
+    );
 
     testWidgets('a banner request is not', (tester) async {
       await pump(tester, seed: [promotion()]);
@@ -249,7 +275,9 @@ void main() {
 
       await chooseMerchant(tester, 'مطعم الشاطئ');
       await tester.enterText(
-          find.byKey(PromotionsScreen.formTitleKey), 'التوصيل مجاني النهارده');
+        find.byKey(PromotionsScreen.formTitleKey),
+        'التوصيل مجاني النهارده',
+      );
       await tester.tap(find.byKey(PromotionsScreen.formSubmitKey));
       await tester.pumpAndSettle();
 
@@ -276,7 +304,9 @@ void main() {
       expect(find.byKey(PromotionsScreen.emptyKey), findsOneWidget);
     });
 
-    testWidgets('a banner with no words never reaches the repository', (tester) async {
+    testWidgets('a banner with no words never reaches the repository', (
+      tester,
+    ) async {
       await pump(tester);
       await openForm(tester);
 
@@ -325,8 +355,13 @@ void main() {
       await tester.pumpAndSettle();
     }
 
-    testWidgets('approving one dated ahead asks which date is meant', (tester) async {
-      await pump(tester, seed: [promotion(startAt: now.add(const Duration(days: 1)))]);
+    testWidgets('approving one dated ahead asks which date is meant', (
+      tester,
+    ) async {
+      await pump(
+        tester,
+        seed: [promotion(startAt: now.add(const Duration(days: 1)))],
+      );
 
       await approve(tester);
 
@@ -334,8 +369,13 @@ void main() {
       expect(find.byKey(PromotionsScreen.keepDateKey), findsOneWidget);
     });
 
-    testWidgets('and starting it now makes it live immediately', (tester) async {
-      await pump(tester, seed: [promotion(startAt: now.add(const Duration(days: 1)))]);
+    testWidgets('and starting it now makes it live immediately', (
+      tester,
+    ) async {
+      await pump(
+        tester,
+        seed: [promotion(startAt: now.add(const Duration(days: 1)))],
+      );
 
       await approve(tester);
       await tester.tap(find.byKey(PromotionsScreen.startNowKey));
@@ -349,9 +389,10 @@ void main() {
     // A campaign shortened for the crime of being approved would be a worse bug than the
     // one this fixes.
     testWidgets('and it keeps the length that was asked for', (tester) async {
-      await pump(tester, seed: [
-        promotion(startAt: now.add(const Duration(days: 1))),
-      ]);
+      await pump(
+        tester,
+        seed: [promotion(startAt: now.add(const Duration(days: 1)))],
+      );
       final asked = promotions.all.single;
       final wanted = asked.endAt.difference(asked.startAt);
 
@@ -365,7 +406,10 @@ void main() {
 
     // The rule stands: a campaign genuinely meant for next week must not jump the queue.
     testWidgets('keeping the date leaves it dark until then', (tester) async {
-      await pump(tester, seed: [promotion(startAt: now.add(const Duration(days: 1)))]);
+      await pump(
+        tester,
+        seed: [promotion(startAt: now.add(const Duration(days: 1)))],
+      );
 
       await approve(tester);
       await tester.tap(find.byKey(PromotionsScreen.keepDateKey));
@@ -377,8 +421,9 @@ void main() {
     });
 
     // One that already starts now needs no question asked.
-    testWidgets('a request that starts today is approved without a dialog',
-        (tester) async {
+    testWidgets('a request that starts today is approved without a dialog', (
+      tester,
+    ) async {
       await pump(tester, seed: [promotion(startAt: now)]);
 
       await approve(tester);
@@ -392,15 +437,20 @@ void main() {
     // The queue is what needs a decision; this is what exists. An approved banner left
     // the admin's screen the moment it was approved, so a campaign scheduled for next
     // week could not be seen at all, let alone moved.
-    testWidgets('shows placements the queue has already dealt with', (tester) async {
-      await pump(tester, seed: [
-        promotion(
-          id: 'p2',
-          status: PromotionStatus.approved,
-          title: 'أسبوع المشويات',
-          startAt: now.add(const Duration(days: 5)),
-        ),
-      ]);
+    testWidgets('shows placements the queue has already dealt with', (
+      tester,
+    ) async {
+      await pump(
+        tester,
+        seed: [
+          promotion(
+            id: 'p2',
+            status: PromotionStatus.approved,
+            title: 'أسبوع المشويات',
+            startAt: now.add(const Duration(days: 5)),
+          ),
+        ],
+      );
 
       expect(find.byKey(PromotionsScreen.emptyKey), findsOneWidget);
 
@@ -426,32 +476,42 @@ void main() {
       await tester.pumpAndSettle();
     }
 
-    testWidgets('the dates sheet opens on the window the placement already has',
-        (tester) async {
-      await pump(tester, seed: [
-        promotion(
-          id: 'p2',
-          status: PromotionStatus.approved,
-          startAt: DateTime(2026, 8, 25),
-        ),
-      ]);
+    testWidgets(
+      'the dates sheet opens on the window the placement already has',
+      (tester) async {
+        await pump(
+          tester,
+          seed: [
+            promotion(
+              id: 'p2',
+              status: PromotionStatus.approved,
+              startAt: DateTime(2026, 8, 25),
+            ),
+          ],
+        );
 
-      await openDates(tester);
+        await openDates(tester);
 
-      expect(find.byKey(PromotionsScreen.startFieldKey), findsOneWidget);
-      expect(find.byKey(PromotionsScreen.endFieldKey), findsOneWidget);
-      expect(find.textContaining('25/8'), findsWidgets);
-    });
+        expect(find.byKey(PromotionsScreen.startFieldKey), findsOneWidget);
+        expect(find.byKey(PromotionsScreen.endFieldKey), findsOneWidget);
+        expect(find.textContaining('25/8'), findsWidgets);
+      },
+    );
 
     // The whole point: the admin owns when it appears and when it goes away.
-    testWidgets('saving writes the window through to the placement', (tester) async {
-      await pump(tester, seed: [
-        promotion(
-          id: 'p2',
-          status: PromotionStatus.approved,
-          startAt: DateTime(2026, 8, 25),
-        ),
-      ]);
+    testWidgets('saving writes the window through to the placement', (
+      tester,
+    ) async {
+      await pump(
+        tester,
+        seed: [
+          promotion(
+            id: 'p2',
+            status: PromotionStatus.approved,
+            startAt: DateTime(2026, 8, 25),
+          ),
+        ],
+      );
 
       await openDates(tester);
       await tester.tap(find.byKey(PromotionsScreen.saveDatesKey));

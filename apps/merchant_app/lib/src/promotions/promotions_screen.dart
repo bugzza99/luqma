@@ -20,7 +20,7 @@ class MerchantPromotionsScreen extends ConsumerWidget {
   static const titleKey = Key('promo.title');
   static const bodyKey = Key('promo.body');
   static const submitKey = Key('promo.submit');
-  static const pushFullKey = Key('promo.pushFull');
+  static const pushUnavailableKey = Key('promo.pushUnavailable');
   static const modeKey = Key('promo.mode');
 
   static Key cardKey(String id) => Key('promo.card.$id');
@@ -60,22 +60,22 @@ class MerchantPromotionsScreen extends ConsumerWidget {
         errorKey: MerchantPromotionsScreen.errorKey,
         onRetry: () => ref.invalidate(merchantPromotionsProvider(merchantId)),
         empty: LuqmaEmptyView(
-            key: MerchantPromotionsScreen.emptyKey,
-            icon: Icons.campaign_outlined,
-            title: 'لسه مطلبتش إعلان',
-          ),
+          key: MerchantPromotionsScreen.emptyKey,
+          icon: Icons.campaign_outlined,
+          title: 'لسه مطلبتش إعلان',
+        ),
         isEmpty: (value) => value.isEmpty,
         builder: (context, value) => ListView.separated(
-            padding: const EdgeInsets.fromLTRB(
-              Space.gutter,
-              Space.gutter,
-              Space.gutter,
-              Space.xxxl * 2,
-            ),
-            itemCount: value.length,
-            separatorBuilder: (_, _) => const SizedBox(height: Space.md),
-            itemBuilder: (context, i) => _Card(promotion: value[i]),
-          )
+          padding: const EdgeInsets.fromLTRB(
+            Space.gutter,
+            Space.gutter,
+            Space.gutter,
+            Space.xxxl * 2,
+          ),
+          itemCount: value.length,
+          separatorBuilder: (_, _) => const SizedBox(height: Space.md),
+          itemBuilder: (context, i) => _Card(promotion: value[i]),
+        ),
       ),
       floatingActionButton: FloatingActionButton.extended(
         key: askKey,
@@ -85,7 +85,6 @@ class MerchantPromotionsScreen extends ConsumerWidget {
       ),
     );
   }
-
 }
 
 /// Asking for a placement, or correcting one already asked for.
@@ -99,27 +98,10 @@ Future<void> _ask(
   String merchantId, {
   Promotion? existing,
 }) async {
-  // `.future` rethrows, and this is a tap handler: a dropped connection threw an
-  // unhandled async error, the sheet never opened, and the merchant got no word at
-  // all — the FAB simply stopped working.
-  //
-  // Unknown closes the slot rather than opening it, which is the same call
-  // `pushSlotAvailableProvider` already makes for an unreadable count: one push too
-  // many costs a city's notifications for good, and the other three channels are
-  // still there to ask for.
-  // An edit is not a new claim on the week's one push: the slot was counted when the
-  // request was first made, and refusing to let somebody fix a typo because the cap is
-  // full would strand the very banner that most needs correcting.
-  bool pushOpen;
-  if (existing != null) {
-    pushOpen = true;
-  } else {
-    try {
-      pushOpen = await ref.read(pushSlotAvailableProvider.future);
-    } on Object {
-      pushOpen = false;
-    }
-  }
+  // Phase 0 containment. Approval currently changes a database status but no delivery
+  // pipeline queues the paid notification, so offering the channel would sell silence.
+  // Kept as a form option, disabled and explained, so re-enabling it later is explicit.
+  const pushOpen = false;
   if (!context.mounted) return;
 
   final promotion = await showModalBottomSheet<Promotion>(
@@ -148,19 +130,17 @@ Future<void> _ask(
 
   ScaffoldMessenger.of(context).showSnackBar(
     SnackBar(
-      content: Text(
-        switch (result) {
-          // An edit is a fresh ask, and saying so is what stops a merchant expecting
-          // their correction to be live already.
-          Ok() when existing != null => 'التعديل وصل. هنراجعه تاني ونرد عليك.',
-          Ok() => 'وصل طلبك. هنراجعه ونرد عليك.',
-          Err(:final failure) => switch (failure) {
-              OfflineFailure() => 'مفيش نت — جرّب تاني.',
-              PermissionFailure() => 'الإعلان ده بدأ خلاص، مش هينفع يتعدّل.',
-              _ => 'مقدرناش نبعت الطلب. جرّب تاني.',
-            },
+      content: Text(switch (result) {
+        // An edit is a fresh ask, and saying so is what stops a merchant expecting
+        // their correction to be live already.
+        Ok() when existing != null => 'التعديل وصل. هنراجعه تاني ونرد عليك.',
+        Ok() => 'وصل طلبك. هنراجعه ونرد عليك.',
+        Err(:final failure) => switch (failure) {
+          OfflineFailure() => 'مفيش نت — جرّب تاني.',
+          PermissionFailure() => 'الإعلان ده بدأ خلاص، مش هينفع يتعدّل.',
+          _ => 'مقدرناش نبعت الطلب. جرّب تاني.',
         },
-      ),
+      }),
     ),
   );
 }
@@ -211,8 +191,10 @@ class _Card extends ConsumerWidget {
               ),
               Text(
                 label,
-                style: LuqmaType.bodySmall
-                    .copyWith(color: tone, fontWeight: FontWeight.w600),
+                style: LuqmaType.bodySmall.copyWith(
+                  color: tone,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
             ],
           ),
@@ -382,8 +364,9 @@ class _RequestFormState extends ConsumerState<_RequestForm> {
         cityId: widget.cityId,
         merchantId: widget.merchantId,
         channel: channel,
-        renderMode:
-            _isBanner && _picture ? PromotionRender.image : PromotionRender.text,
+        renderMode: _isBanner && _picture
+            ? PromotionRender.image
+            : PromotionRender.text,
         // Only what the chosen mode actually draws is carried. A text banner keeping a
         // media id is a picture the merchant thinks they are still paying for.
         mediaId: _isBanner && _picture ? _mediaId : null,
@@ -394,7 +377,8 @@ class _RequestFormState extends ConsumerState<_RequestForm> {
         // what decides when it appears — and resetting them to "a week from now" every
         // time somebody fixed a typo would quietly undo the admin's scheduling.
         startAt: widget.existing?.startAt ?? widget.now,
-        endAt: widget.existing?.endAt ?? widget.now.add(const Duration(days: 7)),
+        endAt:
+            widget.existing?.endAt ?? widget.now.add(const Duration(days: 7)),
         requestedBy: widget.existing?.requestedBy ?? widget.requestedBy,
       ),
     );
@@ -428,13 +412,15 @@ class _RequestFormState extends ConsumerState<_RequestForm> {
                         OutlinedButton(
                           key: MerchantPromotionsScreen.channelKey(channel),
                           onPressed:
-                              channel == PromotionChannel.push && !widget.pushOpen
-                                  ? null
-                                  : () => setState(() => _channel = channel),
+                              channel == PromotionChannel.push &&
+                                  !widget.pushOpen
+                              ? null
+                              : () => setState(() => _channel = channel),
                           style: OutlinedButton.styleFrom(
                             minimumSize: const Size.fromHeight(56),
-                            backgroundColor:
-                                _channel == channel ? colors.surface : null,
+                            backgroundColor: _channel == channel
+                                ? colors.surface
+                                : null,
                           ),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
@@ -446,22 +432,23 @@ class _RequestFormState extends ConsumerState<_RequestForm> {
                               ),
                               Text(
                                 MerchantPromotionsScreen.channelNotes[channel]!,
-                                style: LuqmaType.caption
-                                    .copyWith(color: colors.textSecondary),
+                                style: LuqmaType.caption.copyWith(
+                                  color: colors.textSecondary,
+                                ),
                               ),
                             ],
                           ),
                         ),
-                        if (channel == PromotionChannel.push && !widget.pushOpen)
+                        if (channel == PromotionChannel.push &&
+                            !widget.pushOpen)
                           Padding(
-                            key: MerchantPromotionsScreen.pushFullKey,
+                            key: MerchantPromotionsScreen.pushUnavailableKey,
                             padding: const EdgeInsets.only(top: Space.xs),
                             child: Text(
-                              // With a horizon. "No" with no end date reads as
-                              // permanent, and a merchant told that stops asking.
-                              'خلصت إشعارات الأسبوع ده. جرّب الأسبوع الجاي.',
-                              style: LuqmaType.bodySmall
-                                  .copyWith(color: colors.textSecondary),
+                              'الإرسال متوقف مؤقتًا لحد ما يكتمل نظام التوصيل.',
+                              style: LuqmaType.bodySmall.copyWith(
+                                color: colors.textSecondary,
+                              ),
                             ),
                           ),
                         const SizedBox(height: Sizes.targetGap),
@@ -543,8 +530,9 @@ class _RequestFormState extends ConsumerState<_RequestForm> {
                           const SizedBox(height: Space.xs),
                           Text(
                             'اختار صورة الإعلان.',
-                            style: LuqmaType.bodySmall
-                                .copyWith(color: colors.textSecondary),
+                            style: LuqmaType.bodySmall.copyWith(
+                              color: colors.textSecondary,
+                            ),
                           ),
                         ],
                       ],
@@ -570,5 +558,3 @@ class _RequestFormState extends ConsumerState<_RequestForm> {
     );
   }
 }
-
-

@@ -150,10 +150,10 @@ class PromotionsScreen extends ConsumerWidget {
           Ok() => 'الإعلان اتحط.',
           // Silence after a tap is indistinguishable from a broken button.
           Err(:final failure) => switch (failure) {
-              PermissionFailure() => 'مش مسموحلك تحط إعلانات.',
-              OfflineFailure() => 'مفيش نت — جرّب تاني.',
-              _ => 'معرفناش نحط الإعلان. جرّب تاني.',
-            },
+            PermissionFailure() => 'مش مسموحلك تحط إعلانات.',
+            OfflineFailure() => 'مفيش نت — جرّب تاني.',
+            _ => 'معرفناش نحط الإعلان. جرّب تاني.',
+          },
         }),
       ),
     );
@@ -220,8 +220,10 @@ class _Request extends ConsumerWidget {
                     child: Text(
                       // The one channel that reaches somebody not looking at the app,
                       // and the one that can cost every other notification we send.
-                      'ده إشعار هيوصل لكل العملاء. اقرا النص كويس.',
-                      style: LuqmaType.bodySmall.copyWith(color: colors.onAccent),
+                      'الإرسال متوقف مؤقتًا. ينفع ترفض الطلب لكن ما ينفعش تعتمده.',
+                      style: LuqmaType.bodySmall.copyWith(
+                        color: colors.onAccent,
+                      ),
                     ),
                   ),
                 ],
@@ -259,7 +261,9 @@ class _Request extends ConsumerWidget {
                 flex: 2,
                 child: FilledButton(
                   key: PromotionsScreen.approveKey(promotion.id),
-                  onPressed: () => _approve(context, ref),
+                  onPressed: promotion.channel == PromotionChannel.push
+                      ? null
+                      : () => _approve(context, ref),
                   style: FilledButton.styleFrom(
                     minimumSize: const Size.fromHeight(Sizes.minTarget),
                   ),
@@ -273,8 +277,7 @@ class _Request extends ConsumerWidget {
     );
   }
 
-  static String _day(DateTime date) =>
-      '${date.day}/${date.month}';
+  static String _day(DateTime date) => '${date.day}/${date.month}';
 
   Future<void> _approve(BuildContext context, WidgetRef ref) async {
     final by = ref.read(currentIdentityProvider).value?.uid;
@@ -323,12 +326,9 @@ class _Request extends ConsumerWidget {
       }
     }
 
-    await ref.read(promotionRepositoryProvider).approve(
-          promotion.id,
-          approvedBy: by,
-          startAt: startAt,
-          endAt: endAt,
-        );
+    await ref
+        .read(promotionRepositoryProvider)
+        .approve(promotion.id, approvedBy: by, startAt: startAt, endAt: endAt);
   }
 
   Future<void> _reject(BuildContext context, WidgetRef ref) async {
@@ -371,9 +371,10 @@ class _Placement extends ConsumerWidget {
     // the owner like a broken one.
     final (tone, label) = switch (promotion.status) {
       PromotionStatus.requested => (colors.textSecondary, 'مستني مراجعة'),
-      PromotionStatus.approved || PromotionStatus.active => promotion.isLiveAt(now)
-          ? (colors.success, 'شغال دلوقتي')
-          : (colors.textSecondary, 'هيبدأ ${_day(promotion.startAt)}'),
+      PromotionStatus.approved || PromotionStatus.active =>
+        promotion.isLiveAt(now)
+            ? (colors.success, 'شغال دلوقتي')
+            : (colors.textSecondary, 'هيبدأ ${_day(promotion.startAt)}'),
       PromotionStatus.rejected => (colors.danger, 'مرفوض'),
       PromotionStatus.ended => (colors.textSecondary, 'خلص'),
     };
@@ -400,8 +401,10 @@ class _Placement extends ConsumerWidget {
               ),
               Text(
                 label,
-                style: LuqmaType.bodySmall
-                    .copyWith(color: tone, fontWeight: FontWeight.w600),
+                style: LuqmaType.bodySmall.copyWith(
+                  color: tone,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
             ],
           ),
@@ -420,7 +423,9 @@ class _Placement extends ConsumerWidget {
               Expanded(
                 child: Text(
                   'من ${_day(promotion.startAt)} لـ ${_day(promotion.endAt)}',
-                  style: LuqmaType.caption.copyWith(color: colors.textSecondary),
+                  style: LuqmaType.caption.copyWith(
+                    color: colors.textSecondary,
+                  ),
                 ),
               ),
               TextButton.icon(
@@ -448,21 +453,19 @@ class _Placement extends ConsumerWidget {
     );
     if (window == null) return;
 
-    final moved = await ref.read(promotionRepositoryProvider).reschedule(
-          promotion.id,
-          startAt: window.start,
-          endAt: window.end,
-        );
+    final moved = await ref
+        .read(promotionRepositoryProvider)
+        .reschedule(promotion.id, startAt: window.start, endAt: window.end);
 
     messenger.showSnackBar(
       SnackBar(
         content: Text(switch (moved) {
           Ok() => 'المواعيد اتغيرت.',
           Err(:final failure) => switch (failure) {
-              OfflineFailure() => 'مفيش نت — جرّب تاني.',
-              PermissionFailure() => 'مش مسموحلك تغيّر المواعيد.',
-              _ => 'معرفناش نغيّر المواعيد. جرّب تاني.',
-            },
+            OfflineFailure() => 'مفيش نت — جرّب تاني.',
+            PermissionFailure() => 'مش مسموحلك تغيّر المواعيد.',
+            _ => 'معرفناش نغيّر المواعيد. جرّب تاني.',
+          },
         }),
       ),
     );
@@ -625,8 +628,6 @@ class _ReasonDialogState extends State<_ReasonDialog> {
   }
 }
 
-
-
 /// The admin putting up a placement of their own.
 ///
 /// Deliberately shorter than the merchant's request form. The owner is not asking for
@@ -714,9 +715,9 @@ class _CreateFormState extends ConsumerState<_CreateForm> {
                   const SizedBox(height: Space.lg),
                   switch (merchants) {
                     AsyncValue(hasError: true) => const InputDecorator(
-                        decoration: InputDecoration(labelText: 'المطعم'),
-                        child: Text('مقدرناش نجيب المطاعم. اقفل وافتح تاني.'),
-                      ),
+                      decoration: InputDecoration(labelText: 'المطعم'),
+                      child: Text('مقدرناش نجيب المطاعم. اقفل وافتح تاني.'),
+                    ),
                     AsyncValue(hasValue: true, :final value?) =>
                       DropdownButtonFormField<String>(
                         key: PromotionsScreen.formMerchantKey,
@@ -738,9 +739,9 @@ class _CreateFormState extends ConsumerState<_CreateForm> {
                             v != null && v.isNotEmpty ? null : 'اختار المطعم',
                       ),
                     _ => const InputDecorator(
-                        decoration: InputDecoration(labelText: 'المطعم'),
-                        child: Text('بنجيب المطاعم…'),
-                      ),
+                      decoration: InputDecoration(labelText: 'المطعم'),
+                      child: Text('بنجيب المطاعم…'),
+                    ),
                   },
                   const SizedBox(height: Space.md),
                   DropdownButtonFormField<PromotionChannel>(
@@ -750,7 +751,10 @@ class _CreateFormState extends ConsumerState<_CreateForm> {
                     decoration: const InputDecoration(labelText: 'المكان'),
                     items: [
                       for (final entry in PromotionsScreen.channelNames.entries)
-                        DropdownMenuItem(value: entry.key, child: Text(entry.value)),
+                        DropdownMenuItem(
+                          value: entry.key,
+                          child: Text(entry.value),
+                        ),
                     ],
                     onChanged: (c) => setState(() => _channel = c ?? _channel),
                   ),
@@ -768,14 +772,16 @@ class _CreateFormState extends ConsumerState<_CreateForm> {
                     TextFormField(
                       key: PromotionsScreen.formBodyKey,
                       controller: _body,
-                      decoration:
-                          const InputDecoration(labelText: 'التفاصيل (اختياري)'),
+                      decoration: const InputDecoration(
+                        labelText: 'التفاصيل (اختياري)',
+                      ),
                     ),
                     const SizedBox(height: Space.md),
                     Text(
                       'لون الخلفية',
-                      style: LuqmaType.button
-                          .copyWith(color: Theme.of(context).luqma.textSecondary),
+                      style: LuqmaType.button.copyWith(
+                        color: Theme.of(context).luqma.textSecondary,
+                      ),
                     ),
                     const SizedBox(height: Space.sm),
                     BannerColorPicker(

@@ -41,6 +41,9 @@ Thumbs.db
 # Built APKs handed to the owner for testing. Rebuilt on demand, never reviewed.
 apks/
 
+# Non-shippable release-mode APKs produced by the CI smoke build.
+build/ci-apks/
+
 # Service account keys. A full key to the project — never in the repository, whatever
 # it is named or wherever it is dropped.
 *firebase-adminsdk*.json

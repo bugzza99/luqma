@@ -15,8 +15,13 @@
 #
 # Usage:  powershell -ExecutionPolicy Bypass -File tool\run_tests.ps1
 #         powershell -ExecutionPolicy Bypass -File tool\run_tests.ps1 -SkipCloud
+#         powershell -ExecutionPolicy Bypass -File tool\run_tests.ps1 -CloudOnly
 
-param([switch]$SkipCloud)
+param([switch]$SkipCloud, [switch]$CloudOnly)
+
+if ($SkipCloud -and $CloudOnly) {
+    throw '-SkipCloud and -CloudOnly cannot be used together.'
+}
 
 $ErrorActionPreference = 'Continue'
 
@@ -67,23 +72,25 @@ function Skip-Check {
     $script:results += [pscustomobject]@{ Suite = $Name; Result = 'skipped' }
 }
 
-# Generated localizations come first: a new l10n string is otherwise a compile error
-# that points at the call site rather than at the missing step.
-Invoke-Check 'gen-l10n' $core { flutter gen-l10n }
+if (-not $CloudOnly) {
+    # Generated localizations come first: a new l10n string is otherwise a compile error
+    # that points at the call site rather than at the missing step.
+    Invoke-Check 'gen-l10n' $core { flutter gen-l10n }
 
-foreach ($package in @(
-    @{ Name = 'luqma_core';  Dir = $core },
-    @{ Name = 'customer_app'; Dir = (Join-Path $apps 'customer_app') },
-    @{ Name = 'merchant_app'; Dir = (Join-Path $apps 'merchant_app') },
-    @{ Name = 'admin_app';    Dir = (Join-Path $apps 'admin_app') }
-)) {
-    Invoke-Check "$($package.Name) analyze" $package.Dir { flutter analyze }
-    Invoke-Check "$($package.Name) test"    $package.Dir { flutter test }
+    foreach ($package in @(
+        @{ Name = 'luqma_core';  Dir = $core },
+        @{ Name = 'customer_app'; Dir = (Join-Path $apps 'customer_app') },
+        @{ Name = 'merchant_app'; Dir = (Join-Path $apps 'merchant_app') },
+        @{ Name = 'admin_app';    Dir = (Join-Path $apps 'admin_app') }
+    )) {
+        Invoke-Check "$($package.Name) analyze" $package.Dir { flutter analyze }
+        Invoke-Check "$($package.Name) test"    $package.Dir { flutter test }
+    }
+
+    # Schema and constraints on PGlite — Postgres compiled to WebAssembly, so this one
+    # needs nothing installed and nothing running.
+    Invoke-Check 'supabase test' (Join-Path $root 'supabase') { npm test }
 }
-
-# Schema and constraints on PGlite — Postgres compiled to WebAssembly, so this one needs
-# nothing installed and nothing running.
-Invoke-Check 'supabase test' (Join-Path $root 'supabase') { npm test }
 
 # ---- the two suites that need a real Postgres ------------------------------------
 #
@@ -113,24 +120,63 @@ if ($SkipCloud) {
     # carry between them.
     $env:DATABASE_URL =
         "postgresql://postgres.${ref}:${dbPass}@aws-0-eu-central-1.pooler.supabase.com:5432/postgres"
-    Invoke-Check 'supabase test:stack' (Join-Path $root 'supabase') { npm run test:stack }
-    Remove-Item Env:\DATABASE_URL
+    $env:LUQMA_TEST_PROJECT_REF = $ref
 
-    # `-j 1` is not optional: these files all talk to the same database, and `flutter
-    # test` runs files concurrently — in parallel the suite fails somewhere different
-    # every run and none of it is about the code.
-    #
-    # All three keys are needed. The anon key is the one that is easy to forget, because
-    # only `phone_auth_test` uses it — it signs up the way a phone does rather than with
-    # the service key, since "can an administrator make an account" is a different
-    # question from the one that file asks. Left out, the harness falls back to the local
-    # stack's demo key, GoTrue refuses it, and five tests fail as though signup were
-    # broken.
-    Invoke-Check 'luqma_core test_live' $core {
-        flutter test test_live -j 1 `
-            --dart-define=SUPABASE_URL="https://$ref.supabase.co" `
-            --dart-define=SUPABASE_SERVICE_KEY="$service" `
-            --dart-define=SUPABASE_ANON_KEY="$anon"
+    try {
+        # The hosted suite has to start and finish empty. File-level tearDown hooks are
+        # still useful, but a killed runner never reaches them; this outer boundary is
+        # what makes the next run independent of the previous one. A failed boundary is
+        # a hard stop: never add more writes to a database whose isolation is unknown.
+        Invoke-Check 'cloud cleanup: before' (Join-Path $root 'supabase') {
+            node test\cleanup-cloud.mjs
+        }
+        $cleanBefore = $script:results[-1].Result -eq '0'
+
+        if (-not $cleanBefore) {
+            Skip-Check 'supabase test:stack' 'cloud isolation could not be established'
+            Skip-Check 'cloud cleanup: between suites' 'the stack suite did not run'
+            Skip-Check 'luqma_core test_live' 'cloud isolation could not be established'
+        } else {
+            Invoke-Check 'supabase test:stack' (Join-Path $root 'supabase') {
+                npm run test:stack
+            }
+
+            Invoke-Check 'cloud cleanup: between suites' (Join-Path $root 'supabase') {
+                node test\cleanup-cloud.mjs
+            }
+            $cleanBetween = $script:results[-1].Result -eq '0'
+
+            if (-not $cleanBetween) {
+                Skip-Check 'luqma_core test_live' 'cloud isolation failed between suites'
+            } else {
+                # `-j 1` is not optional: these files all talk to the same database, and
+                # `flutter test` runs files concurrently — in parallel the suite fails
+                # somewhere different every run and none of it is about the code.
+                #
+                # All three keys are needed. The anon key is the one that is easy to
+                # forget, because only `phone_auth_test` uses it — it signs up the way a
+                # phone does rather than with the service key, since "can an
+                # administrator make an account" is a different question from the one
+                # that file asks. Left out, the harness falls back to the local stack's
+                # demo key, GoTrue refuses it, and five tests fail as though signup were
+                # broken.
+                Invoke-Check 'luqma_core test_live' $core {
+                    flutter test test_live -j 1 --timeout 2m `
+                        --dart-define=SUPABASE_URL="https://$ref.supabase.co" `
+                        --dart-define=SUPABASE_SERVICE_KEY="$service" `
+                        --dart-define=SUPABASE_ANON_KEY="$anon"
+                }
+            }
+        }
+    } finally {
+        # Attempt this even after a failed suite or PowerShell exception. The next run
+        # also starts with the same assertion, so cancellation cannot silently convert
+        # residue into a passing build.
+        Invoke-Check 'cloud cleanup: after' (Join-Path $root 'supabase') {
+            node test\cleanup-cloud.mjs
+        }
+        Remove-Item Env:\DATABASE_URL -ErrorAction SilentlyContinue
+        Remove-Item Env:\LUQMA_TEST_PROJECT_REF -ErrorAction SilentlyContinue
     }
 }
 

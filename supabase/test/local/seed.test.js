@@ -62,6 +62,23 @@ describe('seeding Edku', () => {
     assert.equal(r.rows[0].params.maxAds, 3);
   });
 
+  it('starts unfinished launch capabilities closed', async () => {
+    const r = await db.query(
+      `select key, value from config where key in (
+        'otp_enabled', 'admob_enabled', 'public_comments_enabled',
+        'online_payment_enabled', 'marketing_push_per_week'
+      ) order by key`,
+    );
+
+    assert.deepEqual(Object.fromEntries(r.rows.map(({ key, value }) => [key, value])), {
+      admob_enabled: false,
+      marketing_push_per_week: 0,
+      online_payment_enabled: false,
+      otp_enabled: false,
+      public_comments_enabled: false,
+    });
+  });
+
   // The names in the file are placeholders the owner will replace, so this runs again
   // and again by design. Twice must mean the same thing as once.
   it('seeding twice changes nothing', async () => {
