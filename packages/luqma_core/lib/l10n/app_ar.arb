@@ -217,6 +217,11 @@
     "description": "Why the update is required, and what carries over. The reassurance matters: a blocked screen reads as lost data unless it says otherwise."
   },
 
+  "forceUpdateBodyNoUrl": "النسخة اللي عندك قديمة على اللي الخدمة بتسمح بيه. نزّل النسخة الجديدة من نفس مصدر التثبيت وكمّل عادي — بياناتك محفوظة.",
+  "@forceUpdateBodyNoUrl": {
+    "description": "Required-update instructions when this app has no store or configured download URL."
+  },
+
   "forceUpdateButton": "حدّث التطبيق",
   "@forceUpdateButton": {
     "description": "The one control on the force-update screen; opens the store listing."

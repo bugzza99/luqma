@@ -56,10 +56,8 @@ class MerchantApp extends ConsumerWidget {
         GlobalCupertinoLocalizations.delegate,
       ],
       home: LuqmaForceUpdateGate(
+        app: LuqmaApp.merchant,
         currentVersion: currentVersion,
-        storeUrl: Uri.parse(
-          'https://play.google.com/store/apps/details?id=com.luqma.merchant',
-        ),
         child: const _Gate(),
       ),
     );

@@ -11,14 +11,17 @@ void main() {
   Widget harness({
     required String minSupportedVersion,
     String currentVersion = '1.4.0',
+    LuqmaApp app = LuqmaApp.customer,
   }) {
     return ProviderScope(
       overrides: [
         remoteConfigServiceProvider.overrideWithValue(
-          RemoteConfigService(FakeConfigFetcher({
-            if (minSupportedVersion.isNotEmpty)
-              'min_supported_version': minSupportedVersion,
-          })),
+          RemoteConfigService(
+            FakeConfigFetcher({
+              if (minSupportedVersion.isNotEmpty)
+                '${app.name}_min_supported_version': minSupportedVersion,
+            }),
+          ),
         ),
       ],
       child: MaterialApp(
@@ -33,8 +36,8 @@ void main() {
           GlobalCupertinoLocalizations.delegate,
         ],
         home: LuqmaForceUpdateGate(
+          app: app,
           currentVersion: currentVersion,
-          storeUrl: Uri.parse('https://play.google.com/store/apps/details?id=x'),
           child: const Text('التطبيق'),
         ),
       ),
@@ -50,21 +53,42 @@ void main() {
       expect(find.text('التطبيق'), findsNothing);
     });
 
+    testWidgets('the floor is selected by app identity', (tester) async {
+      await tester.pumpWidget(
+        harness(minSupportedVersion: '2.0.0', app: LuqmaApp.merchant),
+      );
+      await tester.pump();
+
+      expect(find.byKey(const Key('force-update.button')), findsOneWidget);
+      expect(find.text('التطبيق'), findsNothing);
+    });
+
+    testWidgets('admin with no URL has instructions and no dead button', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        harness(minSupportedVersion: '2.0.0', app: LuqmaApp.admin),
+      );
+      await tester.pump();
+
+      expect(find.byType(LuqmaForceUpdateView), findsOneWidget);
+      expect(find.byKey(const Key('force-update.button')), findsNothing);
+      expect(find.textContaining('نفس مصدر التثبيت'), findsOneWidget);
+    });
+
     testWidgets('a build at the floor passes', (tester) async {
-      await tester.pumpWidget(harness(
-        minSupportedVersion: '1.4.0',
-        currentVersion: '1.4.0',
-      ));
+      await tester.pumpWidget(
+        harness(minSupportedVersion: '1.4.0', currentVersion: '1.4.0'),
+      );
       await tester.pump();
 
       expect(find.text('التطبيق'), findsOneWidget);
     });
 
     testWidgets('a build above the floor passes', (tester) async {
-      await tester.pumpWidget(harness(
-        minSupportedVersion: '1.3.9',
-        currentVersion: '1.4.0',
-      ));
+      await tester.pumpWidget(
+        harness(minSupportedVersion: '1.3.9', currentVersion: '1.4.0'),
+      );
       await tester.pump();
 
       expect(find.text('التطبيق'), findsOneWidget);
@@ -77,11 +101,14 @@ void main() {
       expect(find.text('التطبيق'), findsOneWidget);
     });
 
-    testWidgets('a nonsense floor stops nobody — the owner cannot lock the city out by typo', (tester) async {
-      await tester.pumpWidget(harness(minSupportedVersion: 'not.a.version'));
-      await tester.pump();
+    testWidgets(
+      'a nonsense floor stops nobody — the owner cannot lock the city out by typo',
+      (tester) async {
+        await tester.pumpWidget(harness(minSupportedVersion: 'not.a.version'));
+        await tester.pump();
 
-      expect(find.text('التطبيق'), findsOneWidget);
-    });
+        expect(find.text('التطبيق'), findsOneWidget);
+      },
+    );
   });
 }

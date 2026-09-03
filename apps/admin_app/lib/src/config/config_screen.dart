@@ -29,7 +29,8 @@ class ConfigScreen extends ConsumerWidget {
         child: LuqmaAsyncView(
           value: config,
           onRetry: () => ref.invalidate(adminConfigProvider),
-          builder: (context, value) => _ConfigForm(initial: value),
+          builder: (context, value) =>
+              _ConfigForm(key: ObjectKey(value), initial: value),
         ),
       ),
     );
@@ -37,7 +38,7 @@ class ConfigScreen extends ConsumerWidget {
 }
 
 class _ConfigForm extends ConsumerStatefulWidget {
-  const _ConfigForm({required this.initial});
+  const _ConfigForm({super.key, required this.initial});
 
   final Map<String, Object> initial;
 
@@ -47,7 +48,10 @@ class _ConfigForm extends ConsumerStatefulWidget {
 
 class _ConfigFormState extends ConsumerState<_ConfigForm> {
   late final bool _otp = _flag('otp_enabled', LuqmaConfig.defaults.otpEnabled);
-  late final bool _admob = _flag('admob_enabled', LuqmaConfig.defaults.admobEnabled);
+  late final bool _admob = _flag(
+    'admob_enabled',
+    LuqmaConfig.defaults.admobEnabled,
+  );
   late final bool _publicComments = _flag(
     'public_comments_enabled',
     LuqmaConfig.defaults.publicCommentsEnabled,
@@ -85,7 +89,22 @@ class _ConfigFormState extends ConsumerState<_ConfigForm> {
     'splash_min_millis',
     LuqmaConfig.defaults.splashMinMillis,
   );
-  late final _minVersion = _textField('min_supported_version');
+  late final _customerMinVersion = _appVersionField(
+    'customer_min_supported_version',
+  );
+  late final _merchantMinVersion = _appVersionField(
+    'merchant_min_supported_version',
+  );
+  late final _adminMinVersion = _appVersionField('admin_min_supported_version');
+  late final _customerUpdateUrl = _appUrlField(
+    'customer_update_url',
+    LuqmaApp.customer,
+  );
+  late final _merchantUpdateUrl = _appUrlField(
+    'merchant_update_url',
+    LuqmaApp.merchant,
+  );
+  late final _adminUpdateUrl = _appUrlField('admin_update_url', LuqmaApp.admin);
   late final _updateMessage = _textField('update_message');
   late final _whatsapp = _textField('support_whatsapp');
 
@@ -114,6 +133,25 @@ class _ConfigFormState extends ConsumerState<_ConfigForm> {
     text: widget.initial[key] is String ? widget.initial[key] as String : '',
   );
 
+  TextEditingController _appVersionField(String key) {
+    final value = widget.initial[key];
+    final legacy = widget.initial['min_supported_version'];
+    return TextEditingController(
+      text: value is String
+          ? value
+          : legacy is String
+          ? legacy
+          : '',
+    );
+  }
+
+  TextEditingController _appUrlField(String key, LuqmaApp app) {
+    final value = widget.initial[key];
+    return TextEditingController(
+      text: value is String ? value : LuqmaConfig.compiledUpdateUrls[app] ?? '',
+    );
+  }
+
   @override
   void dispose() {
     for (final c in [
@@ -124,7 +162,12 @@ class _ConfigFormState extends ConsumerState<_ConfigForm> {
       _feeMin,
       _feeMax,
       _splash,
-      _minVersion,
+      _customerMinVersion,
+      _merchantMinVersion,
+      _adminMinVersion,
+      _customerUpdateUrl,
+      _merchantUpdateUrl,
+      _adminUpdateUrl,
       _updateMessage,
       _whatsapp,
     ]) {
@@ -134,17 +177,25 @@ class _ConfigFormState extends ConsumerState<_ConfigForm> {
   }
 
   /// An integer field that refuses a blank or a non-integer. Nothing is rounded.
-  String? _validInt(TextEditingController c) {
+  String? _validInt(String key, TextEditingController c) {
     final text = c.text.trim();
-    if (text.isEmpty || int.tryParse(text) == null) return 'اكتب رقم صحيح';
+    final value = int.tryParse(text);
+    final bounds = configBounds[key]!;
+    if (value == null || value < bounds.min || value > bounds.max) {
+      return 'اكتب رقم صحيح';
+    }
     return null;
   }
 
   /// A money field, through the same reader the menu editor uses — refused rather than
   /// rounded, so a fee the app cannot read exactly is not saved.
-  String? _validMoney(TextEditingController c) {
+  String? _validMoney(String key, TextEditingController c) {
     final text = c.text.trim();
-    if (text.isEmpty || Money.parse(text) == null) return 'اكتب سعر صحيح';
+    final value = Money.parse(text);
+    final bounds = configBounds[key]!;
+    if (value == null || value < bounds.min || value > bounds.max) {
+      return 'اكتب سعر صحيح';
+    }
     return null;
   }
 
@@ -162,7 +213,12 @@ class _ConfigFormState extends ConsumerState<_ConfigForm> {
       'delivery_fee_min': Money.parse(_feeMin.text.trim())!,
       'delivery_fee_max': Money.parse(_feeMax.text.trim())!,
       'splash_min_millis': int.parse(_splash.text.trim()),
-      'min_supported_version': _minVersion.text.trim(),
+      'customer_min_supported_version': _customerMinVersion.text.trim(),
+      'merchant_min_supported_version': _merchantMinVersion.text.trim(),
+      'admin_min_supported_version': _adminMinVersion.text.trim(),
+      'customer_update_url': _customerUpdateUrl.text.trim(),
+      'merchant_update_url': _merchantUpdateUrl.text.trim(),
+      'admin_update_url': _adminUpdateUrl.text.trim(),
       'update_message': _updateMessage.text.trim(),
       'support_whatsapp': _whatsapp.text.trim(),
     });
@@ -179,17 +235,18 @@ class _ConfigFormState extends ConsumerState<_ConfigForm> {
   String _sentence(Failure failure) => switch (failure) {
     OfflineFailure() => 'مفيش نت — جرّب تاني.',
     PermissionFailure() => 'مش مسموح ليك تعدّل الإعدادات.',
+    ValidationFailure() => 'قيمة غير صحيحة — راجع الخانات.',
     _ => 'مقدرناش نحفظ. جرّب تاني.',
   };
 
   bool _valid() {
     final errors = [
-      _validInt(_acceptTimeout),
-      _validInt(_rejection),
-      _validInt(_minRatings),
-      _validMoney(_feeMin),
-      _validMoney(_feeMax),
-      _validInt(_splash),
+      _validInt('accept_timeout_minutes', _acceptTimeout),
+      _validInt('rejection_ban_threshold', _rejection),
+      _validInt('min_ratings_to_show', _minRatings),
+      _validMoney('delivery_fee_min', _feeMin),
+      _validMoney('delivery_fee_max', _feeMax),
+      _validInt('splash_min_millis', _splash),
     ];
     if (errors.any((e) => e != null)) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -283,8 +340,28 @@ class _ConfigFormState extends ConsumerState<_ConfigForm> {
                 fieldKey: ConfigScreen.whatsappKey,
               ),
               _TextTile(
-                controller: _minVersion,
-                label: 'أقل نسخة مدعومة (مثال 1.4.0)',
+                controller: _customerMinVersion,
+                label: 'أقل نسخة مدعومة — العميل (مثال 1.4.0)',
+              ),
+              _TextTile(
+                controller: _merchantMinVersion,
+                label: 'أقل نسخة مدعومة — التاجر (مثال 1.4.0)',
+              ),
+              _TextTile(
+                controller: _adminMinVersion,
+                label: 'أقل نسخة مدعومة — الأدمن (مثال 1.4.0)',
+              ),
+              _TextTile(
+                controller: _customerUpdateUrl,
+                label: 'رابط تحديث تطبيق العميل (اختياري)',
+              ),
+              _TextTile(
+                controller: _merchantUpdateUrl,
+                label: 'رابط تحديث تطبيق التاجر (اختياري)',
+              ),
+              _TextTile(
+                controller: _adminUpdateUrl,
+                label: 'رابط تحديث تطبيق الأدمن (اختياري)',
               ),
               _TextTile(
                 controller: _updateMessage,

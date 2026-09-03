@@ -7,6 +7,32 @@ abstract interface class ConfigSource {
   Object? read(String key);
 }
 
+/// Which shipped Luqma client is resolving app-specific control-plane values.
+enum LuqmaApp { customer, merchant, admin }
+
+/// Inclusive bounds for one numeric config value.
+@immutable
+class ConfigBound {
+  const ConfigBound(this.min, this.max);
+
+  final int min;
+  final int max;
+}
+
+/// The single Dart source of truth for numeric config validation.
+///
+/// The database mirrors these values in the validation migration so bad values are
+/// rejected before they can reach any client.
+const configBounds = <String, ConfigBound>{
+  'accept_timeout_minutes': ConfigBound(1, 60),
+  'marketing_push_per_week': ConfigBound(0, 21),
+  'rejection_ban_threshold': ConfigBound(1, 50),
+  'min_ratings_to_show': ConfigBound(0, 1000),
+  'splash_min_millis': ConfigBound(0, 5000),
+  'delivery_fee_min': ConfigBound(0, 100000),
+  'delivery_fee_max': ConfigBound(0, 100000),
+};
+
 /// A plain map. Used by tests, and as the empty source on the very first cold start.
 class MapConfigSource implements ConfigSource {
   const MapConfigSource(this._values);
@@ -39,6 +65,12 @@ class LuqmaConfig {
     required this.deliveryFeeMax,
     required this.splashMinMillis,
     required this.minSupportedVersion,
+    required this.customerMinSupportedVersion,
+    required this.merchantMinSupportedVersion,
+    required this.adminMinSupportedVersion,
+    required this.customerUpdateUrl,
+    required this.merchantUpdateUrl,
+    required this.adminUpdateUrl,
     required this.updateMessage,
     required this.supportWhatsapp,
     this.aboutPhotoMediaId,
@@ -74,7 +106,15 @@ class LuqmaConfig {
   final int deliveryFeeMax;
 
   final int splashMinMillis;
+
+  /// The legacy global floor, kept for clients already in the field.
   final String? minSupportedVersion;
+  final String? customerMinSupportedVersion;
+  final String? merchantMinSupportedVersion;
+  final String? adminMinSupportedVersion;
+  final String? customerUpdateUrl;
+  final String? merchantUpdateUrl;
+  final String? adminUpdateUrl;
   final String updateMessage;
   final String supportWhatsapp;
 
@@ -101,6 +141,12 @@ class LuqmaConfig {
     deliveryFeeMax: 2000,
     splashMinMillis: 1500,
     minSupportedVersion: null,
+    customerMinSupportedVersion: null,
+    merchantMinSupportedVersion: null,
+    adminMinSupportedVersion: null,
+    customerUpdateUrl: null,
+    merchantUpdateUrl: null,
+    adminUpdateUrl: null,
     updateMessage: '',
     supportWhatsapp: '',
   );
@@ -114,10 +160,11 @@ class LuqmaConfig {
     /// Reads an integer, rejecting anything outside the range the app can run in.
     /// A rejected value falls back on its own and leaves its neighbours alone — one
     /// bad key must not discard a whole config.
-    int ranged(String key, int fallback, {required int min, required int max}) {
+    int ranged(String key, int fallback) {
       final value = source.read(key);
+      final bounds = configBounds[key]!;
       if (value is! int) return fallback;
-      if (value < min || value > max) return fallback;
+      if (value < bounds.min || value > bounds.max) return fallback;
       return value;
     }
 
@@ -128,18 +175,8 @@ class LuqmaConfig {
 
     // The fee bounds are validated as a pair: a max below a min describes no valid fee
     // at all, so neither half of a contradictory range is trusted.
-    var feeMin = ranged(
-      'delivery_fee_min',
-      defaults.deliveryFeeMin,
-      min: 0,
-      max: 100000,
-    );
-    var feeMax = ranged(
-      'delivery_fee_max',
-      defaults.deliveryFeeMax,
-      min: 0,
-      max: 100000,
-    );
+    var feeMin = ranged('delivery_fee_min', defaults.deliveryFeeMin);
+    var feeMax = ranged('delivery_fee_max', defaults.deliveryFeeMax);
     if (feeMax < feeMin) {
       feeMin = defaults.deliveryFeeMin;
       feeMax = defaults.deliveryFeeMax;
@@ -159,38 +196,34 @@ class LuqmaConfig {
       acceptTimeoutMinutes: ranged(
         'accept_timeout_minutes',
         defaults.acceptTimeoutMinutes,
-        min: 1,
-        max: 60,
       ),
       marketingPushPerWeek: ranged(
         'marketing_push_per_week',
         defaults.marketingPushPerWeek,
-        min: 0,
-        max: 21,
       ),
       rejectionBanThreshold: ranged(
         'rejection_ban_threshold',
         defaults.rejectionBanThreshold,
-        min: 1,
-        max: 50,
       ),
       minRatingsToShow: ranged(
         'min_ratings_to_show',
         defaults.minRatingsToShow,
-        min: 0,
-        max: 1000,
       ),
       deliveryFeeMin: feeMin,
       deliveryFeeMax: feeMax,
-      splashMinMillis: ranged(
-        'splash_min_millis',
-        defaults.splashMinMillis,
-        min: 0,
-        max: 5000,
-      ),
+      splashMinMillis: ranged('splash_min_millis', defaults.splashMinMillis),
       minSupportedVersion: text('min_supported_version'),
+      customerMinSupportedVersion: text('customer_min_supported_version'),
+      merchantMinSupportedVersion: text('merchant_min_supported_version'),
+      adminMinSupportedVersion: text('admin_min_supported_version'),
+      customerUpdateUrl: text('customer_update_url'),
+      merchantUpdateUrl: text('merchant_update_url'),
+      adminUpdateUrl: text('admin_update_url'),
       updateMessage: text('update_message') ?? defaults.updateMessage,
-      supportWhatsapp: text('support_whatsapp') ?? defaults.supportWhatsapp,
+      supportWhatsapp:
+          text('support_whatsapp') ??
+          text('supportWhatsapp') ??
+          defaults.supportWhatsapp,
       aboutPhotoMediaId: text('about_photo_media_id'),
       aboutFacebook: text('about_facebook'),
       aboutWhatsapp: text('about_whatsapp'),
@@ -199,12 +232,50 @@ class LuqmaConfig {
     );
   }
 
+  /// Compiled destinations used until the control plane supplies an app-specific URL.
+  /// AdminApp is distributed directly as an APK and deliberately has no store default.
+  static const compiledUpdateUrls = <LuqmaApp, String>{
+    LuqmaApp.customer:
+        'https://play.google.com/store/apps/details?id=com.luqma.customer',
+    LuqmaApp.merchant:
+        'https://play.google.com/store/apps/details?id=com.luqma.merchant',
+  };
+
+  String? minSupportedVersionFor(LuqmaApp app) {
+    final appMinimum = switch (app) {
+      LuqmaApp.customer => customerMinSupportedVersion,
+      LuqmaApp.merchant => merchantMinSupportedVersion,
+      LuqmaApp.admin => adminMinSupportedVersion,
+    };
+    return appMinimum ?? minSupportedVersion;
+  }
+
+  Uri? updateUrlFor(LuqmaApp app) {
+    final configured = switch (app) {
+      LuqmaApp.customer => customerUpdateUrl,
+      LuqmaApp.merchant => merchantUpdateUrl,
+      LuqmaApp.admin => adminUpdateUrl,
+    };
+    final raw = configured ?? compiledUpdateUrls[app];
+    if (raw == null) return null;
+    final uri = Uri.tryParse(raw);
+    return uri != null && uri.isAbsolute ? uri : null;
+  }
+
   /// Whether [currentVersion] is below the minimum the backend still supports.
   ///
   /// Compared segment by segment as numbers. Comparing the strings would put 1.10
   /// below 1.4 and lock out the newest build in the field.
   bool requiresUpdate(String currentVersion) {
-    final minimum = _parseVersion(minSupportedVersion);
+    return _requiresUpdate(minSupportedVersion, currentVersion);
+  }
+
+  bool requiresUpdateFor(LuqmaApp app, String currentVersion) {
+    return _requiresUpdate(minSupportedVersionFor(app), currentVersion);
+  }
+
+  static bool _requiresUpdate(String? minimumVersion, String currentVersion) {
+    final minimum = _parseVersion(minimumVersion);
     if (minimum == null) return false;
     final current = _parseVersion(currentVersion);
     if (current == null) return false;

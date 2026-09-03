@@ -41,6 +41,30 @@ void main() {
       final config = configFrom({'otp_enabled': true});
       expect(config.otpEnabled, isTrue);
     });
+
+    group('support WhatsApp compatibility', () {
+      test('reads the canonical key', () {
+        expect(configFrom({'support_whatsapp': '010'}).supportWhatsapp, '010');
+      });
+
+      test('falls back to the legacy key', () {
+        expect(configFrom({'supportWhatsapp': '011'}).supportWhatsapp, '011');
+      });
+
+      test('prefers the canonical key when both exist', () {
+        expect(
+          configFrom({
+            'support_whatsapp': '010',
+            'supportWhatsapp': '011',
+          }).supportWhatsapp,
+          '010',
+        );
+      });
+
+      test('defaults to empty when neither key exists', () {
+        expect(configFrom({}).supportWhatsapp, '');
+      });
+    });
   });
 
   group('bad values never reach the app', () {
@@ -121,5 +145,66 @@ void main() {
       final config = configFrom({'min_supported_version': 'الإصدار الأخير'});
       expect(config.requiresUpdate('1.0.0'), isFalse);
     });
+
+    test('an app-specific floor wins over the legacy global floor', () {
+      final config = configFrom({
+        'min_supported_version': '9.0.0',
+        'customer_min_supported_version': '1.4.0',
+      });
+
+      expect(config.requiresUpdateFor(LuqmaApp.customer, '1.4.0'), isFalse);
+      expect(config.requiresUpdateFor(LuqmaApp.merchant, '1.4.0'), isTrue);
+    });
+
+    test('each app falls back to the legacy global floor', () {
+      final config = configFrom({'min_supported_version': '2.0.0'});
+
+      for (final app in LuqmaApp.values) {
+        expect(config.requiresUpdateFor(app, '1.9.9'), isTrue);
+      }
+    });
+
+    test('configured update URL wins for its app', () {
+      final config = configFrom({
+        'customer_update_url': 'https://updates.example/customer.apk',
+      });
+
+      expect(
+        config.updateUrlFor(LuqmaApp.customer).toString(),
+        'https://updates.example/customer.apk',
+      );
+    });
+
+    test('customer and merchant have compiled Play defaults', () {
+      final config = configFrom({});
+
+      expect(
+        config.updateUrlFor(LuqmaApp.customer).toString(),
+        contains('com.luqma.customer'),
+      );
+      expect(
+        config.updateUrlFor(LuqmaApp.merchant).toString(),
+        contains('com.luqma.merchant'),
+      );
+    });
+
+    test('admin has no compiled update destination', () {
+      expect(configFrom({}).updateUrlFor(LuqmaApp.admin), isNull);
+    });
+  });
+
+  test('configBounds contains the exact numeric contract', () {
+    expect(configBounds['accept_timeout_minutes']?.min, 1);
+    expect(configBounds['accept_timeout_minutes']?.max, 60);
+    expect(configBounds['marketing_push_per_week']?.min, 0);
+    expect(configBounds['marketing_push_per_week']?.max, 21);
+    expect(configBounds['rejection_ban_threshold']?.min, 1);
+    expect(configBounds['rejection_ban_threshold']?.max, 50);
+    expect(configBounds['min_ratings_to_show']?.min, 0);
+    expect(configBounds['min_ratings_to_show']?.max, 1000);
+    expect(configBounds['splash_min_millis']?.min, 0);
+    expect(configBounds['splash_min_millis']?.max, 5000);
+    expect(configBounds['delivery_fee_min']?.min, 0);
+    expect(configBounds['delivery_fee_max']?.max, 100000);
   });
 }

@@ -15,6 +15,13 @@ void main() {
       expect(failure, isA<PermissionFailure>());
     });
 
+    test('a Postgres check violation is a validation failure', () {
+      final failure = Failure.from(
+        PostgrestException(code: '23514', message: 'invalid config value'),
+      );
+      expect(failure, isA<ValidationFailure>());
+    });
+
     test('the order function raising P0002 is a not-found failure', () {
       final failure = Failure.from(
         PostgrestException(code: 'P0002', message: 'merchant not found'),

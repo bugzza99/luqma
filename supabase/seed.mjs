@@ -133,7 +133,7 @@ export async function seed(db, { log = () => {}, data = edkuData() } = {}) {
   // What `RemoteConfigService` used to fetch. Key by key, so a value the owner has
   // already set is not reset by a re-seed.
   for (const [key, value] of Object.entries({
-    supportWhatsapp: '',
+    support_whatsapp: '',
     otp_enabled: false,
     admob_enabled: false,
     public_comments_enabled: false,

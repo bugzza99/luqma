@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../l10n/app_localizations.dart';
+import '../config/luqma_config.dart';
 import '../providers/providers.dart';
 import '../theme/colors.dart';
 import '../theme/dimens.dart';
@@ -24,17 +25,16 @@ import 'luqma_lockup.dart';
 class LuqmaForceUpdateGate extends ConsumerStatefulWidget {
   const LuqmaForceUpdateGate({
     super.key,
+    required this.app,
     required this.currentVersion,
-    required this.storeUrl,
     required this.child,
   });
+
+  final LuqmaApp app;
 
   /// The version this binary was installed as, e.g. `1.4.0`. Read once at start-up via
   /// package_info_plus and passed in — the gate stays a widget, not a plugin boundary.
   final String currentVersion;
-
-  /// Where [LuqmaForceUpdateView] sends people. The Play Store listing for this app.
-  final Uri storeUrl;
 
   final Widget child;
 
@@ -72,29 +72,31 @@ class _LuqmaForceUpdateGateState extends ConsumerState<LuqmaForceUpdateGate>
   @override
   Widget build(BuildContext context) {
     final config = ref.watch(appConfigProvider);
-    return config.requiresUpdate(widget.currentVersion)
-        ? LuqmaForceUpdateView(storeUrl: widget.storeUrl)
+    return config.requiresUpdateFor(widget.app, widget.currentVersion)
+        ? LuqmaForceUpdateView(updateUrl: config.updateUrlFor(widget.app))
         : widget.child;
   }
 }
 
 /// What the out-of-date build shows instead of itself.
 ///
-/// One sentence saying why, one saying what survives, one button. Nothing else: this is
-/// not a place to browse, and every extra affordance would read as "maybe I can get
-/// around this".
+/// One sentence saying why, one saying what survives, and a button only when a real
+/// destination exists. Nothing else: this is not a place to browse, and every extra
+/// affordance would read as "maybe I can get around this".
 class LuqmaForceUpdateView extends StatelessWidget {
-  const LuqmaForceUpdateView({super.key, required this.storeUrl});
+  const LuqmaForceUpdateView({super.key, this.updateUrl});
 
-  final Uri storeUrl;
+  final Uri? updateUrl;
 
   Future<void> _openStore() async {
     // If the store cannot open — no Play Store on the device, a web build without the
     // handler — there is genuinely nowhere else to send this person, so the error is
     // swallowed rather than crashed on. The screen they are looking at still explains
     // what to do by hand.
+    final destination = updateUrl;
+    if (destination == null) return;
     try {
-      await launchUrl(storeUrl, mode: LaunchMode.externalApplication);
+      await launchUrl(destination, mode: LaunchMode.externalApplication);
     } on Exception {
       // Deliberately silent; see above.
     }
@@ -124,19 +126,22 @@ class LuqmaForceUpdateView extends StatelessWidget {
                 ),
                 SizedBox(height: Space.md),
                 Text(
-                  strings.forceUpdateBody,
+                  updateUrl == null
+                      ? strings.forceUpdateBodyNoUrl
+                      : strings.forceUpdateBody,
                   textAlign: TextAlign.center,
                   style: theme.textTheme.bodyMedium?.copyWith(
                     color: theme.luqma.textSecondary,
                   ),
                 ),
                 SizedBox(height: Space.xxl),
-                FilledButton.icon(
-                  key: const Key('force-update.button'),
-                  onPressed: _openStore,
-                  icon: const Icon(Icons.system_update_alt),
-                  label: Text(strings.forceUpdateButton),
-                ),
+                if (updateUrl != null)
+                  FilledButton.icon(
+                    key: const Key('force-update.button'),
+                    onPressed: _openStore,
+                    icon: const Icon(Icons.system_update_alt),
+                    label: Text(strings.forceUpdateButton),
+                  ),
               ],
             ),
           ),

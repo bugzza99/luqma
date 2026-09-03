@@ -79,6 +79,14 @@ describe('seeding Edku', () => {
     });
   });
 
+  it('seeds the canonical support WhatsApp key', async () => {
+    const r = await db.query(
+      "select value from config where key = 'support_whatsapp'",
+    );
+
+    assert.equal(r.rows[0].value, '');
+  });
+
   // The names in the file are placeholders the owner will replace, so this runs again
   // and again by design. Twice must mean the same thing as once.
   it('seeding twice changes nothing', async () => {

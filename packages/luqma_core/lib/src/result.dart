@@ -51,6 +51,8 @@ sealed class Failure {
       switch (error.code) {
         case '42501':
           return const PermissionFailure();
+        case '23514':
+          return const ValidationFailure();
         case 'P0002':
           return const NotFoundFailure();
         case '23505':
@@ -93,6 +95,11 @@ final class OfflineFailure extends Failure {
 /// The security rules said no. Never retry — surface it and stop.
 final class PermissionFailure extends Failure {
   const PermissionFailure();
+}
+
+/// The server rejected a value before applying the requested write.
+final class ValidationFailure extends Failure {
+  const ValidationFailure();
 }
 
 final class NotFoundFailure extends Failure {
