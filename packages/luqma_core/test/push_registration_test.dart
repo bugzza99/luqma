@@ -181,4 +181,41 @@ void main() {
 
     expect(tokens.tokens, isEmpty);
   });
+
+  // A stream *error* is not delivered to the data callback, so the `try/catch` around the
+  // body of that callback does not cover it. With no `onError` it goes to the zone — and
+  // Sentry's `PlatformDispatcher.onError` reports an unhandled async error as **fatal**,
+  // so an FCM refresh stream having a bad moment would close the app.
+  //
+  // The same shape as the launch crash: push work assumed safe, thrown where nothing was
+  // catching. `_replaying` in `auth_service.dart` already passes `onError`; this was the
+  // listen that did not.
+  test('an error on the refresh stream never reaches the zone', () async {
+    final auth = FakeAuthService();
+    final tokens = FakePushTokenRepository();
+    final refreshes = StreamController<String>.broadcast();
+    addTearDown(refreshes.close);
+
+    final escaped = <Object>[];
+    await runZonedGuarded(() async {
+      final sub = keepPushTokenRegistered(
+        identities: auth.changes,
+        repository: tokens,
+        token: () async => 'tok-1',
+        refreshes: refreshes.stream,
+      );
+      addTearDown(sub.cancel);
+
+      await auth.signInWithPassword(email: 'a@b.c', password: 'x');
+      await Future<void>.delayed(Duration.zero);
+
+      refreshes.addError(StateError('FCM had a bad moment'));
+      await Future<void>.delayed(Duration.zero);
+    }, (error, _) => escaped.add(error));
+
+    expect(escaped, isEmpty);
+    // And the token already on the account is left alone: an error is not news that the
+    // device's token changed.
+    expect(tokens.tokens, ['tok-1']);
+  });
 }

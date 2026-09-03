@@ -39,14 +39,20 @@ class SupabasePushTokenRepository implements PushTokenRepository {
 
       // Read, merge, write. Not `array_append`: a phone that reinstalls gets the same
       // token back from FCM, and appending blindly would send the same alarm twice.
-      final row =
-          await _db.from('users').select('fcm_tokens').eq('id', uid).single();
+      final row = await _db
+          .from('users')
+          .select('fcm_tokens')
+          .eq('id', uid)
+          .single();
       final tokens = (row['fcm_tokens'] as List?)?.cast<String>() ?? const [];
       if (tokens.contains(token)) return;
 
       await _db
           .from('users')
-          .update({'fcm_tokens': [...tokens, token]}).eq('id', uid);
+          .update({
+            'fcm_tokens': [...tokens, token],
+          })
+          .eq('id', uid);
     });
   }
 
@@ -56,13 +62,17 @@ class SupabasePushTokenRepository implements PushTokenRepository {
       final uid = _db.auth.currentUser?.id;
       if (uid == null) return;
 
-      final row =
-          await _db.from('users').select('fcm_tokens').eq('id', uid).single();
+      final row = await _db
+          .from('users')
+          .select('fcm_tokens')
+          .eq('id', uid)
+          .single();
       final tokens = (row['fcm_tokens'] as List?)?.cast<String>() ?? const [];
 
-      await _db.from('users').update({
-        'fcm_tokens': tokens.where((t) => t != token).toList(),
-      }).eq('id', uid);
+      await _db
+          .from('users')
+          .update({'fcm_tokens': tokens.where((t) => t != token).toList()})
+          .eq('id', uid);
     });
   }
 }
@@ -127,34 +137,47 @@ StreamSubscription<LuqmaIdentity?> keepPushTokenRegistered({
   // after a long silence. Nothing listened for that, so a phone whose token changed while
   // the app was open went quiet with the stale one still on the account — and it fails
   // the way every push bug here fails: no error, no screen, just silence.
-  final refreshed = refreshes?.listen((fresh) async {
-    if (!signedIn) return;
-    try {
-      await put(fresh);
-    } catch (_) {
-      // Same reasoning as below: never worth an exception on a working app.
-    }
-  });
-
-  final subscription = identities.listen((identity) async {
-    try {
-      if (identity == null) {
-        signedIn = false;
-        final was = registered;
-        registered = null;
-        if (was != null) await repository.forget(was);
-        return;
+  final refreshed = refreshes?.listen(
+    (fresh) async {
+      if (!signedIn) return;
+      try {
+        await put(fresh);
+      } catch (_) {
+        // Same reasoning as below: never worth an exception on a working app.
       }
+    },
+    // A stream *error* is delivered here and nowhere else — the `try` above wraps the
+    // data callback and cannot see it. Without this it reaches the zone, and Sentry's
+    // `PlatformDispatcher.onError` reports an unhandled async error as fatal, so a bad
+    // moment on the FCM refresh stream would close the app.
+    onError: (Object _) {},
+  );
 
-      signedIn = true;
-      final fresh = await token();
-      if (fresh == null) return;
-      await put(fresh);
-    } catch (_) {
-      // Deliberately swallowed. This runs on every sign-in, and the worst outcome it may
-      // cause is somebody who is not woken — never one who cannot sign in.
-    }
-  });
+  final subscription = identities.listen(
+    (identity) async {
+      try {
+        if (identity == null) {
+          signedIn = false;
+          final was = registered;
+          registered = null;
+          if (was != null) await repository.forget(was);
+          return;
+        }
+
+        signedIn = true;
+        final fresh = await token();
+        if (fresh == null) return;
+        await put(fresh);
+      } catch (_) {
+        // Deliberately swallowed. This runs on every sign-in, and the worst outcome it may
+        // cause is somebody who is not woken — never one who cannot sign in.
+      }
+    },
+    // Theoretical today — `SupabaseAuthService`'s controller is never given an error —
+    // and here for the same reason as above: a session stream that ever did emit one
+    // must not be able to take the app down with it.
+    onError: (Object _) {},
+  );
 
   subscription.onDone(() => refreshed?.cancel());
   return subscription;

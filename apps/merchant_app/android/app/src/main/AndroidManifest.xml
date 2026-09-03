@@ -59,11 +59,10 @@
         <!-- The orders channel itself is created in MainActivity, which is what gives it
              the importance and the sound a missed order cannot afford to lose.
 
-             There is no <meta-data> naming it here on purpose. Those two entries were
-             Firebase Messaging' default-channel and default-icon keys, and the S6
-             cutover removed their android:name along with Firebase — leaving two
-             elements with a value and no name, which Android refuses outright. When push
-             is wired to whatever service replaces FCM, its own keys come back here. -->
+             This used to say there was no <meta-data> naming it here on purpose — a note
+             left from the S6 cutover, when Firebase went away and took the key with it.
+             Firebase came back for Messaging and the key came back below it, and the
+             paragraph saying otherwise sat directly above the element it denied. -->
         <!-- Where an alert lands when the payload names a channel this device has not
              created yet. Without it Android drops the message onto a "Miscellaneous"
              channel at default importance with no sound, which for the kitchen's alarm
