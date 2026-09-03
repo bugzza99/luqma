@@ -84,8 +84,25 @@ abstract final class LuqmaPush {
   /// It does so after a reinstall, a restore, a clear-data, or on its own after a long
   /// silence — and nothing listened, so a phone whose token changed mid-session went
   /// quiet with the old one still on the account and nothing anywhere saying so.
-  static Stream<String> get tokenRefreshes =>
-      FirebaseMessaging.instance.onTokenRefresh;
+  ///
+  /// `async*`, and the `await` is the entire point. This was an expression-bodied getter
+  /// over `FirebaseMessaging.instance.onTokenRefresh`, and `main` reads it as an argument
+  /// in its first few lines — before the `Firebase.initializeApp()` inside [start], which
+  /// nothing awaits. So it threw `[core/no-app]` uncaught, inside `main`, and three
+  /// release APKs died on launch: not a feature that degraded, an app that would not
+  /// open. The fix sits next to `_starting`, which was added for exactly this reason and
+  /// which this getter then failed to use.
+  ///
+  /// A generator body runs on the first listen rather than on the read, so nothing here
+  /// touches Firebase until somebody is actually waiting for tokens — and even then, not
+  /// until [start] has answered.
+  static Stream<String> get tokenRefreshes async* {
+    // False means this build has no Firebase at all, which is an ordinary state for a
+    // developer's machine and for CI. An empty stream is the honest answer: there are no
+    // tokens to refresh, and there is nothing wrong.
+    if (!await start()) return;
+    yield* FirebaseMessaging.instance.onTokenRefresh;
+  }
 
   /// The order behind the notification somebody just tapped, or null.
   ///
@@ -110,6 +127,17 @@ abstract final class LuqmaPush {
   }
 
   static Future<bool> _start() async {
+    // One try around the whole body, and it is not defensive padding.
+    //
+    // No `main` awaits this — `unawaited(LuqmaPush.start())` — and Sentry installs a
+    // `PlatformDispatcher.onError` that reports unhandled async errors as **fatal**. So
+    // any throw escaping here is not a feature that failed to start, it is a crash
+    // reported against an app the customer is looking at.
+    //
+    // Only `Firebase.initializeApp()` used to be guarded, and everything after it —
+    // asking for the notification permission, initialising the local plugin, reading the
+    // launch details — was outside. Every one of those is a platform channel on an OEM
+    // Android build, which is the least predictable code this app runs.
     try {
       await Firebase.initializeApp();
     } catch (error) {
@@ -121,6 +149,19 @@ abstract final class LuqmaPush {
       return false;
     }
 
+    try {
+      return await _wire();
+    } catch (error, stackTrace) {
+      // Distinct from the message above on purpose: that one is an expected state, this
+      // one is something going wrong on a phone and is worth finding in a log.
+      debugPrint('Push is off: setting it up failed ($error)\n$stackTrace');
+      return false;
+    }
+  }
+
+  /// Everything after Firebase is up. Separated so the guard above covers all of it
+  /// rather than whichever lines somebody remembers to keep inside a `try`.
+  static Future<bool> _wire() async {
     final messaging = FirebaseMessaging.instance;
     // Android 13 and up will not show a notification without this, and nobody would ever
     // learn why nothing rang.

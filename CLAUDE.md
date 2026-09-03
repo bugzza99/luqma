@@ -684,6 +684,27 @@ DATABASE_URL=<luqma-test session pooler> npm --prefix supabase run test:stack
   `PGRST200`, and they are the two that matter most — the dish and the meal are the
   things being sold. Six hundred photographs the owner will shoot personally had nowhere
   to arrive.
+- **An argument is evaluated at the call site, and `main` is the worst place to learn
+  that.** `keepPushTokenRegistered(refreshes: LuqmaPush.tokenRefreshes)` reads that getter
+  *eagerly*, in the first lines of `main`, and the getter was an expression body over
+  `FirebaseMessaging.instance` — which throws `[core/no-app]` until the
+  `Firebase.initializeApp()` inside the deliberately un-awaited `LuqmaPush.start()` has
+  finished. All three release APKs died on launch; Sentry caught it as `fatal` from
+  `PlatformDispatcher.onError`. It is `async*` now, so the body runs on the first listen
+  and waits for `start()`. `_starting` had been added days earlier for exactly this, and
+  the getter written next to it did not use it.
+- **`unawaited(f())` where `f` can throw is a fatal crash in these builds.** Sentry's
+  `PlatformDispatcher.onError` reports unhandled async errors as fatal, so anything
+  `main` fires and forgets must be incapable of throwing. `LuqmaPush.start()` guarded
+  only `Firebase.initializeApp()` and left the permission request, the local-notification
+  init and the launch-details reads outside the `try` — every one a platform channel on
+  an OEM Android build. `_wire()` exists so the guard covers all of it rather than
+  whichever lines somebody remembers to keep inside the block.
+- **`push.dart` is testable for the one thing that matters.** A `flutter test` process
+  has no Firebase, which is precisely the condition that broke launch — so
+  `push_startup_test.dart` asserts that reading *and listening to* `tokenRefreshes`, and
+  calling `token()` and `start()`, all survive it. That test failed with the exact
+  production exception before the fix.
 - **A data-only FCM message displays nothing by itself.** It needs the Flutter
   background isolate to wake and render, and that isolate does not run when the app has
   been swiped away, in battery saver, or on most OEM Android builds — so the merchant's
