@@ -70,7 +70,7 @@ describe('the schema applies at all', () => {
 
     for (const expected of [
       'addresses', 'audit_log', 'cities', 'config', 'coupon_redemptions', 'coupons',
-      'daily_meals', 'home_sections', 'landmarks', 'media', 'menu_categories',
+      'daily_meals', 'device_tokens', 'home_sections', 'landmarks', 'media', 'menu_categories',
       'menu_items', 'merchant_served_zones', 'merchants', 'order_issues', 'orders',
       'plans', 'promotions', 'ratings', 'staff', 'subscriptions', 'users', 'zones',
     ]) {

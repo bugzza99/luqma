@@ -6,10 +6,9 @@ import 'package:luqma_core/luqma_core.dart';
 /// Keeping the device token in step with who is signed in.
 ///
 /// The obvious place to register a token is at launch, next to the rest of the start-up.
-/// It does not work, and it fails silently: `users.fcm_tokens` is written by the signed-in
-/// account under RLS, and at launch nobody is signed in yet. A merchant installs the app,
-/// opens it, *then* signs in — by which time registration has already run and been
-/// refused.
+/// It does not work, and it fails silently: the ownership RPC needs a signed-in account,
+/// and at launch nobody is signed in yet. A merchant installs the app, opens it, *then*
+/// signs in — by which time registration has already run and been refused.
 ///
 /// Nothing about that is visible. The app looks fine, the account has no token, and the
 /// phone never rings.
@@ -159,9 +158,8 @@ void main() {
         reason: 'the stale one is dropped, not left beside the new one');
   });
 
-  // A token arriving for nobody is a token filed against nobody. `users.fcm_tokens` is
-  // written by the signed-in account under RLS, so the write would be refused anyway —
-  // silently, which is how it would go unnoticed.
+  // A token arriving for nobody is a token filed against nobody. The RPC takes its uid
+  // from the session, so there is deliberately no account parameter to fall back to.
   test('a refresh before anybody signs in registers nothing', () async {
     final auth = FakeAuthService();
     final tokens = FakePushTokenRepository();
@@ -180,6 +178,43 @@ void main() {
     await Future<void>.delayed(Duration.zero);
 
     expect(tokens.tokens, isEmpty);
+  });
+
+  test('registering a shared installation transfers it to the current account',
+      () async {
+    final deviceOwners = <String, String>{};
+    final owner = FakePushTokenRepository(
+      accountId: 'owner',
+      deviceOwners: deviceOwners,
+    );
+    final courier = FakePushTokenRepository(
+      accountId: 'courier',
+      deviceOwners: deviceOwners,
+    );
+
+    await owner.register('shared-phone');
+    await courier.register('shared-phone');
+
+    expect(owner.tokens, isEmpty);
+    expect(courier.tokens, ['shared-phone']);
+  });
+
+  test('one fake account cannot forget another account\'s installation', () async {
+    final deviceOwners = <String, String>{};
+    final owner = FakePushTokenRepository(
+      accountId: 'owner',
+      deviceOwners: deviceOwners,
+    );
+    final courier = FakePushTokenRepository(
+      accountId: 'courier',
+      deviceOwners: deviceOwners,
+    );
+
+    await courier.register('shared-phone');
+    await owner.forget('shared-phone');
+
+    expect(owner.tokens, isEmpty);
+    expect(courier.tokens, ['shared-phone']);
   });
 
   // A stream *error* is not delivered to the data callback, so the `try/catch` around the

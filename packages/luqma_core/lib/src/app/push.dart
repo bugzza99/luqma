@@ -113,10 +113,10 @@ abstract final class LuqmaPush {
 
   /// Starts Messaging and asks for permission.
   ///
-  /// It deliberately does **not** register a token. `users.fcm_tokens` is written by the
-  /// signed-in account under RLS, and at launch nobody is signed in — somebody who
-  /// installs the app, opens it and then signs in would have had registration run and be
-  /// refused, silently. `keepPushTokenRegistered` follows the session instead.
+  /// It deliberately does **not** register a token. The ownership RPC takes its uid from
+  /// the signed-in session, and at launch nobody is signed in — somebody who installs the
+  /// app, opens it and then signs in would have had registration run and be refused,
+  /// silently. `keepPushTokenRegistered` follows the session instead.
   ///
   /// Returns false when Firebase is not configured in this build, which is a normal
   /// state and not an error — the rest of the app works without it.

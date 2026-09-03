@@ -6,20 +6,15 @@ import '../auth/auth_service.dart';
 
 import '../result.dart';
 
-/// The device tokens an account can be woken on.
+/// The app installations an account can currently be woken on.
 ///
-/// Kept on `users.fcm_tokens` for every role, not on `staff`: `ensure_user_profile` gives
-/// every account a `users` row whatever it signs in as, so one array keyed by uid covers
-/// the merchant, the courier, the admin and the customer without a second place to look.
-///
-/// An array rather than a column because one person has more than one device — a
-/// merchant's own phone and the till behind the counter — and waking only the last one to
-/// sign in is waking the wrong one half the time.
+/// A token has one owner because it names an installation, while one account can still
+/// own several tokens for a phone in the kitchen and a till behind the counter.
 abstract interface class PushTokenRepository {
-  /// Adds [token] to whoever is signed in, if it is not already there.
+  /// Claims [token] for whoever is signed in, transferring it from any previous account.
   Future<Result<void>> register(String token);
 
-  /// Takes [token] off the account.
+  /// Takes [token] off the account only if the caller still owns it.
   ///
   /// Called on sign-out, and it matters: a shared till that keeps the last merchant's
   /// token goes on ringing for a shop the person holding it no longer works for.
@@ -34,80 +29,64 @@ class SupabasePushTokenRepository implements PushTokenRepository {
   @override
   Future<Result<void>> register(String token) {
     return Result.guard(() async {
-      final uid = _db.auth.currentUser?.id;
-      if (uid == null) throw const PermissionFailure();
+      if (_db.auth.currentUser == null) throw const PermissionFailure();
 
-      // Read, merge, write. Not `array_append`: a phone that reinstalls gets the same
-      // token back from FCM, and appending blindly would send the same alarm twice.
-      final row = await _db
-          .from('users')
-          .select('fcm_tokens')
-          .eq('id', uid)
-          .single();
-      final tokens = (row['fcm_tokens'] as List?)?.cast<String>() ?? const [];
-      if (tokens.contains(token)) return;
-
-      await _db
-          .from('users')
-          .update({
-            'fcm_tokens': [...tokens, token],
-          })
-          .eq('id', uid);
+      await _db.rpc('register_device_token', params: {'p_token': token});
     });
   }
 
   @override
   Future<Result<void>> forget(String token) {
     return Result.guard(() async {
-      final uid = _db.auth.currentUser?.id;
-      if (uid == null) return;
+      if (_db.auth.currentUser == null) return;
 
-      final row = await _db
-          .from('users')
-          .select('fcm_tokens')
-          .eq('id', uid)
-          .single();
-      final tokens = (row['fcm_tokens'] as List?)?.cast<String>() ?? const [];
-
-      await _db
-          .from('users')
-          .update({'fcm_tokens': tokens.where((t) => t != token).toList()})
-          .eq('id', uid);
+      await _db.rpc('forget_device_token', params: {'p_token': token});
     });
   }
 }
 
 /// In-memory tokens, for tests and for running the app with no backend at all.
 class FakePushTokenRepository implements PushTokenRepository {
-  FakePushTokenRepository({this.failure});
+  /// [deviceOwners] is shared by account-scoped fakes because two accounts must contend
+  /// for one installation exactly as they do against the table's token key.
+  FakePushTokenRepository({
+    this.failure,
+    this.accountId = 'fake-account',
+    Map<String, String>? deviceOwners,
+  }) : _deviceOwners = deviceOwners ?? {};
 
   final Failure? failure;
+  final String accountId;
+  final Map<String, String> _deviceOwners;
 
   /// What this account is currently reachable on, for assertions.
-  final List<String> tokens = [];
+  List<String> get tokens => [
+    for (final entry in _deviceOwners.entries)
+      if (entry.value == accountId) entry.key,
+  ];
 
   @override
   Future<Result<void>> register(String token) async {
     if (failure != null) return Result.err(failure!);
-    if (!tokens.contains(token)) tokens.add(token);
+    _deviceOwners[token] = accountId;
     return const Result.ok(null);
   }
 
   @override
   Future<Result<void>> forget(String token) async {
     if (failure != null) return Result.err(failure!);
-    tokens.remove(token);
+    if (_deviceOwners[token] == accountId) _deviceOwners.remove(token);
     return const Result.ok(null);
   }
 }
 
 /// Keeps [repository] in step with whoever is signed in.
 ///
-/// Registering at launch does not work, and it fails silently: `users.fcm_tokens` is
-/// written by the signed-in account under RLS, and at launch nobody is signed in yet. A
-/// merchant installs the app, opens it, *then* signs in — by which time registration has
-/// already run and been refused. Nothing about that is visible: the app looks fine, the
-/// account has no token, and the phone never rings.
+/// Registering at launch does not work, and it fails silently: the registration RPC needs
+/// a signed-in account, and at launch nobody is signed in yet. A merchant installs the
+/// app, opens it, *then* signs in — by which time registration has already run and been
+/// refused. Nothing about that is visible: the app looks fine, the account has no token,
+/// and the phone never rings.
 ///
 /// So the token follows the session rather than the start-up. [token] is asked for each
 /// time somebody signs in, because Android reissues it after a reinstall or a restore.

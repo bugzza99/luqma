@@ -65,6 +65,35 @@ describe('the push outbox', () => {
       [MERCHANT, CUSTOMER, type, ZONE],
     );
 
+  it('leaves token ownership reachable only through the authenticated RPCs', async () => {
+    const d = await db();
+    const privileges = (await d.query(
+      `select
+         has_function_privilege('anon',
+           'public.register_device_token(text)', 'execute') as anon_register,
+         has_function_privilege('authenticated',
+           'public.register_device_token(text)', 'execute') as auth_register,
+         has_function_privilege('anon',
+           'public.forget_device_token(text)', 'execute') as anon_forget,
+         has_function_privilege('authenticated',
+           'public.forget_device_token(text)', 'execute') as auth_forget,
+         has_table_privilege('authenticated',
+           'public.device_tokens', 'insert') as direct_insert`,
+    )).rows[0];
+
+    deepStrictEqual(privileges, {
+      anon_register: false,
+      auth_register: true,
+      anon_forget: false,
+      auth_forget: true,
+      direct_insert: false,
+    });
+    strictEqual((await d.query(
+      `select relrowsecurity from pg_class
+        where oid = 'public.device_tokens'::regclass`,
+    )).rows[0].relrowsecurity, true);
+  });
+
   it('an order puts one row in it, addressed to the owner', async () => {
     const d = await db();
     await placeOrder(d);
@@ -109,6 +138,26 @@ describe('the push outbox', () => {
       strictEqual(rows.length, 1);
       deepStrictEqual(rows[0].tokens, ['tok-owner-1', 'tok-owner-2']);
       strictEqual(rows[0].title, 'أوردر جديد');
+    });
+
+    it('unions current ownership with legacy arrays without ringing twice', async () => {
+      const d = await db();
+      await d.query(
+        `insert into device_tokens (token, uid)
+         values ('tok-owner-2', $1), ('tok-owner-3', $1), ('tok-moved', $2)`,
+        [OWNER, COURIER],
+      );
+      await d.query(
+        `update users set fcm_tokens = fcm_tokens || array['tok-moved'] where id = $1`,
+        [OWNER],
+      );
+      await placeOrder(d);
+
+      const { rows } = await d.query('select * from claim_push_batch(10)');
+      deepStrictEqual(
+        rows[0].tokens,
+        ['tok-owner-1', 'tok-owner-2', 'tok-owner-3'],
+      );
     });
 
     // Two drains running at once must not take the same row: sending one merchant the
@@ -164,6 +213,11 @@ describe('the push outbox', () => {
   describe('tokens FCM no longer recognises', () => {
     it('are taken off the account', async () => {
       const d = await db();
+      await d.query(
+        `insert into device_tokens (token, uid)
+         values ('tok-owner-1', $1), ('tok-owner-2', $1)`,
+        [OWNER],
+      );
       await placeOrder(d);
       const claimed = await d.query('select * from claim_push_batch(10)');
 
@@ -175,6 +229,10 @@ describe('the push outbox', () => {
         OWNER,
       ]);
       deepStrictEqual(rows[0].fcm_tokens, ['tok-owner-2']);
+      deepStrictEqual(
+        (await d.query('select token from device_tokens order by token')).rows,
+        [{ token: 'tok-owner-2' }],
+      );
     });
 
     it('and the live ones are left alone', async () => {

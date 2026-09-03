@@ -108,7 +108,10 @@ Deno.serve(async (req: Request) => {
 
   let sent = 0;
   for (const row of batch) {
-    const tokens: string[] = row.tokens ?? [];
+    // A rollout can leave the same installation in the new ownership table and the
+    // transitional profile array. SQL deduplicates them, and this keeps the network
+    // boundary defensive if that contract ever regresses.
+    const tokens = [...new Set<string>(row.tokens ?? [])];
     if (tokens.length === 0) {
       // Nobody has this app installed. Settled rather than retried: five attempts
       // against an account with no phone is five minutes of nothing.

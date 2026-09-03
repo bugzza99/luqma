@@ -5,11 +5,9 @@ import 'harness.dart';
 
 /// The tokens that make a merchant's phone ring.
 ///
-/// `fcm_tokens` lives on `users`, which is a guarded table: a customer owns their name,
-/// their phone and their addresses, and owns none of the columns that describe how the
-/// platform sees them. So registering a token is a write into a row a trigger is
-/// watching, and "can the app do this at all" is a question only the real database
-/// answers — a fake will happily accept a write the guard would refuse.
+/// Ownership moves through a definer RPC because a normal row policy cannot let B update
+/// a token still owned by A. Whether that door derives B from the session and stays shut
+/// to everybody else is a question only the real database answers.
 ///
 /// The consequence of getting it wrong is quiet, which is the worst kind: no exception a
 /// customer ever sees, just a merchant whose phone never rings, on the single feature
@@ -20,13 +18,17 @@ void main() {
   setUpAll(() async => live = await LiveDatabase.open());
   tearDownAll(() => live.close());
 
-  Future<List<String>> tokensOf(String uid) async => ((await live.client
-              .from('users')
-              .select('fcm_tokens')
-              .eq('id', uid)
-              .single())['fcm_tokens'] as List?)
-          ?.cast<String>() ??
-      const [];
+  Future<List<String>> tokensOf(String uid) async => (await live.client
+          .from('device_tokens')
+          .select('token')
+          .eq('uid', uid)
+          // Ascending, spelled out: postgrest-dart's `order` defaults to *descending*,
+          // unlike almost every other API, so the bare call sorts backwards and the
+          // failure reads as "the second device replaced the first" rather than as a
+          // sort direction.
+          .order('token', ascending: true))
+      .map((row) => row['token'] as String)
+      .toList();
 
   test('a customer registers the token their phone was given', () async {
     final (customer, uid) = await live.openAsCustomer();
@@ -59,9 +61,9 @@ void main() {
         scope: 'merchant', role: 'owner', merchantId: merchantId);
     addTearDown(ownerDb.dispose);
 
-    // The merchant is the whole point of push in this product. A staff account is an
-    // `auth.users` row like any other, so it has a `users` row and a token list — but
-    // "of course it does" is exactly the assumption worth checking against the database.
+    // The merchant is the whole point of push in this product. A staff account still has
+    // to pass through auth.uid() like a customer; assuming the privileged role somehow
+    // makes that automatic is exactly how a merchant-only failure stays invisible.
     expect((await SupabasePushTokenRepository(ownerDb).register('tok-shop')).failureOrNull,
         isNull);
     expect(await tokensOf(ownerUid), ['tok-shop']);
@@ -78,6 +80,20 @@ void main() {
     // A phone that reinstalls gets its old token back from FCM. Appending blindly would
     // ring the same handset twice for one order.
     expect(await tokensOf(uid), ['tok-same']);
+  });
+
+  test('registering on another account transfers the installation', () async {
+    final (accountA, uidA) = await live.openAsCustomer();
+    final (accountB, uidB) = await live.openAsCustomer();
+    addTearDown(accountA.dispose);
+    addTearDown(accountB.dispose);
+    final token = 'tok-transfer-$uidA';
+
+    await SupabasePushTokenRepository(accountA).register(token);
+    await SupabasePushTokenRepository(accountB).register(token);
+
+    expect(await tokensOf(uidA), isEmpty);
+    expect(await tokensOf(uidB), [token]);
   });
 
   test('a second device is added rather than replacing the first', () async {
@@ -141,9 +157,9 @@ void main() {
     expect((await SupabaseCustomerRepository(admin).setBlocked(uid, blocked: true))
         .failureOrNull, isNull);
 
-    // `fcm_tokens` is on the guarded table's allowed list; `is_blocked` is deliberately
-    // not. A customer who could unblock themselves through the same update the push
-    // registration uses would make the whole abuse defence decorative.
+    // Old APKs still write `fcm_tokens`, so it remains on the guarded table's allowed
+    // list; `is_blocked` is deliberately not. Compatibility must not become a way for a
+    // customer to unblock themselves while the rollout is in progress.
     var refused = false;
     try {
       await customer

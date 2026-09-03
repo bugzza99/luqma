@@ -710,6 +710,18 @@ DATABASE_URL=<luqma-test session pooler> npm --prefix supabase run test:stack
   enum failing to compile in a file nobody had touched. Nothing in the repo ran
   `build_runner` at all: `run_tests.ps1` does `gen-l10n` and stops there. A gate that
   fails identically whatever you push is a gate nobody reads, which is worse than none.
+- **A push token names an installation, not a person.** It lived on `users.fcm_tokens`,
+  and `register` only ever appended to the signed-in row — so a shared merchant phone
+  that went from owner to courier left the token on *both*, and each one's alerts rang on
+  the other's handset. `device_tokens` keys on the token, so two owners are structurally
+  impossible and registering is an upsert that **moves** the device. The array is still
+  read for now: an APK already on a phone writes nothing else. **A device row wins over a
+  legacy array entry** — without that the stale copy under the previous account recreates
+  the bug for a half-updated fleet.
+- **postgrest-dart's `.order()` defaults to *descending*.** Nearly every other API
+  ascends. A bare `.order('token')` sorted backwards, and the test failure read as "the
+  second device replaced the first" rather than as a sort direction. Spell out
+  `ascending: true`.
 - **One checkout is one order, even when the reply never arrives.** `place_order` takes an
   optional `client_order_id` and a partial unique index on
   `(customer_uid, client_order_id)` settles two requests that arrive together — the index
