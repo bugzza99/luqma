@@ -1,4 +1,4 @@
-﻿import 'dart:async';
+import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -8,8 +8,12 @@ import 'package:package_info_plus/package_info_plus.dart';
 
 import 'src/shell/customer_shell.dart';
 
-Future<void> main() async {
-  WidgetsFlutterBinding.ensureInitialized();
+/// Wrapped, so a start-up that fails says so instead of vanishing.
+///
+/// Everything below is awaited before the first frame, and an async `main` whose body
+/// throws never reaches `runApp` — Android shows the launch theme for an instant and the
+/// process ends, which is indistinguishable from tapping the icon and nothing happening.
+void main() => luqmaBootstrap(() async {
   // Crash reporting: silent without a DSN dart-define, so dev builds send nothing.
   await LuqmaTelemetry.init();
   final supabase = await LuqmaSupabase.initialize();
@@ -33,8 +37,9 @@ Future<void> main() async {
       // The one place the build number is read. حسابي shows it for support calls, and
       // it comes from the package rather than a constant somebody has to remember to
       // bump — a second copy is a copy that eventually disagrees with the store.
-      appVersionProvider
-          .overrideWithValue('${info.version} (${info.buildNumber})'),
+      appVersionProvider.overrideWithValue(
+        '${info.version} (${info.buildNumber})',
+      ),
     ],
   );
 
@@ -53,13 +58,11 @@ Future<void> main() async {
     refreshes: LuqmaPush.tokenRefreshes,
   );
 
-  runApp(
-    UncontrolledProviderScope(
-      container: container,
-      child: CustomerApp(currentVersion: info.version),
-    ),
+  return UncontrolledProviderScope(
+    container: container,
+    child: CustomerApp(currentVersion: info.version),
   );
-}
+});
 
 class CustomerApp extends StatelessWidget {
   const CustomerApp({super.key, required this.currentVersion});

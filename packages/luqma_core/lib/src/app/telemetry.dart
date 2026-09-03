@@ -30,6 +30,24 @@ abstract final class LuqmaTelemetry {
     );
   }
 
+  /// An exception somebody caught, reported anyway. A no-op when telemetry is off.
+  ///
+  /// For the errors that are *handled* and would otherwise be invisible. A start-up that
+  /// fails now draws a screen instead of taking the app down with it — which is better
+  /// for the customer and strictly worse for us, because the crash that used to reach
+  /// Sentry as `fatal` would simply stop arriving. The whole reason the launch crash was
+  /// found within a day is that Sentry reported it.
+  static void error(Object error, StackTrace stackTrace, {String? context}) {
+    if (!enabled) return;
+    Sentry.captureException(
+      error,
+      stackTrace: stackTrace,
+      withScope: (scope) {
+        if (context != null) scope.setContexts('where', {'stage': context});
+      },
+    );
+  }
+
   /// One named moment worth counting. A no-op when telemetry is off.
   static void event(String name, {Map<String, Object>? data}) {
     if (!enabled) return;

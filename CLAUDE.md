@@ -684,6 +684,21 @@ DATABASE_URL=<luqma-test session pooler> npm --prefix supabase run test:stack
   `PGRST200`, and they are the two that matter most — the dish and the meal are the
   things being sold. Six hundred photographs the owner will shoot personally had nowhere
   to arrive.
+- **A `main` that throws is an app that vanishes, not one that reports.** An async `main`
+  whose body throws never reaches `runApp`: Android draws the launch theme for an instant
+  and the process ends, which is indistinguishable from tapping the icon and nothing
+  happening. All three now run through `luqmaBootstrap`, which owns the binding and puts
+  the whole start-up in a `try` — on a failure it draws `LuqmaStartupFailure`, with the
+  exception on it, because the person who can act is whoever the customer telephones and
+  "التطبيق مش بيفتح" alone is unactionable. **No retry button**: re-running Sentry and
+  Supabase initialisation in a half-started process is a control that might do nothing.
+- **`restore()` had no floor under it.** It completes on GoTrue's first
+  `onAuthStateChange`, and the customer's splash, the merchant's gate and
+  `currentIdentityProvider` all wait on it — so an event that never arrives is a burgundy
+  splash for ever, with no exception and nothing in Sentry. `resolveWithin` (8s) gives up
+  to **signed out** rather than staying unknown, and a session arriving late still signs
+  the person in through `auth.changes`, so the worst case is a signed-out home for a
+  moment instead of a wall.
 - **An argument is evaluated at the call site, and `main` is the worst place to learn
   that.** `keepPushTokenRegistered(refreshes: LuqmaPush.tokenRefreshes)` reads that getter
   *eagerly*, in the first lines of `main`, and the getter was an expression body over

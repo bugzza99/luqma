@@ -92,7 +92,11 @@ abstract interface class AuthService {
 /// The real one. The session comes from GoTrue, and every policy in the database reads
 /// the same token this service hands out.
 class SupabaseAuthService implements AuthService {
-  SupabaseAuthService(this._client) : _auth = _client.auth {
+  /// [resolveWithin] bounds the wait in [restore]. See [_giveUp].
+  SupabaseAuthService(
+    this._client, {
+    Duration resolveWithin = const Duration(seconds: 8),
+  }) : _auth = _client.auth {
     // Auth state changes, not just sign-in and sign-out: a claim granted while the app
     // is open arrives when the token refreshes, and a merchant whose account was set up
     // a minute ago should get in then rather than at the next cold start.
@@ -102,6 +106,30 @@ class SupabaseAuthService implements AuthService {
       _state = user == null ? AuthState.signedOut : AuthState.signedIn;
       _controller.add(_identity);
       if (!_resolved.isCompleted) _resolved.complete();
+    });
+
+    // A floor under a failure, not a race the real event has to win.
+    //
+    // `restore()` hands out `_resolved.future`, and until this timer existed the only
+    // thing that completed it was GoTrue's first `onAuthStateChange`. Three launch paths
+    // wait on it — the customer's splash, the merchant's gate, and
+    // `currentIdentityProvider` — so an event that never arrives is not a degraded
+    // feature: it is a burgundy splash for ever, with no exception, nothing in Sentry,
+    // and "التطبيق مش بيفتح" as the only report anybody can make.
+    //
+    // Eight seconds because the real event lands well inside one on any phone this ships
+    // to, so this can only fire when something is genuinely wrong. Giving up resolves to
+    // *signed out* rather than staying unknown — the customer app is browsable signed
+    // out, so somebody lands on the home screen instead of a wall, and a session that
+    // does arrive later still signs them in through the listener above.
+    _giveUp = Timer(resolveWithin, () {
+      if (_resolved.isCompleted) return;
+      _state = AuthState.signedOut;
+      // Emitted as well as recorded. `_identity` is already null, so this changes no
+      // value — but `state` and `changes` are two ways of asking the same question, and
+      // a transition that moves one without the other is how they come to disagree.
+      _controller.add(_identity);
+      _resolved.complete();
     });
   }
 
@@ -113,6 +141,7 @@ class SupabaseAuthService implements AuthService {
   // Typed loosely: GoTrue's own `AuthState` shares a name with ours below, and the
   // subscription never needs to spell it.
   late final StreamSubscription<dynamic> _subscription;
+  late final Timer _giveUp;
 
   AuthState _state = AuthState.unknown;
   LuqmaIdentity? _identity;
@@ -204,6 +233,7 @@ class SupabaseAuthService implements AuthService {
   Future<void> signOut() => _auth.signOut();
 
   void dispose() {
+    _giveUp.cancel();
     _subscription.cancel();
     _controller.close();
   }

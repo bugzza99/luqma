@@ -1,6 +1,5 @@
-﻿import 'dart:async';
+import 'dart:async';
 
-import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:luqma_core/luqma_core.dart';
 import 'package:package_info_plus/package_info_plus.dart';
@@ -9,8 +8,12 @@ import 'src/app/gallery.dart';
 import 'src/app/merchant_app.dart';
 import 'src/courier/courier_write_store.dart';
 
-Future<void> main() async {
-  WidgetsFlutterBinding.ensureInitialized();
+/// Wrapped, so a start-up that fails says so instead of vanishing.
+///
+/// Everything below is awaited before the first frame, and an async `main` whose body
+/// throws never reaches `runApp` — Android shows the launch theme for an instant and the
+/// process ends, which is indistinguishable from tapping the icon and nothing happening.
+void main() => luqmaBootstrap(() async {
   // Crash reporting: silent without a DSN dart-define, so dev builds send nothing.
   await LuqmaTelemetry.init();
   final supabase = await LuqmaSupabase.initialize();
@@ -53,10 +56,8 @@ Future<void> main() async {
     refreshes: LuqmaPush.tokenRefreshes,
   );
 
-  runApp(
-    UncontrolledProviderScope(
-      container: container,
-      child: MerchantApp(currentVersion: info.version),
-    ),
+  return UncontrolledProviderScope(
+    container: container,
+    child: MerchantApp(currentVersion: info.version),
   );
-}
+});
