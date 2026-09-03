@@ -695,6 +695,22 @@ DATABASE_URL=<luqma-test session pooler> npm --prefix supabase run test:stack
   `PGRST200`, and they are the two that matter most — the dish and the meal are the
   things being sold. Six hundred photographs the owner will shoot personally had nowhere
   to arrive.
+- **One checkout is one order, even when the reply never arrives.** `place_order` takes an
+  optional `client_order_id` and a partial unique index on
+  `(customer_uid, client_order_id)` settles two requests that arrive together — the index
+  is the authority, not a `select` before the insert. A losing race rolls back inside a
+  PL/pgSQL subtransaction, so the order **and** its coupon redemption, meal decrement and
+  push row go with it. The parameter defaults to null because an APK already on a phone
+  cannot learn a new argument.
+- **`place_order_priced` declared `app.server_mode` and never put it back**, and that
+  setting is transaction-local rather than function-local — so it stood for the rest of
+  the caller's transaction with every column guard down behind it. It is the rule
+  `apply_order_settlement` already follows and this older function never did, and it is
+  why a customer could rewrite `client_order_id` immediately after placing: the guard that
+  refuses it had been switched off by the placement itself. The wrapper restores it.
+  Nothing reachable from a phone could exploit it — PostgREST gives each RPC its own
+  transaction — which is exactly why it survived a year. A **function-level `SET` is the
+  right tool and hosted Supabase refuses it**: `permission denied to set parameter`.
 - **A `main` that throws is an app that vanishes, not one that reports.** An async `main`
   whose body throws never reaches `runApp`: Android draws the launch theme for an instant
   and the process ends, which is indistinguishable from tapping the icon and nothing

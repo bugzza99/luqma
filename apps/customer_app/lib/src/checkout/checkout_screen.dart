@@ -49,6 +49,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
   final _note = TextEditingController();
   final _coupon = TextEditingController();
   final _phone = TextEditingController();
+  final String _clientOrderId = newClientOrderId();
 
   Failure? _failure;
   bool _sending = false;
@@ -161,6 +162,10 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
     final result = await ref.read(orderRepositoryProvider).placeOrder(
           OrderDraft(
             merchantId: cart.merchantId!,
+            // Made with this screen, not this tap. A failed response enables the same
+            // button again, and the retry must still name the order the server may have
+            // already made.
+            clientOrderId: _clientOrderId,
             addressId: address.id,
             items: cart.toOrderLines(),
             type: OrderType.instant,
@@ -677,4 +682,3 @@ class _Footer extends StatelessWidget {
     );
   }
 }
-

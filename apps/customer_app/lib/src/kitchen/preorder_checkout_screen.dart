@@ -45,6 +45,7 @@ class PreorderCheckoutScreen extends ConsumerStatefulWidget {
 
 class _PreorderCheckoutScreenState extends ConsumerState<PreorderCheckoutScreen> {
   final _note = TextEditingController();
+  final String _clientOrderId = newClientOrderId();
 
   Failure? _failure;
   bool _sending = false;
@@ -75,6 +76,9 @@ class _PreorderCheckoutScreenState extends ConsumerState<PreorderCheckoutScreen>
     final result = await ref.read(orderRepositoryProvider).placeOrder(
           OrderDraft(
             merchantId: meal.merchantId,
+            // One reservation screen, one id. Retrying a lost response must not take a
+            // second portion from the cook's remaining quantity.
+            clientOrderId: _clientOrderId,
             dailyMealId: meal.id,
             addressId: address?.id,
             type: OrderType.preorder,
@@ -387,5 +391,3 @@ class _AddressCard extends StatelessWidget {
     );
   }
 }
-
-

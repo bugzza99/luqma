@@ -247,6 +247,23 @@ void main() {
         isNotNull,
       );
     });
+
+    testWidgets('a retry keeps the checkout id from the first tap', (tester) async {
+      await pump(tester, placementFails: const OfflineFailure());
+
+      await tester.tap(find.byKey(CheckoutScreen.placeKey));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(CheckoutScreen.placeKey));
+      await tester.pumpAndSettle();
+
+      expect(orders.drafts, hasLength(2));
+      expect(orders.drafts.first.clientOrderId, isNotNull);
+      expect(
+        orders.drafts.last.clientOrderId,
+        orders.drafts.first.clientOrderId,
+        reason: 'the screen survives a failed response, so its id must survive too',
+      );
+    });
   });
 
   group('the note to the merchant', () {

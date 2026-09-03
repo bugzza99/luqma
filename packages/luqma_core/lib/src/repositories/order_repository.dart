@@ -1,3 +1,5 @@
+import 'dart:math';
+
 // The backend exports names this file already uses; neither is wanted here, and letting
 // either through would shadow the model this file is about.
 import 'package:flutter/foundation.dart';
@@ -21,6 +23,7 @@ class OrderDraft {
     required this.merchantId,
     required this.items,
     required this.type,
+    this.clientOrderId,
     this.addressId,
     this.dailyMealId,
     this.couponCode,
@@ -28,6 +31,12 @@ class OrderDraft {
   });
 
   final String merchantId;
+
+  /// One checkout's identity, generated once by the screen and kept through retries.
+  ///
+  /// Null is the old-client path. The server deliberately keeps accepting it, because
+  /// an APK already installed cannot learn a new required argument.
+  final String? clientOrderId;
 
   /// Null for a pre-order the customer is collecting themselves — there is nowhere to
   /// deliver it to, and demanding an address for a meal somebody is walking to would be
@@ -48,6 +57,7 @@ class OrderDraft {
 
   Map<String, dynamic> toJson() => {
         'merchantId': merchantId,
+        if (clientOrderId != null) 'clientOrderId': clientOrderId,
         if (addressId != null) 'addressId': addressId,
         if (dailyMealId != null) 'dailyMealId': dailyMealId,
         'items': items.map((i) => i.toJson()).toList(),
@@ -55,6 +65,17 @@ class OrderDraft {
         if (couponCode != null) 'couponCode': couponCode,
         if (note != null) 'note': note,
       };
+}
+
+/// A v4 uuid made without adding a package for sixteen random bytes.
+String newClientOrderId() {
+  final random = Random.secure();
+  final bytes = List<int>.generate(16, (_) => random.nextInt(256));
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  final hex = bytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
+  return '${hex.substring(0, 8)}-${hex.substring(8, 12)}-${hex.substring(12, 16)}'
+      '-${hex.substring(16, 20)}-${hex.substring(20)}';
 }
 
 /// Orders, from the customer's side.
@@ -132,7 +153,11 @@ class SupabaseOrderRepository implements OrderRepository {
       // One function owns the whole act: prices read from the menu, the coupon judged
       // against its own counters, the portion taken inside the same transaction. What
       // comes back is the order as the server wrote it.
-      final row = await _db.rpc('place_order', params: {'p_draft': draft.toJson()});
+      final row = await _db.rpc('place_order', params: {
+        'p_draft': draft.toJson(),
+        if (draft.clientOrderId != null)
+          'p_client_order_id': draft.clientOrderId,
+      });
       return _toOrder(Map<String, dynamic>.from(row as Map));
     });
   }
@@ -291,6 +316,7 @@ class FakeOrderRepository implements OrderRepository {
       : _orders = {for (final o in seed) o.id: o};
 
   final Map<String, Order> _orders;
+  final Map<String, String> _clientOrders = {};
   final Failure? failure;
 
   /// Every draft, issue and rating this repository was handed, so a test can assert on
@@ -318,6 +344,11 @@ class FakeOrderRepository implements OrderRepository {
     drafts.add(draft);
     if (failure != null) return Result.err(failure!);
 
+    final existingId = draft.clientOrderId == null
+        ? null
+        : _clientOrders[draft.clientOrderId!];
+    if (existingId != null) return Result.ok(_orders[existingId]!);
+
     final id = 'order-${_orders.length + 1}';
     final order = Order(
       id: id,
@@ -336,6 +367,9 @@ class FakeOrderRepository implements OrderRepository {
       placedAt: DateTime.now(),
     );
     _orders[id] = order;
+    if (draft.clientOrderId != null) {
+      _clientOrders[draft.clientOrderId!] = id;
+    }
     return Result.ok(order);
   }
 
