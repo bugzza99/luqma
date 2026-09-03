@@ -48,6 +48,33 @@ jobs:
         run: |
           npm ci --prefix supabase
           flutter pub get
+      # Every freezed model, every Riverpod provider and the Arabic strings are generated,
+      # and `.g.dart`, `.freezed.dart` and `app_localizations*` are all gitignored — so a
+      # fresh checkout has none of them. Without this step every type they define resolves
+      # to `dynamic`, and the first thing that notices is an exhaustive `switch` over an
+      # enum failing to compile in a file nobody touched.
+      #
+      # It runs here rather than inside a script because every step below compiles Dart:
+      # the smoke checks, the suites, and the release APKs. This was the release gate's
+      # own bug — it failed on every push, for the same reason, whatever the push
+      # contained, which is the state in which a gate stops being read.
+      - name: Generate code
+        shell: pwsh
+        run: |
+          foreach ($package in @(
+              'packages/luqma_core', 'apps/customer_app',
+              'apps/merchant_app', 'apps/admin_app')) {
+            Push-Location $package
+            try {
+              dart run build_runner build --delete-conflicting-outputs
+              if ($LASTEXITCODE -ne 0) { throw "$package failed to generate" }
+            } finally { Pop-Location }
+          }
+          Push-Location packages/luqma_core
+          try {
+            flutter gen-l10n
+            if ($LASTEXITCODE -ne 0) { throw 'gen-l10n failed' }
+          } finally { Pop-Location }
       - name: Fast public-seam smoke
         shell: pwsh
         run: ./tool/run_smoke_tests.ps1

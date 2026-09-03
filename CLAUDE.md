@@ -695,6 +695,13 @@ DATABASE_URL=<luqma-test session pooler> npm --prefix supabase run test:stack
   `PGRST200`, and they are the two that matter most — the dish and the meal are the
   things being sold. Six hundred photographs the owner will shoot personally had nowhere
   to arrive.
+- **The release gate was red on every push, and not because of the pushes.** `.g.dart`,
+  `.freezed.dart` and `app_localizations*` are gitignored, so a fresh checkout has none of
+  them — and CI's first Dart step ran before anything generated them. Every freezed type
+  resolved to `dynamic`, and the first thing to notice was an exhaustive `switch` over an
+  enum failing to compile in a file nobody had touched. Nothing in the repo ran
+  `build_runner` at all: `run_tests.ps1` does `gen-l10n` and stops there. A gate that
+  fails identically whatever you push is a gate nobody reads, which is worse than none.
 - **One checkout is one order, even when the reply never arrives.** `place_order` takes an
   optional `client_order_id` and a partial unique index on
   `(customer_uid, client_order_id)` settles two requests that arrive together — the index
