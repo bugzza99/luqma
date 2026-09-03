@@ -309,12 +309,23 @@ What Phase 9 has shipped so far:
 - **Release signing** — one keystore at `signing/` (gitignored), all three apps' gradle
   files read it when present. SHA-1 is in `signing/README.md`; register it per app id.
 
+- **Push, verified end to end on real handsets (2026-09-03).** All three apps, all four
+  roles: a message queued into `push_outbox` reaches a customer, a merchant owner, a
+  courier and a platform admin, **with the app closed**. That last part is the whole
+  claim — it is what data-only messages could never do, and what nothing before this week
+  had actually demonstrated rather than assumed.
+  Two things were proven along the way and are worth trusting now: FCM's dead-token
+  pruning works (a customer had two tokens, one was reported dead and removed on the next
+  send), and the `orders` / `orders_critical` split arrives on the right channel per app.
+
 Still open, none of it code:
 
 - Play Console account, listings, and enrolling Play App Signing with this key.
 - Onboarding the first 10–15 merchants at zero commission.
-- Running the three apps on a real handset. They have been built many times and
-  installed never, which is its own kind of untested.
+- **Edku's real zone and landmark names**, entered from AdminApp. A wrong zone name sends
+  a courier to the wrong part of town.
+- The `support_whatsapp` config row exists and is **empty**, so حول لقمة has no number on
+  it until somebody types one into AdminApp.
 
 ### Images, the customer's home, and the merchant's phone (2026-08-27)
 
