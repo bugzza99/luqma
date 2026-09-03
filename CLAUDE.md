@@ -695,6 +695,14 @@ DATABASE_URL=<luqma-test session pooler> npm --prefix supabase run test:stack
   `PGRST200`, and they are the two that matter most — the dish and the meal are the
   things being sold. Six hundred photographs the owner will shoot personally had nowhere
   to arrive.
+- **`'2026-08-25 10:00' at time zone 'Africa/Cairo'` is not zone-proof without a cast.**
+  The literal is untyped, and Postgres resolves it against the session's own `TimeZone`:
+  as a naive `timestamp` on a Cairo session, where `at time zone` *interprets* it as Cairo
+  local, and as a `timestamptz` on a UTC one, where the same operator *converts* it and
+  the instant lands three hours out. The daily-meal test read 10:00 as 13:00 and the
+  window had closed. It passed on every developer's machine and failed only in CI, which
+  runs in UTC. `::timestamp` before the operator settles it. Run `TZ=UTC npm --prefix
+  supabase test` before trusting anything that builds an instant from a literal.
 - **The release gate was red on every push, and not because of the pushes.** `.g.dart`,
   `.freezed.dart` and `app_localizations*` are gitignored, so a fresh checkout has none of
   them — and CI's first Dart step ran before anything generated them. Every freezed type

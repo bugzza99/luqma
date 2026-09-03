@@ -87,8 +87,16 @@ describe('a daily meal is reservable only today, and only before its window ends
     meal = r.rows[0].id;
   });
 
-  // `at time zone 'Africa/Cairo'` builds the instant, so the test is correct whatever
-  // Egypt's DST rule happens to be on that date.
+  // `::timestamp at time zone 'Africa/Cairo'` builds the instant, so the test is correct
+  // whatever Egypt's DST rule happens to be on that date — and, because of the cast,
+  // whatever the session's own `TimeZone` is.
+  //
+  // The cast is load-bearing and was missing. `'2026-08-25 10:00'` on its own is an
+  // untyped literal, and Postgres resolves it against the session zone: as a naive
+  // `timestamp` here, where `at time zone` then *interprets* it as Cairo local, and as a
+  // `timestamptz` on a UTC session, where the same operator *converts* it instead and the
+  // instant lands three hours out. So this passed on a developer's machine in Cairo and
+  // failed in CI, which runs in UTC — the one place nobody was looking.
   const reservable = async (atSql) => {
     const r = await db.query(
       `select public.meal_is_reservable(m, ${atSql}) as ok
@@ -100,21 +108,21 @@ describe('a daily meal is reservable only today, and only before its window ends
 
   it('refuses a meal for yesterday', async () => {
     assert.equal(
-      await reservable("'2026-08-26 10:00' at time zone 'Africa/Cairo'"),
+      await reservable("'2026-08-26 10:00'::timestamp at time zone 'Africa/Cairo'"),
       false,
     );
   });
 
   it('accepts today\'s meal while the window is still open', async () => {
     assert.equal(
-      await reservable("'2026-08-25 10:00' at time zone 'Africa/Cairo'"),
+      await reservable("'2026-08-25 10:00'::timestamp at time zone 'Africa/Cairo'"),
       true,
     );
   });
 
   it('refuses today\'s meal once the window has closed', async () => {
     assert.equal(
-      await reservable("'2026-08-25 15:30' at time zone 'Africa/Cairo'"),
+      await reservable("'2026-08-25 15:30'::timestamp at time zone 'Africa/Cairo'"),
       false,
     );
   });
