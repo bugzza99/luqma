@@ -27,6 +27,10 @@ before(async () => {
   await db.query('insert into auth.users (id) values ($1) on conflict (id) do nothing', [
     actor,
   ]);
+  await db.query(
+    "insert into staff (uid, scope, role) values ($1, 'platform', 'admin')",
+    [actor],
+  );
 });
 
 after(() => db?.close());

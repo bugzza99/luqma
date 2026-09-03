@@ -9,12 +9,12 @@ import '../result.dart';
 /// Creating an account is a server act — somebody must mint the Auth user — and it goes
 /// through the `create-staff-account` Edge Function, which holds the service role and
 /// checks that its caller is an active platform admin before spending it. This interface
-/// is the app's half of that conversation; everything else here is ordinary reads.
+/// is the app's half of that conversation. Activation uses its own server boundary too,
+/// because dismissing somebody has to revoke their way back in as well as change a row.
 abstract interface class StaffRepository {
   Stream<List<StaffMember>> watchStaff();
 
-  /// Deactivating keeps the account and its history while shutting the door: the
-  /// sign-in boundary refuses an inactive staff row's holder.
+  /// Deactivating keeps the account and its history while shutting the door immediately.
   Future<Result<void>> setActive(String uid, {required bool active});
 
   /// Mints a new account. [merchantId] is required for merchant-scope accounts and
@@ -53,9 +53,24 @@ class SupabaseStaffRepository implements StaffRepository {
   @override
   Future<Result<void>> setActive(String uid, {required bool active}) {
     return Result.guard(() async {
-      await _db
-          .from('staff')
-          .update({'is_active': active}).eq('uid', uid);
+      final response = await _db.functions.invoke(
+        'set-staff-active',
+        body: {'uid': uid, 'active': active},
+      );
+
+      // A named refusal keeps a safety invariant from becoming an unexplained failure.
+      switch (response.status) {
+        case >= 200 && < 300:
+          break;
+        case 404:
+          throw const NotFoundFailure();
+        case 409:
+          throw const ConflictFailure();
+        case 401 || 403:
+          throw const PermissionFailure();
+        default:
+          throw UnknownFailure('set-staff-active: HTTP ${response.status}');
+      }
     });
   }
 
@@ -134,6 +149,16 @@ class FakeStaffRepository implements StaffRepository {
     if (failure != null) return Result.err(failure!);
     final existing = _members[uid];
     if (existing == null) return const Result.err(NotFoundFailure());
+    if (!active && existing.isActive && existing.scope == 'platform' &&
+        existing.role == 'admin') {
+      final otherActiveAdmins = _members.values.where(
+        (member) => member.uid != uid && member.isActive &&
+            member.scope == 'platform' && member.role == 'admin',
+      );
+      if (otherActiveAdmins.isEmpty) {
+        return const Result.err(ConflictFailure());
+      }
+    }
     _members[uid] = StaffMember(
       uid: existing.uid,
       scope: existing.scope,

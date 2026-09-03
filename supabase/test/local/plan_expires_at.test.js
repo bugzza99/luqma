@@ -19,6 +19,10 @@ describe('plan_expires_at', () => {
     await d.query(
       `insert into auth.users (id) values ('00000000-0000-0000-0000-0000000000aa')`,
     );
+    await d.query(
+      `insert into staff (uid, scope, role)
+       values ('00000000-0000-0000-0000-0000000000aa', 'platform', 'admin')`,
+    );
     await d.query(`
       create or replace function auth.uid() returns uuid
         language sql stable as $fn$ select '00000000-0000-0000-0000-0000000000aa'::uuid $fn$

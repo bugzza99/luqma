@@ -51,7 +51,9 @@ export async function freshDatabase() {
       raw_user_meta_data jsonb not null default '{}'::jsonb
     );
 
-    -- The token here always says admin, deliberately.
+    -- The token here always says admin, deliberately. The fixed uid gets a matching
+    -- active staff row after the migrations land, because claims alone are no longer an
+    -- administrator and weakening that rule for PGlite would make the harness lie.
     --
     -- These tests are about constraints, and a constraint can only be tested by a writer
     -- the boundary lets through: the column guards are BEFORE UPDATE triggers, which a
@@ -59,7 +61,8 @@ export async function freshDatabase() {
     -- boundary and no CHECK would ever be reached. Whether the boundary itself holds is a
     -- different question, asked in test/stack against real tokens.
     create or replace function auth.uid() returns uuid
-      language sql stable as $fn$ select null::uuid $fn$;
+      language sql stable as
+      $fn$ select '00000000-0000-0000-0000-0000000000ad'::uuid $fn$;
     create or replace function auth.jwt() returns jsonb
       language sql stable as
       $fn$ select '{"app_metadata":{"admin":true}}'::jsonb $fn$;
@@ -82,6 +85,15 @@ export async function freshDatabase() {
   for (const file of readdirSync(dir).filter((f) => f.endsWith('.sql')).sort()) {
     await db.exec(readFileSync(join(dir, file), 'utf8'));
   }
+
+  await db.exec(`
+    insert into auth.users (id)
+    values ('00000000-0000-0000-0000-0000000000ad')
+    on conflict (id) do nothing;
+    insert into staff (uid, scope, role)
+    values ('00000000-0000-0000-0000-0000000000ad', 'platform', 'admin')
+    on conflict (uid) do nothing;
+  `);
 
   return db;
 }

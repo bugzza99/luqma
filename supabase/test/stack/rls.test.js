@@ -122,6 +122,21 @@ before(async () => {
                         platformCourier]) {
     await q('insert into users (id) values ($1) on conflict do nothing', [person.uid]);
   }
+
+  // Claims say which job each token was issued for; these rows say those jobs are still
+  // active. Keeping both in the cast is what lets the tests prove a stale token alone is
+  // no longer authority.
+  for (const [person, role, scope, m] of [
+    [owner, 'owner', 'merchant', merchant],
+    [otherOwner, 'owner', 'merchant', otherMerchant],
+    [courier, 'courier', 'merchant', merchant],
+    [platformCourier, 'courier', 'platform', null],
+    [admin, 'admin', 'platform', null],
+  ]) {
+    await q(
+      'insert into staff (uid, scope, role, merchant_id) values ($1, $2, $3, $4)',
+      [person.uid, scope, role, m]);
+  }
 });
 
 // Torn down in dependency order rather than hopefully: the suite has to be re-runnable,
@@ -252,6 +267,13 @@ describe('merchants', () => {
        values ($1, 'restaurant', 'لسه', $2, '0100') returning id`, [edku, zone])).rows[0].id;
     const its = { uid: await uid(),
                   claims: { role: 'owner', scope: 'merchant', merchant_id: pending } };
+    // A real staff row, because the claims alone are no longer an identity: every
+    // staff-shaped predicate now also asks whether the row is active, so an owner
+    // conjured out of claims is simply not staff and RLS filters the row away — the
+    // write is refused either way, but by the wrong layer and with no message. Every
+    // owner in production has this row.
+    await q("insert into staff (uid, scope, role, merchant_id) "
+            + "values ($1, 'merchant', 'owner', $2)", [its.uid, pending]);
 
     const error = await refused(its,
       () => db.query("update merchants set status = 'approved' where id = $1", [pending]));
@@ -411,6 +433,37 @@ describe('moving an order through its states', () => {
       assert.equal(await move(courier, id, 'delivered'), null);
     });
 
+    // The same signed claims are used on both sides. Only the table row changes, because
+    // that is the employment decision a bearer token cannot carry retroactively.
+    it('a stale courier token stops moving money as soon as the staff row is inactive',
+       async () => {
+      const dismissed = {
+        uid: await uid(),
+        claims: { role: 'courier', scope: 'merchant', merchant_id: merchant },
+      };
+      await q(
+        "insert into staff (uid, scope, role, merchant_id) values ($1, 'merchant', 'courier', $2)",
+        [dismissed.uid, merchant],
+      );
+
+      const whileActive = await makeOrder({
+        status: 'outForDelivery', courierUid: dismissed.uid,
+      });
+      const activeMove = await as(dismissed, () => db.query(
+        "update orders set status = 'delivered' where id = $1", [whileActive]));
+      assert.equal(activeMove.rowCount, 1);
+
+      await asServer('update staff set is_active = false where uid = $1', [dismissed.uid]);
+
+      const afterDismissal = await makeOrder({
+        status: 'outForDelivery', courierUid: dismissed.uid,
+      });
+      const inactiveMove = await as(dismissed, () => db.query(
+        "update orders set status = 'delivered' where id = $1", [afterDismissal]));
+      assert.equal(inactiveMove.rowCount, 0,
+        'unchanged JWT claims do not outvote the inactive staff row');
+    });
+
     // Nobody cooked it. Marking it delivered would charge the merchant for an order that
     // never left the kitchen.
     it('cannot mark a freshly placed order delivered', async () => {
@@ -428,6 +481,10 @@ describe('moving an order through its states', () => {
     it('another courier cannot take an order off the one carrying it', async () => {
       const second = { uid: await uid(),
                        claims: { role: 'courier', scope: 'merchant', merchant_id: merchant } };
+      await q(
+        "insert into staff (uid, scope, role, merchant_id) values ($1, 'merchant', 'courier', $2)",
+        [second.uid, merchant],
+      );
       const id = await makeOrder({ status: 'outForDelivery', courierUid: courier.uid });
 
       const r = await as(second, () => db.query(
@@ -451,7 +508,9 @@ describe('moving an order through its states', () => {
   });
 
   describe('the customer', () => {
-    it('cancels while it is still unanswered', async () => {
+    it('needs no staff row to cancel while an order is still unanswered', async () => {
+      const staff = await q('select uid from staff where uid = $1', [customer.uid]);
+      assert.equal(staff.rows.length, 0, 'customers are not staff-shaped identities');
       assert.equal(await move(customer, await makeOrder(), 'cancelled'), null);
     });
 
@@ -805,27 +864,6 @@ describe('who the outbox wakes', () => {
     `select title, channel from push_outbox
       where uid = $1 and data ->> 'orderId' = $2`, [uid, orderId])).rows;
 
-  // The cast in this file carries JWT claims and, until here, no `staff` rows — because
-  // every policy reads `auth.jwt()` and none of them needs the table.
-  //
-  // The push triggers do. Who may *act* is the token's answer; who to *address* is the
-  // table's, and they are not the same question — a courier whose staff row is missing
-  // or switched off passes every policy in the app and is never sent anything, which is
-  // exactly how a rider ends up finding out about orders by opening the app and looking.
-  before(async () => {
-    for (const [person, role, scope, m] of [
-      [owner, 'owner', 'merchant', merchant],
-      [courier, 'courier', 'merchant', merchant],
-      [platformCourier, 'courier', 'platform', null],
-      [admin, 'admin', 'platform', null],
-    ]) {
-      await q(
-        'insert into staff (uid, scope, role, merchant_id) values ($1, $2, $3, $4) ' +
-        'on conflict (uid) do nothing',
-        [person.uid, scope, role, m]);
-    }
-  });
-
   beforeEach(() => q('delete from push_outbox'));
 
   it('the courier is told when the food starts', async () => {
@@ -920,18 +958,6 @@ describe('who can read the staff list', () => {
   // account under their shop, names and phone numbers included.
   //
   // A courier manages nobody. Their own row is the whole of what they need.
-  before(async () => {
-    await q("insert into staff (uid, scope, role, merchant_id) " +
-            "values ($1, 'merchant', 'owner', $2) on conflict (uid) do nothing",
-            [owner.uid, merchant]);
-    await q("insert into staff (uid, scope, role, merchant_id) " +
-            "values ($1, 'merchant', 'courier', $2) on conflict (uid) do nothing",
-            [courier.uid, merchant]);
-    await q("insert into staff (uid, scope, role, merchant_id) " +
-            "values ($1, 'merchant', 'owner', $2) on conflict (uid) do nothing",
-            [otherOwner.uid, otherMerchant]);
-  });
-
   // Named rather than counted: earlier groups in this file leave staff rows against the
   // same merchant, and an exact total would fail for their reasons rather than this one.
   it('an owner reads the accounts under their own shop', async () => {

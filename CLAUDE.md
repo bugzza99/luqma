@@ -710,6 +710,23 @@ DATABASE_URL=<luqma-test session pooler> npm --prefix supabase run test:stack
   enum failing to compile in a file nobody had touched. Nothing in the repo ran
   `build_runner` at all: `run_tests.ps1` does `gen-l10n` and stops there. A gate that
   fails identically whatever you push is a gate nobody reads, which is worse than none.
+- **A dismissal is a boundary change, not a claim change.** Every staff-shaped predicate —
+  `is_admin`, `belongs_to_merchant`, `is_merchant_owner`, `is_courier_for` — read
+  `auth.jwt()` and nothing else, and the access-token hook only checks `is_active` when it
+  *stamps* the claims. So a dismissed courier went on marking orders delivered — the
+  transition that moves money — until their token expired on its own. Each of those now
+  also requires an active `staff` row for `auth.uid()`. An Edge Function bans the GoTrue
+  user so sign-in and refresh stop, and its comment is honest that **a stateless JWT
+  already issued cannot be recalled**, which is exactly why the database check is the real
+  closure rather than the revocation.
+- **An assigned courier used to skip every role helper**, because `courier_uid =
+  auth.uid()` matched directly in the order policies. `is_courier_for_order` folds the
+  whole delivery identity into one predicate so that shortcut cannot outlive the job.
+- **A staff fixture built from claims alone is no longer an identity.** `as()` /
+  `openAsStaff` tests that conjure an owner out of `{role, scope, merchant_id}` now fail
+  the active-row check, and RLS answers by filtering the row away — so the write is still
+  refused, silently and by the wrong layer. Give the fixture a real `staff` row; every
+  such account has one in production.
 - **A push token names an installation, not a person.** It lived on `users.fcm_tokens`,
   and `register` only ever appended to the signed-in row — so a shared merchant phone
   that went from owner to courier left the token on *both*, and each one's alerts rang on

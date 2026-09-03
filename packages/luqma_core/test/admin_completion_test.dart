@@ -118,6 +118,37 @@ void main() {
       expect(member.isActive, isFalse);
       expect(member.uid, 's1');
     });
+
+    test('the last active platform admin cannot be deactivated', () async {
+      final admin = StaffMember(
+        uid: 'admin-1',
+        scope: 'platform',
+        role: 'admin',
+        isActive: true,
+      );
+      final repo = FakeStaffRepository(seed: [admin]);
+
+      final result = await repo.setActive(admin.uid, active: false);
+
+      expect(result.failureOrNull, isA<ConflictFailure>());
+      expect(repo.all.single.isActive, isTrue);
+    });
+
+    test('an admin can be deactivated while another remains active', () async {
+      StaffMember admin(String uid) => StaffMember(
+            uid: uid,
+            scope: 'platform',
+            role: 'admin',
+            isActive: true,
+          );
+      final repo = FakeStaffRepository(seed: [admin('admin-1'), admin('admin-2')]);
+
+      final result = await repo.setActive('admin-1', active: false);
+
+      expect(result.isOk, isTrue);
+      expect(repo.all.singleWhere((member) => member.uid == 'admin-1').isActive,
+          isFalse);
+    });
   });
 
   group('FakeBillingRepository.savePlan', () {
