@@ -48,6 +48,9 @@ describe('device push tokens', () => {
   before(async () => {
     db = new Client({ connectionString: DB });
     await db.connect();
+    // Both stack files drain one global queue. Serialising their fixtures keeps one
+    // proof from consuming the row the other proof was about to inspect.
+    await q("select pg_advisory_lock(hashtext('luqma push outbox stack tests'))");
     accountA = await uid();
     accountB = await uid();
   });
@@ -56,6 +59,7 @@ describe('device push tokens', () => {
     await q('delete from push_outbox where uid = any($1::uuid[])', [[accountA, accountB]]);
     await q('delete from device_tokens where uid = any($1::uuid[])', [[accountA, accountB]]);
     await q('delete from auth.users where id = any($1::uuid[])', [[accountA, accountB]]);
+    await q("select pg_advisory_unlock(hashtext('luqma push outbox stack tests'))");
     await db.end();
   });
 
@@ -101,8 +105,12 @@ describe('device push tokens', () => {
     assert.ok(!forA.tokens.includes(deviceToken), 'A lost the installation when B claimed it');
     assert.deepEqual(forB.tokens, [deviceToken], 'the two stores are deduplicated');
 
-    await q('select settle_push($1, null, array[$2])', [forB.id, deviceToken]);
-    await q('select settle_push($1)', [forA.id]);
+    await q('select settle_push($1, $2, null, array[$3])', [
+      forB.id,
+      forB.claim_token,
+      deviceToken,
+    ]);
+    await q('select settle_push($1, $2)', [forA.id, forA.claim_token]);
 
     assert.equal((await q(
       'select 1 from device_tokens where token = $1',

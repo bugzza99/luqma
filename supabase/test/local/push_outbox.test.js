@@ -136,6 +136,7 @@ describe('the push outbox', () => {
 
       const { rows } = await d.query('select * from claim_push_batch(10)');
       strictEqual(rows.length, 1);
+      ok(rows[0].claim_token);
       deepStrictEqual(rows[0].tokens, ['tok-owner-1', 'tok-owner-2']);
       strictEqual(rows[0].title, 'أوردر جديد');
     });
@@ -172,6 +173,44 @@ describe('the push outbox', () => {
       strictEqual(rows[0].attempts, 1);
     });
 
+    it('does not offer a row while its claim is still alive', async () => {
+      const d = await db();
+      await placeOrder(d);
+
+      await d.query('select * from claim_push_batch(10)');
+      const { rows } = await d.query('select * from claim_push_batch(10)');
+
+      strictEqual(rows.length, 0);
+    });
+
+    it('reclaims an expired row without accepting its stale settlement', async () => {
+      const d = await db();
+      await placeOrder(d);
+      const first = (await d.query('select * from claim_push_batch(10)')).rows[0];
+      await d.query(
+        `update push_outbox set claimed_at = now() - interval '16 minutes'
+          where id = $1`,
+        [first.id],
+      );
+      const second = (await d.query('select * from claim_push_batch(10)')).rows[0];
+
+      await d.query('select settle_push($1, $2)', [first.id, first.claim_token]);
+      const afterStale = (await d.query(
+        'select sent_at, claim_token from push_outbox where id = $1',
+        [first.id],
+      )).rows[0];
+      strictEqual(afterStale.sent_at, null);
+      strictEqual(afterStale.claim_token, second.claim_token);
+
+      await d.query('select settle_push($1, $2)', [second.id, second.claim_token]);
+      const afterCurrent = (await d.query(
+        'select sent_at, claim_token from push_outbox where id = $1',
+        [second.id],
+      )).rows[0];
+      ok(afterCurrent.sent_at);
+      strictEqual(afterCurrent.claim_token, null);
+    });
+
     it('stops offering a row that has failed five times', async () => {
       const d = await db();
       await placeOrder(d);
@@ -186,7 +225,10 @@ describe('the push outbox', () => {
       await placeOrder(d);
       const claimed = await d.query('select * from claim_push_batch(10)');
 
-      await d.query('select settle_push($1)', [claimed.rows[0].id]);
+      await d.query('select settle_push($1, $2)', [
+        claimed.rows[0].id,
+        claimed.rows[0].claim_token,
+      ]);
 
       const { rows } = await d.query('select * from claim_push_batch(10)');
       strictEqual(rows.length, 0);
@@ -197,7 +239,11 @@ describe('the push outbox', () => {
       await placeOrder(d);
       const claimed = await d.query('select * from claim_push_batch(10)');
 
-      await d.query('select settle_push($1, $2)', [claimed.rows[0].id, 'UNAVAILABLE']);
+      await d.query('select settle_push($1, $2, $3)', [
+        claimed.rows[0].id,
+        claimed.rows[0].claim_token,
+        'UNAVAILABLE',
+      ]);
 
       const { rows } = await d.query('select sent_at, last_error from push_outbox');
       strictEqual(rows[0].sent_at, null);
@@ -221,8 +267,9 @@ describe('the push outbox', () => {
       await placeOrder(d);
       const claimed = await d.query('select * from claim_push_batch(10)');
 
-      await d.query(`select settle_push($1, null, array['tok-owner-1'])`, [
+      await d.query(`select settle_push($1, $2, null, array['tok-owner-1'])`, [
         claimed.rows[0].id,
+        claimed.rows[0].claim_token,
       ]);
 
       const { rows } = await d.query('select fcm_tokens from users where id = $1', [
@@ -240,8 +287,9 @@ describe('the push outbox', () => {
       await placeOrder(d);
       const claimed = await d.query('select * from claim_push_batch(10)');
 
-      await d.query(`select settle_push($1, null, array['nothing-like-this'])`, [
+      await d.query(`select settle_push($1, $2, null, array['nothing-like-this'])`, [
         claimed.rows[0].id,
+        claimed.rows[0].claim_token,
       ]);
 
       const { rows } = await d.query('select fcm_tokens from users where id = $1', [

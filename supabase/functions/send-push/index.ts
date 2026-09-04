@@ -115,7 +115,11 @@ Deno.serve(async (req: Request) => {
     if (tokens.length === 0) {
       // Nobody has this app installed. Settled rather than retried: five attempts
       // against an account with no phone is five minutes of nothing.
-      await service.rpc('settle_push', { p_id: row.id, p_error: 'no tokens' });
+      await service.rpc('settle_push', {
+        p_id: row.id,
+        p_claim_token: row.claim_token,
+        p_error: 'no tokens',
+      });
       continue;
     }
 
@@ -190,6 +194,7 @@ Deno.serve(async (req: Request) => {
 
     await service.rpc('settle_push', {
       p_id: row.id,
+      p_claim_token: row.claim_token,
       p_error: delivered ? null : 'no token accepted it',
       p_dead_tokens: dead,
     });

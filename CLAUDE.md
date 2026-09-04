@@ -710,6 +710,15 @@ DATABASE_URL=<luqma-test session pooler> npm --prefix supabase run test:stack
   enum failing to compile in a file nobody had touched. Nothing in the repo ran
   `build_runner` at all: `run_tests.ps1` does `gen-l10n` and stops there. A gate that
   fails identically whatever you push is a gate nobody reads, which is worse than none.
+- **`for update skip locked` protects the claim, not the work.** The lock ends when
+  `claim_push_batch` returns, and the drain then makes one HTTPS call to FCM per token
+  before it settles — so a batch slower than the one-minute cron was claimed again and the
+  same alarm rang twice. `claimed_at` and `claim_token` hold a lease; `settle_push` matches
+  the token and silently ignores a stale one, because a late completion is crash recovery
+  working rather than an error worth failing the drain over.
+- **A lease's clock cannot go in a partial index.** `now()` is not immutable, so the
+  expiry stays in the query and the index predicate keeps only `sent_at is null and
+  attempts < 5` — which is what stops the queue's sent history growing without bound.
 - **A dismissal is a boundary change, not a claim change.** Every staff-shaped predicate —
   `is_admin`, `belongs_to_merchant`, `is_merchant_owner`, `is_courier_for` — read
   `auth.jwt()` and nothing else, and the access-token hook only checks `is_active` when it
