@@ -7,6 +7,7 @@ import '../cart/cart.dart';
 import '../cart/cart_controller.dart';
 import '../cart/open_cart.dart';
 import '../home/home_screen.dart';
+import '../orders/order_screen.dart';
 import '../orders/orders_screen.dart';
 import 'customer_tab.dart';
 
@@ -33,57 +34,73 @@ class _CustomerShellState extends ConsumerState<CustomerShell> {
 
   void _openCart() => openCart(context, onSignIn: _goToAccount);
 
+  /// Where a tapped notification lands.
+  ///
+  /// The tab moves as well as the route being pushed, so back from the order leaves
+  /// somebody on طلباتي rather than on whatever tab the app happened to be showing when
+  /// the notification arrived — which, coming from a cold start, is الرئيسية and has
+  /// nothing to do with why they opened the app.
+  void _openOrder(String orderId) {
+    ref.read(customerTabProvider.notifier).show(CustomerTab.orders);
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(builder: (_) => OrderScreen(orderId: orderId)),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final cart = ref.watch(cartProvider);
     final tab = ref.watch(customerTabProvider);
     final colors = Theme.of(context).luqma;
 
-    return LuqmaTabPopScope(
-      currentIndex: tab,
-      // Switching tabs never pushes a route — see the doc comment above — so back on
-      // طلباتي or حسابي used to find nothing on the Navigator's stack and exit the app
-      // outright. It returns to الرئيسية first now, and only exits from there.
-      onHome: () => ref.read(customerTabProvider.notifier).show(CustomerTab.home),
-      child: Scaffold(
-        backgroundColor: colors.background,
-        // One stack rather than a builder per tab, so each tab keeps its scroll position
-        // and its loaded data. Coming back to a half-scrolled home and finding it reset
-        // is the app forgetting what somebody was doing.
-        body: IndexedStack(
-          index: tab,
-          children: [
-            const HomeScreen(),
-            OrdersScreen(onSignIn: _goToAccount),
-            const AccountScreen(),
-          ],
-        ),
-        floatingActionButton:
-            cart.isEmpty ? null : _CartButton(cart: cart, onTap: _openCart),
-        bottomNavigationBar: NavigationBar(
-          selectedIndex: tab,
-          onDestinationSelected: (i) =>
-              ref.read(customerTabProvider.notifier).show(i),
-          destinations: const [
-            NavigationDestination(
-              key: CustomerShell.homeTabKey,
-              icon: Icon(Icons.storefront_outlined),
-              selectedIcon: Icon(Icons.storefront),
-              label: 'الرئيسية',
-            ),
-            NavigationDestination(
-              key: CustomerShell.ordersTabKey,
-              icon: Icon(Icons.receipt_long_outlined),
-              selectedIcon: Icon(Icons.receipt_long),
-              label: 'طلباتي',
-            ),
-            NavigationDestination(
-              key: CustomerShell.accountTabKey,
-              icon: Icon(Icons.person_outline),
-              selectedIcon: Icon(Icons.person),
-              label: 'حسابي',
-            ),
-          ],
+    return LuqmaTappedOrder(
+      onOpen: _openOrder,
+      child: LuqmaTabPopScope(
+        currentIndex: tab,
+        // Switching tabs never pushes a route — see the doc comment above — so back on
+        // طلباتي or حسابي used to find nothing on the Navigator's stack and exit the app
+        // outright. It returns to الرئيسية first now, and only exits from there.
+        onHome: () => ref.read(customerTabProvider.notifier).show(CustomerTab.home),
+        child: Scaffold(
+          backgroundColor: colors.background,
+          // One stack rather than a builder per tab, so each tab keeps its scroll position
+          // and its loaded data. Coming back to a half-scrolled home and finding it reset
+          // is the app forgetting what somebody was doing.
+          body: IndexedStack(
+            index: tab,
+            children: [
+              const HomeScreen(),
+              OrdersScreen(onSignIn: _goToAccount),
+              const AccountScreen(),
+            ],
+          ),
+          floatingActionButton:
+              cart.isEmpty ? null : _CartButton(cart: cart, onTap: _openCart),
+          bottomNavigationBar: NavigationBar(
+            selectedIndex: tab,
+            onDestinationSelected: (i) =>
+                ref.read(customerTabProvider.notifier).show(i),
+            destinations: const [
+              NavigationDestination(
+                key: CustomerShell.homeTabKey,
+                icon: Icon(Icons.storefront_outlined),
+                selectedIcon: Icon(Icons.storefront),
+                label: 'الرئيسية',
+              ),
+              NavigationDestination(
+                key: CustomerShell.ordersTabKey,
+                icon: Icon(Icons.receipt_long_outlined),
+                selectedIcon: Icon(Icons.receipt_long),
+                label: 'طلباتي',
+              ),
+              NavigationDestination(
+                key: CustomerShell.accountTabKey,
+                icon: Icon(Icons.person_outline),
+                selectedIcon: Icon(Icons.person),
+                label: 'حسابي',
+              ),
+            ],
+          ),
         ),
       ),
     );

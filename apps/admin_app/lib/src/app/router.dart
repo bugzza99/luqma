@@ -100,11 +100,17 @@ GoRouter router(Ref ref) {
       GoRoute(path: Routes.signIn, builder: (_, _) => const SignInScreen()),
       GoRoute(path: Routes.noAccess, builder: (_, _) => const NoAccessScreen()),
       ShellRoute(
-        builder: (context, state, child) => AdminShell(
-          modules: _modules,
-          currentRoute: state.matchedLocation,
-          onDestination: (m) => context.go(m.route),
-          child: child,
+        builder: (context, state, child) => LuqmaTappedOrder(
+          // AdminApp is told one thing about an order — that nobody answered it — and
+          // اليوم is the screen that lists exactly those. `push`, not `go`, so back
+          // returns to whatever the admin was in the middle of rather than exiting.
+          onOpen: (_) => context.push(Routes.today),
+          child: AdminShell(
+            modules: _modules,
+            currentRoute: state.matchedLocation,
+            onDestination: (m) => context.go(m.route),
+            child: child,
+          ),
         ),
         routes: [
           // The grid is the home. What used to be here — the day's four numbers — is a

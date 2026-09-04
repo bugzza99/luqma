@@ -115,64 +115,70 @@ class _ShellState extends ConsumerState<_Shell> {
         ref.watch(merchantProvider(merchantId)).value?.type ==
             MerchantType.homeKitchen;
 
-    return LuqmaTabPopScope(
-      currentIndex: _tab,
-      // Switching tabs never pushes a route — see the doc comment above — so back on
-      // any tab but الجديد used to find nothing on the Navigator's stack and exit the
-      // app outright. It returns to الجديد first now, and only exits from there.
-      onHome: () => setState(() => _tab = 0),
-      child: Scaffold(
-        backgroundColor: colors.background,
-        // One stack, so switching to the menu and back does not throw away the inbox's
-        // live subscription and re-load it.
-        body: IndexedStack(
-          index: _tab,
-          children: [
-            const InboxScreen(),
-            const LiveBoardScreen(),
-            if (isHomeKitchen) const MealsScreen() else const MenuScreen(),
-            const ShopScreen(),
-          ],
-        ),
-        bottomNavigationBar: NavigationBar(
-          selectedIndex: _tab,
-          onDestinationSelected: (i) => setState(() => _tab = i),
-          destinations: [
-            // First, always. Whatever else a merchant is doing, getting back to an
-            // unanswered order has to be one tap.
-            const NavigationDestination(
-              key: MerchantApp.inboxTabKey,
-              icon: Icon(Icons.notifications_active_outlined),
-              selectedIcon: Icon(Icons.notifications_active),
-              label: 'الجديد',
-            ),
-            const NavigationDestination(
-              key: MerchantApp.liveTabKey,
-              icon: Icon(Icons.local_fire_department_outlined),
-              selectedIcon: Icon(Icons.local_fire_department),
-              label: 'الجاري',
-            ),
-            if (isHomeKitchen)
+    return LuqmaTappedOrder(
+      // There is no per-order screen in MerchantApp — an order lives in a list — so the
+      // destination is the list the alert was about. The alarm only ever fires for an
+      // order nobody has answered, and that is الجديد.
+      onOpen: (_) => setState(() => _tab = 0),
+      child: LuqmaTabPopScope(
+        currentIndex: _tab,
+        // Switching tabs never pushes a route — see the doc comment above — so back on
+        // any tab but الجديد used to find nothing on the Navigator's stack and exit the
+        // app outright. It returns to الجديد first now, and only exits from there.
+        onHome: () => setState(() => _tab = 0),
+        child: Scaffold(
+          backgroundColor: colors.background,
+          // One stack, so switching to the menu and back does not throw away the inbox's
+          // live subscription and re-load it.
+          body: IndexedStack(
+            index: _tab,
+            children: [
+              const InboxScreen(),
+              const LiveBoardScreen(),
+              if (isHomeKitchen) const MealsScreen() else const MenuScreen(),
+              const ShopScreen(),
+            ],
+          ),
+          bottomNavigationBar: NavigationBar(
+            selectedIndex: _tab,
+            onDestinationSelected: (i) => setState(() => _tab = i),
+            destinations: [
+              // First, always. Whatever else a merchant is doing, getting back to an
+              // unanswered order has to be one tap.
               const NavigationDestination(
-                key: MerchantApp.mealsTabKey,
-                icon: Icon(Icons.soup_kitchen_outlined),
-                selectedIcon: Icon(Icons.soup_kitchen),
-                label: 'أكل النهارده',
-              )
-            else
-              const NavigationDestination(
-                key: MerchantApp.menuTabKey,
-                icon: Icon(Icons.restaurant_menu_outlined),
-                selectedIcon: Icon(Icons.restaurant_menu),
-                label: 'المنيو',
+                key: MerchantApp.inboxTabKey,
+                icon: Icon(Icons.notifications_active_outlined),
+                selectedIcon: Icon(Icons.notifications_active),
+                label: 'الجديد',
               ),
-            const NavigationDestination(
-              key: MerchantApp.shopTabKey,
-              icon: Icon(Icons.storefront_outlined),
-              selectedIcon: Icon(Icons.storefront),
-              label: 'المطعم',
-            ),
-          ],
+              const NavigationDestination(
+                key: MerchantApp.liveTabKey,
+                icon: Icon(Icons.local_fire_department_outlined),
+                selectedIcon: Icon(Icons.local_fire_department),
+                label: 'الجاري',
+              ),
+              if (isHomeKitchen)
+                const NavigationDestination(
+                  key: MerchantApp.mealsTabKey,
+                  icon: Icon(Icons.soup_kitchen_outlined),
+                  selectedIcon: Icon(Icons.soup_kitchen),
+                  label: 'أكل النهارده',
+                )
+              else
+                const NavigationDestination(
+                  key: MerchantApp.menuTabKey,
+                  icon: Icon(Icons.restaurant_menu_outlined),
+                  selectedIcon: Icon(Icons.restaurant_menu),
+                  label: 'المنيو',
+                ),
+              const NavigationDestination(
+                key: MerchantApp.shopTabKey,
+                icon: Icon(Icons.storefront_outlined),
+                selectedIcon: Icon(Icons.storefront),
+                label: 'المطعم',
+              ),
+            ],
+          ),
         ),
       ),
     );

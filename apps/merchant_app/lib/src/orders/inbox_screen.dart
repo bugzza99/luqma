@@ -73,7 +73,15 @@ class InboxScreen extends ConsumerWidget {
       // A stream that fails before it ever emits stays `AsyncLoading` with the error
       // hanging off it, so an `AsyncError()` arm never fires and the screen spins for
       // ever on a dropped connection — which on this screen reads as a quiet evening.
-      body: LuqmaAsyncView(
+      body: Column(
+        children: [
+          const LuqmaNotificationBanner(
+            reason: 'من غيرها مش هتعرف إن فيه أوردر جديد إلا لما تفتح التطبيق '
+                'بنفسك — والعميل مستني رد في تسعين ثانية.',
+            margin: EdgeInsets.all(Space.gutter),
+          ),
+          Expanded(
+            child: LuqmaAsyncView(
         value: incoming,
         errorKey: InboxScreen.errorKey,
         onRetry: () => ref.invalidate(incomingOrdersProvider(merchantId)),
@@ -91,6 +99,9 @@ class InboxScreen extends ConsumerWidget {
             itemBuilder: (context, i) =>
                 LuqmaEntrance(index: i, child: _OrderCard(order: value[i])),
           )
+            ),
+          ),
+        ],
       ),
     );
   }

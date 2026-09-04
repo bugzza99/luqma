@@ -48,4 +48,14 @@ void main() {
   test('starting without Firebase configured says so instead of throwing', () async {
     expect(await LuqmaPush.start(), isFalse);
   });
+
+  /// The permission surface is reached from a screen, long after `main` — but a build
+  /// with no Firebase must still answer it rather than throw into a widget's build.
+  test('the permission is unknown rather than an exception without Firebase', () async {
+    expect(await LuqmaPush.permission(), LuqmaPushPermission.unavailable);
+  });
+
+  test('and asking for it answers the same way instead of throwing', () async {
+    expect(await LuqmaPush.requestPermission(), LuqmaPushPermission.unavailable);
+  });
 }

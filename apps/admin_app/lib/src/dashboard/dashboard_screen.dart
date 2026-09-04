@@ -47,6 +47,9 @@ class _Body extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.all(Space.gutter),
       children: [
+        const LuqmaNotificationBanner(
+          reason: 'أوردر محدش ردّ عليه بيوصلك هنا — بس بتنبيه بس لو التنبيهات شغالة.',
+        ),
         Text('النهارده', style: theme.textTheme.headlineMedium),
         const SizedBox(height: Space.lg),
         _Metric(

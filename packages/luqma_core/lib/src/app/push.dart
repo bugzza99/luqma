@@ -50,6 +50,28 @@ Future<void> luqmaBackgroundMessage(RemoteMessage message) async {
   await LuqmaPush.render(message);
 }
 
+/// Whether this phone will show what the server sends.
+///
+/// Four states rather than a bool, because "not asked yet" and "said no" want opposite
+/// things from a screen: the first wants an explanation and then the system dialog, and
+/// the second wants telling that alerts are off, since Android will not show that dialog
+/// a second time.
+enum LuqmaPushPermission {
+  /// Alerts will be shown.
+  granted,
+
+  /// Asked, and refused. The system dialog will not appear again — only Settings can
+  /// change this — so a button that merely asks again is a button that does nothing.
+  denied,
+
+  /// Never asked. Android 13 and up starts here; older versions never do.
+  notDetermined,
+
+  /// No Firebase in this build, so there is nothing to ask about. A developer's machine
+  /// and CI are both here, and neither should be shown a warning about notifications.
+  unavailable,
+}
+
 abstract final class LuqmaPush {
   const LuqmaPush._();
 
@@ -162,11 +184,17 @@ abstract final class LuqmaPush {
   /// Everything after Firebase is up. Separated so the guard above covers all of it
   /// rather than whichever lines somebody remembers to keep inside a `try`.
   static Future<bool> _wire() async {
-    final messaging = FirebaseMessaging.instance;
-    // Android 13 and up will not show a notification without this, and nobody would ever
-    // learn why nothing rang.
-    await messaging.requestPermission(alert: true, sound: true, badge: true);
-
+    // Deliberately does **not** ask for the permission.
+    //
+    // It used to, right here, in the first seconds of the first launch — before anybody
+    // had been told what the alerts were for, and while the app was still drawing its
+    // splash. Android shows that dialog once and remembers a refusal permanently, so an
+    // unexplained prompt spends the only chance the app gets; and nothing read the
+    // answer, so a merchant who tapped "Don't allow" got a phone that never rang again
+    // with nothing anywhere saying why.
+    //
+    // [requestPermission] is called from a screen now, next to the sentence explaining
+    // what it buys, and [LuqmaNotificationBanner] is what says so when it is off.
     await _initLocal();
 
     // A notification tapped while the app was dead is waiting here at launch. Without
@@ -212,6 +240,46 @@ abstract final class LuqmaPush {
       return await FirebaseMessaging.instance.getToken();
     } catch (_) {
       return null;
+    }
+  }
+
+  /// What this phone has already decided, without asking it anything.
+  ///
+  /// Reading is not asking: `getNotificationSettings` never shows a dialog, so a screen
+  /// can use this to decide whether to explain first, warn, or say nothing at all.
+  static Future<LuqmaPushPermission> permission() =>
+      _settings((m) => m.getNotificationSettings());
+
+  /// Asks, and answers what was decided.
+  ///
+  /// Call this **after** somebody has been told what the alerts are for. Android shows
+  /// its dialog once and remembers a refusal for good, so an unexplained prompt in the
+  /// first seconds of the first launch spends the only chance this app gets — and for a
+  /// merchant, refusing it means never hearing that an order arrived.
+  static Future<LuqmaPushPermission> requestPermission() => _settings(
+        (m) => m.requestPermission(alert: true, sound: true, badge: true),
+      );
+
+  static Future<LuqmaPushPermission> _settings(
+    Future<NotificationSettings> Function(FirebaseMessaging) ask,
+  ) async {
+    try {
+      if (!await start()) return LuqmaPushPermission.unavailable;
+      return switch ((await ask(FirebaseMessaging.instance)).authorizationStatus) {
+        // Provisional is iOS delivering quietly without having asked. Alerts arrive, so
+        // as far as every screen here is concerned it is granted.
+        AuthorizationStatus.authorized ||
+        AuthorizationStatus.provisional =>
+          LuqmaPushPermission.granted,
+        AuthorizationStatus.denied => LuqmaPushPermission.denied,
+        AuthorizationStatus.notDetermined => LuqmaPushPermission.notDetermined,
+      };
+    } catch (error) {
+      // Same rule as everything else in this file: a platform channel on an OEM Android
+      // build is the least predictable code the app runs, and a screen asking whether
+      // notifications are on must not be able to crash on the answer.
+      debugPrint('Could not read the notification permission ($error)');
+      return LuqmaPushPermission.unavailable;
     }
   }
 

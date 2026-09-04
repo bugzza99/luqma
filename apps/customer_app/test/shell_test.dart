@@ -373,4 +373,42 @@ void main() {
       expect(find.byType(PreorderCheckoutScreen), findsNothing);
     });
   });
+
+  group('a tapped notification', () {
+    setUp(() => LuqmaPush.tappedOrder.value = null);
+    tearDown(() => LuqmaPush.tappedOrder.value = null);
+
+    // The launch case. The tap is recorded before any widget of this app exists, so a
+    // shell that only listened for changes would never hear it — and until this existed,
+    // nothing heard it at all: the customer tapped "الأوردر في الطريق" and the app came
+    // forward on الرئيسية.
+    testWidgets('from a cold start opens the order it was about', (tester) async {
+      LuqmaPush.tappedOrder.value = 'o-cold';
+
+      await pump(tester);
+
+      expect(find.byType(OrderScreen), findsOneWidget);
+    });
+
+    testWidgets('while the app is open opens the order too', (tester) async {
+      await pump(tester);
+
+      LuqmaPush.tappedOrder.value = 'o-live';
+      await tester.pumpAndSettle();
+
+      expect(find.byType(OrderScreen), findsOneWidget);
+    });
+
+    // The tab moves as well as the route being pushed, so back from the order is طلباتي
+    // — the list the order belongs to — rather than the home tab it was launched on.
+    testWidgets('leaves طلباتي underneath it', (tester) async {
+      LuqmaPush.tappedOrder.value = 'o-cold';
+      await pump(tester);
+
+      tester.state<NavigatorState>(find.byType(Navigator).first).pop();
+      await tester.pumpAndSettle();
+
+      expect(find.byType(OrdersScreen), findsOneWidget);
+    });
+  });
 }

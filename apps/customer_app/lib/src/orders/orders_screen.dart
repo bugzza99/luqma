@@ -71,6 +71,10 @@ class _List extends StatelessWidget {
         Space.xxxl,
       ),
       children: [
+        const LuqmaNotificationBanner(
+          reason: 'من غيرها مش هنعرف نقولك إن المطعم قبل طلبك، ولا لما الأوردر '
+              'يخرج ويبقى في الطريق لك.',
+        ),
         if (open.isNotEmpty) ...[
           _GroupLabel(text: 'دلوقتي'),
           for (final order in open) ...[

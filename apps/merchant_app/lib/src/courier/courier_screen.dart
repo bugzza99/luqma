@@ -67,6 +67,11 @@ class CourierScreen extends ConsumerWidget {
       appBar: AppBar(title: const Text('التوصيل')),
       body: Column(
         children: [
+          const LuqmaNotificationBanner(
+            reason: 'من غيرها مش هتعرف إن فيه أوردر اتظبط لك للتوصيل غير لما تفتح '
+                'التطبيق بنفسك وتشوف.',
+            margin: EdgeInsets.all(Space.gutter),
+          ),
           const _PendingBanner(),
           const _RejectedBanner(),
           Expanded(
