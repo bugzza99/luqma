@@ -75,6 +75,22 @@ Versions observed during Phase 0:
 - `sentry_flutter`: 9.27.0 resolved
 - Flutter: 3.44.4
 
+Re-checked 2026-09-05, still on the same two versions, and the shape of the upgrade is
+now known:
+
+- `package_info_plus` 8.3.1 → **10.2.1**, two major versions. Not reachable without
+  widening the constraint in all four pubspecs, and majors are where its Android side
+  has been changing.
+- `sentry_flutter` 9.27.0 → **9.29.0**, already inside `^9.0.0`; 10.0.0 is an alpha and
+  is not a candidate.
+
+This stayed undone deliberately rather than being half-taken. The acceptance criteria
+below require a build with no warning **and** a device smoke test of start-up, Sentry
+init and the version read, and the owner has not wanted APKs built this week. Taking the
+safe Sentry minor on its own would not clear the warning — `package_info_plus` is the
+other half — so it would be an unverified dependency bump that changes nothing
+observable, which is the combination this file warns against everywhere else.
+
 ### Required work
 
 1. Re-check the packages' current changelogs and Flutter's Built-in Kotlin migration

@@ -507,7 +507,7 @@ in the repository — and `flutter test` on a *package* does not run the generat
 the way an app build does. Without it a new string is a compile error that points at the
 call site rather than at the missing step.
 
-**~1010 Dart tests · 131 schema tests · 196 stack tests · 253 live-repository tests.**
+**~1197 Dart tests · 131 schema tests · 205 stack tests · 258 live-repository tests.**
 `flutter analyze` clean.
 
 There are no `function` tests and no `tsc`: the TypeScript Cloud Functions went with
@@ -699,6 +699,28 @@ DATABASE_URL=<luqma-test session pooler> npm --prefix supabase run test:stack
   decide ownership: `correct_own_rating` checked that a rating was yours and not that it
   still pointed at an order you received, so a customer could move their stars onto a shop
   they had never bought from.
+- **`Result.guard` said `ok` for a write that changed nothing, and every repository
+  write went through it.** PostgREST does not throw when a policy filters a write down to
+  zero rows — that is a successful request — so the screen said تم الحفظ over an
+  unchanged database. `Result.guardWrite` asks the write for what it changed and refuses
+  an empty answer, across the 33 call sites in the 14 repositories that write rows. The
+  other nine read or call an RPC, where the function's own `raise` is the failure path and
+  a row count means nothing. The failure is `NotFoundFailure` on purpose: PostgREST cannot
+  tell a row hidden by policy from a row that is gone, and calling it permission-denied
+  would claim more than the server said.
+- **A contract test with one party is not a contract.** `repository_contract_test.dart`
+  states what a write means once, as a function taking the repository, and is called from
+  both `test/` with the fakes and `test_live/` with the real ones. Stating it twice is
+  exactly how a fake and a server drift; running it only against fakes proves the screens
+  work against the fake, which is the finding behind half the bugs in this file.
+- **The courier's queue is keyed on the account, and what it stores carries a version.**
+  It was one global key, so a shared shop handset changing couriers replayed the first
+  courier's "delivered" taps under the second's name — and `load()` swallows every decode
+  failure by design, so the day the JSON shape changed every queued write on every phone
+  would have gone silently. That queue is cash collected in the street; it is the only
+  local storage here whose loss is money. The bare list already on phones is claimed once,
+  with a durable owner marker so an interrupted migration cannot hand it to whoever signs
+  in next.
 - **The fakes are not the system.** They are more permissive than Postgres plus the
   policies, so a green suite proves the screens work against the fake and nothing more.
   Anything that depends on a policy needs a live test beside the widget test — that is
