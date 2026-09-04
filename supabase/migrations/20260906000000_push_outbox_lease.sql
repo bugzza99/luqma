@@ -4,9 +4,15 @@ alter table public.push_outbox
   add constraint push_outbox_claim_pair
     check ((claimed_at is null) = (claim_token is null));
 
--- Fifteen cron ticks recover a crashed worker quickly, while a full twenty-row batch
--- still gets roughly forty-five seconds per row before an ordinary slow send can be
--- stolen by the next drain.
+-- Ten minutes, and the number comes from how long a drain can still plausibly be alive
+-- rather than from a per-row time budget.
+--
+-- The drain is an Edge Function, and the platform kills one long before this — so a lease
+-- only has to outlast the longest run that can actually happen. Everything past that is
+-- dead time: a worker killed mid-batch leaves its rows unclaimable for the remainder, and
+-- on `orders_critical` that is a new-order alarm sitting silent while the merchant's
+-- accept deadline runs down, so the order escalates to `needsAttention` having never
+-- rung. Ten is comfortably above any real run and halves that worst case.
 --
 -- The clock-dependent half cannot live in a partial-index predicate because PostgreSQL
 -- requires those expressions to be immutable. Keeping it in the key lets the drain
@@ -43,7 +49,7 @@ begin
        and o.attempts < 5
        and (
          o.claimed_at is null
-         or o.claimed_at <= now() - interval '15 minutes'
+         or o.claimed_at <= now() - interval '10 minutes'
        )
      order by o.created_at
      limit p_limit
