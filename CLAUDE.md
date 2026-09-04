@@ -427,6 +427,21 @@ follows is what breaks if it is not known.
   no `l`/`1`/`O`/`0`, because it is read down a phone line — and returned once, never
   stored. That function refuses a uid that has a `staff` row: a support call must not
   become a way to reset another admin.
+- **A customer can delete their own account, and an order that outlives them has no
+  customer.** Google Play requires in-app deletion from any app that makes accounts, and
+  `orders.customer_uid` made it impossible: `not null` and `on delete restrict`, so
+  anybody who had ever ordered could not be removed at all. It is nullable and `set null`
+  now. What goes is the person — the profile, the addresses, the ratings, the device
+  tokens, the GoTrue user itself, all through cascades that already existed. What stays
+  is the money: the order row with its `pricing`, `items`, `revenue` snapshot and any
+  `order_settlements`, because that is what the merchant's statement and the platform's
+  own accounts are built from. The two frozen contact fields are overwritten with
+  **حساب محذوف** rather than emptied — a courier screen with a blank where a name goes
+  reads as a bug, and this says which it is. `delete_my_account()` takes no uid and acts
+  only on `auth.uid()`; it refuses any account with a `staff` row, because a merchant
+  owner or courier removing themselves from the customer app would orphan a shop, and
+  that is an administrative act. The screen says all of this in Arabic before the button,
+  including that the same number can register again as a new person with no history.
 
 ### Infrastructure
 
@@ -664,6 +679,21 @@ DATABASE_URL=<luqma-test session pooler> npm --prefix supabase run test:stack
   `using` lets a row be *changed* into something the writer could not have created.
   `using` judges the row as it is, `with check` the row as it will be, and a write that
   needs both must say both.
+- **`on delete set null` is an ordinary update, and the column guards fire on it.**
+  `delete_my_account` scrubs the two frozen contact fields on a departing customer's
+  orders and then deletes the GoTrue user; the foreign key nulls `orders.customer_uid`,
+  which is a column *no* role is ever allowed to write. So the guard refuses the
+  cascade as readily as it refused the scrub, and `security definer` does not help —
+  `guard_order_columns` asks whether a trusted server function has **declared** itself,
+  never who owns the function. Server mode has to cover the delete as well as the
+  update, and be put back: the setting is transaction-local inside the caller's
+  transaction. Same lesson as `apply_order_settlement`, reached from the other end.
+- **After the scrub, the order is nobody's to read — including in the test.** Every read
+  policy on `orders` matches `customer_uid = auth.uid()`, and a null customer matches
+  nobody, so a stack test asserting through the deleted customer's own role reads an
+  empty set and proves nothing. `delete_my_account.test.js` switches to the owner with
+  `set local role postgres` after the call, still inside the transaction `as()` rolls
+  back.
 - **On an update, judge the row that is already there as well as the one arriving.** A
   policy whose `using` clause reads only ownership lets the writer change the columns that
   decide ownership: `correct_own_rating` checked that a rating was yours and not that it

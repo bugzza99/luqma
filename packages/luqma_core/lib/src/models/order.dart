@@ -213,7 +213,9 @@ abstract class Order with _$Order {
     required String id,
     required String cityId,
     required int orderNumber,
-    required String customerUid,
+    // Null after the customer deletes their account. The order remains because its
+    // pricing, items and revenue snapshot are the financial record of the delivery.
+    String? customerUid,
     required String customerName,
     required String customerPhone,
     required String merchantId,

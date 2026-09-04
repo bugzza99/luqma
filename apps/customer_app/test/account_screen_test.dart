@@ -22,6 +22,7 @@ void main() {
     // What `main()` reads off the package. Set here so the footer is exercised the way
     // it ships rather than against the empty default.
     String appVersion = '1.0.0 (1)',
+    FakeProfileRepository? profiles,
   }) async {
     auth = FakeAuthService(restoring: signedInAs, failure: failure);
     links = FakeExternalLinks(answer: phoneCanOpenLinks);
@@ -37,6 +38,8 @@ void main() {
         overrides: [
           authServiceProvider.overrideWithValue(auth),
           addressRepositoryProvider.overrideWithValue(FakeAddressRepository()),
+          profileRepositoryProvider
+              .overrideWithValue(profiles ?? FakeProfileRepository()),
           geographyRepositoryProvider
               .overrideWithValue(FakeGeographyRepository()),
           externalLinksProvider.overrideWithValue(links),
@@ -91,6 +94,7 @@ void main() {
     testWidgets('offers a way out', (tester) async {
       await pump(tester);
       expect(find.byKey(AccountScreen.signOutKey), findsOneWidget);
+      expect(find.byKey(AccountScreen.deleteAccountKey), findsOneWidget);
     });
 
     testWidgets('signing out asks first', (tester) async {
@@ -114,6 +118,64 @@ void main() {
       expect(auth.identity, isNull);
       expect(find.byKey(AccountScreen.signInKey), findsOneWidget);
     });
+
+    testWidgets('account deletion explains the retained financial record',
+        (tester) async {
+      final profiles = FakeProfileRepository();
+      await pump(tester, profiles: profiles);
+      await tester.scrollUntilVisible(
+        find.byKey(AccountScreen.deleteAccountKey),
+        200,
+      );
+
+      await tester.tap(find.byKey(AccountScreen.deleteAccountKey));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('سجل الطلبات هيفضل محفوظ'), findsOneWidget);
+      expect(find.textContaining('اسمك ورقمك هيتشالوا منه'), findsOneWidget);
+      expect(find.textContaining('حساب جديد من غير أي تاريخ قديم'), findsOneWidget);
+      expect(find.byKey(AccountScreen.confirmDeleteAccountKey), findsOneWidget);
+      expect(auth.identity, isNotNull);
+      expect(profiles.accountDeleted, false);
+    });
+
+    testWidgets('confirming permanently deletes and returns to signed out',
+        (tester) async {
+      final profiles = FakeProfileRepository();
+      await pump(tester, profiles: profiles);
+      await tester.scrollUntilVisible(
+        find.byKey(AccountScreen.deleteAccountKey),
+        200,
+      );
+
+      await tester.tap(find.byKey(AccountScreen.deleteAccountKey));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(AccountScreen.confirmDeleteAccountKey));
+      await tester.pumpAndSettle();
+
+      expect(profiles.accountDeleted, true);
+      expect(auth.identity, isNull);
+      expect(find.byKey(AccountScreen.signInKey), findsOneWidget);
+    });
+
+    testWidgets('a refused deletion uses the shared error view and keeps the session',
+        (tester) async {
+      final profiles = FakeProfileRepository(isStaffAccount: true);
+      await pump(tester, profiles: profiles);
+      await tester.scrollUntilVisible(
+        find.byKey(AccountScreen.deleteAccountKey),
+        200,
+      );
+
+      await tester.tap(find.byKey(AccountScreen.deleteAccountKey));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(AccountScreen.confirmDeleteAccountKey));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(AccountScreen.deleteAccountErrorKey), findsOneWidget);
+      expect(auth.identity, isNotNull);
+      expect(profiles.accountDeleted, false);
+    });
   });
 
   group('signed out', () {
@@ -124,6 +186,7 @@ void main() {
       expect(find.byKey(AccountScreen.signInKey), findsOneWidget);
       expect(find.byKey(AccountScreen.addressesKey), findsNothing);
       expect(find.byKey(AccountScreen.signOutKey), findsNothing);
+      expect(find.byKey(AccountScreen.deleteAccountKey), findsNothing);
     });
 
     // Signing in is the default face of the card: most people opening it already have

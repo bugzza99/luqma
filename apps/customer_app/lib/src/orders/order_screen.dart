@@ -181,10 +181,15 @@ class _Loaded extends ConsumerWidget {
     );
 
     if (reason == null || !context.mounted) return;
+    final customerUid = order.customerUid;
+    // A retained order can outlive its account. It is unreachable from that deleted
+    // customer's signed-out app, but keeping the guard here means a historic row can
+    // never turn a nullable database reference into a crash.
+    if (customerUid == null) return;
 
     await ref.read(orderRepositoryProvider).raiseIssue(
           orderId: order.id,
-          customerUid: order.customerUid,
+          customerUid: customerUid,
           merchantId: order.merchantId,
           reason: reason,
         );
@@ -471,9 +476,14 @@ class _RatingCardState extends ConsumerState<_RatingCard> {
   }
 
   Future<void> _send() async {
+    final customerUid = widget.order.customerUid;
+    // Only an extant customer may create a rating; deleted-account orders remain
+    // readable to the financial and fulfilment sides without making this action crash.
+    if (customerUid == null) return;
+
     await ref.read(orderRepositoryProvider).rate(
           orderId: widget.order.id,
-          customerUid: widget.order.customerUid,
+          customerUid: customerUid,
           merchantId: widget.order.merchantId,
           stars: _stars,
           comment: _comment.text.trim(),
@@ -613,4 +623,3 @@ class _RatingCardState extends ConsumerState<_RatingCard> {
     );
   }
 }
-

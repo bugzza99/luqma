@@ -60,6 +60,28 @@ void main() {
     expectStorable(order.toJson());
   });
 
+  test('a retained order can be read after its customer is gone', () {
+    const order = Order(
+      id: 'o-deleted',
+      cityId: 'edku',
+      orderNumber: 2,
+      customerName: 'حساب محذوف',
+      customerPhone: 'حساب محذوف',
+      merchantId: 'm1',
+      merchantName: 'مطعم',
+      zoneId: 'z1',
+      type: OrderType.instant,
+      items: [],
+      pricing: OrderPricing(subtotal: 0, deliveryFee: 0, total: 0),
+      status: OrderStatus.delivered,
+    );
+
+    final restored = Order.fromJson(order.toJson());
+
+    expect(restored.customerUid, isNull);
+    expect(restored.customerName, 'حساب محذوف');
+  });
+
   test('a menu item with options', () {
     const item = MenuItem(
       id: 'i1',

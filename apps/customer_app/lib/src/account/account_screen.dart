@@ -16,6 +16,9 @@ class AccountScreen extends ConsumerWidget {
   static const signInKey = Key('account.signIn');
   static const signOutKey = Key('account.signOut');
   static const confirmSignOutKey = Key('account.confirmSignOut');
+  static const deleteAccountKey = Key('account.deleteAccount');
+  static const confirmDeleteAccountKey = Key('account.confirmDeleteAccount');
+  static const deleteAccountErrorKey = Key('account.deleteAccountError');
   static const addressesKey = Key('account.addresses');
   static const contactKey = Key('account.contact');
   static const aboutKey = Key('account.about');
@@ -101,6 +104,16 @@ class AccountScreen extends ConsumerWidget {
               ),
               child: const Text('تسجيل الخروج'),
             ),
+            const SizedBox(height: Space.sm),
+            TextButton(
+              key: deleteAccountKey,
+              onPressed: () => _confirmDeleteAccount(context, ref),
+              style: TextButton.styleFrom(
+                foregroundColor: colors.danger,
+                minimumSize: const Size.fromHeight(Sizes.minTarget),
+              ),
+              child: const Text('حذف الحساب نهائيًا'),
+            ),
           ],
           // The build number, where every app puts it. It used to sit on حول لقمة under
           // the owner's own photo and description, which made a technical detail read as
@@ -148,6 +161,108 @@ class AccountScreen extends ConsumerWidget {
     if (confirmed ?? false) {
       await ref.read(authServiceProvider).signOut();
     }
+  }
+
+  Future<void> _confirmDeleteAccount(BuildContext context, WidgetRef ref) async {
+    final auth = ref.read(authServiceProvider);
+    final deleted = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const _DeleteAccountDialog(),
+    );
+
+    if (deleted ?? false) {
+      // GoTrue does not retroactively remove the token already on this phone. Clearing
+      // the local session is what makes the successful deletion return to the signed-out
+      // face immediately instead of waiting for that token to expire.
+      await auth.signOut();
+    }
+  }
+}
+
+class _DeleteAccountDialog extends ConsumerStatefulWidget {
+  const _DeleteAccountDialog();
+
+  @override
+  ConsumerState<_DeleteAccountDialog> createState() =>
+      _DeleteAccountDialogState();
+}
+
+class _DeleteAccountDialogState
+    extends ConsumerState<_DeleteAccountDialog> {
+  bool _deleting = false;
+  Failure? _failure;
+
+  Future<void> _delete() async {
+    setState(() {
+      _deleting = true;
+      _failure = null;
+    });
+
+    final result = await ref.read(profileRepositoryProvider).deleteMyAccount();
+    if (!mounted) return;
+
+    final failure = result.failureOrNull;
+    if (failure == null) {
+      Navigator.of(context).pop(true);
+      return;
+    }
+
+    setState(() {
+      _deleting = false;
+      _failure = failure;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final failure = _failure;
+    final colors = Theme.of(context).luqma;
+
+    return AlertDialog(
+      title: const Text('حذف الحساب نهائيًا؟'),
+      content: failure == null
+          ? SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'بيانات حسابك واسمك ورقم موبايلك وعناوينك '
+                    'وتقييماتك هيتحذفوا.\n\n'
+                    'سجل الطلبات هيفضل محفوظ عشان حسابات الفلوس '
+                    'اللي اتدفعت كاش بين المطعم ولقمة، لكن اسمك ورقمك '
+                    'هيتشالوا منه.\n\n'
+                    'الحذف نهائي ومفيش طريقة للرجوع. لو سجلت بنفس الرقم بعد '
+                    'كده، هيتعمل حساب جديد من غير أي تاريخ قديم.',
+                  ),
+                  if (_deleting) ...[
+                    const SizedBox(height: Space.lg),
+                    const LinearProgressIndicator(),
+                  ],
+                ],
+              ),
+            )
+          : LuqmaErrorView(
+              key: AccountScreen.deleteAccountErrorKey,
+              failure: failure,
+              onRetry: _delete,
+              compact: true,
+            ),
+      actions: [
+        TextButton(
+          onPressed: _deleting ? null : () => Navigator.of(context).pop(false),
+          child: Text(failure == null ? 'إلغاء' : 'اقفل'),
+        ),
+        if (failure == null)
+          FilledButton(
+            key: AccountScreen.confirmDeleteAccountKey,
+            onPressed: _deleting ? null : _delete,
+            style: FilledButton.styleFrom(backgroundColor: colors.danger),
+            child: const Text('احذف حسابي'),
+          ),
+      ],
+    );
   }
 }
 
