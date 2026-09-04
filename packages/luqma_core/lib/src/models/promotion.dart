@@ -117,6 +117,11 @@ abstract class Promotion with _$Promotion {
     required String requestedBy,
     String? approvedBy,
     String? rejectionReason,
+
+    /// Null is not the same answer as a report full of zeroes: null means the campaign
+    /// has not had its turn, while a timestamp and zero queued means it ran normally and
+    /// found nobody eligible to receive it.
+    @TimestampConverter() DateTime? pushedAt,
     @Default(0) int impressions,
     @Default(0) int clicks,
   }) = _Promotion;
@@ -160,6 +165,51 @@ abstract class Promotion with _$Promotion {
     if (renderMode == PromotionRender.text) return title.isNotEmpty;
     return mediaId != null && mediaId!.isNotEmpty;
   }
+}
+
+/// Counts rather than recipients are the deliberate boundary: the admin needs to know
+/// whether the campaign moved, not which customer owns each private outbox row.
+class PromotionPushReport {
+  const PromotionPushReport({
+    this.queued = 0,
+    this.sent = 0,
+    this.waiting = 0,
+    this.failed = 0,
+  });
+
+  factory PromotionPushReport.fromJson(Map<String, dynamic> json) {
+    int count(String key) => switch (json[key]) {
+          int value => value,
+          num value => value.toInt(),
+          String value => int.tryParse(value) ?? 0,
+          _ => 0,
+        };
+
+    return PromotionPushReport(
+      queued: count('queued'),
+      sent: count('sent'),
+      waiting: count('waiting'),
+      failed: count('failed'),
+    );
+  }
+
+  final int queued;
+  final int sent;
+  final int waiting;
+
+  /// Kept apart from waiting because the drain will not claim these rows again.
+  final int failed;
+
+  @override
+  bool operator ==(Object other) =>
+      other is PromotionPushReport &&
+      queued == other.queued &&
+      sent == other.sent &&
+      waiting == other.waiting &&
+      failed == other.failed;
+
+  @override
+  int get hashCode => Object.hash(queued, sent, waiting, failed);
 }
 
 /// Lifting merchants who paid for it.

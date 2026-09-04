@@ -19,6 +19,7 @@ void main() {
     String? backgroundColor,
     String title = 'خصم النهارده',
     int priority = 0,
+    DateTime? pushedAt,
   }) =>
       Promotion(
         id: 'p1',
@@ -37,6 +38,7 @@ void main() {
         endAt: endAt ?? DateTime(2026, 9, 1),
         priority: priority,
         requestedBy: 'owner1',
+        pushedAt: pushedAt,
       );
 
   final now = DateTime(2026, 8, 24, 12);
@@ -142,6 +144,16 @@ void main() {
       expect(restored.channel, PromotionChannel.boost);
       expect(restored.zoneIds, ['z1']);
       expect(restored.title, 'خصم النهارده');
+    });
+
+    test('keeps when a push was handed to the outbox', () {
+      final sentAt = DateTime.utc(2026, 8, 24, 10, 30);
+
+      final restored = Promotion.fromJson(
+        promotion(channel: PromotionChannel.push, pushedAt: sentAt).toJson(),
+      );
+
+      expect(restored.pushedAt, sentAt.toLocal());
     });
 
     // A channel added on the server before this build knew about it must not crash the

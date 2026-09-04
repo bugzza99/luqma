@@ -317,6 +317,15 @@ Stream<List<Promotion>> promotionQueue(Ref ref) =>
 Stream<List<Promotion>> allPromotions(Ref ref) =>
     ref.watch(promotionRepositoryProvider).watchAll(ref.watch(currentCityProvider));
 
+/// A snapshot rather than a stream: the outbox is private and has no realtime client
+/// subscription. Reopening or retrying the card asks the server for its current counts.
+@riverpod
+Future<PromotionPushReport> promotionPushReport(Ref ref, String promotionId) async {
+  final report =
+      await ref.watch(promotionRepositoryProvider).pushReport(promotionId);
+  return report.valueOrThrow;
+}
+
 /// One merchant's own campaigns, whatever became of them. Live.
 @riverpod
 Stream<List<Promotion>> merchantPromotions(Ref ref, String merchantId) =>
@@ -648,4 +657,3 @@ class AppConfig extends _$AppConfig {
   @visibleForTesting
   void applySource(ConfigSource source) => state = LuqmaConfig.from(source);
 }
-

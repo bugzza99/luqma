@@ -96,6 +96,10 @@ abstract interface class PromotionRepository {
     required String cityId,
     required int limit,
   });
+
+  /// The server computes this because the client cannot read the recipient rows, and
+  /// should not: an audit needs totals, not a list of customers who received an offer.
+  Future<Result<PromotionPushReport>> pushReport(String promotionId);
 }
 
 class SupabasePromotionRepository implements PromotionRepository {
@@ -369,19 +373,36 @@ class SupabasePromotionRepository implements PromotionRepository {
       }) as bool;
     });
   }
+
+  @override
+  Future<Result<PromotionPushReport>> pushReport(String promotionId) {
+    return Result.guard(() async {
+      final row = await _db.rpc('promotion_push_report', params: {
+        'p_promotion_id': promotionId,
+      });
+      return PromotionPushReport.fromJson(
+        Map<String, dynamic>.from(row as Map),
+      );
+    });
+  }
 }
 
 /// In-memory promotions, for tests and for the screens above them.
 class FakePromotionRepository implements PromotionRepository {
   FakePromotionRepository({
     List<Promotion> seed = const [],
+    Map<String, PromotionPushReport> pushReports = const {},
     this.failure,
+    this.isAdmin = true,
     DateTime Function()? clock,
   })  : _promotions = {for (final p in seed) p.id: p},
+        _pushReports = Map.unmodifiable(pushReports),
         _clock = clock ?? DateTime.now;
 
   final Map<String, Promotion> _promotions;
+  final Map<String, PromotionPushReport> _pushReports;
   final Failure? failure;
+  final bool isAdmin;
 
   /// The hour [pushSlotAvailable] answers against.
   ///
@@ -611,5 +632,15 @@ class FakePromotionRepository implements PromotionRepository {
                     !p.startAt.isAfter(now))))
         .length;
     return Result.ok(sent < limit);
+  }
+
+  @override
+  Future<Result<PromotionPushReport>> pushReport(String promotionId) async {
+    if (failure != null) return Result.err(failure!);
+    // The real RPC is granted to the signed-in role and then asks `is_admin()` itself.
+    // Mirroring the second gate matters: otherwise a non-admin screen can pass every
+    // test against this fake and meet a 42501 only after it ships.
+    if (!isAdmin) return const Result.err(PermissionFailure());
+    return Result.ok(_pushReports[promotionId] ?? const PromotionPushReport());
   }
 }

@@ -19,6 +19,7 @@ void main() {
     PromotionStatus status = PromotionStatus.requested,
     String title = 'خصم النهارده',
     DateTime? startAt,
+    DateTime? pushedAt,
   }) => Promotion(
     id: id,
     cityId: 'edku',
@@ -31,6 +32,7 @@ void main() {
     endAt: DateTime(2026, 9, 25),
     price: 30000,
     requestedBy: 'owner1',
+    pushedAt: pushedAt,
   );
 
   const merchants = [
@@ -50,8 +52,9 @@ void main() {
   Future<void> pump(
     WidgetTester tester, {
     List<Promotion> seed = const [],
+    Map<String, PromotionPushReport> pushReports = const {},
   }) async {
-    promotions = FakePromotionRepository(seed: seed);
+    promotions = FakePromotionRepository(seed: seed, pushReports: pushReports);
 
     await tester.pumpWidget(
       ProviderScope(
@@ -470,6 +473,81 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byKey(PromotionsScreen.boardEmptyKey), findsOneWidget);
+    });
+
+    testWidgets('a push that has not gone out says so', (tester) async {
+      await pump(
+        tester,
+        seed: [
+          promotion(
+            id: 'p2',
+            channel: PromotionChannel.push,
+            status: PromotionStatus.approved,
+            startAt: now,
+          ),
+        ],
+      );
+
+      await tester.tap(find.byKey(PromotionsScreen.tabAllKey));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(PromotionsScreen.pushNotSentKey('p2')), findsOneWidget);
+      expect(find.textContaining('لسه ما اتبعتش'), findsOneWidget);
+    });
+
+    testWidgets('a sent push that reached nobody is a different state', (
+      tester,
+    ) async {
+      await pump(
+        tester,
+        seed: [
+          promotion(
+            id: 'p2',
+            channel: PromotionChannel.push,
+            status: PromotionStatus.approved,
+            startAt: now,
+            pushedAt: now,
+          ),
+        ],
+      );
+
+      await tester.tap(find.byKey(PromotionsScreen.tabAllKey));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(PromotionsScreen.pushEmptyKey('p2')), findsOneWidget);
+      expect(find.textContaining('الإشعار اتبعت'), findsOneWidget);
+      expect(find.textContaining('مفيش عملاء'), findsOneWidget);
+    });
+
+    testWidgets('a sent push shows every delivery outcome', (tester) async {
+      await pump(
+        tester,
+        seed: [
+          promotion(
+            id: 'p2',
+            channel: PromotionChannel.push,
+            status: PromotionStatus.approved,
+            startAt: now,
+            pushedAt: now,
+          ),
+        ],
+        pushReports: const {
+          'p2': PromotionPushReport(
+            queued: 4,
+            sent: 1,
+            waiting: 2,
+            failed: 1,
+          ),
+        },
+      );
+
+      await tester.tap(find.byKey(PromotionsScreen.tabAllKey));
+      await tester.pumpAndSettle();
+
+      expect(find.text('اتجهزت: 4'), findsOneWidget);
+      expect(find.text('اتبعت: 1'), findsOneWidget);
+      expect(find.text('مستنية: 2'), findsOneWidget);
+      expect(find.text('وقفت بعد 5 محاولات: 1'), findsOneWidget);
     });
 
     Future<void> openDates(WidgetTester tester) async {

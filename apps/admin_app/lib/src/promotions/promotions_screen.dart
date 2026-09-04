@@ -41,6 +41,9 @@ class PromotionsScreen extends ConsumerWidget {
   static Key approveKey(String id) => Key('promotions.approve.$id');
   static Key rejectKey(String id) => Key('promotions.reject.$id');
   static Key pushWarningKey(String id) => Key('promotions.push.$id');
+  static Key pushNotSentKey(String id) => Key('promotions.push.notSent.$id');
+  static Key pushEmptyKey(String id) => Key('promotions.push.empty.$id');
+  static Key pushReportKey(String id) => Key('promotions.push.report.$id');
 
   static const channelNames = {
     PromotionChannel.homeBanner: 'بانر في الرئيسية',
@@ -419,6 +422,13 @@ class _Placement extends ConsumerWidget {
             const SizedBox(height: Space.xs),
             Text(promotion.title, style: theme.textTheme.bodyMedium),
           ],
+          if (promotion.channel == PromotionChannel.push) ...[
+            const SizedBox(height: Space.sm),
+            if (promotion.pushedAt == null)
+              _PushNotSent(promotionId: promotion.id)
+            else
+              _PushReport(promotionId: promotion.id),
+          ],
           const SizedBox(height: Space.sm),
           Row(
             children: [
@@ -469,6 +479,113 @@ class _Placement extends ConsumerWidget {
             _ => 'معرفناش نغيّر المواعيد. جرّب تاني.',
           },
         }),
+      ),
+    );
+  }
+}
+
+/// Inline on the board rather than behind another tap: the board already answers what
+/// became of every campaign, and delivery is part of that answer rather than a second
+/// task. It also leaves the queue's pre-approval warning exactly where the decision is
+/// made, so consequence before approval and outcome after it do not replace each other.
+class _PushReport extends ConsumerWidget {
+  const _PushReport({required this.promotionId});
+
+  final String promotionId;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final value = ref.watch(promotionPushReportProvider(promotionId));
+
+    if (value.hasError && !value.hasValue) {
+      return LuqmaErrorView(
+        failure: value.error,
+        compact: true,
+        onRetry: () => ref.invalidate(promotionPushReportProvider(promotionId)),
+      );
+    }
+
+    if (!value.hasValue) {
+      return const Padding(
+        padding: EdgeInsets.all(Space.sm),
+        child: Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    final report = value.value!;
+    final colors = Theme.of(context).luqma;
+    return Container(
+      key: report.queued == 0
+          ? PromotionsScreen.pushEmptyKey(promotionId)
+          : PromotionsScreen.pushReportKey(promotionId),
+      padding: const EdgeInsets.all(Space.sm),
+      decoration: BoxDecoration(
+        color: colors.surface,
+        borderRadius: Radii.cardAll,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text('نتيجة الإرسال', style: LuqmaType.bodyStrong),
+              ),
+              IconButton(
+                tooltip: 'حدّث نتيجة الإرسال',
+                onPressed: () =>
+                    ref.invalidate(promotionPushReportProvider(promotionId)),
+                icon: const Icon(Icons.refresh, size: Sizes.iconSm),
+              ),
+            ],
+          ),
+          if (report.queued == 0)
+            Text(
+              'الإشعار اتبعت، بس مفيش عملاء كانوا مستهدفين.',
+              style: LuqmaType.body.copyWith(color: colors.textSecondary),
+            )
+          else
+            Wrap(
+              spacing: Space.md,
+              runSpacing: Space.xs,
+              children: [
+                Text('اتجهزت: ${report.queued}', style: LuqmaType.body),
+                Text('اتبعت: ${report.sent}', style: LuqmaType.body),
+                Text('مستنية: ${report.waiting}', style: LuqmaType.body),
+                Text(
+                  'وقفت بعد 5 محاولات: ${report.failed}',
+                  style: LuqmaType.body.copyWith(
+                    color: report.failed > 0
+                        ? colors.danger
+                        : colors.textSecondary,
+                  ),
+                ),
+              ],
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PushNotSent extends StatelessWidget {
+  const _PushNotSent({required this.promotionId});
+
+  final String promotionId;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).luqma;
+    return Container(
+      key: PromotionsScreen.pushNotSentKey(promotionId),
+      padding: const EdgeInsets.all(Space.sm),
+      decoration: BoxDecoration(
+        color: colors.surface,
+        borderRadius: Radii.cardAll,
+      ),
+      child: Text(
+        'لسه ما اتبعتش للعملاء.',
+        style: LuqmaType.body.copyWith(color: colors.textSecondary),
       ),
     );
   }
