@@ -507,7 +507,7 @@ in the repository — and `flutter test` on a *package* does not run the generat
 the way an app build does. Without it a new string is a compile error that points at the
 call site rather than at the missing step.
 
-**~1010 Dart tests · 116 schema tests · 156 stack tests · 233 live-repository tests.**
+**~1010 Dart tests · 131 schema tests · 196 stack tests · 253 live-repository tests.**
 `flutter analyze` clean.
 
 There are no `function` tests and no `tsc`: the TypeScript Cloud Functions went with
