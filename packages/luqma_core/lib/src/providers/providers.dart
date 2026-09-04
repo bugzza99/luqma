@@ -369,10 +369,26 @@ CourierWriteStore courierWriteStore(Ref ref) => InMemoryCourierWriteStore();
 
 /// The courier's write queue — the one place a tap that dies with the connection is
 /// held rather than lost.
+///
+/// Watching the staff identity makes a sign-out dispose this account's loaded queue
+/// before a second courier can reach it in the same process. A shared shop handset
+/// changing couriers is ordinary, and the writes held here are cash already collected —
+/// replaying one courier's under another's name is the failure this watch prevents.
+///
+/// Throwing rather than falling back to some placeholder account is deliberate, and it
+/// is unreachable by construction: every reader is inside `CourierScreen`, which
+/// MerchantApp's gate only builds for a signed-in `StaffRole.courier`. If that ever
+/// stops being true, a crash naming the reason is better than a queue quietly shared
+/// between people.
 @Riverpod(keepAlive: true)
 CourierWriteQueue courierWriteQueue(Ref ref) {
+  final accountId = ref.watch(staffIdentityProvider).uid;
+  if (accountId == null) {
+    throw StateError('A courier write queue needs a signed-in staff account.');
+  }
   final queue = CourierWriteQueue(
     ref.watch(courierOrderRepositoryProvider),
+    accountId: accountId,
     store: ref.watch(courierWriteStoreProvider),
   );
   ref.onDispose(queue.dispose);
@@ -632,6 +648,4 @@ class AppConfig extends _$AppConfig {
   @visibleForTesting
   void applySource(ConfigSource source) => state = LuqmaConfig.from(source);
 }
-
-
 

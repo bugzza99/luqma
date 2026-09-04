@@ -59,24 +59,38 @@ class PendingCourierWrite {
 /// Where the queue's pending writes live between launches.
 ///
 /// An interface so the queue is testable without a device and so the store can be
-/// swapped (shared_preferences on the phone, memory in a test).
+/// swapped (shared_preferences on the phone, memory in a test). The account travels
+/// with each call because the phone store exists before there is a signed-in identity;
+/// putting it in the store constructor would make start-up guess who will use it.
 abstract interface class CourierWriteStore {
-  Future<List<PendingCourierWrite>> load();
-  Future<void> save(List<PendingCourierWrite> pending);
+  Future<List<PendingCourierWrite>> load({required String accountId});
+  Future<void> save({
+    required String accountId,
+    required List<PendingCourierWrite> pending,
+  });
 }
 
 /// An in-memory store for tests.
 class InMemoryCourierWriteStore implements CourierWriteStore {
-  List<PendingCourierWrite> _pending = [];
+  final Map<String, List<PendingCourierWrite>> _pendingByAccount = {};
 
-  List<PendingCourierWrite> get snapshot => List.unmodifiable(_pending);
-
-  @override
-  Future<List<PendingCourierWrite>> load() async => List.of(_pending);
+  List<PendingCourierWrite> snapshotFor(String accountId) =>
+      List.unmodifiable(_pendingByAccount[accountId] ?? const []);
 
   @override
-  Future<void> save(List<PendingCourierWrite> pending) async {
-    _pending = List.of(pending);
+  Future<List<PendingCourierWrite>> load({required String accountId}) async =>
+      List.of(_pendingByAccount[accountId] ?? const []);
+
+  @override
+  Future<void> save({
+    required String accountId,
+    required List<PendingCourierWrite> pending,
+  }) async {
+    if (pending.isEmpty) {
+      _pendingByAccount.remove(accountId);
+    } else {
+      _pendingByAccount[accountId] = List.of(pending);
+    }
   }
 }
 
@@ -110,10 +124,14 @@ class CourierRejected extends CourierSubmitOutcome {
 /// surfaced immediately — a conflict means the order moved under somebody else, and
 /// retrying would not change that.
 class CourierWriteQueue {
-  CourierWriteQueue(this._repository, {CourierWriteStore? store})
-    : _store = store ?? InMemoryCourierWriteStore();
+  CourierWriteQueue(
+    this._repository, {
+    required this.accountId,
+    CourierWriteStore? store,
+  }) : _store = store ?? InMemoryCourierWriteStore();
 
   final CourierOrderRepository _repository;
+  final String accountId;
   final CourierWriteStore _store;
 
   final List<PendingCourierWrite> _pending = [];
@@ -153,7 +171,7 @@ class CourierWriteQueue {
   Future<void> load() async {
     if (_loaded) return;
     _loaded = true;
-    _pending.addAll(await _store.load());
+    _pending.addAll(await _store.load(accountId: accountId));
   }
 
   Future<CourierSubmitOutcome> markOnTheWay(
@@ -246,7 +264,10 @@ class CourierWriteQueue {
           ),
       };
 
-  Future<void> _persist() => _store.save(List.of(_pending));
+  Future<void> _persist() => _store.save(
+        accountId: accountId,
+        pending: List.of(_pending),
+      );
 
   void _notify() {
     if (!_changed.isClosed) _changed.add(null);

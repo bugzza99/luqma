@@ -1,9 +1,20 @@
+// The async preferences API keeps its official in-memory test backend in the platform
+// interface package, so this test reaches that transitive package without making it an
+// application dependency.
+// ignore_for_file: depend_on_referenced_packages
+
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:luqma_core/luqma_core.dart';
 import 'package:merchant_app/src/courier/courier_screen.dart';
+import 'package:merchant_app/src/courier/courier_write_store.dart';
 import 'package:merchant_app/src/courier/navigation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:shared_preferences_platform_interface/in_memory_shared_preferences_async.dart';
+import 'package:shared_preferences_platform_interface/shared_preferences_async_platform_interface.dart';
 
 /// Courier mode.
 ///
@@ -350,6 +361,75 @@ void main() {
       await tester.tap(find.byKey(CourierScreen.dismissRejectedKey));
       await tester.pumpAndSettle();
       expect(find.byKey(CourierScreen.rejectedKey), findsNothing);
+    });
+  });
+
+  group('the durable queue store', () {
+    late SharedPreferencesAsyncPlatform? previousPlatform;
+    late SharedPreferencesAsync prefs;
+    late SharedPreferencesCourierWriteStore store;
+
+    const delivered = PendingCourierWrite(
+      orderId: 'o1',
+      kind: CourierWriteKind.delivered,
+    );
+
+    setUp(() {
+      previousPlatform = SharedPreferencesAsyncPlatform.instance;
+      SharedPreferencesAsyncPlatform.instance =
+          InMemorySharedPreferencesAsync.empty();
+      prefs = SharedPreferencesAsync();
+      store = SharedPreferencesCourierWriteStore(prefs: prefs);
+    });
+
+    tearDown(() => SharedPreferencesAsyncPlatform.instance = previousPlatform);
+
+    test('an account gets a versioned envelope of only its own writes', () async {
+      await store.save(accountId: 'c1', pending: const [delivered]);
+
+      expect(await store.load(accountId: 'c2'), isEmpty);
+      expect(await store.load(accountId: 'c1'), hasLength(1));
+
+      final raw = await prefs.getString('courier_write_queue.account.c1.v1');
+      final envelope = jsonDecode(raw!) as Map<String, dynamic>;
+      expect(envelope['version'], 1);
+      expect(envelope['writes'], hasLength(1));
+    });
+
+    test('the signed-in account claims the old bare list once', () async {
+      final legacy = jsonEncode([delivered.toJson()]);
+      await prefs.setString('courier_write_queue', legacy);
+
+      final migrated = await store.load(accountId: 'c1');
+
+      expect(migrated.single.orderId, 'o1');
+      expect(await prefs.getString('courier_write_queue'), isNull);
+
+      // Even an interrupted removal or an old build putting the key back cannot make
+      // cash writes that were claimed by one courier appear under the next courier.
+      await prefs.setString('courier_write_queue', legacy);
+      expect(await store.load(accountId: 'c2'), isEmpty);
+      expect(await store.load(accountId: 'c1'), hasLength(1));
+    });
+
+    test('a newer schema survives this build saving its own queue', () async {
+      const futureKey = 'courier_write_queue.account.c1.v2';
+      final futureRaw = jsonEncode({
+        'version': 2,
+        'writes': [
+          {'futureOrder': 'o2'},
+        ],
+      });
+      await prefs.setString(futureKey, futureRaw);
+
+      expect(await store.load(accountId: 'c1'), isEmpty);
+      await store.save(accountId: 'c1', pending: const [delivered]);
+
+      expect(await prefs.getString(futureKey), futureRaw);
+      expect(
+        await prefs.getString('courier_write_queue.account.c1.v1'),
+        isNotNull,
+      );
     });
   });
 }

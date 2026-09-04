@@ -149,7 +149,7 @@ void main() {
   test('a delivery tapped with no connection is kept, not lost', () async {
     final orderId = await orderOutForDelivery();
     final flaky = _OfflineOnce(courierRepository);
-    final queue = CourierWriteQueue(flaky);
+    final queue = CourierWriteQueue(flaky, accountId: courierUid);
     addTearDown(queue.dispose);
 
     final outcome = await queue.markDelivered(orderId);
@@ -164,7 +164,7 @@ void main() {
   test('and it lands for real once the connection comes back', () async {
     final orderId = await orderOutForDelivery();
     final flaky = _OfflineOnce(courierRepository);
-    final queue = CourierWriteQueue(flaky);
+    final queue = CourierWriteQueue(flaky, accountId: courierUid);
     addTearDown(queue.dispose);
 
     await queue.markDelivered(orderId);
@@ -189,21 +189,25 @@ void main() {
     final store = InMemoryCourierWriteStore();
 
     // The phone is closed with the write still waiting.
-    final before = CourierWriteQueue(_OfflineOnce(courierRepository), store: store);
+    final before = CourierWriteQueue(
+      _OfflineOnce(courierRepository),
+      accountId: courierUid,
+      store: store,
+    );
     await before.markDelivered(orderId);
     before.dispose();
-    expect(store.snapshot, hasLength(1),
+    expect(store.snapshotFor(courierUid), hasLength(1),
         reason: 'a tap that only lives in memory dies with the process');
 
     // Opened again, connection back.
     final flaky = _OfflineOnce(courierRepository)..offline = false;
-    final after = CourierWriteQueue(flaky, store: store);
+    final after = CourierWriteQueue(flaky, accountId: courierUid, store: store);
     addTearDown(after.dispose);
     await after.load();
     await after.flush();
 
     expect(await statusOf(orderId), 'delivered');
-    expect(store.snapshot, isEmpty);
+    expect(store.snapshotFor(courierUid), isEmpty);
   });
 
   test('an order somebody else already finished is refused, not queued for ever',
@@ -212,7 +216,10 @@ void main() {
     // Answered on another phone in the shop, or by the deadline task.
     await courierRepository.markDelivered(orderId);
 
-    final queue = CourierWriteQueue(_OfflineOnce(courierRepository)..offline = false);
+    final queue = CourierWriteQueue(
+      _OfflineOnce(courierRepository)..offline = false,
+      accountId: courierUid,
+    );
     addTearDown(queue.dispose);
 
     final outcome = await queue.markDelivered(orderId);
@@ -226,7 +233,7 @@ void main() {
   test('a failed delivery keeps its reason across the queue', () async {
     final orderId = await orderOutForDelivery();
     final flaky = _OfflineOnce(courierRepository);
-    final queue = CourierWriteQueue(flaky);
+    final queue = CourierWriteQueue(flaky, accountId: courierUid);
     addTearDown(queue.dispose);
 
     await queue.markFailed(orderId, reason: 'محدش رد على الباب');
@@ -250,7 +257,7 @@ void main() {
     final second = await orderOutForDelivery();
 
     final flaky = _OfflineOnce(courierRepository);
-    final queue = CourierWriteQueue(flaky);
+    final queue = CourierWriteQueue(flaky, accountId: courierUid);
     addTearDown(queue.dispose);
 
     await queue.markDelivered(first);
@@ -275,7 +282,7 @@ void main() {
   test('a queued write refused on replay is reported, not silently dropped', () async {
     final orderId = await orderOutForDelivery();
     final flaky = _OfflineOnce(courierRepository);
-    final queue = CourierWriteQueue(flaky);
+    final queue = CourierWriteQueue(flaky, accountId: courierUid);
     addTearDown(queue.dispose);
 
     await queue.markDelivered(orderId);
@@ -297,7 +304,7 @@ void main() {
   test('and clearing what was reported empties it', () async {
     final orderId = await orderOutForDelivery();
     final flaky = _OfflineOnce(courierRepository);
-    final queue = CourierWriteQueue(flaky);
+    final queue = CourierWriteQueue(flaky, accountId: courierUid);
     addTearDown(queue.dispose);
 
     await queue.markDelivered(orderId);

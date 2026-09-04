@@ -80,14 +80,14 @@ void main() {
     final store = InMemoryCourierWriteStore();
 
     // Two writes waiting from an evening with no signal.
-    final offline = CourierWriteQueue(_Dead(), store: store);
+    final offline = CourierWriteQueue(_Dead(), accountId: 'c1', store: store);
     await offline.markDelivered('o1');
     await offline.markDelivered('o2');
     offline.dispose();
-    expect(store.snapshot, hasLength(2));
+    expect(store.snapshotFor('c1'), hasLength(2));
 
     final live = _Slow();
-    final queue = CourierWriteQueue(live, store: store);
+    final queue = CourierWriteQueue(live, accountId: 'c1', store: store);
     addTearDown(queue.dispose);
     await queue.load();
 
@@ -112,12 +112,12 @@ void main() {
 
   test('flushing twice at once does not throw', () async {
     final store = InMemoryCourierWriteStore();
-    final offline = CourierWriteQueue(_Dead(), store: store);
+    final offline = CourierWriteQueue(_Dead(), accountId: 'c1', store: store);
     await offline.markDelivered('o1');
     await offline.markDelivered('o2');
     offline.dispose();
 
-    final queue = CourierWriteQueue(_Slow(), store: store);
+    final queue = CourierWriteQueue(_Slow(), accountId: 'c1', store: store);
     addTearDown(queue.dispose);
     await queue.load();
 
