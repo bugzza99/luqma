@@ -84,45 +84,45 @@ class SupabaseDailyMealRepository implements DailyMealRepository {
 
   @override
   Future<Result<DailyMeal>> saveMeal(DailyMeal meal) {
-    return Result.guard(() async {
-      // The count is decided once, at creation. An edit carries everything but it —
-      // stripped rather than refused, so editing a name never becomes an argument about
-      // a field the caller did not mean to send.
-      final row = {
-        'merchant_id': meal.merchantId,
-        'city_id': meal.cityId,
-        'name': meal.name,
-        'description': meal.description,
-        'media_id': _uuidOrNull(meal.mediaId),
-        'price': meal.price,
-        'date': meal.date,
-        'pickup_window_start': meal.pickupWindowStart,
-        'pickup_window_end': meal.pickupWindowEnd,
-        'delivery_option': meal.deliveryOption.name,
-        'status': meal.status.name,
-        if (meal.id.isEmpty) ...{
-          'total_qty': meal.totalQty,
-          'remaining_qty': meal.remainingQty,
-        },
-      };
-      final saved = meal.id.isEmpty
-          ? await _db.from('daily_meals').insert(row).select().single()
-          : await _db
-              .from('daily_meals')
-              .update(row)
-              .eq('id', meal.id)
-              .select()
-              .single();
-      return _toMeal(saved);
-    });
+    // The count is decided once, at creation. An edit carries everything but it —
+    // stripped rather than refused, so editing a name never becomes an argument about
+    // a field the caller did not mean to send.
+    final row = {
+      'merchant_id': meal.merchantId,
+      'city_id': meal.cityId,
+      'name': meal.name,
+      'description': meal.description,
+      'media_id': _uuidOrNull(meal.mediaId),
+      'price': meal.price,
+      'date': meal.date,
+      'pickup_window_start': meal.pickupWindowStart,
+      'pickup_window_end': meal.pickupWindowEnd,
+      'delivery_option': meal.deliveryOption.name,
+      'status': meal.status.name,
+      if (meal.id.isEmpty) ...{
+        'total_qty': meal.totalQty,
+        'remaining_qty': meal.remainingQty,
+      },
+    };
+    if (meal.id.isEmpty) {
+      return Result.guard(() async {
+        final saved = await _db.from('daily_meals').insert(row).select().single();
+        return _toMeal(saved);
+      });
+    }
+    return Result.guardWrite(
+      () => _db.from('daily_meals').update(row).eq('id', meal.id).select(),
+      _toMeal,
+    );
   }
 
   @override
   Future<Result<void>> setStatus(String mealId, DailyMealStatus status) {
-    return Result.guard(
+    return Result.guardWrite(
       () => _db.from('daily_meals').update({
         'status': status.name,
-      }).eq('id', mealId),
+      }).eq('id', mealId).select('id'),
+      (_) {},
     );
   }
 
@@ -206,6 +206,7 @@ class FakeDailyMealRepository implements DailyMealRepository {
 
     // Same rule as the real one: the count is the server's after creation.
     final existing = _meals[saved.id];
+    if (!isNew && existing == null) return const Result.err(NotFoundFailure());
     _meals[saved.id] = existing == null
         ? saved
         : saved.copyWith(

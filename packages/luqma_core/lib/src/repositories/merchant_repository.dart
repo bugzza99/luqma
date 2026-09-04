@@ -196,10 +196,11 @@ class SupabaseMerchantRepository implements MerchantRepository {
 
   @override
   Future<Result<void>> setPausedUntil(String id, DateTime? until) {
-    return Result.guard(
+    return Result.guardWrite(
       () => _db.from('merchants').update({
         'paused_until': until?.toUtc().toIso8601String(),
-      }).eq('id', id),
+      }).eq('id', id).select('id'),
+      (_) {},
     );
   }
 
@@ -219,36 +220,41 @@ class SupabaseMerchantRepository implements MerchantRepository {
 
   @override
   Future<Result<Merchant>> saveMerchant(Merchant merchant) {
-    return Result.guard(() async {
-      final saved = merchant.id.isEmpty
-          ? await _db
-              .from('merchants')
-              .insert(_row(merchant))
-              .select(_readColumns)
-              .single()
-          : await _db
-              .from('merchants')
-              .update(_row(merchant))
-              .eq('id', merchant.id)
-              .select(_readColumns)
-              .single();
-      return _toMerchant(saved);
-    });
+    if (merchant.id.isEmpty) {
+      return Result.guard(() async {
+        final saved = await _db
+            .from('merchants')
+            .insert(_row(merchant))
+            .select(_readColumns)
+            .single();
+        return _toMerchant(saved);
+      });
+    }
+    return Result.guardWrite(
+      () => _db
+          .from('merchants')
+          .update(_row(merchant))
+          .eq('id', merchant.id)
+          .select(_readColumns),
+      _toMerchant,
+    );
   }
 
   @override
   Future<Result<void>> setStatus(String id, MerchantStatus status) {
-    return Result.guard(
+    return Result.guardWrite(
       () => _db.from('merchants').update({
         'status': status.name,
-      }).eq('id', id),
+      }).eq('id', id).select('id'),
+      (_) {},
     );
   }
 
   @override
   Future<Result<void>> deleteMerchant(String id) {
-    return Result.guard(
-      () => _db.from('merchants').delete().eq('id', id),
+    return Result.guardWrite(
+      () => _db.from('merchants').delete().eq('id', id).select('id'),
+      (_) {},
     );
   }
 
@@ -337,6 +343,9 @@ class FakeMerchantRepository implements MerchantRepository {
   Future<Result<Merchant>> saveMerchant(Merchant merchant) async {
     if (failure != null) return Result.err(failure!);
     if (saveFailure != null) return Result.err(saveFailure!);
+    if (merchant.id.isNotEmpty && !_merchants.containsKey(merchant.id)) {
+      return const Result.err(NotFoundFailure());
+    }
     final saved = merchant.id.isEmpty
         ? merchant.copyWith(id: 'merchant-${_merchants.length + 1}')
         : merchant;

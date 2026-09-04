@@ -55,37 +55,37 @@ class SupabaseMenuRepository implements MenuRepository {
 
   @override
   Future<Result<MenuItem>> saveItem(MenuItem item) {
-    return Result.guard(() async {
-      final row = {
-        'merchant_id': item.merchantId,
-        // An item can outlive its category: the column allows null, the model carries
-        // an empty string for it.
-        'category_id': _uuidOrNull(item.categoryId),
-        'name': item.name,
-        'description': item.description,
-        'price': item.price,
-        'media_id': _uuidOrNull(item.mediaId),
-        'is_available': item.isAvailable,
-        // jsonb whose inner keys the app itself wrote, already camelCase.
-        'options': [for (final o in item.options) o.toJson()],
-        'sort_order': item.sortOrder,
-      };
-      final saved = item.id.isEmpty
-          ? await _db.from('menu_items').insert(row).select().single()
-          : await _db
-              .from('menu_items')
-              .update(row)
-              .eq('id', item.id)
-              .select()
-              .single();
-      return _toItem(saved);
-    });
+    final row = {
+      'merchant_id': item.merchantId,
+      // An item can outlive its category: the column allows null, the model carries
+      // an empty string for it.
+      'category_id': _uuidOrNull(item.categoryId),
+      'name': item.name,
+      'description': item.description,
+      'price': item.price,
+      'media_id': _uuidOrNull(item.mediaId),
+      'is_available': item.isAvailable,
+      // jsonb whose inner keys the app itself wrote, already camelCase.
+      'options': [for (final o in item.options) o.toJson()],
+      'sort_order': item.sortOrder,
+    };
+    if (item.id.isEmpty) {
+      return Result.guard(() async {
+        final saved = await _db.from('menu_items').insert(row).select().single();
+        return _toItem(saved);
+      });
+    }
+    return Result.guardWrite(
+      () => _db.from('menu_items').update(row).eq('id', item.id).select(),
+      _toItem,
+    );
   }
 
   @override
   Future<Result<void>> deleteItem(String itemId) {
-    return Result.guard(
-      () => _db.from('menu_items').delete().eq('id', itemId),
+    return Result.guardWrite(
+      () => _db.from('menu_items').delete().eq('id', itemId).select('id'),
+      (_) {},
     );
   }
 
@@ -146,6 +146,9 @@ class FakeMenuRepository implements MenuRepository {
   @override
   Future<Result<MenuItem>> saveItem(MenuItem item) async {
     if (failure != null) return Result.err(failure!);
+    if (item.id.isNotEmpty && !_items.any((existing) => existing.id == item.id)) {
+      return const Result.err(NotFoundFailure());
+    }
     final stored = item.id.isEmpty
         ? item.copyWith(id: 'generated-${saved.length + 1}')
         : item;
@@ -159,6 +162,9 @@ class FakeMenuRepository implements MenuRepository {
   @override
   Future<Result<void>> deleteItem(String itemId) async {
     if (failure != null) return Result.err(failure!);
+    if (!_items.any((item) => item.id == itemId)) {
+      return const Result.err(NotFoundFailure());
+    }
     _items.removeWhere((i) => i.id == itemId);
     return const Result.ok(null);
   }

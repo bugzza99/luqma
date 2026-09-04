@@ -228,14 +228,15 @@ class SupabaseOrderRepository implements OrderRepository {
     required String merchantId,
     required String reason,
   }) {
-    return Result.guard(
+    return Result.guardWrite(
       () => _db.from('order_issues').insert({
         'order_id': orderId,
         'customer_uid': customerUid,
         'merchant_id': merchantId,
         'reason': reason,
         'status': 'open',
-      }),
+      }).select('id'),
+      (_) {},
     );
   }
 
@@ -416,6 +417,7 @@ class FakeOrderRepository implements OrderRepository {
     required String reason,
   }) async {
     if (failure != null) return Result.err(failure!);
+    if (!_orders.containsKey(orderId)) return const Result.err(NotFoundFailure());
     issues.add({
       'orderId': orderId,
       'customerUid': customerUid,

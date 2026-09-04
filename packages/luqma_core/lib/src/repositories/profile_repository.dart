@@ -42,7 +42,7 @@ class SupabaseProfileRepository implements ProfileRepository {
 
   @override
   Future<Result<void>> savePhone({required String uid, required String phone}) {
-    return Result.guard(
+    return Result.guardWrite(
       // Normalised here rather than at the call site, because the call site already
       // looked correct: checkout validates with `Phone.isValidEgyptianMobile`, which
       // folds Arabic-Indic digits *inside itself* before matching — so `٠١٠…` passes
@@ -54,7 +54,10 @@ class SupabaseProfileRepository implements ProfileRepository {
       // a courier is at a door unable to ring.
       () => _db
           .from('users')
-          .update({'phone': Phone.normalize(phone)}).eq('id', uid),
+          .update({'phone': Phone.normalize(phone)})
+          .eq('id', uid)
+          .select('id'),
+      (_) {},
     );
   }
 
@@ -75,8 +78,13 @@ class SupabaseProfileRepository implements ProfileRepository {
 
   @override
   Future<Result<void>> setMarketingPush({required String uid, required bool on}) {
-    return Result.guard(
-      () => _db.from('users').update({'marketing_push': on}).eq('id', uid),
+    return Result.guardWrite(
+      () => _db
+          .from('users')
+          .update({'marketing_push': on})
+          .eq('id', uid)
+          .select('id'),
+      (_) {},
     );
   }
 
@@ -94,6 +102,7 @@ class FakeProfileRepository implements ProfileRepository {
     this.failure,
     this.writeFailure,
     this.isStaffAccount = false,
+    this.accountId,
   });
 
   final Failure? failure;
@@ -103,6 +112,10 @@ class FakeProfileRepository implements ProfileRepository {
   /// the one where the switch has already been drawn.
   final Failure? writeFailure;
   final bool isStaffAccount;
+
+  /// A fake has no auth client to name its account, so the first write claims it unless
+  /// a test supplies one. Once claimed, another uid is as absent as it is under RLS.
+  String? accountId;
 
   bool accountDeleted = false;
 
@@ -116,6 +129,8 @@ class FakeProfileRepository implements ProfileRepository {
   @override
   Future<Result<void>> savePhone({required String uid, required String phone}) async {
     if (failure != null) return Result.err(failure!);
+    accountId ??= uid;
+    if (accountId != uid) return const Result.err(NotFoundFailure());
     phones[uid] = phone;
     return const Result.ok(null);
   }
@@ -133,6 +148,8 @@ class FakeProfileRepository implements ProfileRepository {
   }) async {
     final refused = failure ?? writeFailure;
     if (refused != null) return Result.err(refused);
+    accountId ??= uid;
+    if (accountId != uid) return const Result.err(NotFoundFailure());
     marketing[uid] = on;
     return const Result.ok(null);
   }

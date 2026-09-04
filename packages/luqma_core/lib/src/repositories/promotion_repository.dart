@@ -217,7 +217,7 @@ class SupabasePromotionRepository implements PromotionRepository {
 
   @override
   Future<Result<Promotion>> editRequest(Promotion promotion) {
-    return Result.guard(() async {
+    return Result.guardWrite(() async {
       // Forced back to `requested`, exactly as `request` forces it on the way in. The
       // policy refuses any other status from a merchant, so writing what it will refuse
       // would only turn a clear rule into an error somebody has to read.
@@ -226,7 +226,7 @@ class SupabasePromotionRepository implements PromotionRepository {
         approvedBy: null,
         rejectionReason: null,
       );
-      final saved = await _db
+      return _db
           .from('promotions')
           .update({
             'channel': asked.channel.name,
@@ -240,10 +240,8 @@ class SupabasePromotionRepository implements PromotionRepository {
             'rejection_reason': null,
           })
           .eq('id', asked.id)
-          .select()
-          .single();
-      return _toPromotion(saved);
-    });
+          .select();
+    }, _toPromotion);
   }
 
   @override
@@ -252,11 +250,12 @@ class SupabasePromotionRepository implements PromotionRepository {
     required DateTime startAt,
     required DateTime endAt,
   }) {
-    return Result.guard(
+    return Result.guardWrite(
       () => _db.from('promotions').update({
         'start_at': startAt.toUtc().toIso8601String(),
         'end_at': endAt.toUtc().toIso8601String(),
-      }).eq('id', promotionId),
+      }).eq('id', promotionId).select('id'),
+      (_) {},
     );
   }
 
@@ -327,7 +326,7 @@ class SupabasePromotionRepository implements PromotionRepository {
     DateTime? startAt,
     DateTime? endAt,
   }) {
-    return Result.guard(
+    return Result.guardWrite(
       () => _db.from('promotions').update({
         // Approved, not active. `startAt` decides when it runs — a campaign signed off
         // today for next week must not appear the moment somebody approved it. What is
@@ -337,7 +336,8 @@ class SupabasePromotionRepository implements PromotionRepository {
         'rejection_reason': null,
         if (startAt != null) 'start_at': startAt.toUtc().toIso8601String(),
         if (endAt != null) 'end_at': endAt.toUtc().toIso8601String(),
-      }).eq('id', promotionId),
+      }).eq('id', promotionId).select('id'),
+      (_) {},
     );
   }
 
@@ -347,16 +347,16 @@ class SupabasePromotionRepository implements PromotionRepository {
     required String reason,
     required String by,
   }) {
-    return Result.guard(() async {
+    return Result.guardWrite(() async {
       final trimmed = reason.trim();
       if (trimmed.isEmpty) throw const ConflictFailure();
 
-      await _db.from('promotions').update({
+      return _db.from('promotions').update({
         'status': PromotionStatus.rejected.name,
         'rejection_reason': trimmed,
         'approved_by': _uuidOrNull(by),
-      }).eq('id', promotionId);
-    });
+      }).eq('id', promotionId).select('id');
+    }, (_) {});
   }
 
   @override

@@ -2,6 +2,8 @@
 import 'package:luqma_core/luqma_core.dart';
 import 'package:postgrest/postgrest.dart';
 
+class SocketException implements Exception {}
+
 /// The reason a typed failure exists at all: with cash on delivery and patchy mobile
 /// data, "you're offline", "you're not allowed to do that" and "that meal just sold out"
 /// have to reach the customer as three different sentences. A single catch block that
@@ -128,6 +130,40 @@ void main() {
     test('guard returns ok when nothing throws', () async {
       final result = await Result.guard<int>(() async => 42);
       expect(result.valueOrNull, 42);
+    });
+
+    test('guardWrite returns the affected row when a write changed something', () async {
+      final result = await Result.guardWrite(
+        () async => [<String, Object?>{'id': 42}],
+        (row) => row['id'] as int,
+      );
+      expect(result.valueOrNull, 42);
+    });
+
+    test('guardWrite returns not found when a write changed no rows', () async {
+      final result = await Result.guardWrite<void, Map<String, Object?>>(
+        () async => [],
+        (_) {},
+      );
+      expect(result.failureOrNull, isA<NotFoundFailure>());
+    });
+
+    test('guardWrite keeps offline, permission and conflict distinct', () async {
+      final failures = <Object, Matcher>{
+        SocketException(): isA<OfflineFailure>(),
+        const PostgrestException(code: '42501', message: 'permission denied'):
+            isA<PermissionFailure>(),
+        const PostgrestException(code: '23505', message: 'duplicate key'):
+            isA<ConflictFailure>(),
+      };
+
+      for (final entry in failures.entries) {
+        final result = await Result.guardWrite<void, Map<String, Object?>>(
+          () async => throw entry.key,
+          (_) {},
+        );
+        expect(result.failureOrNull, entry.value);
+      }
     });
 
     test('map transforms an ok value and leaves an err untouched', () {

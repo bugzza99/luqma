@@ -61,10 +61,11 @@ class SupabaseHomeSectionRepository implements HomeSectionRepository {
   @override
   Future<Result<void>> setVisible(String key, bool isVisible,
       {required String cityId}) {
-    return Result.guard(
+    return Result.guardWrite(
       () => _db.from('home_sections').update({
         'is_visible': isVisible,
-      }).eq('key', key).eq('city_id', cityId),
+      }).eq('key', key).eq('city_id', cityId).select('key'),
+      (_) {},
     );
   }
 

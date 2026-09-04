@@ -112,7 +112,7 @@ class SupabaseMerchantOrderRepository implements MerchantOrderRepository {
 
   @override
   Future<Result<void>> accept(String orderId, {required int prepMinutes}) {
-    return Result.guard(() async {
+    return Result.guardWrite(() async {
       // The count checks come first; a merchant tapping accept on an order the customer
       // cancelled a second ago would otherwise start cooking food nobody is coming for.
       final row = await _rowOf(orderId);
@@ -120,16 +120,16 @@ class SupabaseMerchantOrderRepository implements MerchantOrderRepository {
       final order = _toOrder(row);
       if (!_needsAnswer.contains(order.status)) throw const ConflictFailure();
 
-      await _db.from('orders').update({
+      return _db.from('orders').update({
         'status': OrderStatus.accepted.name,
         'prep_minutes': prepMinutes,
-      }).eq('id', orderId);
-    });
+      }).eq('id', orderId).select('id');
+    }, (_) {});
   }
 
   @override
   Future<Result<void>> reject(String orderId, {required String reason}) {
-    return Result.guard(() async {
+    return Result.guardWrite(() async {
       final trimmed = reason.trim();
       if (trimmed.isEmpty) throw const ConflictFailure();
 
@@ -140,17 +140,17 @@ class SupabaseMerchantOrderRepository implements MerchantOrderRepository {
         throw const ConflictFailure();
       }
 
-      await _db.from('orders').update({
+      return _db.from('orders').update({
         'status': OrderStatus.cancelled.name,
         'cancel_reason': trimmed,
         'cancelled_by': OrderActor.merchant.name,
-      }).eq('id', orderId);
-    });
+      }).eq('id', orderId).select('id');
+    }, (_) {});
   }
 
   @override
   Future<Result<void>> advance(String orderId, {required OrderStatus to}) {
-    return Result.guard(() async {
+    return Result.guardWrite(() async {
       final row = await _rowOf(orderId);
       if (row == null) throw const NotFoundFailure();
       final order = _toOrder(row);
@@ -158,8 +158,12 @@ class SupabaseMerchantOrderRepository implements MerchantOrderRepository {
         throw const ConflictFailure();
       }
 
-      await _db.from('orders').update({'status': to.name}).eq('id', orderId);
-    });
+      return _db
+          .from('orders')
+          .update({'status': to.name})
+          .eq('id', orderId)
+          .select('id');
+    }, (_) {});
   }
 }
 

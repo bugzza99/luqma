@@ -122,45 +122,45 @@ class SupabaseCourierOrderRepository implements CourierOrderRepository {
     String orderId, {
     required String courierUid,
   }) {
-    return Result.guard(() async {
+    return Result.guardWrite(() async {
       await _checked(orderId, OrderStatus.outForDelivery);
 
       // Written in the same breath as the status. It is what keeps a platform courier
       // able to read the order afterwards, and what tells a customer who is holding
       // their dinner.
-      await _db.from('orders').update({
+      return _db.from('orders').update({
         'status': OrderStatus.outForDelivery.name,
         'courier_uid': courierUid,
-      }).eq('id', orderId);
-    });
+      }).eq('id', orderId).select('id');
+    }, (_) {});
   }
 
   @override
   Future<Result<void>> markDelivered(String orderId) {
-    return Result.guard(() async {
+    return Result.guardWrite(() async {
       await _checked(orderId, OrderStatus.delivered);
 
-      await _db.from('orders').update({
+      return _db.from('orders').update({
         'status': OrderStatus.delivered.name,
         'delivered_at': DateTime.now().toUtc().toIso8601String(),
-      }).eq('id', orderId);
-    });
+      }).eq('id', orderId).select('id');
+    }, (_) {});
   }
 
   @override
   Future<Result<void>> markFailed(String orderId, {required String reason}) {
-    return Result.guard(() async {
+    return Result.guardWrite(() async {
       final trimmed = reason.trim();
       if (trimmed.isEmpty) throw const ConflictFailure();
 
       await _checked(orderId, OrderStatus.cancelled);
 
-      await _db.from('orders').update({
+      return _db.from('orders').update({
         'status': OrderStatus.cancelled.name,
         'cancel_reason': trimmed,
         'cancelled_by': OrderActor.courier.name,
-      }).eq('id', orderId);
-    });
+      }).eq('id', orderId).select('id');
+    }, (_) {});
   }
 }
 

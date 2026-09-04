@@ -46,13 +46,14 @@ class SupabaseIssueRepository implements IssueRepository {
 
   @override
   Future<Result<void>> close(String id, {String? adminNote}) {
-    return Result.guard(() async {
-      await _db.from('order_issues').update({
+    return Result.guardWrite(
+      () => _db.from('order_issues').update({
         'status': OrderIssue.closed,
         if (adminNote != null && adminNote.trim().isNotEmpty)
           'admin_note': adminNote.trim(),
-      }).eq('id', id);
-    });
+      }).eq('id', id).select('id'),
+      (_) {},
+    );
   }
 }
 

@@ -73,59 +73,59 @@ class SupabaseAddressRepository implements AddressRepository {
 
   @override
   Future<Result<Address>> saveAddress(String uid, Address address) {
-    return Result.guard(() async {
-      final row = _row(address);
-      final saved = address.id.isEmpty
-          ? await _db
-              .from('addresses')
-              .insert({...row, 'user_id': uid})
-              .select()
-              .single()
-          : await _db
-              .from('addresses')
-              .update(row)
-              // Scoped by owner even under a client that bypasses the boundary: a
-              // repository that edits by id alone would move another person's address
-              // wherever the key is held.
-              .eq('id', address.id)
-              .eq('user_id', uid)
-              .select()
-              .single();
-      final savedAddress = _address(saved);
-
-      if (address.id.isEmpty) {
+    final row = _row(address);
+    if (address.id.isEmpty) {
+      return Result.guard(() async {
+        final saved = await _db
+            .from('addresses')
+            .insert({...row, 'user_id': uid})
+            .select()
+            .single();
+        final savedAddress = _address(saved);
         final existing = await defaultAddressId(uid);
         if (existing.valueOrNull == null) {
           await setDefaultAddress(uid, savedAddress.id);
         }
-      }
-
-      return savedAddress;
-    });
+        return savedAddress;
+      });
+    }
+    return Result.guardWrite(
+      () => _db
+          .from('addresses')
+          .update(row)
+          // Scoped by owner even under a client that bypasses the boundary: a
+          // repository that edits by id alone would move another person's address
+          // wherever the key is held.
+          .eq('id', address.id)
+          .eq('user_id', uid)
+          .select(),
+      _address,
+    );
   }
 
   @override
   Future<Result<void>> deleteAddress(String uid, String addressId) {
-    return Result.guard(() async {
+    return Result.guardWrite(() async {
       // Read before the delete, not after: the column's foreign key is `on delete set
       // null`, so losing the default is the database's doing before this code ever
       // looks. A survivor takes over rather than the default being cleared — being
       // dropped back to "no address chosen" because one of three was deleted makes
       // them redo a choice already made.
       final current = await defaultAddressId(uid);
-      await _db
+      final deleted = await _db
           .from('addresses')
           .delete()
           .eq('id', addressId)
-          .eq('user_id', uid);
+          .eq('user_id', uid)
+          .select('id');
 
-      if (current.valueOrNull == addressId) {
-        final remaining = await addresses(uid);
-        await _db.from('users').update({
-          'default_address_id': remaining.valueOrNull?.firstOrNull?.id,
-        }).eq('id', uid);
-      }
-    });
+      if (deleted.isEmpty || current.valueOrNull != addressId) return deleted;
+
+      final remaining = await addresses(uid);
+      return _db.from('users').update({
+        'default_address_id': remaining.valueOrNull?.firstOrNull?.id,
+      }).eq('id', uid).select('id');
+    }, (_) {});
   }
 
   @override
@@ -142,11 +142,13 @@ class SupabaseAddressRepository implements AddressRepository {
 
   @override
   Future<Result<void>> setDefaultAddress(String uid, String addressId) {
-    return Result.guard(
+    return Result.guardWrite(
       () => _db
           .from('users')
           .update({'default_address_id': addressId})
-          .eq('id', uid),
+          .eq('id', uid)
+          .select('id'),
+      (_) {},
     );
   }
 }
@@ -186,6 +188,7 @@ class FakeAddressRepository implements AddressRepository {
         isNew ? address.copyWith(id: 'address-${list.length + 1}') : address;
 
     final at = list.indexWhere((a) => a.id == saved.id);
+    if (!isNew && at < 0) return const Result.err(NotFoundFailure());
     if (at >= 0) {
       list[at] = saved;
     } else {
@@ -200,6 +203,9 @@ class FakeAddressRepository implements AddressRepository {
   Future<Result<void>> deleteAddress(String uid, String addressId) async {
     if (failure != null) return Result.err(failure!);
 
+    if (!(_byUser[uid]?.any((address) => address.id == addressId) ?? false)) {
+      return const Result.err(NotFoundFailure());
+    }
     _byUser[uid]?.removeWhere((a) => a.id == addressId);
     if (_defaults[uid] == addressId) {
       final next = _byUser[uid]?.firstOrNull;
@@ -221,6 +227,9 @@ class FakeAddressRepository implements AddressRepository {
   @override
   Future<Result<void>> setDefaultAddress(String uid, String addressId) async {
     if (failure != null) return Result.err(failure!);
+    if (!(_byUser[uid]?.any((address) => address.id == addressId) ?? false)) {
+      return const Result.err(NotFoundFailure());
+    }
     _defaults[uid] = addressId;
     return const Result.ok(null);
   }

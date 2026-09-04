@@ -173,6 +173,22 @@ sealed class Result<T> {
     }
   }
 
+  /// Runs a write that must return at least one affected row.
+  ///
+  /// PostgREST makes a row hidden by policy indistinguishable from one that disappeared:
+  /// both writes complete with an empty representation. [NotFoundFailure] preserves that
+  /// uncertainty; calling it a permission failure would claim more than the server said.
+  static Future<Result<T>> guardWrite<T, Row>(
+    Future<List<Row>> Function() action,
+    T Function(Row row) onChanged,
+  ) {
+    return guard(() async {
+      final rows = await action();
+      if (rows.isEmpty) throw const NotFoundFailure();
+      return onChanged(rows.first);
+    });
+  }
+
   bool get isOk => this is Ok<T>;
 
   T? get valueOrNull => switch (this) {

@@ -88,33 +88,32 @@ class SupabaseCuisineRepository implements CuisineRepository {
 
   @override
   Future<Result<Cuisine>> save(Cuisine cuisine) {
-    return Result.guard(() async {
-      final values = {
-        'city_id': cuisine.cityId,
-        'name': cuisine.name,
-        // An empty id means "none" everywhere else in this codebase, and an empty string
-        // is not a uuid — the column would refuse it before any policy had spoken.
-        'media_id': (cuisine.mediaId?.isEmpty ?? true) ? null : cuisine.mediaId,
-        'sort_order': cuisine.sortOrder,
-      };
+    final values = {
+      'city_id': cuisine.cityId,
+      'name': cuisine.name,
+      // An empty id means "none" everywhere else in this codebase, and an empty string
+      // is not a uuid — the column would refuse it before any policy had spoken.
+      'media_id': (cuisine.mediaId?.isEmpty ?? true) ? null : cuisine.mediaId,
+      'sort_order': cuisine.sortOrder,
+    };
 
-      final row = cuisine.id.isEmpty
-          ? await _db.from('cuisines').insert(values).select().single()
-          : await _db
-              .from('cuisines')
-              .update(values)
-              .eq('id', cuisine.id)
-              .select()
-              .single();
-
-      return cuisine.copyWith(id: row['id'] as String);
-    });
+    if (cuisine.id.isEmpty) {
+      return Result.guard(() async {
+        final row = await _db.from('cuisines').insert(values).select().single();
+        return cuisine.copyWith(id: row['id'] as String);
+      });
+    }
+    return Result.guardWrite(
+      () => _db.from('cuisines').update(values).eq('id', cuisine.id).select(),
+      (row) => cuisine.copyWith(id: row['id'] as String),
+    );
   }
 
   @override
   Future<Result<void>> delete(String cuisineId) {
-    return Result.guard(
-      () => _db.from('cuisines').delete().eq('id', cuisineId),
+    return Result.guardWrite(
+      () => _db.from('cuisines').delete().eq('id', cuisineId).select('id'),
+      (_) {},
     );
   }
 
@@ -172,6 +171,9 @@ class FakeCuisineRepository implements CuisineRepository {
   @override
   Future<Result<Cuisine>> save(Cuisine cuisine) async {
     if (failure != null) return Result.err(failure!);
+    if (cuisine.id.isNotEmpty && !_cuisines.containsKey(cuisine.id)) {
+      return const Result.err(NotFoundFailure());
+    }
     final saved = cuisine.id.isEmpty
         ? cuisine.copyWith(id: 'fake-cuisine-${++_counter}')
         : cuisine;
@@ -182,6 +184,9 @@ class FakeCuisineRepository implements CuisineRepository {
   @override
   Future<Result<void>> delete(String cuisineId) async {
     if (failure != null) return Result.err(failure!);
+    if (!_cuisines.containsKey(cuisineId)) {
+      return const Result.err(NotFoundFailure());
+    }
     _cuisines.remove(cuisineId);
     for (final set in _members.values) {
       set.remove(cuisineId);

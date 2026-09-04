@@ -154,7 +154,7 @@ class SupabaseMediaRepository implements MediaRepository {
     String? reviewedBy,
     String? note,
   }) {
-    return Result.guard(() {
+    return Result.guardWrite(() {
       // Recorded even when there is no note: knowing a decision was made, and by whom,
       // is what separates "reviewed and refused" from "nobody has looked yet". An empty
       // note is no note.
@@ -163,8 +163,8 @@ class SupabaseMediaRepository implements MediaRepository {
         'status': status.name,
         'reviewed_by': _uuidOrNull(reviewedBy),
         'review_note': reviewNote,
-      }).eq('id', id);
-    });
+      }).eq('id', id).select('id');
+    }, (_) {});
   }
 }
 
