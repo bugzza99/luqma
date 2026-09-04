@@ -11,7 +11,7 @@ create temporary table luqma_test_cities on commit drop as
 select id from cities
  where id like 'live-%'
     or id in ('admin-test-city', 'jobs-test-city', 'rls-test-city')
-    or id ~ '^(collect|img|settle|money|rbf)-[0-9]+$';
+    or id ~ '^(collect|img|settle|money|rbf|marketing|delete-account)-[0-9]+$';
 -->>
 
 -- Money first, and it has to be. `order_settlements.order_id` and
@@ -61,6 +61,12 @@ delete from staff
 delete from coupons where city_id in (select id from luqma_test_cities);
 -->>
 delete from daily_meals where city_id in (select id from luqma_test_cities);
+-->>
+-- The marketing fan-out queues one row per opted-in customer, so a single test campaign
+-- leaves as many rows as the project has accounts — and unlike the rest of this script
+-- they are not reachable through a city. Only the undrained ones go: a sent row is the
+-- record that something was actually delivered.
+delete from push_outbox where channel = 'marketing' and sent_at is null;
 -->>
 delete from promotions where city_id in (select id from luqma_test_cities);
 -->>

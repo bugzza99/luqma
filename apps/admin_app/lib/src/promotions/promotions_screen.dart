@@ -218,9 +218,13 @@ class _Request extends ConsumerWidget {
                   const SizedBox(width: Space.sm),
                   Expanded(
                     child: Text(
-                      // The one channel that reaches somebody not looking at the app,
-                      // and the one that can cost every other notification we send.
-                      'الإرسال متوقف مؤقتًا. ينفع ترفض الطلب لكن ما ينفعش تعتمده.',
+                      // Still marked apart from a banner, and now for what it does
+                      // rather than for what it cannot do. The block was here because
+                      // nothing sent these at all; `send_promotion_push` does, so the
+                      // warning is the real one — this reaches phones, once, and the
+                      // city gets only a few a week.
+                      'ده بيوصل إشعار لكل العملاء في المدينة، مرة واحدة، أول ما يبدأ. '
+                      'المدينة ليها عدد محدود في الأسبوع.',
                       style: LuqmaType.bodySmall.copyWith(
                         color: colors.onAccent,
                       ),
@@ -261,9 +265,7 @@ class _Request extends ConsumerWidget {
                 flex: 2,
                 child: FilledButton(
                   key: PromotionsScreen.approveKey(promotion.id),
-                  onPressed: promotion.channel == PromotionChannel.push
-                      ? null
-                      : () => _approve(context, ref),
+                  onPressed: () => _approve(context, ref),
                   style: FilledButton.styleFrom(
                     minimumSize: const Size.fromHeight(Sizes.minTarget),
                   ),

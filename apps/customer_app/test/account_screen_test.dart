@@ -390,4 +390,65 @@ void main() {
       expect(find.byKey(AccountScreen.versionKey), findsNothing);
     });
   });
+
+  group('the offers switch', () {
+    // The channel is sold to merchants and reaches somebody who is not looking at the
+    // app, which is exactly why there has to be a way out of it. Until this existed
+    // there was none.
+    testWidgets('is on for an account that never touched it', (tester) async {
+      await pump(tester);
+      await tester.scrollUntilVisible(find.byKey(AccountScreen.marketingKey), 200);
+
+      expect(
+        tester.widget<SwitchListTile>(find.byKey(AccountScreen.marketingKey)).value,
+        true,
+      );
+    });
+
+    testWidgets('turning it off reaches the repository', (tester) async {
+      final profiles = FakeProfileRepository();
+      await pump(tester, profiles: profiles);
+      await tester.scrollUntilVisible(find.byKey(AccountScreen.marketingKey), 200);
+
+      await tester.tap(find.byKey(AccountScreen.marketingKey));
+      await tester.pumpAndSettle();
+
+      expect(profiles.marketing['u1'], false);
+    });
+
+    // A switch that stays where somebody left it while the write failed is a switch that
+    // lies about what it did.
+    testWidgets('goes back where it was when the write fails', (tester) async {
+      await pump(
+        tester,
+        profiles: FakeProfileRepository(writeFailure: const OfflineFailure()),
+      );
+      await tester.scrollUntilVisible(find.byKey(AccountScreen.marketingKey), 200);
+
+      await tester.tap(find.byKey(AccountScreen.marketingKey));
+      await tester.pumpAndSettle();
+
+      expect(
+        tester.widget<SwitchListTile>(find.byKey(AccountScreen.marketingKey)).value,
+        true,
+      );
+    });
+
+    // Drawing it in a state nobody chose would be worse than not drawing it: the offers
+    // keep arriving either way, which is the state the account was already in.
+    testWidgets('is not drawn at all when it cannot be read', (tester) async {
+      await pump(
+        tester,
+        profiles: FakeProfileRepository(failure: const OfflineFailure()),
+      );
+
+      expect(find.byKey(AccountScreen.marketingKey), findsNothing);
+    });
+
+    testWidgets('is not offered to somebody signed out', (tester) async {
+      await pump(tester, signedInAs: null);
+
+      expect(find.byKey(AccountScreen.marketingKey), findsNothing);
+    });
+  });
 }

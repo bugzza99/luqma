@@ -147,8 +147,11 @@ void main() {
       expect(find.byKey(PromotionsScreen.pushWarningKey('p1')), findsOneWidget);
     });
 
+    // The button used to be disabled outright, because nothing anywhere turned an
+    // approved push promotion into a notification. `send_promotion_push` does, so the
+    // block is gone and the warning says what approving actually causes.
     testWidgets(
-      'a push request cannot be approved while delivery is disabled',
+      'a push request can be approved, and says what that does',
       (tester) async {
         await pump(
           tester,
@@ -158,8 +161,8 @@ void main() {
         final approve = tester.widget<FilledButton>(
           find.byKey(PromotionsScreen.approveKey('p1')),
         );
-        expect(approve.onPressed, isNull);
-        expect(find.textContaining('الإرسال متوقف مؤقتًا'), findsOneWidget);
+        expect(approve.onPressed, isNotNull);
+        expect(find.textContaining('لكل العملاء في المدينة'), findsOneWidget);
       },
     );
 

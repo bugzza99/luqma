@@ -889,6 +889,38 @@ DATABASE_URL=<luqma-test session pooler> npm --prefix supabase run test:stack
   same pair of conditions, so no screen offers a button the database will refuse.
 - **Nothing writes `PromotionStatus.active`.** Whether a campaign is running is a
   question about `startAt`/`endAt` — use `isLiveAt`, never the status alone.
+- **An empty `zone_ids` is the whole *city*, not the whole world.** The `push` channel
+  had no sender for two phases; the first one written read the empty array as "no filter
+  at all" and queued a notification for **every customer in the database** — 1394 of
+  them in `luqma-test`, against a fixture expecting two. During an Edku-only launch that
+  is invisible, and on the day a second city opens it is an Edku restaurant's offer
+  mailed to strangers. The city is the floor and the zones narrow *within* it.
+- **A marketing notification has its own Android channel, and that is not decoration.**
+  `push_outbox.channel` has allowed `'marketing'` since the table existed, with a comment
+  saying operational alerts must not be silenced by the switch somebody flipped for
+  marketing — but no channel existed on the phone, so the offers would have arrived on
+  `orders`. Somebody tired of the advertising reaches for Android's own notification
+  settings long before they find حسابي, and sharing a channel means they stop being told
+  where their food is because they turned off an ad. `users.marketing_push` is the switch
+  inside the app; the channel is what makes the promise true outside it.
+- **The tap on a notification is a feature with a writer and, for four releases, no
+  reader.** `LuqmaPush.tappedOrder` was written in four places and read nowhere, so the
+  merchant tapped the alarm and the app came forward on whatever screen it was last on.
+  `LuqmaTappedOrder` takes it — clearing as it reads — because a shell rebuilds on every
+  tab switch and an order that reopens itself each time is a screen nobody can leave.
+- **`addPostFrameCallback` from an idle phase schedules no frame of its own.** A tap that
+  arrives during a build must wait for the frame to finish; a tap that arrives between
+  frames must not, because deferring it means the callback is never called at all.
+  Branch on `SchedulerBinding.instance.schedulerPhase`. Deferring unconditionally looks
+  correct, passes the launch-path test, and silently does nothing for every tap while the
+  app is running.
+- **Android asks for the notification permission once, and remembers a refusal for
+  ever.** It used to be requested inside `LuqmaPush._wire()` — in the first seconds of
+  the first launch, over the splash, with no explanation — and the answer was thrown
+  away. A merchant who tapped "Don't allow" had a phone that never rang and an app that
+  never mentioned it: a quiet evening and a broken alarm look identical. The ask lives
+  next to the sentence explaining it now, and a refusal gets a route through Settings
+  rather than a button that asks again, which does nothing.
 - The nightly billing pass has **no memory except `subscriptions.settledAt`**. Downgrading
   writes `planId` onto the *merchant*; without marking the row, the same expired term
   comes back every night, with a fresh `auditLog` entry each time.

@@ -19,6 +19,7 @@ class AccountScreen extends ConsumerWidget {
   static const deleteAccountKey = Key('account.deleteAccount');
   static const confirmDeleteAccountKey = Key('account.confirmDeleteAccount');
   static const deleteAccountErrorKey = Key('account.deleteAccountError');
+  static const marketingKey = Key('account.marketing');
   static const addressesKey = Key('account.addresses');
   static const contactKey = Key('account.contact');
   static const aboutKey = Key('account.about');
@@ -94,6 +95,8 @@ class AccountScreen extends ConsumerWidget {
             ),
           ),
           if (identity != null) ...[
+            const SizedBox(height: Space.sm),
+            _MarketingSwitch(uid: identity.uid),
             const SizedBox(height: Space.xl),
             TextButton(
               key: signOutKey,
@@ -177,6 +180,81 @@ class AccountScreen extends ConsumerWidget {
       // face immediately instead of waiting for that token to expire.
       await auth.signOut();
     }
+  }
+}
+
+/// The one way to stop the advertising.
+///
+/// Promotions on the `push` channel reach somebody who is not looking at the app, which
+/// is exactly what makes them worth selling and exactly why there has to be a way out of
+/// them. Until this existed there was none — the channel was built, the cap was built,
+/// and nobody could say no.
+///
+/// It is deliberately not a switch for *notifications*: the three operational messages —
+/// accepted, on the way, cancelled — go out regardless, on their own Android channel.
+/// Turning off the offers must not quietly turn off being told where the food is.
+class _MarketingSwitch extends ConsumerStatefulWidget {
+  const _MarketingSwitch({required this.uid});
+
+  final String uid;
+
+  @override
+  ConsumerState<_MarketingSwitch> createState() => _MarketingSwitchState();
+}
+
+class _MarketingSwitchState extends ConsumerState<_MarketingSwitch> {
+  bool? _on;
+
+  @override
+  void initState() {
+    super.initState();
+    _read();
+  }
+
+  Future<void> _read() async {
+    final result = await ref
+        .read(profileRepositoryProvider)
+        .readMarketingPush(uid: widget.uid);
+    // A failure leaves the row absent rather than drawing the switch in a state nobody
+    // chose. There is nothing here worth a full error view: the offers keep arriving,
+    // which is the state the account was already in.
+    if (mounted && result.valueOrNull != null) {
+      setState(() => _on = result.valueOrNull);
+    }
+  }
+
+  Future<void> _set(bool on) async {
+    final was = _on;
+    setState(() => _on = on);
+
+    final result = await ref
+        .read(profileRepositoryProvider)
+        .setMarketingPush(uid: widget.uid, on: on);
+    // Put back what the server still believes. A switch that stays where somebody left
+    // it while the write failed is a switch that lies about what it did.
+    if (mounted && result.failureOrNull != null) setState(() => _on = was);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final on = _on;
+    if (on == null) return const SizedBox.shrink();
+
+    final colors = Theme.of(context).luqma;
+
+    return Card(
+      child: SwitchListTile(
+        key: AccountScreen.marketingKey,
+        value: on,
+        onChanged: _set,
+        title: const Text('عروض وخصومات'),
+        subtitle: Text(
+          'تنبيهات العروض بس. تنبيهات الأوردر بتوصلك في كل الأحوال.',
+          style: LuqmaType.bodySmall.copyWith(color: colors.textSecondary),
+        ),
+        secondary: const Icon(Icons.local_offer_outlined),
+      ),
+    );
   }
 }
 

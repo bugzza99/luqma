@@ -122,6 +122,10 @@ void main() {
               .overrideWithValue(FakeDailyMealRepository(seed: meals)),
           clockProvider.overrideWithValue(() => DateTime(2026, 8, 23, 11)),
           orderRepositoryProvider.overrideWithValue(FakeOrderRepository()),
+          // حسابي is built inside the IndexedStack whichever tab is showing, and it now
+          // reads the customer's own marketing preference — so every test in this file
+          // reaches the profile repository, on every tab.
+          profileRepositoryProvider.overrideWithValue(FakeProfileRepository()),
           remoteConfigServiceProvider
               .overrideWithValue(RemoteConfigService(FakeConfigFetcher({}))),
           if (startingCart.isNotEmpty)

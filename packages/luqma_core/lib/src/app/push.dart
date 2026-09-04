@@ -87,6 +87,14 @@ abstract final class LuqmaPush {
   /// The ordinary channel: a sound, once, and no bypassing Do Not Disturb.
   static const quietChannel = 'orders';
 
+  /// The offers, kept apart from both of the above on purpose.
+  ///
+  /// A customer tired of the advertising reaches for the phone's own notification
+  /// settings long before they go looking through حسابي, and if offers shared a channel
+  /// with order updates, silencing the first would silence the second — somebody would
+  /// stop being told where their food is because they turned off an ad.
+  static const marketingChannel = 'marketing';
+
   static final _local = FlutterLocalNotificationsPlugin();
 
   /// The in-flight (or finished) [start], so [token] can wait for it.
@@ -310,6 +318,12 @@ abstract final class LuqmaPush {
   static Future<void> _show(RemoteMessage message) async {
     final data = message.data;
     final channel = data['channel'] ?? ordersChannel;
+    final alarm = channel == ordersChannel;
+    // An offer must not arrive with the weight of an order. The channel already decides
+    // this for anything Android draws itself; this is the one path where the app draws
+    // it, and matching them is what stops the same message looking urgent in the
+    // foreground and quiet everywhere else.
+    final marketing = channel == marketingChannel;
 
     await _local.show(
       message.hashCode,
@@ -318,9 +332,13 @@ abstract final class LuqmaPush {
       NotificationDetails(
         android: AndroidNotificationDetails(
           channel,
-          channel == ordersChannel ? 'أوردرات' : 'تنبيهات',
-          importance: Importance.max,
-          priority: Priority.high,
+          switch (channel) {
+            ordersChannel => 'أوردرات',
+            marketingChannel => 'عروض وخصومات',
+            _ => 'تنبيهات',
+          },
+          importance: marketing ? Importance.low : Importance.max,
+          priority: marketing ? Priority.low : Priority.high,
           // The channel already carries the sound and the vibration; setting them here
           // as well is how two definitions start disagreeing.
           //
@@ -328,10 +346,10 @@ abstract final class LuqmaPush {
           // alarm's: they take over the lock screen, which is right for a kitchen that
           // has to answer in ninety seconds and wrong for telling a customer their food
           // has left the shop.
-          category: channel == ordersChannel
+          category: alarm
               ? AndroidNotificationCategory.call
               : AndroidNotificationCategory.status,
-          fullScreenIntent: channel == ordersChannel,
+          fullScreenIntent: alarm,
         ),
       ),
       payload: data['orderId'],

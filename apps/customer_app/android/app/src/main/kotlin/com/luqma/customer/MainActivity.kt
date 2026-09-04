@@ -11,6 +11,7 @@ class MainActivity : FlutterActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         createOrdersChannel()
+        createMarketingChannel()
     }
 
     /**
@@ -50,6 +51,35 @@ class MainActivity : FlutterActivity() {
         manager.createNotificationChannel(channel)
     }
 
+    /**
+     * The offers, and the reason they are a channel of their own.
+     *
+     * `users.marketing_push` is the switch inside the app, and it is the one the server
+     * honours — but a customer who is tired of the advertising will reach for the phone's
+     * own notification settings long before they go looking through حسابي. If offers and
+     * order updates shared a channel, silencing the first would silence the second, and
+     * somebody would stop being told where their food is because they turned off an ad.
+     *
+     * LOW importance: it appears in the shade without a sound. An offer is not worth
+     * interrupting anybody for, and one that does is one that gets the whole app muted.
+     */
+    private fun createMarketingChannel() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+
+        val manager = getSystemService(NotificationManager::class.java) ?: return
+        if (manager.getNotificationChannel(MARKETING_CHANNEL_ID) != null) return
+
+        val channel = NotificationChannel(
+            MARKETING_CHANNEL_ID,
+            "عروض وخصومات",
+            NotificationManager.IMPORTANCE_LOW,
+        ).apply {
+            description = "عروض المطاعم والمطابخ. مالهاش علاقة بحالة الأوردر."
+        }
+
+        manager.createNotificationChannel(channel)
+    }
+
     companion object {
         /**
          * Also named in AndroidManifest.xml as the FCM default channel, so a message
@@ -61,5 +91,13 @@ class MainActivity : FlutterActivity() {
          * notification arrives on a channel nobody configured.
          */
         const val ORDERS_CHANNEL_ID = "orders"
+
+        /**
+         * Matches the `marketing` value `push_outbox.channel` has allowed since the day
+         * that table existed, with a comment saying operational alerts must not be
+         * silenced by the switch somebody flipped for marketing. This channel is what
+         * makes that true on the phone rather than only in the schema.
+         */
+        const val MARKETING_CHANNEL_ID = "marketing"
     }
 }
