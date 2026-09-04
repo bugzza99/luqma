@@ -1,5 +1,13 @@
 # Simplification Pass
 
+> **Written for the Firebase backend, which is gone.** The product decisions in this
+> document still stand — they were argued through with the owner and none of them were
+> reversed by the move. What is stale is the *machinery*: Firestore collections are
+> Postgres tables, security rules are RLS policies, Cloud Functions are Postgres
+> functions and `pg_cron` jobs, and Firebase Auth is GoTrue. Read
+> `docs/17-supabase-migration.md` for the mapping and `CLAUDE.md` for what is true today;
+> where this file and those two disagree, they win.
+
 Applied to the design after the dependency graph exposed three weakly-cohesive clusters and
 thirty thinly-connected nodes. Nothing here changes what the product does; every item removes
 work, a moving part, or a step.

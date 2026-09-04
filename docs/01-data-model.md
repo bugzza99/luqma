@@ -1,5 +1,13 @@
 # Data Model — Firestore Collections
 
+> **Written for the Firebase backend, which is gone.** The product decisions in this
+> document still stand — they were argued through with the owner and none of them were
+> reversed by the move. What is stale is the *machinery*: Firestore collections are
+> Postgres tables, security rules are RLS policies, Cloud Functions are Postgres
+> functions and `pg_cron` jobs, and Firebase Auth is GoTrue. Read
+> `docs/17-supabase-migration.md` for the mapping and `CLAUDE.md` for what is true today;
+> where this file and those two disagree, they win.
+
 All city-scoped documents carry `cityId`. All carry `createdAt` / `updatedAt`.
 This model was simplified after the first pass; see `15-simplifications.md` for what merged and why.
 
@@ -10,8 +18,13 @@ This model was simplified after the first pass; see `15-simplifications.md` for 
 - **landmarks** — `{cityId, zoneId, name, lat, lng, icon}`. Admin-defined named points
   rendered on the branded map so couriers do not circle. Stored in Firestore, not Google Places,
   so they cost nothing.
-- **users** — `{googleUid, name, phone, isBlocked, rejectedOrdersCount, fcmTokens[], defaultAddressId}`.
-  Auth is Google Sign-In; phone is captured at first order and unverified until OTP is switched on.
+- **users** — `{name, phone, isBlocked, rejectedOrdersCount, fcmTokens[], defaultAddressId}`.
+  **Auth is a phone number and a password, not Google Sign-In** — that was removed on
+  2026-08-27 and is a closed decision; see `docs/04-customer-app.md` and CLAUDE.md. The
+  number is folded into a synthetic address on a domain with no mailbox, so GoTrue holds
+  an ordinary email identity and no SMS provider is needed. The phone is captured at
+  sign-up and stays unverified until OTP is switched on. `marketing_push` is the
+  customer's own switch for the offers; order status is never gated on it.
 - **users/{uid}/addresses** — `{zoneId, street, landmarkId, landmarkNote, building, floor, apartment, label, lat, lng}`.
 - **staff** — one collection for every non-customer account.
   `{uid, scope: platform|merchant, merchantId, role: admin|moderator|owner|courier, name, phone, isActive}`.

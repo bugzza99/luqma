@@ -94,7 +94,16 @@ Versions observed during Phase 0:
   Android device or emulator.
 - The release gate passes twice from a clean checkout.
 
-## P1 — Normalize the support WhatsApp config key
+## DONE — Normalize the support WhatsApp config key
+
+Closed 2026-09-04. `20260902000000_canonical_support_whatsapp.sql` made
+`support_whatsapp` canonical with the old spelling kept as a fallback read, and the
+production value was set to a real number the same day — it had been the empty string
+since Phase 1, so the customer's support tile drew nothing whatever the key was called.
+
+The original note follows, as the record of why.
+
+### Superseded — Normalize the support WhatsApp config key
 
 ### Evidence and impact
 
@@ -159,6 +168,14 @@ rollback flag.
 Marketing push specifically must not be re-enabled until approval creates a durable
 delivery job, the sender records success/failure and retry limits, targeting is explicit,
 and an operator can audit what was sent. An approved database row alone is not delivery.
+
+**Marketing push met these on 2026-09-05 and is the one item on this list now enabled.**
+`send_promotion_push` queues into `push_outbox`, which the existing drain owns along with
+the lease, the retry cap and dead-token pruning; targeting is the campaign's city narrowed
+by `zone_ids`, minus everyone who turned `users.marketing_push` off; and
+`promotion_push_report` gives the admin queued/sent/waiting/exhausted per campaign without
+exposing a single outbox row. The four remaining flags — OTP, AdMob, public comments,
+online payment — are untouched and still disabled in AdminApp's config screen.
 
 ### Acceptance criteria for re-enabling any flag
 

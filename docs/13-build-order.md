@@ -1,5 +1,13 @@
 # Build Order
 
+> **Written for the Firebase backend, which is gone.** The product decisions in this
+> document still stand — they were argued through with the owner and none of them were
+> reversed by the move. What is stale is the *machinery*: Firestore collections are
+> Postgres tables, security rules are RLS policies, Cloud Functions are Postgres
+> functions and `pg_cron` jobs, and Firebase Auth is GoTrue. Read
+> `docs/17-supabase-migration.md` for the mapping and `CLAUDE.md` for what is true today;
+> where this file and those two disagree, they win.
+
 Nine phases, each producing something usable and unblocking the next.
 The unusual choice is building AdminApp before CustomerApp: the owner enters all merchant data
 personally, so data entry must exist before there is anything to browse.
