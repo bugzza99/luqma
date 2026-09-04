@@ -1,0 +1,348 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>سياسة الخصوصية — لقمة</title>
+<meta name="description" content="إيه اللي بنجمعه في تطبيق لقمة، ليه، ومين بيشوفه — وإزاي تمسح حسابك.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&display=swap">
+<style>
+  :root {
+    --brand: #761812;
+    --brand-deep: #451410;
+    --accent: #D67F2B;
+    --ground: #F5EBE2;
+    --card: #FFFFFF;
+    --mat: #E5D3C1;
+    --hairline: #D6BFA9;
+    --ink: #130B07;
+    --ink-2: #5A452B;
+    --yes: #1B4332;
+    --yes-bg: #E2EDE7;
+    --no: #8A1B14;
+    --no-bg: #F6E0DD;
+    --flag: #995A1D;
+    --flag-bg: #F7E7D4;
+    --shadow: 0 1px 2px rgba(19,11,7,.06), 0 6px 20px rgba(19,11,7,.05);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --brand: #C9584E; --brand-deep: #E0857C; --accent: #E2954A;
+      --ground: #17100D; --card: #221814; --mat: #2E211B; --hairline: #40302A;
+      --ink: #F3E7DE; --ink-2: #B49B8B;
+      --yes: #7FCBA4; --yes-bg: #17322A;
+      --no: #EE8F86; --no-bg: #34201E;
+      --flag: #E0A264; --flag-bg: #33241A;
+      --shadow: 0 1px 2px rgba(0,0,0,.4), 0 6px 20px rgba(0,0,0,.3);
+    }
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: Cairo, "Segoe UI", system-ui, sans-serif;
+    font-size: 16px;
+    line-height: 1.85;
+  }
+  .wrap { max-width: 46rem; margin: 0 auto; padding: 3rem 1.25rem 5rem; }
+
+  header { display: flex; flex-direction: column; gap: .35rem; margin-bottom: 2.5rem; }
+  .mark {
+    font-size: 2rem; font-weight: 900; color: var(--brand); line-height: 1;
+    letter-spacing: -.01em;
+  }
+  h1 { margin: .5rem 0 0; font-size: 1.55rem; font-weight: 700; line-height: 1.35; }
+  .updated { font-size: .85rem; color: var(--ink-2); }
+  .lede {
+    margin: 1.25rem 0 0; font-size: 1.05rem; color: var(--ink-2); max-width: 40ch;
+  }
+
+  section { margin-top: 2.75rem; }
+  h2 {
+    margin: 0 0 .75rem; font-size: 1.15rem; font-weight: 700;
+    padding-bottom: .5rem; border-bottom: 2px solid var(--hairline);
+  }
+  h3 { margin: 1.5rem 0 .4rem; font-size: 1rem; font-weight: 700; color: var(--ink-2); }
+  p { margin: 0 0 1rem; }
+  p:last-child { margin-bottom: 0; }
+
+  ul { margin: 0 0 1rem; padding: 0; list-style: none; display: flex; flex-direction: column; gap: .55rem; }
+  li { display: grid; grid-template-columns: 1.35rem 1fr; gap: .55rem; align-items: baseline; }
+  li::before { content: "—"; color: var(--accent); font-weight: 700; }
+  li.yes::before { content: "✓"; color: var(--yes); }
+  li.no::before  { content: "✕"; color: var(--no); }
+
+  .panel {
+    background: var(--card); border: 1px solid var(--hairline);
+    border-radius: 14px; box-shadow: var(--shadow);
+    padding: 1.25rem 1.4rem; margin: 1.25rem 0;
+  }
+  .panel h3 { margin-top: 0; color: var(--brand); font-size: 1rem; }
+
+  .never { background: var(--no-bg); border-color: transparent; }
+  .never h3 { color: var(--no); }
+  .never li::before { content: "✕"; color: var(--no); }
+
+  .keep { background: var(--yes-bg); border-color: transparent; }
+  .keep h3 { color: var(--yes); }
+
+  .fill {
+    background: var(--flag-bg); border: 1px dashed var(--flag);
+    border-radius: 10px; padding: .85rem 1.1rem; margin: 1rem 0;
+    color: var(--flag); font-weight: 600; font-size: .95rem;
+  }
+
+  table { width: 100%; border-collapse: collapse; margin: 1rem 0; font-size: .95rem; }
+  th, td { text-align: right; padding: .7rem .6rem; border-bottom: 1px solid var(--hairline); vertical-align: top; }
+  th { font-weight: 700; color: var(--ink-2); font-size: .85rem; }
+  td:first-child { font-weight: 600; white-space: nowrap; }
+  .scroll { overflow-x: auto; }
+
+  ol { margin: 0 0 1rem; padding-inline-start: 1.4rem; display: flex; flex-direction: column; gap: .5rem; }
+
+  footer {
+    margin-top: 3.5rem; padding-top: 1.5rem; border-top: 1px solid var(--hairline);
+    color: var(--ink-2); font-size: .9rem;
+  }
+  a { color: var(--brand); text-underline-offset: 3px; }
+  a:focus-visible, summary:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="mark">لقمة</div>
+    <h1>سياسة الخصوصية</h1>
+    <div class="updated">آخر تحديث: ٤ سبتمبر ٢٠٢٦</div>
+    <p class="lede">
+      دي مش صفحة قانونية عشان نقفل بيها الموضوع. دي بالظبط إيه اللي التطبيق بياخده منك،
+      ليه، ومين بيشوفه.
+    </p>
+  </header>
+
+  <div class="fill">
+    قبل ما ترفعها: املا مكان <strong>[اسم الجهة]</strong> و<strong>[رقم التواصل]</strong>
+    و<strong>[رابط الصفحة]</strong> في الآخر. ومتسيبش القوسين دول.
+  </div>
+
+  <section>
+    <h2>مين إحنا</h2>
+    <p>
+      «لقمة» تطبيق لطلب الأكل من مطاعم ومطابخ بيتية في مدينة <strong>إدكو</strong>،
+      محافظة البحيرة. السياسة دي بتخص تطبيق العميل وبس — تطبيقات التاجر والدليفري
+      بيستخدمها ناس بيشتغلوا معانا وليها شروط تانية.
+    </p>
+    <p>الجهة المسؤولة عن البيانات: <strong>[اسم الجهة]</strong>.</p>
+  </section>
+
+  <section>
+    <h2>اللي بنجمعه</h2>
+
+    <h3>لما تعمل حساب</h3>
+    <ul>
+      <li><strong>اسمك</strong> — عشان المطعم والدليفري يعرفوا الأوردر ده بتاع مين.</li>
+      <li><strong>رقم تليفونك</strong> — ده اللي بتسجّل بيه دخولك، وهو الرقم اللي الدليفري بيتصل بيه.</li>
+    </ul>
+
+    <h3>لما تضيف عنوان</h3>
+    <ul>
+      <li>المنطقة، والعلامة المميزة اللي بتختارها من قايمة.</li>
+      <li>الشارع والعمارة والدور والشقة — اللي بتكتبهم انت.</li>
+    </ul>
+    <p>
+      دي كلها حاجات <strong>بتكتبها أو بتختارها بنفسك</strong>. التطبيق
+      <strong>مبياخدش موقعك من الجوال</strong>، ومش طالب إذن الموقع أصلاً.
+    </p>
+
+    <h3>لما تطلب</h3>
+    <ul>
+      <li>الأصناف اللي طلبتها وأسعارها والإجمالي.</li>
+      <li>نسخة من اسمك ورقمك وعنوانك وقت الطلب — عشان تعديل عنوانك بكرة ميغيّرش أوردر امبارح راح فين.</li>
+      <li>وقت الطلب وحالته.</li>
+      <li>تقييمك وتعليقك لو قيّمت، وشكوتك لو قدّمت شكوى.</li>
+    </ul>
+
+    <h3>عشان الإشعارات توصلك</h3>
+    <ul>
+      <li>
+        <strong>رمز الجهاز</strong> — رقم بيديه جوجل للتطبيق على تليفونك عشان نقدر نبعتلك
+        إشعار إن أوردرك اتقبل أو خرج للتوصيل. الرمز ده بيخص <em>نسخة التطبيق</em>، مش شخصك،
+        وبيتغيّر لو مسحت التطبيق ونزّلته تاني.
+      </li>
+    </ul>
+
+    <h3>لما التطبيق يقع</h3>
+    <ul>
+      <li>
+        تقرير عطل فيه نوع التليفون وإصدار الأندرويد ومكان الغلطة في الكود — عشان نصلحه.
+        <strong>مفيش أي حاجة من أكلك أو عنوانك في التقرير ده.</strong>
+      </li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>اللي عمرنا ما بناخده</h2>
+    <div class="panel never">
+      <h3>مش موجود في التطبيق أصلاً</h3>
+      <ul>
+        <li class="no"><strong>أي بيانات دفع.</strong> الدفع كاش عند الاستلام. مفيش كارت ولا محفظة ولا رقم حساب — التطبيق ملوش خانة تدخّل فيها حاجة زي دي.</li>
+        <li class="no"><strong>موقعك الجغرافي.</strong> مفيش GPS ومفيش تتبّع؛ التطبيق مش طالب إذن الموقع.</li>
+        <li class="no"><strong>إيميلك.</strong> مبنطلبش إيميل ومش بنبعت إيميلات.</li>
+        <li class="no"><strong>صورك أو جهات اتصالك أو الميكروفون أو الكاميرا.</strong></li>
+        <li class="no"><strong>مبنبيعش بياناتك لحد،</strong> ومبنستخدمهاش في إعلانات بره التطبيق.</li>
+      </ul>
+    </div>
+  </section>
+
+  <section>
+    <h2>مين بيشوف إيه</h2>
+    <div class="scroll">
+      <table>
+        <thead>
+          <tr><th>مين</th><th>بيشوف إيه</th><th>ليه</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>المطعم</td>
+            <td>اسمك، رقمك، عنوانك، الأوردر</td>
+            <td>عشان يجهّز الأكل ويوصّله</td>
+          </tr>
+          <tr>
+            <td>الدليفري</td>
+            <td>اسمك، رقمك، عنوان الأوردر</td>
+            <td>عشان يوصلك ويتصل بيك لو مالقاش الباب</td>
+          </tr>
+          <tr>
+            <td>جوجل (Firebase)</td>
+            <td>رمز الجهاز بس</td>
+            <td>عشان الإشعار يوصل لتليفونك</td>
+          </tr>
+          <tr>
+            <td>Supabase</td>
+            <td>الداتابيز كلها (استضافة)</td>
+            <td>السيرفرات اللي شغّالة عليها الخدمة</td>
+          </tr>
+          <tr>
+            <td>Sentry</td>
+            <td>تقارير الأعطال</td>
+            <td>عشان نعرف التطبيق وقع فين ونصلحه</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p>
+      المطعم بيشوف تعليقك على الأكل، بس <strong>من غير ما يتنشر لباقي العملاء</strong> —
+      غير لو التعليقات العامة اتفعّلت وقتها بنقولك.
+    </p>
+    <p>
+      وبنكشف بياناتك لجهة رسمية <strong>لو القانون ألزمنا</strong> بكده وبس.
+    </p>
+  </section>
+
+  <section>
+    <h2>البيانات متخزنة فين</h2>
+    <p>
+      على سيرفرات <strong>Supabase في فرانكفورت بألمانيا</strong> (الاتحاد الأوروبي).
+      الاتصال بين تليفونك والسيرفر مشفّر، وكلمة سرك متخزّنة مشفّرة بحيث محدش — ولا إحنا —
+      يقدر يقراها.
+    </p>
+  </section>
+
+  <section>
+    <h2>حذف حسابك</h2>
+    <p>تقدر تمسح حسابك بنفسك من جوه التطبيق، من غير ما تكلّم حد:</p>
+    <ol>
+      <li>افتح تطبيق لقمة</li>
+      <li>روح على <strong>حسابي</strong></li>
+      <li>اضغط <strong>حذف الحساب</strong> وأكّد</li>
+    </ol>
+
+    <div class="panel">
+      <h3>اللي بيتشال على طول</h3>
+      <ul>
+        <li class="yes">حسابك نفسه — مش هتقدر تسجّل دخول تاني، والرقم يبقى متاح لحساب جديد</li>
+        <li class="yes">اسمك ورقمك</li>
+        <li class="yes">كل عناوينك</li>
+        <li class="yes">تقييماتك وتعليقاتك</li>
+        <li class="yes">شكاويك</li>
+        <li class="yes">رموز أجهزتك — يعني الإشعارات بتقف فوراً</li>
+      </ul>
+    </div>
+
+    <div class="panel keep">
+      <h3>اللي بيفضل، وليه</h3>
+      <p>
+        <strong>الأوردرات اللي اتسلّمت فعلاً بتفضل كسجل مالي</strong> — الأصناف والأسعار
+        والإجمالي — بس <strong>من غير اسمك ورقمك</strong>؛ بيتشالوا من على الأوردر وبيبقى
+        مالوش صاحب.
+      </p>
+      <p>
+        السبب إن الأوردر ده فلوس اتحصّلت فعلاً، وحساب المطعم والعمولة مبنيين عليه. لو
+        اتمسح، حسابات ناس تانية بتبوظ. مفيش أي حاجة فيه تدل عليك بعد الحذف.
+      </p>
+    </div>
+
+    <h3>لو مش قادر تفتح التطبيق</h3>
+    <p>
+      كلّمنا على <strong>[رقم التواصل]</strong> واطلب حذف حسابك. هنتأكد إن الرقم اللي
+      بتكلّم منه هو رقم الحساب، وننفّذ الطلب خلال <strong>٣٠ يوم</strong> على الأكثر.
+    </p>
+  </section>
+
+  <section>
+    <h2>مدة الاحتفاظ</h2>
+    <ul>
+      <li>بياناتك بتفضل طول ما حسابك موجود.</li>
+      <li>أول ما تمسح الحساب، بيتشال اللي فوق على طول — مش بعد مدة.</li>
+      <li>الأوردرات المجهّلة بتفضل للسجلات المالية والمحاسبية.</li>
+      <li>تقارير الأعطال بتتشال تلقائياً بعد <strong>٩٠ يوم</strong>.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>حقوقك</h2>
+    <ul>
+      <li>تعرف إيه المتخزّن عنك، وتطلب نسخة منه.</li>
+      <li>تصحّح اسمك أو رقمك أو عنوانك من جوه التطبيق في أي وقت.</li>
+      <li>تمسح حسابك، زي ما فوق.</li>
+      <li>توقف الإشعارات — من إعدادات تليفونك، من غير ما تمسح الحساب.</li>
+    </ul>
+    <p>لأي طلب من دول، كلّمنا على <strong>[رقم التواصل]</strong>.</p>
+  </section>
+
+  <section>
+    <h2>الأطفال</h2>
+    <p>
+      الخدمة مش موجّهة لأقل من ١٦ سنة، ومبنجمعش بيانات عن قصد من حد في السن ده. لو وصلت
+      لعلمنا بيانات زي دي بنمسحها.
+    </p>
+  </section>
+
+  <section>
+    <h2>لو السياسة اتغيّرت</h2>
+    <p>
+      لو غيّرنا حاجة جوهرية — بيانات جديدة بنجمعها، أو جهة جديدة بتشوفها — هنغيّر تاريخ
+      «آخر تحديث» فوق، وهنقولك جوه التطبيق قبل ما التغيير يشتغل.
+    </p>
+  </section>
+
+  <section>
+    <h2>التواصل</h2>
+    <p>
+      لأي سؤال عن خصوصيتك أو بياناتك:
+      <strong>[رقم التواصل]</strong>
+    </p>
+  </section>
+
+  <footer>
+    لقمة — إدكو، البحيرة، مصر · نسخة هذه الصفحة على <strong>[رابط الصفحة]</strong>
+  </footer>
+
+</div>
+</body>
+</html>

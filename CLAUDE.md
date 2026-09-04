@@ -547,6 +547,12 @@ DATABASE_URL=<luqma-test session pooler> npm --prefix supabase run test:stack
 
 ## Decisions that are settled — do not relitigate
 
+- **There is no self-service password reset, and that is settled.** A customer signs in
+  with a phone number folded into a synthetic address on a domain with no mailbox, and
+  there is no SMS provider — so an emailed link and an SMS code are both impossible
+  without buying one. The owner declined that cost on 2026-09-04: plenty of published
+  apps have no self-serve reset. The way back stays a phone call to an admin, who issues
+  a new password through `reset-customer-password`. Do not reopen this as a gap.
 - **Cash on delivery only.** The model is payment-method aware for later, nothing more.
 - **Arabic RTL only**, with i18n scaffolding so English is a file, not a rewrite.
 - **Western numerals** for prices (`150 ج`), not Eastern.
