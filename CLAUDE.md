@@ -1109,6 +1109,13 @@ DATABASE_URL=<luqma-test session pooler> npm --prefix supabase run test:stack
   the merchant fixture above was shut one day in seven; and a daily-meal window once
   passed all morning and failed after four. If a suite fails and nothing changed, look at
   the calendar before looking at the diff.
+- **A before/after delta is not immune to midnight.** `admin_today` counts from
+  `date_trunc('day', now())` across the whole database, and the live suite takes sixteen
+  minutes — so a run that starts before midnight and reaches that file after it reads
+  `before` on one day and `after` on the next, and two tests fail on a delta that was
+  written precisely to be robust against other rows. The file passes alone every time.
+  Same lesson as the fixtures pinned to a fixed date, reached from the other end: when a
+  suite fails and nothing changed, look at the clock as well as the calendar.
 - **A live test cannot reach `clockProvider`.** The clock there is Postgres's. A daily-meal
   fixture with a 13:00–16:00 collection window passed all morning and failed after four —
   the rule it tripped was right, the fixture was asserting the hour. Seed windows that are
