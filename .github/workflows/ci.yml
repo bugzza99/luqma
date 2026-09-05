@@ -127,6 +127,31 @@ jobs:
         run: |
           npm ci --prefix supabase
           flutter pub get
+      # The same step the local job has, and the reason it was missing here is the reason
+      # this job had never run: `.g.dart`, `.freezed.dart` and `app_localizations*` are
+      # gitignored, so a fresh checkout has none of them and the first Dart step fails to
+      # compile. That was found and fixed once already — in the job that runs on every
+      # push. This job runs only on a schedule, and until the LUQMA_TEST_* secrets existed
+      # it died on the credential check before reaching any Dart at all, so the identical
+      # omission sat here unseen.
+      - name: Generate code
+        shell: pwsh
+        run: |
+          foreach ($package in @(
+              'packages/luqma_core', 'apps/customer_app',
+              'apps/merchant_app', 'apps/admin_app')) {
+            Push-Location $package
+            try {
+              dart run build_runner build --delete-conflicting-outputs
+              if ($LASTEXITCODE -ne 0) { throw "$package failed to generate" }
+            } finally { Pop-Location }
+          }
+          Push-Location packages/luqma_core
+          try {
+            flutter gen-l10n
+            if ($LASTEXITCODE -ne 0) { throw 'gen-l10n failed' }
+          } finally { Pop-Location }
+
       - name: Cloud RPC smoke
         shell: pwsh
         run: ./tool/run_smoke_tests.ps1 -Cloud
