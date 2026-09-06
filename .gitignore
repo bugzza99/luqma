@@ -58,3 +58,6 @@ signing/key.properties
 # — 3 GB in total — were committed and sat in the history until the first attempt to push
 # anywhere. GitHub refuses a single file over 100 MB, so they would have blocked it.
 *.hprof
+
+# Bugzza AI's per-project state. Local orchestration bookkeeping, not part of the product.
+.ai-company/

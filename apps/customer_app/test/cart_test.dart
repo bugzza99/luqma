@@ -119,6 +119,28 @@ void main() {
       cart = cart.setQuantity(cart.lines.single.id, -5);
       expect(cart.isEmpty, isTrue);
     });
+
+    // The other end had no bound at all. Money is integer piastres and the column is a
+    // 32-bit `integer`, so a large enough line total is an overflow rather than a big
+    // number — and `place_order` prices from `menu_items` on the server, so the failure
+    // would land as a refused order the customer cannot explain rather than as a wrong
+    // charge. Reaching it by tapping `+` takes millions of taps; reaching it by holding a
+    // key down, or by a caller passing a number straight to `setQuantity`, does not.
+    //
+    // The cap is a per-line count a kitchen could actually cook, so it is a sentence the
+    // basket can say rather than an error somebody has to decode.
+    test('a quantity beyond what a kitchen would cook is capped, not accepted', () {
+      var cart = Cart.empty.add(chicken);
+      cart = cart.setQuantity(cart.lines.single.id, 5000);
+      expect(cart.lines.single.quantity, Cart.maxLineQuantity);
+    });
+
+    test('and adding past the cap stops there instead of climbing', () {
+      var cart = Cart.empty.add(chicken);
+      cart = cart.setQuantity(cart.lines.single.id, Cart.maxLineQuantity);
+      cart = cart.add(chicken);
+      expect(cart.lines.single.quantity, Cart.maxLineQuantity);
+    });
   });
 
   group('what it costs', () {

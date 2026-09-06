@@ -24,6 +24,28 @@ void main() {
     expect(container.read(adminAccessProvider), AdminAccess.unknown);
   });
 
+  // The shape `currentIdentity` can actually produce, and the one nothing covered: it
+  // yields the restored session first and only then follows `auth.changes`, so an error
+  // arrives *after* a value. Riverpod keeps that value alongside the error — the state is
+  // `AsyncError` with `hasValue: true` — so a gate reading the value and ignoring the
+  // error would go on treating a dead session as a live admin.
+  //
+  // The test below the empty-stream one covers the error-before-any-value case. Both
+  // shapes matter and they resolve differently inside Riverpod.
+  test('a stream that fails after emitting still reads as signed out', () async {
+    final container = containerFor(
+      Stream<LuqmaIdentity?>.multi((listener) {
+        listener.add(const LuqmaIdentity(uid: 'u1', claims: {'admin': true}));
+        listener.addError(StateError('the session dropped'));
+      }),
+    );
+    // Not `Duration.zero`: the value lands on the first microtask and the error on a
+    // later one, so a zero delay reads the state half way through and sees only the
+    // value. Asserting there would pin the wrong behaviour as correct.
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+    expect(container.read(adminAccessProvider), AdminAccess.signedOut);
+  });
+
   test('no user reads as signed out', () async {
     final container = containerFor(Stream.value(null));
     await Future<void>.delayed(Duration.zero);

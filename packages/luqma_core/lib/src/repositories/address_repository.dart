@@ -36,12 +36,17 @@ class SupabaseAddressRepository implements AddressRepository {
 
   /// The fields of [Address] that have a column behind them.
   ///
-  /// The model carries `lat`/`lng` for an order's frozen copy of an address; a saved
-  /// address is zone, landmark and words, so sending keys no column has would fail the
-  /// write rather than quietly dropping them.
+  /// An explicit list rather than the whole model, because `Address` also carries fields
+  /// that belong to an *order's* frozen copy of an address and to no row here.
+  ///
+  /// `lat`/`lng` were excluded for a different reason for eight phases — the columns did
+  /// not exist, and sending a key no column has fails the write outright. They exist now,
+  /// so the pin a customer drops is saved rather than dropped on the floor between the
+  /// form and the database.
   static const _saved = [
     'zoneId', 'landmarkId', 'landmarkName', 'landmarkNote',
     'street', 'building', 'floor', 'apartment', 'label',
+    'lat', 'lng',
   ];
 
   Address _address(Map<String, dynamic> row) =>

@@ -72,14 +72,35 @@ void main() {
     // The model's geo fields belong to an order's frozen copy; a saved address has no
     // column for them. The write must survive their presence — and the round trip
     // documents the drop rather than pretending they were kept.
-    test('an address carrying lat and lng still saves', () async {
+    // This used to assert the opposite — that the pin came back null — and it was right
+    // to, because there was no column to put it in: `Address` has carried `lat`/`lng`
+    // since Phase 1 and the repository stripped them so the write would not be refused
+    // for naming a column nobody had. The test pinned the limitation rather than the
+    // intent, so it stayed green while the map layer had nowhere to store a coordinate.
+    test('an address keeps the pin the customer dropped', () async {
       final saved = (await repository.saveAddress(
         uid,
         home().copyWith(lat: 30.9, lng: 30.3),
       )).valueOrNull!;
 
-      expect((await repository.addresses(uid)).valueOrNull, hasLength(1));
+      expect(saved.lat, 30.9);
+      expect(saved.lng, 30.3);
+
+      // Read back rather than trusting what the write returned: the round trip is what
+      // the courier's screen actually does.
+      final stored = (await repository.addresses(uid)).valueOrNull!.single;
+      expect(stored.lat, 30.9);
+      expect(stored.lng, 30.3);
+    });
+
+    // The pin stays optional, which is the whole design: Edku is addressed by zone and
+    // landmark and words, and the map is the supporting layer.
+    test('and an address with no pin is no less valid', () async {
+      final saved = (await repository.saveAddress(uid, home())).valueOrNull!;
+
       expect(saved.lat, isNull);
+      expect(saved.lng, isNull);
+      expect((await repository.addresses(uid)).valueOrNull, hasLength(1));
     });
 
     // An empty landmark id means "none" here as everywhere else; the uuid column would

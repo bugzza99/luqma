@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/foundation.dart';
 import 'package:luqma_core/luqma_core.dart';
 
@@ -63,6 +65,16 @@ class Cart {
 
   static const empty = Cart();
 
+  /// The most of one dish a single basket line may hold.
+  ///
+  /// Ninety-nine because it is a number a kitchen could conceivably cook and a person
+  /// could conceivably mean, so the basket can hold the line at it rather than explaining
+  /// an arithmetic limit. The reason a bound is needed at all is further down: money is
+  /// integer piastres in a 32-bit column, so an unbounded quantity turns into an overflow
+  /// on the server rather than a large order, and the customer is refused with nothing
+  /// that tells them why.
+  static const maxLineQuantity = 99;
+
   /// Whose kitchen this basket belongs to. Null while it is empty — an empty basket
   /// belongs to nobody, so any merchant may fill it.
   final String? merchantId;
@@ -94,7 +106,9 @@ class Cart {
     if (existing >= 0) {
       final updated = [...lines];
       updated[existing] = lines[existing].copyWith(
-        quantity: lines[existing].quantity + 1,
+        // Stops at the cap rather than refusing the tap: a `+` that does nothing on the
+        // hundredth press reads as a broken button, and there is nothing useful to say.
+        quantity: math.min(lines[existing].quantity + 1, maxLineQuantity),
       );
       return Cart(merchantId: item.merchantId, lines: updated);
     }
@@ -136,7 +150,10 @@ class Cart {
       merchantId: merchantId,
       lines: [
         for (final line in lines)
-          if (line.id == lineId) line.copyWith(quantity: quantity) else line,
+          if (line.id == lineId)
+            line.copyWith(quantity: math.min(quantity, maxLineQuantity))
+          else
+            line,
       ],
     );
   }

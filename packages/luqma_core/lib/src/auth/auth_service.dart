@@ -100,13 +100,33 @@ class SupabaseAuthService implements AuthService {
     // Auth state changes, not just sign-in and sign-out: a claim granted while the app
     // is open arrives when the token refreshes, and a merchant whose account was set up
     // a minute ago should get in then rather than at the next cold start.
-    _subscription = _client.auth.onAuthStateChange.listen((event) async {
-      final user = event.session?.user;
-      _identity = user == null ? null : _toIdentity(user);
-      _state = user == null ? AuthState.signedOut : AuthState.signedIn;
-      _controller.add(_identity);
-      if (!_resolved.isCompleted) _resolved.complete();
-    });
+    _subscription = _client.auth.onAuthStateChange.listen(
+      (event) async {
+        final user = event.session?.user;
+        _identity = user == null ? null : _toIdentity(user);
+        _state = user == null ? AuthState.signedOut : AuthState.signedIn;
+        _controller.add(_identity);
+        if (!_resolved.isCompleted) _resolved.complete();
+      },
+      // A `listen` with no `onError` sends a stream error to the zone, and these builds
+      // install Sentry's `PlatformDispatcher.onError`, which reports an unhandled async
+      // error as **fatal**. So a transient failure on GoTrue's own stream — the kind a
+      // weak connection produces — would arrive as a crash report for a process that
+      // never crashed. Same lesson as `unawaited(LuqmaPush.start())`, from the other end.
+      //
+      // It resolves to signed out rather than staying unknown, for the reason the timer
+      // below gives: the wait is over and nobody arrived. And it deliberately does *not*
+      // put the error on `_controller` — every gate reads that stream, and signing an
+      // admin out of a screen they are working on because one refresh failed is a worse
+      // answer than letting the next event correct it.
+      onError: (Object error, StackTrace stackTrace) {
+        debugPrint('auth stream error, treating the session as absent: $error');
+        _identity = null;
+        _state = AuthState.signedOut;
+        _controller.add(null);
+        if (!_resolved.isCompleted) _resolved.complete();
+      },
+    );
 
     // A floor under a failure, not a race the real event has to win.
     //
