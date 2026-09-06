@@ -40,6 +40,15 @@ abstract final class LuqmaPalette {
   static const darkHairline = Color(0xFF3E2A21);
   static const darkEdge = Color(0xFF8A6A55);
 
+  // Water, for the basemap only. Edku sits between the sea and a lake, so water is most
+  // of that map and it is the one thing on it that cannot be a brand swatch: read as
+  // surface, the shoreline — the most useful landmark in the city — disappears.
+  //
+  // Here rather than as a role on [LuqmaColors] because it is not a role any of the forty
+  // screens has. It is a literal, and this is the file literals live in.
+  static const water = Color(0xFFBBD4DE);
+  static const waterDark = Color(0xFF16323F);
+
   // Status. Only two colours beyond the brand set, both required to express order state.
   // [danger] is a brighter red than the burgundy so the two do not read as the same thing;
   // even so, a destructive control always carries an icon and explicit wording, never

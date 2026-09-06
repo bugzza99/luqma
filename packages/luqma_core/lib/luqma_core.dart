@@ -89,3 +89,7 @@ export 'src/widgets/luqma_lockup.dart';
 export 'src/widgets/menu_editor.dart';
 export 'src/widgets/force_update_gate.dart';
 export 'src/widgets/luqma_splash.dart';
+
+// The branded basemap and Luqma's own places on top of it. See docs/09.
+export 'src/map/luqma_map.dart';
+export 'src/map/luqma_map_style.dart';
