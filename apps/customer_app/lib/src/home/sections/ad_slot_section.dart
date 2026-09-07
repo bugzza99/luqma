@@ -113,8 +113,8 @@ class _CarouselState extends State<_Carousel> {
       final next = (_page + 1) % widget.banners.length;
       _controller.animateToPage(
         next,
-        duration: const Duration(milliseconds: 400),
-        curve: Curves.easeInOut,
+        duration: Motion.page,
+        curve: Motion.emphasis,
       );
     });
   }
@@ -165,15 +165,16 @@ class _CarouselState extends State<_Carousel> {
             for (var i = 0; i < widget.banners.length; i++) ...[
               if (i > 0) const SizedBox(width: Space.xs + 1),
               AnimatedContainer(
-                duration: const Duration(milliseconds: 200),
-                width: i == _page ? 16 : 5,
-                height: 5,
+                duration: Motion.of(context, Motion.quick),
+                curve: Motion.emphasis,
+                width: i == _page ? Space.lg : Space.xs + 1,
+                height: Space.xs + 1,
                 decoration: BoxDecoration(
                   // Burgundy for the one you are on, and the interactive outline colour
                   // for the rest — the decorative hairline is 1.5:1 on cream and would
                   // leave the other dots invisible.
                   color: i == _page ? colors.brand : colors.border,
-                  borderRadius: BorderRadius.circular(3),
+                  borderRadius: Radii.pillAll,
                 ),
               ),
             ],
@@ -191,14 +192,24 @@ class _Banner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colors = theme.luqma;
+    final colors = Theme.of(context).luqma;
 
     // A picture, or words. Never words over a picture: the merchant's photograph decides
     // where its own dark parts are, so a headline laid over it lands somewhere nobody
     // chose — legible on the artwork it was tested against and gone on the next one.
     final chosen = PromotionPalette.parse(promotion.backgroundColor);
     final ink = chosen == null ? colors.onBrand : PromotionPalette.inkOn(chosen);
+    // The second line is orange on the burgundy gradient — the one place the design puts
+    // orange on a dark ground — and the computed ink on a colour a merchant chose, where
+    // a fixed orange could land pale-on-pale.
+    //
+    // `orangeLight`, not `colors.accent`. The accent follows the theme, and in the light
+    // theme it is `#D67F2B`, which scores **3.70:1** on this burgundy — under the 4.5:1
+    // that 12sp normal text needs. The artboard says `#E69B4A` and the artboard is right:
+    // it scores 4.82:1. The ground here is brand burgundy in *both* themes, so its ink
+    // cannot be the one that swaps with the theme.
+    final subtitle =
+        chosen == null ? LuqmaPalette.orangeLight : ink.withValues(alpha: 0.9);
 
     return InkWell(
       key: AdSlotSection.bannerKey(promotion.id),
@@ -218,8 +229,8 @@ class _Banner extends StatelessWidget {
                 gradient: chosen != null
                     ? null
                     : LinearGradient(
-                        begin: Alignment.centerRight,
-                        end: Alignment.centerLeft,
+                        begin: Alignment.topRight,
+                        end: Alignment.bottomLeft,
                         colors: [colors.brand, colors.brandPressed],
                       ),
               ),
@@ -246,9 +257,10 @@ class _Banner extends StatelessWidget {
                       promotion.title,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
-                      // Never a stored colour: the ink is computed from the ground, so
-                      // there is no way to end up with pale words on a pale banner.
-                      style: theme.textTheme.titleLarge?.copyWith(color: ink),
+                      // 15/bold, and the ink is computed from the ground — never stored —
+                      // so there is no way to end up with pale words on a pale banner.
+                      style: LuqmaType.bodyStrong
+                          .copyWith(color: ink, fontWeight: FontWeight.w700),
                     ),
                     if (promotion.body.isNotEmpty) ...[
                       const SizedBox(height: Space.xs),
@@ -256,8 +268,8 @@ class _Banner extends StatelessWidget {
                         promotion.body,
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.bodyMedium
-                            ?.copyWith(color: ink.withValues(alpha: 0.9)),
+                        style: LuqmaType.caption
+                            .copyWith(color: subtitle, fontWeight: FontWeight.w600),
                       ),
                     ],
                   ],

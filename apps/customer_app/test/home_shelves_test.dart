@@ -109,18 +109,24 @@ void main() {
   }
 
   group('the shops shelf', () {
-    testWidgets('two shops sit side by side rather than stacked', (tester) async {
+    // This asserted the opposite — two across, same row, different columns — and it was
+    // right about the grid it was written for. The design replaced that grid with a
+    // column of full-width rows: the same six shops on a screen, but each with a whole
+    // line instead of half a tile that had to truncate either the description or the
+    // rating. The test follows the intent rather than the old geometry.
+    testWidgets('shops stack as full-width rows', (tester) async {
       await pump(
         tester,
         const MerchantListSection(section: merchantList),
         merchants: [shop('m1', 'مطعم أ'), shop('m2', 'مطعم ب')],
       );
 
-      final first = tester.getCenter(find.byKey(MerchantTile.tileKey('m1')));
-      final second = tester.getCenter(find.byKey(MerchantTile.tileKey('m2')));
+      final first = tester.getRect(find.byKey(MerchantTile.tileKey('m1')));
+      final second = tester.getRect(find.byKey(MerchantTile.tileKey('m2')));
 
-      expect(first.dy, second.dy, reason: 'same row');
-      expect(first.dx, isNot(second.dx), reason: 'different columns');
+      expect(second.top, greaterThan(first.bottom - 1), reason: 'stacked, not side by side');
+      expect(first.width, second.width, reason: 'both full width');
+      expect(first.left, second.left, reason: 'one column');
     });
 
     // What a customer chooses on, in the space a tile has: whose shop it is, whether it

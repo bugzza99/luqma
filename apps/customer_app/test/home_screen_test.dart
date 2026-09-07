@@ -26,6 +26,9 @@ void main() {
     LuqmaIdentity? signedInAs,
     Map<String, List<Address>> addresses = const {},
     List<Zone> zones = const [],
+    bool reducedMotion = false,
+    // The motion tests drive their own pumps to catch the screen mid-entrance.
+    bool settle = true,
   }) async {
     await tester.pumpWidget(
       ProviderScope(
@@ -57,14 +60,18 @@ void main() {
           locale: const Locale('ar'),
           localizationsDelegates: LuqmaStrings.localizationsDelegates,
           supportedLocales: LuqmaStrings.supportedLocales,
-          home: const Directionality(
-            textDirection: TextDirection.rtl,
-            child: HomeScreen(),
+          home: MediaQuery(
+            // Only `disableAnimations` is read off this; layout keeps the real window.
+            data: MediaQueryData(disableAnimations: reducedMotion),
+            child: const Directionality(
+              textDirection: TextDirection.rtl,
+              child: HomeScreen(),
+            ),
           ),
         ),
       ),
     );
-    await tester.pumpAndSettle();
+    if (settle) await tester.pumpAndSettle();
   }
 
   HomeSection section(String type, {String key = 's', int sortOrder = 0}) =>
@@ -244,6 +251,66 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('عناويني'), findsOneWidget);
+    });
+  });
+
+  // The owner's complaint was that the app barely moves. The home now stitches its
+  // sections in on the published 40ms stagger — and drops it entirely for anyone who
+  // asked the OS for less motion.
+  group('the sections arrive', () {
+    const arranged = [
+      HomeSection(
+        key: 'chips',
+        type: 'categoryChips',
+        sortOrder: 0,
+        cityId: 'edku',
+      ),
+      HomeSection(
+        key: 'list',
+        type: 'merchantList',
+        sortOrder: 1,
+        cityId: 'edku',
+      ),
+    ];
+
+    // The fade the i-th top-level section is being painted at.
+    double sectionFade(WidgetTester tester, int i) {
+      final fade = find
+          .descendant(
+            of: find.byType(LuqmaEntrance).at(i),
+            matching: find.byType(FadeTransition),
+          )
+          .first;
+      return tester.widget<FadeTransition>(fade).opacity.value;
+    }
+
+    testWidgets('staggered, not all at once', (tester) async {
+      await pump(tester, sections: arranged, settle: false);
+      // Let the sections stream resolve so the entrances start, then step one stagger in.
+      await tester.pump();
+      await tester.pump(Motion.stagger);
+
+      // The first section is further into its entrance than the second — which is the
+      // whole difference between a stagger and one shared fade.
+      expect(sectionFade(tester, 0), greaterThan(sectionFade(tester, 1)));
+
+      await tester.pumpAndSettle();
+      expect(sectionFade(tester, 0), 1.0);
+      expect(sectionFade(tester, 1), 1.0);
+    });
+
+    testWidgets('all at once under reduced motion', (tester) async {
+      await pump(
+        tester,
+        sections: arranged,
+        reducedMotion: true,
+        settle: false,
+      );
+      await tester.pump();
+
+      // No pumping past a single frame: with the setting on, the sections are just there.
+      expect(sectionFade(tester, 0), 1.0);
+      expect(sectionFade(tester, 1), 1.0);
     });
   });
 }

@@ -36,7 +36,11 @@ class HomeKitchenSection extends ConsumerWidget {
           title: section.titleAr.isEmpty ? 'أكل بيتي النهارده' : section.titleAr,
         ),
         SizedBox(
-          height: 268,
+          // The image is a fixed slot; everything under it is text, so the shelf grows
+          // with the reader's type size. A constant 268 fitted the default and clipped
+          // the card at 150%, which is a setting somebody turns on because they need it.
+          height: MealCard.imageHeight +
+              MediaQuery.textScalerOf(context).scale(MealCard.textHeight),
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: Space.gutter),
@@ -57,6 +61,18 @@ class HomeKitchenSection extends ConsumerWidget {
 class MealCard extends ConsumerWidget {
   const MealCard({super.key, required this.meal});
 
+  /// 272, not the 236 it was: wide enough for the cook's name and the collection window
+  /// to sit on one line each without wrapping, the way the design has them.
+  static const width = 272.0;
+
+  /// The photograph's slot. Fixed, because an image does not grow with the type size.
+  static const imageHeight = 128.0;
+
+  /// Everything under the photograph, at the default type size. The shelf multiplies
+  /// this by the reader's scale — see [HomeKitchenSection] — so the card is not clipped
+  /// for somebody who turned the text up because they need it larger.
+  static const textHeight = 140.0;
+
   final DailyMeal meal;
 
   static Key cardKey(String id) => Key('meal.card.$id');
@@ -71,8 +87,8 @@ class MealCard extends ConsumerWidget {
     final strings = LuqmaStrings.of(context);
 
     return SizedBox(
-      width: 236,
-      child: InkWell(
+      width: MealCard.width,
+      child: LuqmaPressable(
         key: cardKey(meal.id),
         onTap: () => openMeal(
           context,
@@ -82,7 +98,6 @@ class MealCard extends ConsumerWidget {
           // the shell now reads.
           onSignIn: () => ref.read(customerTabProvider.notifier).goToAccount(),
         ),
-        borderRadius: Radii.cardAll,
         child: Container(
           decoration: BoxDecoration(
             color: colors.card,
@@ -95,12 +110,16 @@ class MealCard extends ConsumerWidget {
             children: [
               Stack(
                 children: [
-                  Container(
-                    height: 116,
-                    width: double.infinity,
-                    decoration: BoxDecoration(
-                      color: colors.surface,
-                      borderRadius: const BorderRadius.vertical(top: Radii.card),
+                  ClipRRect(
+                    borderRadius: const BorderRadius.vertical(top: Radii.card),
+                    child: SizedBox(
+                      height: MealCard.imageHeight,
+                      width: double.infinity,
+                      // The cook's photograph of today's food is the whole pitch for a
+                      // home kitchen. With none yet, `LuqmaImage` draws the tinted
+                      // monogram — which reads as "no photo" rather than as the dead grey
+                      // box that stood here before.
+                      child: LuqmaImage(url: meal.imageUrl, name: meal.name),
                     ),
                   ),
                   if (meal.isSoldOut)
@@ -109,12 +128,14 @@ class MealCard extends ConsumerWidget {
                         key: soldOutKey(meal.id),
                         decoration: BoxDecoration(
                           color: colors.scrim,
-                          borderRadius: const BorderRadius.vertical(top: Radii.card),
+                          borderRadius:
+                              const BorderRadius.vertical(top: Radii.card),
                         ),
                         alignment: Alignment.center,
                         child: Text(
                           'خلص النهارده',
-                          style: LuqmaType.bodyStrong.copyWith(color: colors.onBrand),
+                          style: LuqmaType.bodyStrong
+                              .copyWith(color: colors.onBrand),
                         ),
                       ),
                     ),
@@ -137,7 +158,8 @@ class MealCard extends ConsumerWidget {
                       // somebody cannot make is a meal they should not reserve.
                       key: windowKey(meal.id),
                       'الاستلام ${formatWindow(meal)}',
-                      style: LuqmaType.caption.copyWith(color: colors.textSecondary),
+                      style: LuqmaType.caption
+                          .copyWith(color: colors.textSecondary),
                     ),
                     const SizedBox(height: Space.sm),
                     Padding(
@@ -160,9 +182,11 @@ class MealCard extends ConsumerWidget {
                             ),
                           ),
                         ),
+                        // 18sp on a white card, so the accent clears contrast — the
+                        // design's big price, not the small one.
                         Text(
                           strings.price(meal.price),
-                          style: LuqmaType.priceSmall.copyWith(color: colors.price),
+                          style: LuqmaType.price.copyWith(color: colors.price),
                         ),
                       ],
                     ),

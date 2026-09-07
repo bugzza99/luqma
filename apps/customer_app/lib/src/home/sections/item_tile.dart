@@ -36,10 +36,9 @@ class ItemTile extends ConsumerWidget {
 
     return SizedBox(
       width: width,
-      child: InkWell(
+      child: LuqmaPressable(
         key: tileKey(item.id),
         onTap: () => openMerchant(context, item.merchantId),
-        borderRadius: Radii.cardAll,
         child: Container(
           clipBehavior: Clip.antiAlias,
           decoration: BoxDecoration(

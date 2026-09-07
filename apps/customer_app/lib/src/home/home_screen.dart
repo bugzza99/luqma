@@ -35,21 +35,41 @@ class HomeScreen extends ConsumerWidget {
             const SliverToBoxAdapter(child: SizedBox(height: Space.md + 2)),
             const SliverToBoxAdapter(child: _SearchField()),
             const SliverToBoxAdapter(child: SizedBox(height: Space.xl - 4)),
-            // Slivers. `LuqmaAsyncView` is a box widget and cannot be one of these —
-            // this is the only screen in the product that builds its states as slivers,
-            // and one exception is cheaper than a second widget nobody else would use.
-            switch (sections) {
-              // One failed read of the arrangement should not hide the search field or
-              // the bar — the customer can still look for what they wanted. It comes
-              // first and matches on `hasError`, not on the `AsyncError` type: a stream
-              // that fails before it has ever emitted stays `AsyncLoading` with the
-              // error hanging off it, so a type match never fires.
-              AsyncValue(hasError: true, :final error?) =>
-                SliverToBoxAdapter(child: LuqmaErrorView(failure: error, onRetry: () => ref.invalidate(homeSectionsProvider))),
-              AsyncValue(hasValue: true, :final value?) =>
-                _Sections(sections: value),
-              _ => const SliverToBoxAdapter(child: _Loading()),
-            },
+            SliverToBoxAdapter(
+              // The skeleton, an error and the arranged sections cross-fade into one
+              // another rather than snapping. `Motion.of` collapses the duration to zero
+              // under reduced motion, so for anybody who asked for that it is a plain
+              // swap.
+              child: AnimatedSwitcher(
+                duration: Motion.of(context, Motion.sheet),
+                switchInCurve: Motion.enter,
+                switchOutCurve: Motion.exit,
+                // Top-aligned rather than the default centre: the outgoing skeleton is
+                // short and the incoming sections are tall, and a centred overlap slides
+                // the skeleton down as it fades.
+                layoutBuilder: (currentChild, previousChildren) => Stack(
+                  alignment: AlignmentDirectional.topStart,
+                  children: [...previousChildren, ?currentChild],
+                ),
+                child: switch (sections) {
+                  // One failed read of the arrangement should not hide the search field
+                  // or the bar — the customer can still look for what they wanted. It
+                  // comes first and matches on `hasError`, not on the `AsyncError` type:
+                  // a stream that fails before it has ever emitted stays `AsyncLoading`
+                  // with the error hanging off it, so a type match never fires.
+                  AsyncValue(hasError: true, :final error?) => LuqmaErrorView(
+                      key: const ValueKey('home.error'),
+                      failure: error,
+                      onRetry: () => ref.invalidate(homeSectionsProvider),
+                    ),
+                  AsyncValue(hasValue: true, :final value?) => _Sections(
+                      key: const ValueKey('home.sections'),
+                      sections: value,
+                    ),
+                  _ => const _Loading(key: ValueKey('home.loading')),
+                },
+              ),
+            ),
             const SliverToBoxAdapter(child: SizedBox(height: Space.xl)),
           ],
         ),
@@ -59,7 +79,7 @@ class HomeScreen extends ConsumerWidget {
 }
 
 class _Sections extends StatelessWidget {
-  const _Sections({required this.sections});
+  const _Sections({super.key, required this.sections});
 
   final List<HomeSection> sections;
 
@@ -68,17 +88,25 @@ class _Sections extends StatelessWidget {
     final plan = HomeSectionRegistry.plan(sections);
 
     if (plan.isEmpty) {
-      return const SliverToBoxAdapter(child: LuqmaEmptyView(
-            key: HomeScreen.emptyKey,
-            message: 'لسه مفيش مطاعم هنا.',
-          ));
+      return const LuqmaEmptyView(
+        key: HomeScreen.emptyKey,
+        message: 'لسه مفيش مطاعم هنا.',
+      );
     }
 
-    return SliverList.separated(
-      itemCount: plan.length,
-      separatorBuilder: (_, _) => const SizedBox(height: Space.xl - 4),
-      itemBuilder: (context, i) =>
-          HomeSectionRegistry.build(plan[i]) ?? const SizedBox.shrink(),
+    return Column(
+      children: [
+        for (var i = 0; i < plan.length; i++) ...[
+          if (i > 0) const SizedBox(height: Space.xl - 4),
+          // Each section settles into place on its own short delay, capped at six so a
+          // long home still lands as an arrival rather than a wait. `LuqmaEntrance` is a
+          // no-op under reduced motion.
+          LuqmaEntrance(
+            index: i,
+            child: HomeSectionRegistry.build(plan[i]) ?? const SizedBox.shrink(),
+          ),
+        ],
+      ],
     );
   }
 }
@@ -136,7 +164,8 @@ class _HomeBar extends ConsumerWidget implements PreferredSizeWidget {
               ),
             ),
           ),
-          icon: Icon(Icons.expand_more_rounded, size: 18, color: colors.onBrand),
+          icon: Icon(Icons.expand_more_rounded,
+              size: Sizes.iconSm, color: colors.onBrand),
           label: RichText(
             text: TextSpan(
               children: [
@@ -193,25 +222,60 @@ class _SearchField extends StatelessWidget {
   }
 }
 
+/// A skeleton of the home — a pill row, a banner, then a couple of cards — so the swap to
+/// real content reads as the page arriving rather than as one layout replacing another.
 class _Loading extends StatelessWidget {
-  const _Loading();
+  const _Loading({super.key});
 
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).luqma;
+
+    Widget block(double height, {BorderRadius? radius}) => Container(
+          height: height,
+          decoration: BoxDecoration(
+            color: colors.surface,
+            borderRadius: radius ?? Radii.cardAll,
+          ),
+        );
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: Space.gutter),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          for (var i = 0; i < 3; i++) ...[
-            Container(
-              height: 74,
+          SizedBox(
+            height: Sizes.minTarget,
+            child: ListView(
+              scrollDirection: Axis.horizontal,
+              physics: const NeverScrollableScrollPhysics(),
+              children: [
+                for (var i = 0; i < 4; i++) ...[
+                  if (i > 0) const SizedBox(width: Space.sm),
+                  SizedBox(
+                    width: 72,
+                    child: Center(
+                      child: block(Space.xxl, radius: Radii.pillAll),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          const SizedBox(height: Space.xl - 4),
+          AspectRatio(
+            aspectRatio: Sizes.bannerAspect,
+            child: DecoratedBox(
               decoration: BoxDecoration(
                 color: colors.surface,
                 borderRadius: Radii.cardAll,
               ),
             ),
-            const SizedBox(height: Space.sm),
+          ),
+          const SizedBox(height: Space.xl - 4),
+          for (var i = 0; i < 2; i++) ...[
+            if (i > 0) const SizedBox(height: Space.sm),
+            block(96),
           ],
         ],
       ),

@@ -63,30 +63,28 @@ class MerchantListSection extends ConsumerWidget {
             ),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: Space.gutter),
-              // `shrinkWrap` with the scroll off: this grid sits inside the home's own
-              // scroll view, and a nested scrollable would trap the gesture — a drag
-              // starting on a shop would move the grid a pixel instead of the page.
-              child: GridView.builder(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                padding: EdgeInsets.zero,
-                gridDelegate:
-                    const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 2,
-                  mainAxisSpacing: Space.sm,
-                  crossAxisSpacing: Space.sm,
-                  childAspectRatio: 1.55,
-                ),
-                itemCount: _shown(value, inCuisine, boosted).length,
-                itemBuilder: (context, i) => LuqmaEntrance(
-                  // Indexed so the tiles arrive in order rather than all at once.
-                  // `Motion.staggerMax` caps it, so a long list still lands as an
-                  // arrival rather than a wait.
-                  index: i,
-                  child: MerchantTile(
-                    merchant: _shown(value, inCuisine, boosted)[i],
-                  ),
-                ),
+              // A column of full-width rows rather than a two-across grid. The grid fitted
+              // six shops on a screen by halving each one, which forced every tile to
+              // choose between saying what the food is and saying whether the shop is any
+              // good — and usually truncated both. A row fits the same six and has a
+              // whole line for each.
+              //
+              // Built by hand rather than with a `ListView`: this sits inside the home's
+              // own scroll view, and a nested scrollable traps the gesture — a drag
+              // starting on a shop would move the list a pixel instead of the page.
+              // `shrinkWrap` avoids that too, at the cost of laying out every child on
+              // every frame, which a `Column` of a dozen rows does not need.
+              child: Column(
+                children: [
+                  for (final (i, merchant)
+                      in _shown(value, inCuisine, boosted).indexed) ...[
+                    if (i > 0) const SizedBox(height: Space.sm + 1),
+                    // Indexed so the rows arrive in order rather than all at once.
+                    // `Motion.staggerMax` caps it, so a long list still lands as an
+                    // arrival rather than a wait.
+                    LuqmaEntrance(index: i, child: MerchantTile(merchant: merchant)),
+                  ],
+                ],
               ),
             ),
           ],

@@ -24,6 +24,24 @@ void main() {
       expect(Contrast.passesText(c.onBrand, c.brandPressed), isTrue);
     });
 
+    // The home's promotion banner puts small orange text on the brand gradient, which is
+    // the only place in the product where orange sits on a dark ground. The first
+    // implementation reached for `colors.accent` — the theme's orange — and that is the
+    // wrong one: it is `#D67F2B` in the light theme and scores 3.70:1 here, under the
+    // 4.5:1 that 12sp normal text needs. The banner's ground is brand burgundy in *both*
+    // themes, so its ink cannot be the swatch that swaps with the theme.
+    test('small orange text on the brand gradient uses the light orange', () {
+      // Both ends of the gradient, because text crosses the whole of it.
+      for (final ground in [c.brand, c.brandPressed]) {
+        expect(Contrast.passesText(LuqmaPalette.orangeLight, ground), isTrue);
+      }
+      // The one that was used. It fails on the light end and passes on the dark end —
+      // 3.70:1 on `brand`, 5.11:1 on `brandPressed` — which is the trap: checked against
+      // the darker half it looks fine, and the text runs across both.
+      expect(Contrast.passesText(LuqmaPalette.orange, c.brand), isFalse);
+      expect(Contrast.passesText(LuqmaPalette.orange, c.brandPressed), isTrue);
+    });
+
     test('an accent badge carries dark text, never white', () {
       expect(Contrast.passesText(c.onAccent, c.accent), isTrue);
       // The mistake this palette invites. Kept as a test so nobody re-introduces it.
