@@ -231,7 +231,14 @@ class _Banner extends StatelessWidget {
                     : LinearGradient(
                         begin: Alignment.topRight,
                         end: Alignment.bottomLeft,
-                        colors: [colors.brand, colors.brandPressed],
+                        // `LuqmaPalette`, not the theme's brand: this ground carries
+                        // small orange text, and the dark theme's brand is the lighter
+                        // burgundy, on which that orange scores 3.83:1 and fails. See
+                        // `LuqmaPalette.bannerTop`.
+                        colors: [
+                          LuqmaPalette.bannerTop,
+                          LuqmaPalette.bannerBottom,
+                        ],
                       ),
               ),
             ),

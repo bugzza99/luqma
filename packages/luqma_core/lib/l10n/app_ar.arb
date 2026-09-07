@@ -225,5 +225,70 @@
   "forceUpdateButton": "حدّث التطبيق",
   "@forceUpdateButton": {
     "description": "The one control on the force-update screen; opens the store listing."
+  },
+
+  "orderRef": "طلب #{number}",
+  "@orderRef": {
+    "description": "An order's short reference on the orders list. The '#' and digits are Western on purpose — the same rule as prices.",
+    "placeholders": { "number": { "type": "int" } }
+  },
+
+  "orderDayToday": "النهارده",
+  "@orderDayToday": {
+    "description": "Relative day for an order placed today, on the orders list's meta line."
+  },
+
+  "orderDayYesterday": "امبارح",
+  "@orderDayYesterday": {
+    "description": "Relative day for an order placed the day before. Colloquial, not the MSA أمس, to match the app's voice."
+  },
+
+  "orderDayMon": "الاتنين",
+  "@orderDayMon": {
+    "description": "Colloquial Egyptian weekday name for a finished order placed within the last week. intl's ar locale would give the MSA الاثنين and Arabic-Indic digits, neither of which this app uses."
+  },
+  "orderDayTue": "التلات",
+  "@orderDayTue": {},
+  "orderDayWed": "الأربع",
+  "@orderDayWed": {},
+  "orderDayThu": "الخميس",
+  "@orderDayThu": {},
+  "orderDayFri": "الجمعة",
+  "@orderDayFri": {},
+  "orderDaySat": "السبت",
+  "@orderDaySat": {},
+  "orderDaySun": "الحد",
+  "@orderDaySun": {},
+
+  "clockAm": "ص",
+  "@clockAm": {
+    "description": "Morning marker after a 12-hour time, e.g. '9:20 ص'."
+  },
+
+  "clockPm": "م",
+  "@clockPm": {
+    "description": "Afternoon/evening marker after a 12-hour time, e.g. '8:45 م'."
+  },
+
+  "orderPrepEta": "{minutes, plural, zero{بيتجهّز} one{جاهز خلال دقيقة} two{جاهز خلال دقيقتين} few{جاهز خلال {minutes} دقايق} many{جاهز خلال {minutes} دقيقة} other{جاهز خلال {minutes} دقيقة}}",
+  "@orderPrepEta": {
+    "description": "On the live order card: how long the merchant said the food needs. Deliberately a duration and not a clock time — the app has no accepted-at timestamp, so a clock time computed from placement is systematically early.",
+    "placeholders": { "minutes": { "type": "int" } }
+  },
+
+  "repeatOrderFrom": "اطلب تاني من {shop}",
+  "@repeatOrderFrom": {
+    "description": "Heading of the repeat-order card under the finished orders.",
+    "placeholders": { "shop": { "type": "String" } }
+  },
+
+  "repeatOrderSame": "شوف المنيو",
+  "@repeatOrderSame": {
+    "description": "Sits before the order total on the repeat-order card. It said 'نفس الطلب' — the same order — and the button only opens the shop: it does not restore the items and could not price them anyway, since a menu price may have moved since. The copy now describes what the control does."
+  },
+
+  "repeatOrderAction": "اطلب",
+  "@repeatOrderAction": {
+    "description": "Button on the repeat-order card. Opens the shop again."
   }
 }

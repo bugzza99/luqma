@@ -32,14 +32,44 @@ void main() {
     // themes, so its ink cannot be the swatch that swaps with the theme.
     test('small orange text on the brand gradient uses the light orange', () {
       // Both ends of the gradient, because text crosses the whole of it.
-      for (final ground in [c.brand, c.brandPressed]) {
+      for (final ground in [LuqmaPalette.bannerTop, LuqmaPalette.bannerBottom]) {
         expect(Contrast.passesText(LuqmaPalette.orangeLight, ground), isTrue);
       }
       // The one that was used. It fails on the light end and passes on the dark end —
-      // 3.70:1 on `brand`, 5.11:1 on `brandPressed` — which is the trap: checked against
-      // the darker half it looks fine, and the text runs across both.
-      expect(Contrast.passesText(LuqmaPalette.orange, c.brand), isFalse);
-      expect(Contrast.passesText(LuqmaPalette.orange, c.brandPressed), isTrue);
+      // 3.70:1 on `bannerTop`, 5.11:1 on `bannerBottom` — which is the trap: checked
+      // against the darker half it looks fine, and the text runs across both.
+      expect(Contrast.passesText(LuqmaPalette.orange, LuqmaPalette.bannerTop), isFalse);
+      expect(
+        Contrast.passesText(LuqmaPalette.orange, LuqmaPalette.bannerBottom),
+        isTrue,
+      );
+    });
+
+    // The half of the rule that the first version of this test missed, and the miss was
+    // the whole point: it lived in the light-theme group and read `c.brand`, so it proved
+    // the banner was legible in the theme it happened to check and said nothing about the
+    // other one. `LuqmaColors.dark.brand` is the *lighter* burgundy — swapped on purpose,
+    // because plain burgundy is too dark on a near-black page — and `orangeLight` scores
+    // only 3.83:1 on it. The banner was still failing in dark mode after the fix that was
+    // supposed to have fixed it.
+    //
+    // Which is why the ground is a fixed pair rather than the theme's brand, and why this
+    // assertion names the themes explicitly instead of taking whichever one the
+    // surrounding group happens to be about.
+    test('and the banner ground does not follow the theme', () {
+      for (final theme in [LuqmaColors.light, LuqmaColors.dark]) {
+        expect(
+          Contrast.passesText(LuqmaPalette.orangeLight, theme.brand),
+          theme == LuqmaColors.light,
+          reason: 'the theme brand is only safe for this text in one theme, '
+              'which is why the banner does not use it',
+        );
+      }
+      // What it uses instead is safe in both, because it is the same in both.
+      expect(Contrast.passesText(LuqmaPalette.orangeLight, LuqmaPalette.bannerTop),
+          isTrue);
+      expect(Contrast.passesText(LuqmaColors.dark.onBrand, LuqmaPalette.bannerTop),
+          isTrue);
     });
 
     test('an accent badge carries dark text, never white', () {

@@ -40,6 +40,21 @@ abstract final class LuqmaPalette {
   static const darkHairline = Color(0xFF3E2A21);
   static const darkEdge = Color(0xFF8A6A55);
 
+  /// The ground under a brand banner — the promotion slot and the live-order hero.
+  ///
+  /// **Fixed in both themes, unlike `LuqmaColors.brand`.** The dark theme swaps the brand
+  /// to [burgundyLight] because plain [burgundy] is too dark against a near-black page,
+  /// and that is right for a button. It is wrong here, because these two surfaces carry
+  /// small **orange** text: [orangeLight] scores 4.79:1 on [burgundy] and only **3.83:1**
+  /// on [burgundyLight], which fails the 4.5:1 that small text needs.
+  ///
+  /// So the ink cannot follow the theme, and neither can the ground under it. The cost is
+  /// a card that separates from the dark page at 1.76:1 rather than 2.20:1 — neither
+  /// clears 3:1, so nothing is lost that was there before, and a filled brand-coloured
+  /// card is read by its content rather than by its edge.
+  static const bannerTop = burgundy;
+  static const bannerBottom = burgundyDark;
+
   // Water, for the basemap only. Edku sits between the sea and a lake, so water is most
   // of that map and it is the one thing on it that cannot be a brand swatch: read as
   // surface, the shoreline — the most useful landmark in the city — disappears.
