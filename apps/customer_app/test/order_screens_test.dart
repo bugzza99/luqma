@@ -20,6 +20,8 @@ void main() {
     OrderStatus status = OrderStatus.placed,
     OrderType type = OrderType.instant,
     DateTime? deadline,
+    int? prepMinutes,
+    DateTime? placedAt,
   }) =>
       Order(
         id: id,
@@ -40,10 +42,24 @@ void main() {
         ),
         status: status,
         acceptDeadlineAt: deadline,
-        placedAt: DateTime(2026, 8, 20, 19, 30),
+        prepMinutes: prepMinutes,
+        placedAt: placedAt ?? DateTime(2026, 8, 20, 19, 30),
       );
 
+  /// A shop with a number on it. The order never carries one — it holds the
+  /// *customer's* phone — so calling the kitchen means having the merchant.
+  const shopWithPhone = Merchant(
+    id: 'm1',
+    cityId: 'edku',
+    type: MerchantType.restaurant,
+    name: 'مطعم الشاطئ',
+    zoneId: 'z1',
+    phone: '0123456789',
+    status: MerchantStatus.approved,
+  );
+
   late FakeOrderRepository orders;
+  late FakeExternalLinks links;
 
   /// Brings a control at the bottom of a lazily built list into the viewport.
   ///
@@ -64,8 +80,19 @@ void main() {
     List<Order> seed = const [],
     LuqmaIdentity? signedInAs = const LuqmaIdentity(uid: 'u1', name: 'أحمد'),
     Failure? failure,
+    List<Merchant> merchants = const [],
+    bool dark = false,
   }) async {
+    // A real phone, not the 800x600 test window. This screen stacks a hero, a five-step
+    // track, a bill and the order's own lines, so on a window wider than it is tall the
+    // things at the bottom — the rating, the cancel — fall outside what the `ListView`
+    // builds at all, and `findsNothing` reads as "the feature is gone".
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
     orders = FakeOrderRepository(seed: seed, failure: failure);
+    links = FakeExternalLinks();
 
     await tester.pumpWidget(
       ProviderScope(
@@ -73,11 +100,14 @@ void main() {
           authServiceProvider
               .overrideWithValue(FakeAuthService(restoring: signedInAs)),
           orderRepositoryProvider.overrideWithValue(orders),
+          merchantRepositoryProvider
+              .overrideWithValue(FakeMerchantRepository(seed: merchants)),
+          externalLinksProvider.overrideWithValue(links),
           remoteConfigServiceProvider
               .overrideWithValue(RemoteConfigService(FakeConfigFetcher({}))),
         ],
         child: MaterialApp(
-          theme: LuqmaTheme.light,
+          theme: dark ? LuqmaTheme.dark : LuqmaTheme.light,
           locale: const Locale('ar'),
           localizationsDelegates: LuqmaStrings.localizationsDelegates,
           supportedLocales: LuqmaStrings.supportedLocales,
@@ -193,6 +223,232 @@ void main() {
 
       expect(find.byKey(OrderScreen.errorKey), findsOneWidget);
     });
+  });
+
+  group('the hero says only what the order knows', () {
+    // The artboard's largest line is «هيوصلك 8:45 م». Nothing can produce it: the
+    // merchant quotes `prepMinutes` when they accept and the order stamps no
+    // `acceptedAt`, so there is nothing to add those minutes to. The stage is what the
+    // order actually knows, so the stage is what the biggest type says.
+    testWidgets('the stage is the largest thing on it, not an arrival time',
+        (tester) async {
+      await pump(tester, const OrderScreen(orderId: 'o1'),
+          seed: [order(status: OrderStatus.preparing)]);
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(OrderScreen.heroKey), findsOneWidget);
+      final stage = tester.widget<Text>(find.byKey(OrderScreen.stageKey));
+      expect(stage.style, LuqmaType.display.copyWith(color: LuqmaPalette.white));
+      final heroTexts = tester.widgetList<Text>(find.descendant(
+        of: find.byKey(OrderScreen.heroKey), matching: find.byType(Text),
+      ));
+      expect(heroTexts.map((text) => text.data),
+          ['مطعم الشاطئ', 'الطلب بيتجهز']);
+      expect(
+        find.descendant(
+          of: find.byKey(OrderScreen.heroKey),
+          matching: find.text('الطلب بيتجهز'),
+        ),
+        findsOneWidget,
+      );
+      // No invented clock time anywhere on the hero.
+      expect(find.textContaining('هيوصلك'), findsNothing);
+    });
+
+    testWidgets('the quote is attributed to the kitchen, and only when it gave one',
+        (tester) async {
+      await pump(tester, const OrderScreen(orderId: 'o1'),
+          seed: [order(status: OrderStatus.preparing, prepMinutes: 30)],
+          merchants: [shopWithPhone]);
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(OrderScreen.prepQuoteKey), findsOneWidget);
+      expect(find.text('المطعم قال هيجهز خلال 30 دقيقة'), findsOneWidget);
+    });
+
+    testWidgets('and says nothing about timing when it did not', (tester) async {
+      await pump(tester, const OrderScreen(orderId: 'o1'),
+          seed: [order(status: OrderStatus.preparing)]);
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(OrderScreen.prepQuoteKey), findsNothing);
+      expect(find.textContaining('خلال'), findsNothing);
+    });
+  });
+
+  group('the track', () {
+    // The order stamps `placedAt` and `deliveredAt` and nothing else. Acceptance,
+    // cooking and setting off carry no hour, and a plausible-looking one beside
+    // «المطعم قبل الطلب» is the sort of detail somebody repeats down the phone.
+    testWidgets('shows an hour only where the order actually stamped one',
+        (tester) async {
+      final placed = DateTime(2026, 9, 8, 20, 12);
+      await pump(tester, const OrderScreen(orderId: 'o1'),
+          seed: [order(status: OrderStatus.preparing, placedAt: placed)]);
+      await tester.pumpAndSettle();
+
+      final step = find.byKey(OrderScreen.stepKey(OrderStatus.placed));
+      expect(
+        find.descendant(of: step, matching: find.text('8:12 م')),
+        findsOneWidget,
+      );
+
+      // Accepted was passed but never stamped: no hour is invented for it.
+      final accepted = find.byKey(OrderScreen.stepKey(OrderStatus.accepted));
+      expect(find.descendant(of: accepted,
+          matching: find.byIcon(Icons.check_rounded)), findsOneWidget);
+      expect(
+        find.descendant(of: accepted, matching: find.text('—')),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('marks the step it is on as now, and the ones ahead as unknown',
+        (tester) async {
+      await pump(tester, const OrderScreen(orderId: 'o1'),
+          seed: [order(status: OrderStatus.preparing)]);
+      await tester.pumpAndSettle();
+
+      final current = find.byKey(OrderScreen.stepKey(OrderStatus.preparing));
+      expect(
+        find.descendant(of: current, matching: find.text('دلوقتي')),
+        findsOneWidget,
+      );
+
+      final ahead = find.byKey(OrderScreen.stepKey(OrderStatus.outForDelivery));
+      expect(find.descendant(of: ahead, matching: find.text('—')), findsOneWidget);
+    });
+  });
+
+  group('calling the shop', () {
+    testWidgets('is not offered when no number is known', (tester) async {
+      await pump(tester, const OrderScreen(orderId: 'o1'),
+          seed: [order(status: OrderStatus.preparing)]);
+      await tester.pumpAndSettle();
+
+      // The order carries the *customer's* phone, never the shop's. With no merchant
+      // loaded there is nothing to dial, and a button that cannot dial is worse than no
+      // button on the screen somebody opens because their food is late.
+      expect(find.byKey(OrderScreen.callMerchantKey), findsNothing);
+      // The way to complain is still there, which is the point of it being separate.
+      expect(find.byKey(OrderScreen.issueKey), findsOneWidget);
+    });
+
+    testWidgets('dials the shop, not the customer', (tester) async {
+      await pump(
+        tester,
+        const OrderScreen(orderId: 'o1'),
+        seed: [order(status: OrderStatus.preparing)],
+        merchants: [shopWithPhone],
+      );
+      await tester.pumpAndSettle();
+
+      final call = find.byKey(OrderScreen.callMerchantKey);
+      await reveal(tester, call);
+      await tester.tap(call);
+      await tester.pumpAndSettle();
+
+      expect(links.opened.single, Uri(scheme: 'tel', path: '0123456789'));
+    });
+
+    testWidgets('a refused dial shows the shop number', (tester) async {
+      await pump(tester, const OrderScreen(orderId: 'o1'),
+          seed: [order()], merchants: [shopWithPhone]);
+      links.answer = false;
+      await reveal(tester, find.byKey(OrderScreen.callMerchantKey));
+      await tester.tap(find.byKey(OrderScreen.callMerchantKey));
+      await tester.pumpAndSettle();
+      expect(find.text('مش قادرين نفتح الاتصال. الرقم: 0123456789'),
+          findsOneWidget);
+    });
+
+    testWidgets('a blank shop phone offers no call', (tester) async {
+      await pump(tester, const OrderScreen(orderId: 'o1'),
+          seed: [order()], merchants: [shopWithPhone.copyWith(phone: '   ')]);
+      await reveal(tester, find.byKey(OrderScreen.issueKey));
+      expect(find.byKey(OrderScreen.callMerchantKey), findsNothing);
+    });
+  });
+
+  testWidgets('the bill keeps both frozen discounts and the recorded total',
+      (tester) async {
+    await pump(tester, const OrderScreen(orderId: 'o1'), seed: [
+      order().copyWith(couponCode: 'SAVED', pricing: const OrderPricing(
+        subtotal: 21000, subtotalDiscount: 3000, deliveryFee: 1000,
+        deliveryDiscount: 500, total: 17700,
+      )),
+    ]);
+    await reveal(tester, find.byKey(OrderScreen.billKey));
+    // Deliberately unlike the item sum or the arithmetic of these rows: only the
+    // stored total is authoritative, even when a fixture is inconsistent.
+    expect(tester.widgetList<Text>(find.descendant(
+      of: find.byKey(OrderScreen.billKey), matching: find.byType(Text),
+    )).map((text) => text.data), [
+      'الأصناف', '210 ج', 'خصم SAVED', '− 30 ج', 'خصم التوصيل',
+      '− 5 ج', 'التوصيل', '10 ج', 'المطلوب كاش', '177 ج',
+    ]);
+  });
+
+  for (final dark in [false, true]) {
+    testWidgets('hero and passed marks have contrast, dark=$dark', (tester) async {
+      await pump(tester, const OrderScreen(orderId: 'o1'), dark: dark,
+          seed: [order(status: OrderStatus.preparing, prepMinutes: 30)],
+          merchants: [shopWithPhone]);
+      final hero = tester.widget<Container>(find.byKey(OrderScreen.heroKey));
+      final grounds = ((hero.decoration as BoxDecoration).gradient!
+          as LinearGradient).colors;
+      expect(grounds, [LuqmaPalette.bannerTop, LuqmaPalette.bannerBottom]);
+      double contrast(Color a, Color b) {
+        final x = a.computeLuminance();
+        final y = b.computeLuminance();
+        return x > y ? (x + .05) / (y + .05) : (y + .05) / (x + .05);
+      }
+      for (final text in tester.widgetList<Text>(find.descendant(
+        of: find.byKey(OrderScreen.heroKey), matching: find.byType(Text),
+      ))) {
+        for (final ground in grounds) {
+          expect(contrast(text.style!.color!, ground), greaterThanOrEqualTo(4.5));
+        }
+      }
+      final tick = tester.widget<Icon>(find.descendant(
+        of: find.byKey(OrderScreen.stepKey(OrderStatus.accepted)),
+        matching: find.byIcon(Icons.check_rounded),
+      ));
+      expect(contrast(tick.color!,
+          dark ? LuqmaColors.dark.success : LuqmaColors.light.success),
+          greaterThanOrEqualTo(3));
+      final colors = dark ? LuqmaColors.dark : LuqmaColors.light;
+      final label = tester.widget<Text>(find.descendant(
+        of: find.byKey(OrderScreen.stepKey(OrderStatus.preparing)),
+        matching: find.text('بيتجهّز'),
+      ));
+      expect(contrast(label.style!.color!, colors.card),
+          greaterThanOrEqualTo(4.5));
+      await reveal(tester, find.byKey(OrderScreen.callMerchantKey));
+      final call = tester.widget<OutlinedButton>(
+          find.byKey(OrderScreen.callMerchantKey));
+      expect(contrast(call.style!.foregroundColor!.resolve({})!, colors.background),
+          greaterThanOrEqualTo(4.5));
+    });
+  }
+
+  testWidgets('only delivery has the delivery timestamp; passed steps keep ticks',
+      (tester) async {
+    await pump(tester, const OrderScreen(orderId: 'o1'), seed: [
+      order(status: OrderStatus.delivered)
+          .copyWith(deliveredAt: DateTime(2026, 9, 8, 21, 17)),
+    ]);
+    for (final status in [OrderStatus.accepted, OrderStatus.preparing,
+        OrderStatus.outForDelivery]) {
+      final step = find.byKey(OrderScreen.stepKey(status));
+      expect(find.descendant(of: step, matching: find.text('—')), findsOneWidget);
+      expect(find.descendant(of: step, matching: find.byIcon(Icons.check_rounded)),
+          findsOneWidget);
+    }
+    expect(find.descendant(
+      of: find.byKey(OrderScreen.stepKey(OrderStatus.delivered)),
+      matching: find.text('9:17 م'),
+    ), findsOneWidget);
   });
 
   group('cancelling', () {
