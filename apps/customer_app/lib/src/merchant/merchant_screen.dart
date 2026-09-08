@@ -23,6 +23,23 @@ class MerchantScreen extends ConsumerWidget {
   static const confirmReplaceKey = Key('merchant.confirmReplace');
   static const cancelReplaceKey = Key('merchant.cancelReplace');
 
+  /// The dish photograph at the head of the item sheet.
+  static const itemImageKey = Key('merchant.itemImage');
+
+  /// The «إضافات» heading, present only when the dish has extras.
+  static const itemOptionsHeadingKey = Key('merchant.itemOptionsHeading');
+
+  /// The kitchen-note field on the item sheet.
+  static const itemNoteKey = Key('merchant.itemNote');
+
+  /// The item sheet's quantity stepper: the two controls and the number between them.
+  static const itemLessKey = Key('merchant.itemLess');
+  static const itemMoreKey = Key('merchant.itemMore');
+  static const itemQuantityKey = Key('merchant.itemQuantity');
+
+  /// One extra's row on the item sheet — the whole row, which is the tap target.
+  static Key itemOptionKey(String optionId) => Key('merchant.itemOption.$optionId');
+
   /// The cover image, so a test can read the address it was handed rather than guess
   /// among the several [LuqmaImage]s on the screen.
   static const coverKey = Key('merchant.cover');
