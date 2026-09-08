@@ -8,6 +8,7 @@ void main() {
     required bool selected,
     VoidCallback? onTap,
     bool reducedMotion = false,
+    bool dashed = false,
   }) async {
     await tester.pumpWidget(
       MaterialApp(
@@ -24,6 +25,7 @@ void main() {
                 LuqmaChip(
                   label: 'مشويات',
                   selected: selected,
+                  dashed: dashed,
                   onTap: onTap ?? () {},
                 ),
               ],
@@ -70,6 +72,19 @@ void main() {
       final colors = LuqmaTheme.light.luqma;
 
       expect(decoration(tester).color, colors.card);
+    });
+
+    testWidgets('the other-place outline is dashed only while unselected', (tester) async {
+      await pump(tester, selected: false, dashed: true);
+      final painters = find.descendant(
+        of: find.byType(LuqmaChip), matching: find.byType(CustomPaint),
+      );
+      expect(tester.widgetList<CustomPaint>(painters)
+        .where((p) => p.foregroundPainter != null), hasLength(1));
+      await pump(tester, selected: true, dashed: true);
+      expect(tester.widgetList<CustomPaint>(painters)
+        .where((p) => p.foregroundPainter != null), isEmpty);
+      expect(decoration(tester).color, LuqmaTheme.light.luqma.brand);
     });
 
     testWidgets('reports the tap', (tester) async {

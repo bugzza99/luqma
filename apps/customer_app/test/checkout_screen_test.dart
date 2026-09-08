@@ -1,4 +1,6 @@
 import 'package:customer_app/src/cart/cart.dart';
+import 'package:customer_app/src/address/address_editor_screen.dart';
+import 'package:customer_app/src/address/address_list_screen.dart';
 import 'package:customer_app/src/cart/cart_controller.dart';
 import 'package:customer_app/src/checkout/checkout_screen.dart';
 import 'package:flutter/material.dart';
@@ -116,6 +118,25 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
+  }
+
+  for (final hasAddress in [false, true]) {
+    testWidgets('checkout carries its merchant ${hasAddress ? 'through the list' : 'to the editor'}',
+        (tester) async {
+      await pump(tester, addresses: hasAddress ? const [home] : const []);
+      await tester.ensureVisible(find.byKey(CheckoutScreen.changeAddressKey));
+      await tester.tap(find.byKey(CheckoutScreen.changeAddressKey));
+      await tester.pumpAndSettle();
+      if (hasAddress) {
+        expect(tester.widget<AddressListScreen>(find.byType(AddressListScreen)).merchantId, 'm1');
+        await tester.tap(find.byKey(AddressListScreen.addKey));
+        await tester.pumpAndSettle();
+      }
+      expect(tester.widget<AddressEditorScreen>(find.byType(AddressEditorScreen)).merchantId, 'm1');
+      await tester.tap(find.text('المعمورة'));
+      await tester.pumpAndSettle();
+      expect(find.text('التوصيل للمنطقة دي: 10 ج'), findsOneWidget);
+    });
   }
 
   group('the bill', () {

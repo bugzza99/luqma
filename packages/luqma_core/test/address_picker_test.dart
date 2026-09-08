@@ -18,8 +18,9 @@ void main() {
     Landmark(id: 'l3', cityId: 'edku', zoneId: 'shatt', name: 'موقف التوك توك'),
   ];
 
-  Future<Address?> pumpPicker(WidgetTester tester, {Address? initial}) async {
-    Address? saved;
+  Future<void> pumpPicker(WidgetTester tester, {
+    Address? initial, ValueChanged<Address>? onSaved,
+  }) async {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
@@ -35,14 +36,13 @@ void main() {
           home: Scaffold(
             body: AddressPicker(
               initial: initial,
-              onSaved: (address) => saved = address,
+              onSaved: onSaved ?? (_) {},
             ),
           ),
         ),
       ),
     );
     await tester.pumpAndSettle();
-    return saved;
   }
 
   testWidgets('offers the zones the admin defined', (tester) async {
@@ -78,19 +78,29 @@ void main() {
   // must not be stuck.
   testWidgets('lets the customer name a landmark that is not on the list',
       (tester) async {
-    await pumpPicker(tester);
+    Address? saved;
+    await pumpPicker(tester, onSaved: (a) => saved = a);
     await tester.tap(find.text('المعمورة'));
     await tester.pumpAndSettle();
 
+    expect(find.byKey(AddressPicker.landmarkNoteKey), findsNothing);
     expect(find.byKey(AddressPicker.otherLandmarkKey), findsOneWidget);
 
     await tester.tap(find.byKey(AddressPicker.otherLandmarkKey));
     await tester.pumpAndSettle();
     expect(find.byKey(AddressPicker.landmarkNoteKey), findsOneWidget);
+    expect(tester.widget<LuqmaChip>(find.byKey(AddressPicker.otherLandmarkKey)).dashed,
+      isTrue);
+    await tester.enterText(find.byKey(AddressPicker.landmarkNoteKey), 'جنب المكتبة');
+    await tester.tap(find.byKey(AddressPicker.saveKey));
+    expect(saved!.landmarkNote, 'جنب المكتبة');
+    expect(saved!.landmarkId, isNull);
+    expect(saved!.landmarkName, isNull);
   });
 
   testWidgets('will not save without a zone', (tester) async {
     await pumpPicker(tester);
+    expect(find.text('اختر المنطقة'), findsOneWidget);
 
     await tester.tap(find.byKey(AddressPicker.saveKey));
     await tester.pumpAndSettle();
@@ -151,14 +161,39 @@ void main() {
     );
   });
 
-  // The fee is a property of the destination, so it is shown while the customer is still
-  // choosing rather than sprung on them at checkout.
-  testWidgets('shows the delivery fee for the chosen zone', (tester) async {
+  testWidgets('the shared form never invents a delivery quote', (tester) async {
     await pumpPicker(tester);
-
     await tester.tap(find.text('الشط'));
     await tester.pumpAndSettle();
+    expect(find.textContaining('التوصيل للمنطقة دي:'), findsNothing);
+    expect(find.textContaining('15 ج'), findsNothing);
+  });
 
-    expect(find.textContaining('15'), findsWidgets);
+  testWidgets('zone and landmark chips have full touch targets', (tester) async {
+    await pumpPicker(tester);
+    await tester.tap(find.text('المعمورة'));
+    await tester.pumpAndSettle();
+    expect(find.byType(LuqmaChip), findsNWidgets(5));
+    for (final chip in find.byType(LuqmaChip).evaluate()) {
+      final size = tester.getSize(find.byWidget(chip.widget));
+      expect(size.height, greaterThanOrEqualTo(48));
+      expect(size.width, greaterThanOrEqualTo(48));
+    }
+  });
+
+  // Choosing a zone inserts the landmark section between the zone chips and the detail
+  // fields. Unkeyed, Flutter matches the old details entrance against the new landmark
+  // one and recycles it, so every field is rebuilt from `initialValue` — which is only
+  // assigned in `onSaved` and is therefore empty. Somebody who typed their street first
+  // watched it disappear the moment they answered the question above it.
+  //
+  // Breaks if any of the three `ValueKey`s on the section entrances is removed.
+  testWidgets('what was typed survives choosing a zone above it', (tester) async {
+    await pumpPicker(tester);
+    await tester.enterText(find.byKey(AddressPicker.streetKey), 'شارع البحر');
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('المعمورة'));
+    await tester.pumpAndSettle();
+    expect(find.text('شارع البحر'), findsOneWidget);
   });
 }

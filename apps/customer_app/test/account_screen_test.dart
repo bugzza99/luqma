@@ -272,7 +272,10 @@ void main() {
       await tester.tap(find.byKey(AccountScreen.addAddressKey));
       await tester.pumpAndSettle();
       expect(find.byType(AddressEditorScreen), findsOneWidget);
-      expect(find.text('عنوان جديد'), findsOneWidget);
+      // «عنوان التوصيل» since the redesign — the artboard's copy, and the same bar
+      // whether the editor is reached from here or from checkout. Every address this app
+      // stores is somewhere a courier drives to, so one title is right for both doors.
+      expect(find.text('عنوان التوصيل'), findsOneWidget);
     });
 
     testWidgets('leads to the addresses inline', (tester) async {

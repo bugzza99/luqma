@@ -1,11 +1,12 @@
-import 'dart:typed_data';
 import 'dart:ui' as ui;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:maplibre_gl/maplibre_gl.dart';
 
 import '../theme/colors.dart';
 import '../theme/dimens.dart';
+import '../theme/typography.dart';
 import 'luqma_map_style.dart';
 
 /// Where the basemap lives.
@@ -47,23 +48,30 @@ class LuqmaMapMarker {
   final double lat;
   final double lng;
 
-  /// What this place is called, in Arabic.
-  ///
-  /// **Not drawn on the map.** A native symbol carrying `textField` makes MapLibre build
-  /// a symbol layer, and a symbol layer needs glyphs fetched over HTTP — which would put
-  /// a font server back in the path of a map hosted precisely so no third party can
-  /// switch it off. The first version of this widget set `textField` on every marker
-  /// while its own documentation claimed nothing reached for a glyph server. The two
-  /// contradicted each other, and the documentation was the one telling the truth about
-  /// the intent.
-  ///
-  /// So the map draws pins, [LuqmaMap.onMarkerTap] says which one was pressed, and the
-  /// screen renders the name in its own Arabic text. The label has a reader; it is simply
-  /// not the map renderer.
+  /// Rasterised with the pin when labels are requested, so Arabic needs no glyph server.
   final String label;
 
   /// The one this screen is about: the address being confirmed, the delivery being made.
   final bool emphasised;
+
+  /// Value equality, because [LuqmaMap] uses it to decide whether to redraw.
+  ///
+  /// Callers build this list inside `build` — the address editor derives it from the
+  /// landmarks of whichever zone is selected — so a fresh list arrives on every frame and
+  /// an identity check is false every time. Redrawing means rasterising a pin and a
+  /// labelled pin per marker and handing each to the native renderer, so without this the
+  /// map re-rendered itself on every keystroke in the street field.
+  @override
+  bool operator ==(Object other) =>
+      other is LuqmaMapMarker &&
+      other.id == id &&
+      other.lat == lat &&
+      other.lng == lng &&
+      other.label == label &&
+      other.emphasised == emphasised;
+
+  @override
+  int get hashCode => Object.hash(id, lat, lng, label, emphasised);
 }
 
 /// The branded map, with Luqma's own places on top of it.
@@ -77,10 +85,11 @@ class LuqmaMap extends StatefulWidget {
     super.key,
     this.markers = const [],
     this.initialCentre,
-    this.initialZoom = 13,
+    this.initialZoom = _defaultZoom,
     this.onTap,
     this.onMarkerTap,
     this.height,
+    this.showLabels = false,
   });
 
   final List<LuqmaMapMarker> markers;
@@ -92,11 +101,40 @@ class LuqmaMap extends StatefulWidget {
   /// a pin.
   final void Function(double lat, double lng)? onTap;
 
-  /// Called with the marker somebody pressed. How a name reaches the screen, since the
-  /// map deliberately draws no text of its own.
+  /// Lets a screen expand a landmark into more detail without choosing a destination.
   final void Function(LuqmaMapMarker marker)? onMarkerTap;
 
   final double? height;
+
+  /// The label bitmap, for test.
+  ///
+  /// This is the one half of the map a `flutter test` can actually judge. Everything past
+  /// it belongs to the plugin: a widget test has no native view, and a double that drives
+  /// `MapLibreMapController` ends up asserting against MapLibre's internals rather than
+  /// against this product — it hangs inside the plugin's own `addSymbol`, which says
+  /// nothing about whether a customer can read a landmark's name.
+  ///
+  /// Same reasoning as `ImageCompressor`: keep the part whose output is a decision in
+  /// pure Dart, so it is provable here rather than only observable on a handset.
+  @visibleForTesting
+  static Future<Uint8List> labelledPinForTest(
+    LuqmaMapMarker marker,
+    LuqmaColors colors,
+    TextScaler textScaler,
+  ) =>
+      _LuqmaMapState._labelledPin(marker, colors, textScaler);
+
+  /// The bare pin, for the comparison that gives [labelledPinForTest] its meaning.
+  @visibleForTesting
+  static Future<Uint8List> pinForTest(Color colour) => _LuqmaMapState._pinImage(colour);
+
+  final bool showLabels;
+
+  static const _defaultZoom = 13.0;
+  static const _minZoom = 11.0;
+  static const _maxZoom = 18.0;
+  static const _edge = 0.0;
+  static const _attributionOpacity = .82;
 
   @override
   State<LuqmaMap> createState() => _LuqmaMapState();
@@ -111,6 +149,7 @@ class _LuqmaMapState extends State<LuqmaMap> {
   /// annotation manager exists. A widget update landing between those two moments used to
   /// start drawing anyway, which is an unhandled async error rather than a missing pin.
   bool _styleReady = false;
+  bool _failed = false;
 
   /// Serialises redraws.
   ///
@@ -133,18 +172,22 @@ class _LuqmaMapState extends State<LuqmaMap> {
         borderRadius: Radii.cardAll,
         child: Stack(
           children: [
-            MapLibreMap(
+            if (_failed)
+              Center(child: Text('الخريطة مش متاحة دلوقتي',
+                style: LuqmaType.bodySmall.copyWith(color: colors.textSecondary)))
+            else MapLibreMap(
               styleString: luqmaMapStyle(
                 colors: colors,
                 pmtilesUrl: luqmaBasemapUrl,
                 dark: dark,
               ),
               initialCameraPosition: CameraPosition(
-                target: widget.initialCentre ?? luqmaCityCentre,
+                target: widget.initialCentre ?? (widget.markers.isEmpty ? luqmaCityCentre
+                    : LatLng(widget.markers.first.lat, widget.markers.first.lng)),
                 zoom: widget.initialZoom,
               ),
               cameraTargetBounds: CameraTargetBounds(luqmaCityBounds),
-              minMaxZoomPreference: const MinMaxZoomPreference(11, 18),
+              minMaxZoomPreference: const MinMaxZoomPreference(LuqmaMap._minZoom, LuqmaMap._maxZoom),
               // Nothing here needs a compass, a scale bar or the platform's own
               // attribution chrome: the map is a panel inside a screen, and every control
               // it draws is one more thing between somebody and the address they came for.
@@ -166,23 +209,23 @@ class _LuqmaMapState extends State<LuqmaMap> {
             // price of a map needing no key, no account and no card. Drawn rather than
             // left to the platform button so it is legible against the brand ground.
             Positioned(
-              bottom: 0,
-              left: 0,
+              bottom: LuqmaMap._edge,
+              left: LuqmaMap._edge,
               child: DecoratedBox(
                 decoration: BoxDecoration(
-                  color: colors.card.withValues(alpha: .82),
+                  color: colors.card.withValues(alpha: LuqmaMap._attributionOpacity),
                   borderRadius: const BorderRadius.only(
-                    topRight: Radius.circular(6),
+                    topRight: Radii.field,
                   ),
                 ),
                 child: Padding(
                   padding: const EdgeInsets.symmetric(
                     horizontal: Space.xs,
-                    vertical: 2,
+                    vertical: Space.xs,
                   ),
                   child: Text(
                     '© OpenStreetMap',
-                    style: TextStyle(fontSize: 10, color: colors.textSecondary),
+                    style: LuqmaType.caption.copyWith(color: colors.textSecondary),
                   ),
                 ),
               ),
@@ -196,7 +239,9 @@ class _LuqmaMapState extends State<LuqmaMap> {
   @override
   void didUpdateWidget(LuqmaMap old) {
     super.didUpdateWidget(old);
-    if (!identical(old.markers, widget.markers)) _redraw();
+    // By value, not by identity: see [LuqmaMapMarker.==]. `listEquals` short-circuits on
+    // identity first, so a caller that does hold its list steady pays nothing for this.
+    if (!listEquals(old.markers, widget.markers)) _redraw();
   }
 
   @override
@@ -216,12 +261,23 @@ class _LuqmaMapState extends State<LuqmaMap> {
   /// repositioned on every frame of a pan, which on a mid-range Android phone is where a
   /// map starts dropping frames. These are drawn by the native renderer with the roads.
   Future<void> _redraw() async {
+    try {
+      await _drawMarkers();
+    } catch (_) {
+      // A failed native annotation or tile-backed style is local to this optional
+      // panel. In particular, its unawaited callback must never escape as fatal.
+      if (mounted) setState(() => _failed = true);
+    }
+  }
+
+  Future<void> _drawMarkers() async {
     final controller = _controller;
     if (controller == null || !_styleReady || !mounted) return;
 
     final generation = ++_drawGeneration;
     // Read before the first await, while this context is certainly still mounted.
     final colors = Theme.of(context).luqma;
+    final textScaler = MediaQuery.textScalerOf(context);
 
     // `marker-15` used to be named here — an identifier from a sprite sheet this style
     // does not declare and nothing ever registered, so no pin could render at all. The
@@ -235,16 +291,35 @@ class _LuqmaMapState extends State<LuqmaMap> {
     await controller.addImage('luqma-pin-emphasised', emphasised);
     if (generation != _drawGeneration) return;
 
+    if (widget.showLabels && widget.markers.length > 1) {
+      final latitudes = widget.markers.map((m) => m.lat).toList()..sort();
+      final longitudes = widget.markers.map((m) => m.lng).toList()..sort();
+      await controller.moveCamera(CameraUpdate.newLatLngBounds(
+        LatLngBounds(
+          southwest: LatLng(latitudes.first, longitudes.first),
+          northeast: LatLng(latitudes.last, longitudes.last),
+        ),
+        left: Space.xl, right: Space.xl, top: Space.xl, bottom: Space.xl,
+      ));
+    }
+    if (generation != _drawGeneration || !mounted) return;
     await controller.clearSymbols();
     _bySymbolId.clear();
     if (generation != _drawGeneration) return;
 
     for (final marker in widget.markers) {
       if (generation != _drawGeneration) return;
+      final imageId = 'luqma-label-${marker.id}';
+      if (widget.showLabels) {
+        final image = await _labelledPin(marker, colors, textScaler);
+        if (generation != _drawGeneration || !mounted) return;
+        await controller.addImage(imageId, image);
+      }
       final symbol = await controller.addSymbol(
         SymbolOptions(
           geometry: LatLng(marker.lat, marker.lng),
-          iconImage: marker.emphasised ? 'luqma-pin-emphasised' : 'luqma-pin',
+          iconImage: widget.showLabels ? imageId
+              : marker.emphasised ? 'luqma-pin-emphasised' : 'luqma-pin',
           iconSize: 1,
           // Anchored at its point rather than centred on it: a pin whose middle sits on
           // the destination is a pin aiming half a street away.
@@ -259,6 +334,39 @@ class _LuqmaMapState extends State<LuqmaMap> {
       if (generation != _drawGeneration) return;
       _bySymbolId[symbol.id] = marker;
     }
+  }
+
+  // Baking text into the marker keeps the label attached to its actual coordinate
+  // during a pan, without introducing a remotely hosted Arabic font dependency.
+  static Future<Uint8List> _labelledPin(
+    LuqmaMapMarker marker, LuqmaColors colors, TextScaler textScaler,
+  ) async {
+    final text = TextPainter(
+      text: TextSpan(text: marker.label,
+        style: LuqmaType.caption.copyWith(color: colors.textPrimary)),
+      textDirection: TextDirection.rtl,
+      textScaler: textScaler,
+    )..layout();
+    final width = text.width + Space.lg;
+    final labelHeight = text.height + Space.sm;
+    final height = labelHeight + Sizes.iconSm;
+    final recorder = ui.PictureRecorder();
+    final canvas = Canvas(recorder);
+    canvas.drawRRect(Radii.fieldAll.toRRect(Rect.fromLTWH(0, 0, width, labelHeight)),
+      Paint()..color = colors.card);
+    text.paint(canvas, const Offset(Space.sm, Space.xs));
+    canvas.drawPath(Path()
+      ..moveTo(width / 2 - Space.xs, labelHeight)
+      ..lineTo(width / 2, height)
+      ..lineTo(width / 2 + Space.xs, labelHeight)
+      ..close(), Paint()..color = colors.brand);
+    final picture = recorder.endRecording();
+    final image = await picture.toImage(width.ceil(), height.ceil());
+    final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
+    image.dispose();
+    picture.dispose();
+    text.dispose();
+    return bytes!.buffer.asUint8List();
   }
 
   /// A teardrop pin, as PNG bytes.

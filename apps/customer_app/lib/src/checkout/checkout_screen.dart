@@ -286,7 +286,8 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
                   ),
                   const SizedBox(height: Space.lg),
                 ],
-                _AddressCard(address: address, zoneName: zone?.name),
+                _AddressCard(address: address, zoneName: zone?.name,
+                  merchantId: cart.merchantId),
                 if (address == null) ...[
                   const SizedBox(height: Space.md),
                   LuqmaNotice(
@@ -397,7 +398,10 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
 }
 
 class _AddressCard extends StatelessWidget {
-  const _AddressCard({required this.address, required this.zoneName});
+  const _AddressCard({required this.address, required this.zoneName,
+    required this.merchantId});
+
+  final String? merchantId;
 
   final Address? address;
   final String? zoneName;
@@ -440,8 +444,8 @@ class _AddressCard extends StatelessWidget {
             onPressed: () => Navigator.of(context).push(
               MaterialPageRoute<void>(
                 builder: (_) => address == null
-                    ? const AddressEditorScreen()
-                    : const AddressListScreen(),
+                    ? AddressEditorScreen(merchantId: merchantId)
+                    : AddressListScreen(merchantId: merchantId),
               ),
             ),
             child: Text(address == null ? 'ضيف' : 'غيّر'),

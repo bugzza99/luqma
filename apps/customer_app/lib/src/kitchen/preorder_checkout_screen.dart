@@ -181,7 +181,11 @@ class _PreorderCheckoutScreenState extends ConsumerState<PreorderCheckoutScreen>
                 _Collection(meal: meal),
                 if (_needsAddress) ...[
                   const SizedBox(height: Space.lg),
-                  _AddressCard(address: address, zoneName: zone?.name),
+                  _AddressCard(
+                    address: address,
+                    zoneName: zone?.name,
+                    merchantId: widget.meal.merchantId,
+                  ),
                   if (address == null) ...[
                     const SizedBox(height: Space.md),
                     LuqmaNotice(
@@ -353,10 +357,23 @@ class _Collection extends StatelessWidget {
 }
 
 class _AddressCard extends StatelessWidget {
-  const _AddressCard({required this.address, required this.zoneName});
+  const _AddressCard({
+    required this.address,
+    required this.zoneName,
+    required this.merchantId,
+  });
 
   final Address? address;
   final String? zoneName;
+
+  /// The cook, carried down so the address screens can quote this meal's delivery and
+  /// refuse a zone the kitchen does not reach. It was the fourth door into that flow and
+  /// the only one that opened it blind — so a pre-order was the one path where somebody
+  /// could save an address the kitchen cannot deliver to and find out from the refusal.
+  ///
+  /// Never null here: this card is built only inside the `_needsAddress` branch, which is
+  /// exactly the case where a courier is carrying it.
+  final String merchantId;
 
   @override
   Widget build(BuildContext context) {
@@ -382,7 +399,9 @@ class _AddressCard extends StatelessWidget {
           ),
           TextButton(
             onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute<void>(builder: (_) => const AddressListScreen()),
+              MaterialPageRoute<void>(
+                builder: (_) => AddressListScreen(merchantId: merchantId),
+              ),
             ),
             child: Text(address == null ? 'ضيف' : 'غيّر'),
           ),

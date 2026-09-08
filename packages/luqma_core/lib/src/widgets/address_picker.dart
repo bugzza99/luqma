@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../l10n/money.dart';
+import '../theme/motion.dart';
+import 'chip.dart';
+import 'entrance.dart';
 import '../models/geography.dart';
 import '../providers/providers.dart';
 import '../theme/colors.dart';
@@ -16,13 +18,30 @@ import '../l10n/app_localizations.dart';
 /// also does two jobs beyond addressing — it prices the delivery and bounds which
 /// merchants can take the order — which is why it is asked first and never optional.
 ///
-/// Shared by CustomerApp and AdminApp; an address entered on the owner's phone during
-/// onboarding is the same shape as one a customer types.
+/// Written to be shared by CustomerApp and AdminApp, so an address entered on the owner's
+/// phone during onboarding is the same shape as one a customer types. **AdminApp does not
+/// use it** — as of 2026-09-08 the only caller in the workspace is the customer's address
+/// editor. The sentence stood for phases as a description of the product rather than of
+/// the code, and it is worth knowing which it is before changing anything here on the
+/// belief that two apps depend on it.
 class AddressPicker extends ConsumerStatefulWidget {
-  const AddressPicker({super.key, this.initial, required this.onSaved});
+  const AddressPicker({
+    super.key,
+    this.initial,
+    required this.onSaved,
+    this.afterZone,
+    this.afterDetails,
+    this.saving = false,
+  });
 
   final Address? initial;
   final ValueChanged<Address> onSaved;
+
+  // Slots keep customer-only context out of a form also used during onboarding.
+  final Widget Function(Zone? zone)? afterZone;
+  final Widget Function(Zone? zone)? afterDetails;
+  final bool saving;
+  static const fieldHeight = 50.0;
 
   static const saveKey = Key('address.save');
   static const buildingKey = Key('address.building');
@@ -98,130 +117,184 @@ class _AddressPickerState extends ConsumerState<AddressPicker> {
 
     return Form(
       key: _formKey,
-      child: ListView(
-        padding: const EdgeInsets.all(Space.gutter),
+      child: Column(
         children: [
-          _SectionLabel(text: strings.addressZone),
-          const SizedBox(height: Space.sm),
-          Wrap(
-            spacing: Space.sm,
-            runSpacing: Space.sm,
-            children: [
-              for (final z in zones)
-                ChoiceChip(
-                  label: Text(z.name),
-                  selected: _zoneId == z.id,
-                  onSelected: (_) => setState(() {
-                    _zoneId = z.id;
-                    // A landmark only means anything inside its own zone.
-                    _landmarkId = null;
-                    _namingOwnLandmark = false;
-                  }),
-                ),
-            ],
-          ),
-          if (_zoneId == null) ...[
-            const SizedBox(height: Space.sm),
-            Text(
-              strings.addressZoneRequired,
-              style: theme.textTheme.bodySmall?.copyWith(color: colors.danger),
-            ),
-          ],
-          if (zone != null) ...[
-            const SizedBox(height: Space.md),
-            _DeliveryFeeNote(zone: zone, strings: strings),
-          ],
-
-          if (_zoneId != null) ...[
-            const SizedBox(height: Space.xl),
-            _SectionLabel(text: strings.addressLandmark),
-            const SizedBox(height: Space.sm),
-            Wrap(
-              spacing: Space.sm,
-              runSpacing: Space.sm,
-              children: [
-                for (final l in landmarks)
-                  ChoiceChip(
-                    label: Text(l.name),
-                    selected: !_namingOwnLandmark && _landmarkId == l.id,
-                    onSelected: (_) => setState(() {
-                      _landmarkId = l.id;
-                      _namingOwnLandmark = false;
-                    }),
+          Expanded(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(Space.gutter),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // Keyed, all three, and not for the usual list reason. Choosing a
+                  // zone inserts the landmark section *between* this one and the
+                  // details, so without keys Flutter matches the old details entrance
+                  // against the new landmark one and recycles it — which rebuilds every
+                  // detail field from `initialValue`, and those are only assigned in
+                  // `onSaved`. A customer who typed their street before picking a zone
+                  // watched all four fields go blank with nothing said.
+                  LuqmaEntrance(
+                    key: const ValueKey('address.zone'),
+                    index: 0,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _SectionLabel(text: strings.addressZone),
+                        const SizedBox(height: Space.sm),
+                        Wrap(
+                          spacing: Space.sm,
+                          runSpacing: Space.sm,
+                          children: [
+                            for (final z in zones)
+                              LuqmaChip(
+                                label: z.name,
+                                selected: _zoneId == z.id,
+                                onTap: () => setState(() {
+                                  _zoneId = z.id;
+                                  // A landmark only means anything inside its own zone.
+                                  _landmarkId = null;
+                                  _namingOwnLandmark = false;
+                                }),
+                              ),
+                          ],
+                        ),
+                        if (_zoneId == null) ...[
+                          const SizedBox(height: Space.sm),
+                          Text(
+                            strings.addressZoneRequired,
+                            style: theme.textTheme.bodySmall
+                                ?.copyWith(color: colors.danger),
+                          ),
+                        ],
+                      ],
+                    ),
                   ),
-                // The admin's list will never be complete, and a customer whose landmark
-                // is missing must not be stuck at this step.
-                ChoiceChip(
-                  key: AddressPicker.otherLandmarkKey,
-                  label: Text(strings.addressOtherLandmark),
-                  selected: _namingOwnLandmark,
-                  onSelected: (_) => setState(() {
-                    _namingOwnLandmark = true;
-                    _landmarkId = null;
-                  }),
-                ),
-              ],
+                  if (widget.afterZone != null) widget.afterZone!(zone),
+                  if (_zoneId != null) ...[
+                    const SizedBox(height: Space.xl),
+                    LuqmaEntrance(
+                      key: const ValueKey('address.landmark'),
+                      index: 1,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _SectionLabel(text: strings.addressLandmark),
+                          const SizedBox(height: Space.sm),
+                          Wrap(
+                            spacing: Space.sm,
+                            runSpacing: Space.sm,
+                            children: [
+                              for (final l in landmarks)
+                                LuqmaChip(
+                                  label: l.name,
+                                  selected: !_namingOwnLandmark && _landmarkId == l.id,
+                                  onTap: () => setState(() {
+                                    _landmarkId = l.id;
+                                    _namingOwnLandmark = false;
+                                  }),
+                                ),
+                              // The admin's list cannot cover every customer's landmark.
+                              LuqmaChip(
+                                key: AddressPicker.otherLandmarkKey,
+                                label: strings.addressOtherLandmark,
+                                dashed: true,
+                                selected: _namingOwnLandmark,
+                                onTap: () => setState(() {
+                                  _namingOwnLandmark = true;
+                                  _landmarkId = null;
+                                }),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                    AnimatedSize(
+                      duration: Motion.of(context, Motion.quick),
+                      curve: Motion.enter,
+                      alignment: Alignment.topCenter,
+                      child: _namingOwnLandmark
+                          ? Padding(
+                              padding: const EdgeInsets.only(top: Space.md),
+                              child: TextFormField(
+                                key: AddressPicker.landmarkNoteKey,
+                                initialValue: _landmarkNote,
+                                decoration: InputDecoration(
+                                  labelText: strings.addressLandmarkHint,
+                                  constraints: const BoxConstraints(
+                                    minHeight: AddressPicker.fieldHeight,
+                                  ),
+                                ),
+                                onChanged: (v) => _landmarkNote = v,
+                                onSaved: (v) => _landmarkNote = v,
+                              ),
+                            )
+                          : const SizedBox.shrink(),
+                    ),
+                  ],
+                  const SizedBox(height: Space.xl),
+                  LuqmaEntrance(
+                    key: const ValueKey('address.detail'),
+                    index: 2,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        _SectionLabel(text: strings.addressDetail),
+                        const SizedBox(height: Space.sm),
+                        _field(AddressPicker.streetKey, strings.addressStreet,
+                          _street, (v) => _street = v),
+                        const SizedBox(height: Space.md),
+                        Row(
+                          children: [
+                            Expanded(child: _field(AddressPicker.buildingKey,
+                              strings.addressBuilding, _building, (v) => _building = v)),
+                            const SizedBox(width: Space.md),
+                            Expanded(child: _field(AddressPicker.floorKey,
+                              strings.addressFloor, _floor, (v) => _floor = v)),
+                            const SizedBox(width: Space.md),
+                            Expanded(child: _field(AddressPicker.apartmentKey,
+                              strings.addressApartment, _apartment, (v) => _apartment = v)),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (widget.afterDetails != null) widget.afterDetails!(zone),
+                ],
+              ),
             ),
-            if (_namingOwnLandmark) ...[
-              const SizedBox(height: Space.md),
-              TextFormField(
-                key: AddressPicker.landmarkNoteKey,
-                initialValue: _landmarkNote,
-                decoration: InputDecoration(hintText: strings.addressLandmarkHint),
-                onSaved: (v) => _landmarkNote = v,
-              ),
-            ],
-          ],
-
-          const SizedBox(height: Space.xl),
-          _SectionLabel(text: strings.addressDetail),
-          const SizedBox(height: Space.sm),
-          TextFormField(
-            key: AddressPicker.streetKey,
-            initialValue: _street,
-            decoration: InputDecoration(labelText: strings.addressStreet),
-            onSaved: (v) => _street = v,
           ),
-          const SizedBox(height: Space.md),
-          Row(
-            children: [
-              Expanded(
-                child: TextFormField(
-                  key: AddressPicker.buildingKey,
-                  initialValue: _building,
-                  decoration: InputDecoration(labelText: strings.addressBuilding),
-                  onSaved: (v) => _building = v,
+          Container(
+            decoration: BoxDecoration(
+              color: colors.card,
+              border: Border(top: BorderSide(color: colors.hairline)),
+            ),
+            padding: const EdgeInsets.all(Space.gutter),
+            child: SafeArea(
+              top: false,
+              child: SizedBox(
+                width: double.infinity,
+                child: FilledButton(
+                  key: AddressPicker.saveKey,
+                  onPressed: widget.saving ? null : () => _save(allLandmarks),
+                  child: Text(strings.addressSave),
                 ),
               ),
-              const SizedBox(width: Space.md),
-              Expanded(
-                child: TextFormField(
-                  key: AddressPicker.floorKey,
-                  initialValue: _floor,
-                  decoration: InputDecoration(labelText: strings.addressFloor),
-                  onSaved: (v) => _floor = v,
-                ),
-              ),
-              const SizedBox(width: Space.md),
-              Expanded(
-                child: TextFormField(
-                  key: AddressPicker.apartmentKey,
-                  initialValue: _apartment,
-                  decoration: InputDecoration(labelText: strings.addressApartment),
-                  onSaved: (v) => _apartment = v,
-                ),
-              ),
-            ],
-          ),
-
-          const SizedBox(height: Space.xl),
-          FilledButton(
-            key: AddressPicker.saveKey,
-            onPressed: () => _save(allLandmarks),
-            child: Text(strings.addressSave),
+            ),
           ),
         ],
       ),
+    );
+  }
+
+  Widget _field(Key key, String label, String? initial, FormFieldSetter<String> save) {
+    return TextFormField(
+      key: key,
+      initialValue: initial,
+      decoration: InputDecoration(
+        constraints: const BoxConstraints(minHeight: AddressPicker.fieldHeight),
+        labelText: label,
+      ),
+      onSaved: save,
     );
   }
 }
@@ -234,35 +307,5 @@ class _SectionLabel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Text(text, style: Theme.of(context).textTheme.titleMedium);
-  }
-}
-
-/// Shows what delivery to this zone costs, while the customer is still choosing.
-///
-/// The fee belongs to the destination, so springing it on someone at checkout — after
-/// they have built a basket — is the moment they abandon the order.
-class _DeliveryFeeNote extends StatelessWidget {
-  const _DeliveryFeeNote({required this.zone, required this.strings});
-
-  final Zone zone;
-  final LuqmaStrings strings;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = Theme.of(context).luqma;
-    return Container(
-      padding: const EdgeInsets.symmetric(
-        horizontal: Space.md,
-        vertical: Space.sm,
-      ),
-      decoration: BoxDecoration(
-        color: colors.surface,
-        borderRadius: Radii.fieldAll,
-      ),
-      child: Text(
-        '${strings.addressDeliveryFee} ${strings.price(zone.defaultDeliveryFee)}',
-        style: Theme.of(context).textTheme.bodySmall?.copyWith(color: colors.price),
-      ),
-    );
   }
 }
