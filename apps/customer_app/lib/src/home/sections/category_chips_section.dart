@@ -40,7 +40,7 @@ class CategoryChipsSection extends ConsumerWidget {
           separatorBuilder: (_, _) => const SizedBox(width: Space.sm),
           itemBuilder: (context, i) {
             if (i == 0) {
-              return _Chip(
+              return LuqmaChip(
                 key: CategoryChipsSection.allChipKey,
                 label: 'الكل',
                 selected: selected == null,
@@ -49,7 +49,7 @@ class CategoryChipsSection extends ConsumerWidget {
               );
             }
             final cuisine = value[i - 1];
-            return _Chip(
+            return LuqmaChip(
               key: ValueKey('cuisine.${cuisine.id}'),
               label: cuisine.name,
               selected: cuisine.id == selected,
@@ -62,69 +62,6 @@ class CategoryChipsSection extends ConsumerWidget {
     );
   }
 }
-
-/// One pill.
-///
-/// Selecting animates the fill and the ink rather than rebuilding into place —
-/// `AnimatedContainer` and `AnimatedDefaultTextStyle` over `Motion.quick`, which
-/// `Motion.of` drops to zero under reduced motion so the change simply appears.
-class _Chip extends StatelessWidget {
-  const _Chip({
-    super.key,
-    required this.label,
-    required this.selected,
-    required this.onTap,
-  });
-
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colors = theme.luqma;
-    final duration = Motion.of(context, Motion.quick);
-
-    return LuqmaPressable(
-      onTap: onTap,
-      selected: selected,
-      // The pill is shorter than the row it sits in; the row height carries the touch
-      // target, so a thin pill is still 48 tall to the finger.
-      child: Center(
-        widthFactor: 1,
-        child: AnimatedContainer(
-          duration: duration,
-          curve: Motion.emphasis,
-          padding: const EdgeInsets.symmetric(
-            horizontal: Space.lg,
-            vertical: Space.sm,
-          ),
-          decoration: BoxDecoration(
-            // Burgundy, not the accent. Orange is reserved for prices, offers and
-            // ratings — the moment it also means "selected" it stops meaning value
-            // anywhere, and every price on every screen loses its pull.
-            color: selected ? colors.brand : colors.card,
-            borderRadius: Radii.pillAll,
-            border: Border.all(
-              color: selected ? colors.brand : colors.border,
-            ),
-          ),
-          child: AnimatedDefaultTextStyle(
-            duration: duration,
-            curve: Motion.emphasis,
-            style: theme.textTheme.bodySmall!.copyWith(
-              color: selected ? colors.onBrand : colors.textSecondary,
-              fontWeight: selected ? FontWeight.w700 : FontWeight.w400,
-            ),
-            child: Text(label, maxLines: 1),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 class _Skeleton extends StatelessWidget {
   const _Skeleton();
 

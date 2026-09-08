@@ -38,6 +38,25 @@ void main() {
     test('many', () => expect(s.minutes(25), '25 دقيقة'));
   });
 
+  group('ratings behind a merchant average', () {
+    test('none', () => expect(s.ratingsCount(0), 'مفيش تقييمات'));
+    test('one', () => expect(s.ratingsCount(1), 'تقييم واحد'));
+    test('two', () => expect(s.ratingsCount(2), 'تقييمين'));
+    test('a few', () => expect(s.ratingsCount(7), '7 تقييمات'));
+    test('a few, upper end', () => expect(s.ratingsCount(10), '10 تقييمات'));
+    test('many', () => expect(s.ratingsCount(38), '38 تقييم'));
+    test('a round hundred', () => expect(s.ratingsCount(100), '100 تقييم'));
+  });
+
+  group('distinct things in the basket', () {
+    test('none', () => expect(s.itemCount(0), 'مفيش أصناف'));
+    test('one', () => expect(s.itemCount(1), 'صنف واحد'));
+    // The artboard writes "2 صنف"; two of anything in Arabic is a dual, not a bare count.
+    test('two', () => expect(s.itemCount(2), 'صنفين'));
+    test('a few', () => expect(s.itemCount(3), '3 أصناف'));
+    test('many', () => expect(s.itemCount(11), '11 صنف'));
+  });
+
   group('money reads as people say it', () {
     // Prices are stored in piastres and shown in pounds, with Western numerals.
     test('a whole number of pounds drops the piastres', () {
