@@ -146,7 +146,8 @@ class _LiveSection extends StatelessWidget {
         sizeFactor: animation,
         // Anchored at the top, so the shelf folds up into the app bar rather than
         // collapsing toward its own middle and dragging the list under it both ways.
-        axisAlignment: -1,
+        // `alignment`, not the deprecated `axisAlignment`: same anchor, both axes.
+        alignment: Alignment.topCenter,
         child: FadeTransition(opacity: animation, child: child),
       ),
       // Both children are laid out top-aligned while they cross over; the default centres
