@@ -631,6 +631,13 @@ DATABASE_URL=<luqma-test session pooler> npm --prefix supabase run test:stack
 - Cards are **white with a soft shadow**, never `Surface #E5D3C1` — it is invisible on cream.
 - No colour is written in a screen. Everything comes from tokens in `luqma_core`.
 - Minimum body text is **15sp**, not 14. Arabic loses legibility faster than Latin.
+  **`bodySmall` is 13sp and is used ~80 times across the three apps** — merchant and dish
+  descriptions, secondary rows — so the published rule and the token set disagree, and
+  have since Phase 0. Deferred deliberately on 2026-09-08 rather than settled inside a
+  screen commit: raising one token repaints 42 screens, and the narrow cards are where it
+  would clip. Decide it once the redesign is finished, and decide it in one place — either
+  the token moves or the rule says 13sp is for secondary text, which is what the code
+  already does.
 - Minimum touch target 48×48dp with 8dp between targets.
 - Every uploaded image becomes a `media` document and is invisible until an admin approves it.
   There is no second path for images.
