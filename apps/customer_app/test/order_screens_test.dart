@@ -266,6 +266,28 @@ void main() {
       expect(find.text('المطعم قال هيجهز خلال 30 دقيقة'), findsOneWidget);
     });
 
+    // Found on a handset, not in this suite: an order that had been delivered still
+    // carried «المطعم قال هيجهز خلال ١٥ دقيقة» under «الطلب اتسلّم». The quote is about
+    // food becoming ready, and once it has been carried to a door that has happened —
+    // so on a finished order it is a sentence about the future written under a past
+    // tense, and the guard was on the quote existing rather than on it still meaning
+    // anything.
+    testWidgets('and stops quoting once the food is past being prepared', (tester) async {
+      for (final status in [
+        OrderStatus.outForDelivery,
+        OrderStatus.delivered,
+        OrderStatus.cancelled,
+      ]) {
+        await pump(tester, const OrderScreen(orderId: 'o1'),
+            seed: [order(status: status, prepMinutes: 15)],
+            merchants: [shopWithPhone]);
+        await tester.pumpAndSettle();
+
+        expect(find.byKey(OrderScreen.prepQuoteKey), findsNothing,
+            reason: 'a $status order is not still being prepared');
+      }
+    });
+
     testWidgets('and says nothing about timing when it did not', (tester) async {
       await pump(tester, const OrderScreen(orderId: 'o1'),
           seed: [order(status: OrderStatus.preparing)]);

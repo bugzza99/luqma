@@ -294,6 +294,13 @@ class _Card extends StatelessWidget {
 class _Hero extends StatelessWidget {
   const _Hero({required this.order, required this.zoneName});
 
+  /// The stages where a kitchen's estimate is still a statement about the future.
+  static const _quotable = {
+    OrderStatus.placed,
+    OrderStatus.accepted,
+    OrderStatus.preparing,
+  };
+
   final Order order;
   final String? zoneName;
 
@@ -347,7 +354,11 @@ class _Hero extends StatelessWidget {
             key: OrderScreen.stageKey,
             style: LuqmaType.display.copyWith(color: LuqmaPalette.white),
           ),
-          if (order.prepMinutes != null) ...[
+          // Only while it can still be true. The quote is about food becoming ready, so
+          // once the courier has it the readiness has happened and the sentence is about
+          // a moment that has passed — which is how a delivered order came to say
+          // «هيجهز خلال ١٥ دقيقة» under «الطلب اتسلّم» on a real handset.
+          if (order.prepMinutes != null && _quotable.contains(order.status)) ...[
             const SizedBox(height: Space.xs),
             Text(
               // Attributed on purpose. «المطعم قال» is a quote with an author; «هيوصلك»
