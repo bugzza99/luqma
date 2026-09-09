@@ -42,6 +42,9 @@ class AccountScreen extends ConsumerWidget {
   static const confirmDeleteAccountKey = Key('account.confirmDeleteAccount');
   static const deleteAccountErrorKey = Key('account.deleteAccountError');
   static const marketingKey = Key('account.marketing');
+  static const appearanceKey = Key('account.appearance');
+  static Key appearanceOptionKey(ThemeMode mode) =>
+      Key('account.appearance.${mode.name}');
   static const addressesKey = Key('account.addresses');
   static const contactKey = Key('account.contact');
   static const aboutKey = Key('account.about');
@@ -689,7 +692,76 @@ class _OffersRowState extends ConsumerState<_OffersRow> {
           ),
           title: const Text('عروض وخصومات'),
         ),
+        const _HairlineDivider(),
+        const _Appearance(),
       ],
+    );
+  }
+}
+
+/// Light, dark, or the phone's own setting.
+///
+/// Three choices rather than a switch, because "follow the phone" is a real answer and
+/// the commonest one: somebody whose handset turns dark at sunset already made this
+/// decision once, for everything they own. A two-state switch cannot express it — it can
+/// only pin the app to one of them for ever, and then the person who wanted the app to
+/// follow along has no way back.
+class _Appearance extends ConsumerWidget {
+  const _Appearance();
+
+  static const _labels = {
+    ThemeMode.system: 'حسب الموبايل',
+    ThemeMode.light: 'فاتح',
+    ThemeMode.dark: 'غامق',
+  };
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
+    final colors = theme.luqma;
+    final mode = ref.watch(themeModeProvider);
+
+    return Padding(
+      key: AccountScreen.appearanceKey,
+      padding: const EdgeInsets.fromLTRB(
+        _groupRowInset,
+        Space.md,
+        _groupRowInset,
+        Space.md,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.brightness_6_outlined,
+                  size: Sizes.iconSm, color: colors.brand),
+              const SizedBox(width: Space.md),
+              Expanded(child: Text('شكل التطبيق', style: theme.textTheme.bodyMedium)),
+            ],
+          ),
+          const SizedBox(height: Space.sm),
+          // `Wrap`, not three `Expanded` chips in a row. Equal thirds of a phone's width
+          // are narrower than «حسب الموبايل», and the chip clips rather than shrinking —
+          // so the option that needs explaining most read as «حسب». Here each chip is as
+          // wide as its own words, and a narrow phone or a large type size moves the last
+          // one to a second line instead of cutting it.
+          Wrap(
+            spacing: Space.sm,
+            runSpacing: Space.sm,
+            children: [
+              for (final entry in _labels.entries)
+                LuqmaChip(
+                  key: AccountScreen.appearanceOptionKey(entry.key),
+                  label: entry.value,
+                  selected: mode == entry.key,
+                  onTap: () =>
+                      ref.read(themeModeProvider.notifier).set(entry.key),
+                ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 }

@@ -10,6 +10,7 @@ void main() {
   late FakeAuthService auth;
   late FakeExternalLinks links;
   late FakeAddressRepository addressRepo;
+  late FakeThemeModeStore themes;
 
   const edkuZones = [
     Zone(id: 'z1', cityId: 'edku', name: 'المعمورة'),
@@ -43,6 +44,7 @@ void main() {
 
     auth = FakeAuthService(restoring: signedInAs, failure: failure);
     links = FakeExternalLinks(answer: phoneCanOpenLinks);
+    themes = FakeThemeModeStore();
     addressRepo = FakeAddressRepository(
       seed: {
         if (signedInAs != null && addresses.isNotEmpty) signedInAs.uid: addresses,
@@ -67,6 +69,7 @@ void main() {
           externalLinksProvider.overrideWithValue(links),
           remoteConfigServiceProvider.overrideWithValue(config),
           appVersionProvider.overrideWithValue(appVersion),
+          themeModeStoreProvider.overrideWithValue(themes),
         ],
         child: MaterialApp(
           theme: LuqmaTheme.light,
@@ -712,6 +715,75 @@ void main() {
       await pump(tester, signedInAs: null);
 
       expect(find.byKey(AccountScreen.marketingKey), findsNothing);
+    });
+  });
+  group('شكل التطبيق', () {
+    // Both themes have existed since Phase 0 and `themeMode` was never set, so the app
+    // followed the phone with no way to say otherwise from inside it.
+    // The label was clipped to «حسب» when the three chips were forced into equal thirds
+    // of a phone's width — the option that needs explaining most, cut to a preposition.
+    testWidgets('says what following the phone means, in full', (tester) async {
+      await pump(tester);
+      await reveal(tester, find.byKey(AccountScreen.appearanceKey));
+
+      final chip = tester.widget<LuqmaChip>(
+        find.byKey(AccountScreen.appearanceOptionKey(ThemeMode.system)),
+      );
+      expect(chip.label, 'حسب الموبايل');
+      // Rendered, not merely passed: the clipping happened inside the chip.
+      final painted = tester.renderObject<RenderBox>(
+        find.byKey(AccountScreen.appearanceOptionKey(ThemeMode.system)),
+      );
+      final text = tester.renderObject<RenderBox>(
+        find.descendant(
+          of: find.byKey(AccountScreen.appearanceOptionKey(ThemeMode.system)),
+          matching: find.byType(Text),
+        ),
+      );
+      expect(text.size.width, lessThanOrEqualTo(painted.size.width),
+          reason: 'the words fit inside the chip drawn around them');
+    });
+
+    testWidgets('starts on the phone’s own setting', (tester) async {
+      await pump(tester);
+      await reveal(tester, find.byKey(AccountScreen.appearanceKey));
+
+      final chip = tester.widget<LuqmaChip>(
+        find.byKey(AccountScreen.appearanceOptionKey(ThemeMode.system)),
+      );
+      expect(chip.selected, isTrue);
+    });
+
+    testWidgets('choosing dark changes the app and is remembered', (tester) async {
+      await pump(tester);
+      await reveal(tester, find.byKey(AccountScreen.appearanceKey));
+
+      await tester.tap(find.byKey(AccountScreen.appearanceOptionKey(ThemeMode.dark)));
+      await tester.pumpAndSettle();
+
+      // On screen…
+      final chip = tester.widget<LuqmaChip>(
+        find.byKey(AccountScreen.appearanceOptionKey(ThemeMode.dark)),
+      );
+      expect(chip.selected, isTrue);
+      // …and written, which is the half that survives the next launch.
+      expect(themes.mode, ThemeMode.dark);
+    });
+
+    // A switch could not express this: somebody who pinned the app to light and then
+    // wants it to follow their handset again needs a way back.
+    testWidgets('and going back to the phone’s setting is reachable',
+        (tester) async {
+      await pump(tester);
+      await reveal(tester, find.byKey(AccountScreen.appearanceKey));
+
+      await tester.tap(find.byKey(AccountScreen.appearanceOptionKey(ThemeMode.light)));
+      await tester.pumpAndSettle();
+      expect(themes.mode, ThemeMode.light);
+
+      await tester.tap(find.byKey(AccountScreen.appearanceOptionKey(ThemeMode.system)));
+      await tester.pumpAndSettle();
+      expect(themes.mode, ThemeMode.system);
     });
   });
 }

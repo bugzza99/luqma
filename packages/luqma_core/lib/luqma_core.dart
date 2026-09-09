@@ -61,6 +61,8 @@ export 'src/theme/dimens.dart';
 export 'src/theme/luqma_theme.dart';
 export 'src/theme/promotion_palette.dart';
 export 'src/theme/motion.dart';
+export 'src/theme/theme_mode_controller.dart';
+export 'src/theme/theme_mode_store.dart';
 export 'src/theme/page_transitions.dart';
 export 'src/theme/typography.dart';
 export 'src/media/image_compressor.dart';
