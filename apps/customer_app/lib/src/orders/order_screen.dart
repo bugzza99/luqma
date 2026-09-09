@@ -319,6 +319,13 @@ class _Hero extends StatelessWidget {
     final theme = Theme.of(context);
     final strings = LuqmaStrings.of(context);
 
+    // The burgundy stays on a delivered order as well as a live one. It was briefly a
+    // pale card there, on the reasoning that a finished order has nothing left to
+    // announce — the owner's call is that the colour is the product's, and a receipt in
+    // the brand reads better than a receipt in grey. What the state changes is the
+    // *words*, not the ground.
+    final settled = order.status == OrderStatus.delivered;
+
     // Fixed in both themes, not `colors.brand`. The dark theme swaps the brand to a
     // lighter burgundy, and the eyebrow below is small orange text: 4.79:1 on this
     // ground and 3.83:1 on that one, which fails the 4.5:1 small text needs.
@@ -350,7 +357,15 @@ class _Hero extends StatelessWidget {
           ),
           const SizedBox(height: Space.xs),
           Text(
-            _stage[order.status] ?? _stage[OrderStatus.placed]!,
+            // On a delivered order the loudest line is the hour it arrived, because that
+            // is the fact somebody comes back for and it is genuinely stamped on the
+            // order. Every other stage has no time behind it — see `_stampFor` — so the
+            // stage's own words stay the headline there.
+            switch (order.deliveredAt) {
+              final DateTime at when settled =>
+                'اتسلّم ${formatClockTime(at, strings)}',
+              _ => _stage[order.status] ?? _stage[OrderStatus.placed]!,
+            },
             key: OrderScreen.stageKey,
             style: LuqmaType.display.copyWith(color: LuqmaPalette.white),
           ),
@@ -411,6 +426,12 @@ class _Track extends StatelessWidget {
     // reads as "still waiting" — and somebody is already phoning the restaurant.
     final current = reached < 0 ? 0 : reached;
 
+    // «اتسلّم» is where the track ends, and an order sitting on it is not *at* that step,
+    // it is finished with it. Marking it the way every in-progress step is marked left
+    // the one stage that genuinely completed as the only one without a tick — a filled
+    // ring reading "happening now" under a card that says the food arrived.
+    final settled = order.status == OrderStatus.delivered;
+
     return _Card(
       child: Column(
         children: [
@@ -424,8 +445,8 @@ class _Track extends StatelessWidget {
                 children: [
                   _StepMark(
                     key: i == current ? OrderScreen.currentStepKey : null,
-                    done: i < current,
-                    current: i == current,
+                    done: i < current || (settled && i == current),
+                    current: i == current && !settled,
                   ),
                   const SizedBox(width: Space.md),
                   Expanded(
@@ -444,17 +465,25 @@ class _Track extends StatelessWidget {
                             ),
                     ),
                   ),
-                  const SizedBox(width: Space.sm),
-                  Text(
-                    switch (_stampFor(OrderScreen.track[i])) {
-                      final DateTime at when i <= current =>
-                        formatClockTime(at, strings),
-                      _ when i == current => 'دلوقتي',
-                      _ => '—',
-                    },
-                    style: theme.textTheme.bodySmall
-                        ?.copyWith(color: colors.textSecondary),
-                  ),
+                  // Nothing at all where there is no time, rather than a dash. Only two
+                  // of the five stages are stamped, so a placeholder on the other three
+                  // stacked into a column of dashes down the side of the card — which
+                  // reads as a screen that failed to load its data, not as three things
+                  // that have not happened yet. The mark on the left already says which
+                  // stages are done; the absence of an hour says the rest on its own.
+                  if (switch (_stampFor(OrderScreen.track[i])) {
+                    final DateTime at when i <= current =>
+                      formatClockTime(at, strings),
+                    _ when i == current => 'دلوقتي',
+                    _ => null,
+                  } case final String label) ...[
+                    const SizedBox(width: Space.sm),
+                    Text(
+                      label,
+                      style: theme.textTheme.bodySmall
+                          ?.copyWith(color: colors.textSecondary),
+                    ),
+                  ],
                 ],
               ),
             ),

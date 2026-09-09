@@ -7,6 +7,7 @@ import '../selected_cuisine.dart';
 import 'merchant_tile.dart';
 
 import 'section_header.dart';
+import 'section_gap.dart';
 
 /// A list of merchants, ordered by whatever the section asked for.
 ///
@@ -44,7 +45,8 @@ class MerchantListSection extends ConsumerWidget {
     // circle has no merchants in it yet — a different answer, and it has to stay one.
     final inCuisine = ref.watch(merchantsInSelectedCuisineProvider).value;
 
-    return LuqmaAsyncView(
+    return SectionGap(
+      child: LuqmaAsyncView(
       value: merchants,
       empty: const SizedBox.shrink(),
       isEmpty: (value) => value.isEmpty,
@@ -89,6 +91,7 @@ class MerchantListSection extends ConsumerWidget {
             ),
           ],
         )
+    ),
     );
   }
 

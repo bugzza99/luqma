@@ -5,6 +5,7 @@ import 'package:luqma_core/luqma_core.dart';
 import '../see_all_screen.dart';
 import 'item_tile.dart';
 import 'section_header.dart';
+import 'section_gap.dart';
 
 /// The food the city actually orders.
 ///
@@ -37,7 +38,8 @@ class PopularItemsSection extends ConsumerWidget {
     // `adSlot` takes the same line, for the same reason.
     if (shelf.hasError) return const SizedBox.shrink();
 
-    return LuqmaAsyncView(
+    return SectionGap(
+      child: LuqmaAsyncView(
       value: shelf,
       empty: const SizedBox.shrink(),
       isEmpty: (value) => value.isEmpty,
@@ -67,6 +69,7 @@ class PopularItemsSection extends ConsumerWidget {
           ),
         ],
       ),
+    ),
     );
   }
 }

@@ -121,18 +121,58 @@ class _Monogram extends StatelessWidget {
   final String name;
   final LuqmaColors colors;
 
+  /// The letter's height as a share of the box's shorter side.
+  ///
+  /// A fixed text style was the same size in a 78 thumbnail and in a merchant cover
+  /// 168 tall and the full width of the phone — proportionate in the first and a speck
+  /// adrift in an empty field in the second, which is the single most visible thing on
+  /// a shop's page before anybody has photographed the shop. The mark has to be a
+  /// *fraction* of what encloses it, not a constant.
+  static const _share = 0.42;
+
+  /// Clamped at both ends: a monogram under this is unreadable, and one over it fills a
+  /// wide cover edge to edge and reads as a letter that has escaped rather than a
+  /// stand-in for a photograph.
+  static const _minSize = 20.0;
+  static const _maxSize = 96.0;
+
   @override
   Widget build(BuildContext context) {
     return ColoredBox(
       color: LuqmaImage.tintFor(name, colors),
-      child: Center(
-        child: Text(
-          LuqmaImage.monogramOf(name),
-          style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                color: colors.background,
-                fontWeight: FontWeight.w700,
-              ),
-        ),
+      // The box decides the letter, so this needs the box's own constraints rather than
+      // the screen's.
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          // `biggest` is infinite where a parent has not bounded that axis — a monogram
+          // inside a scrolling row, for one. The other axis is still real, and the
+          // smaller of the two is what a centred letter has to fit inside.
+          final width = constraints.maxWidth.isFinite
+              ? constraints.maxWidth
+              : constraints.maxHeight;
+          final height = constraints.maxHeight.isFinite
+              ? constraints.maxHeight
+              : constraints.maxWidth;
+          final shorter = width < height ? width : height;
+          final size = shorter.isFinite
+              ? (shorter * _share).clamp(_minSize, _maxSize)
+              : _minSize;
+
+          return Center(
+            child: Text(
+              LuqmaImage.monogramOf(name),
+              style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                    color: colors.background,
+                    fontWeight: FontWeight.w700,
+                    fontSize: size,
+                    // The default line height is set for a paragraph; on a single glyph
+                    // being centred in a box it adds space above and below that pushes
+                    // the letter off the optical centre.
+                    height: 1,
+                  ),
+            ),
+          );
+        },
       ),
     );
   }

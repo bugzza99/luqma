@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:luqma_core/luqma_core.dart';
 
 import '../selected_cuisine.dart';
+import 'section_gap.dart';
 
 /// The cuisines, as a scrolling row of pills across the top of the home.
 ///
@@ -25,7 +26,8 @@ class CategoryChipsSection extends ConsumerWidget {
     final cuisines = ref.watch(cuisinesProvider);
     final selected = ref.watch(selectedCuisineProvider);
 
-    return LuqmaAsyncView(
+    return SectionGap(
+      child: LuqmaAsyncView(
       value: cuisines,
       empty: const SizedBox.shrink(),
       isEmpty: (value) => value.isEmpty,
@@ -59,6 +61,7 @@ class CategoryChipsSection extends ConsumerWidget {
           },
         ),
       ),
+    ),
     );
   }
 }

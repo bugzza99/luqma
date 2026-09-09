@@ -315,12 +315,17 @@ void main() {
         findsOneWidget,
       );
 
-      // Accepted was passed but never stamped: no hour is invented for it.
+      // Accepted was passed but never stamped. It keeps its tick and is given no hour
+      // at all — not a dash: three unstamped stages in a row drew a column of them down
+      // the card, which reads as data that failed to load rather than as three moments
+      // nobody recorded.
       final accepted = find.byKey(OrderScreen.stepKey(OrderStatus.accepted));
       expect(find.descendant(of: accepted,
           matching: find.byIcon(Icons.check_rounded)), findsOneWidget);
+      expect(find.descendant(of: accepted, matching: find.text('—')), findsNothing);
+      // One Text in that row, the label — no second one holding a placeholder.
       expect(
-        find.descendant(of: accepted, matching: find.text('—')),
+        find.descendant(of: accepted, matching: find.byType(Text)),
         findsOneWidget,
       );
     });
@@ -337,8 +342,14 @@ void main() {
         findsOneWidget,
       );
 
+      // A stage still ahead says nothing about time. The empty ring on its left is
+      // already the whole statement.
       final ahead = find.byKey(OrderScreen.stepKey(OrderStatus.outForDelivery));
-      expect(find.descendant(of: ahead, matching: find.text('—')), findsOneWidget);
+      expect(find.descendant(of: ahead, matching: find.text('—')), findsNothing);
+      expect(
+        find.descendant(of: ahead, matching: find.byType(Text)),
+        findsOneWidget,
+      );
     });
   });
 
@@ -463,7 +474,11 @@ void main() {
     for (final status in [OrderStatus.accepted, OrderStatus.preparing,
         OrderStatus.outForDelivery]) {
       final step = find.byKey(OrderScreen.stepKey(status));
-      expect(find.descendant(of: step, matching: find.text('—')), findsOneWidget);
+      // Ticked, and silent about the hour: these three are not stamped anywhere on the
+      // order, and a placeholder in each drew a column of dashes beside a delivered
+      // order that read as a failure to load.
+      expect(find.descendant(of: step, matching: find.text('—')), findsNothing);
+      expect(find.descendant(of: step, matching: find.byType(Text)), findsOneWidget);
       expect(find.descendant(of: step, matching: find.byIcon(Icons.check_rounded)),
           findsOneWidget);
     }
@@ -471,6 +486,57 @@ void main() {
       of: find.byKey(OrderScreen.stepKey(OrderStatus.delivered)),
       matching: find.text('9:17 م'),
     ), findsOneWidget);
+  });
+
+  // The state changes the words on the hero, never its ground. A pale card for a
+  // delivered order was tried and taken back out: the colour is the product's, and a
+  // receipt in the brand reads better than a receipt in grey.
+  testWidgets('a delivered order keeps the brand ground and says the hour it arrived',
+      (tester) async {
+    await pump(tester, const OrderScreen(orderId: 'o1'), seed: [
+      order(status: OrderStatus.delivered)
+          .copyWith(deliveredAt: DateTime(2026, 9, 8, 21, 17)),
+    ]);
+    await tester.pumpAndSettle();
+
+    final hero = tester.widget<Container>(find.byKey(OrderScreen.heroKey));
+    expect((hero.decoration! as BoxDecoration).gradient, isNotNull);
+
+    // The headline is the stamped hour, not the stage's words — the one number on this
+    // screen that the order can actually prove.
+    expect(
+      tester.widget<Text>(find.byKey(OrderScreen.stageKey)).data,
+      'اتسلّم 9:17 م',
+    );
+  });
+
+  // «اتسلّم» is the end of the track, and an order resting there is finished with it
+  // rather than at it. It was drawn with the in-progress mark, which left the one stage
+  // that genuinely completed as the only one without a tick.
+  testWidgets('the last step of a delivered order is ticked, not in progress',
+      (tester) async {
+    await pump(tester, const OrderScreen(orderId: 'o1'), seed: [
+      order(status: OrderStatus.delivered)
+          .copyWith(deliveredAt: DateTime(2026, 9, 8, 21, 17)),
+    ]);
+    await tester.pumpAndSettle();
+
+    final last = find.byKey(OrderScreen.stepKey(OrderStatus.delivered));
+    expect(find.descendant(of: last, matching: find.byIcon(Icons.check_rounded)),
+        findsOneWidget);
+    // Every one of the five is complete, so every one carries a tick.
+    expect(find.byIcon(Icons.check_rounded), findsNWidgets(5));
+  });
+
+  testWidgets('a live order keeps the burgundy hero', (tester) async {
+    await pump(tester, const OrderScreen(orderId: 'o1'),
+        seed: [order(status: OrderStatus.preparing)]);
+    await tester.pumpAndSettle();
+
+    final hero = tester.widget<Container>(find.byKey(OrderScreen.heroKey));
+    expect((hero.decoration! as BoxDecoration).gradient, isNotNull);
+    expect(tester.widget<Text>(find.byKey(OrderScreen.stageKey)).data,
+        'الطلب بيتجهز');
   });
 
   group('cancelling', () {

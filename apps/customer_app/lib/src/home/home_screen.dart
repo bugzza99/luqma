@@ -96,8 +96,11 @@ class _Sections extends StatelessWidget {
 
     return Column(
       children: [
-        for (var i = 0; i < plan.length; i++) ...[
-          if (i > 0) const SizedBox(height: Space.xl - 4),
+        // No separator here. Each section carries its own gap through `SectionGap`,
+        // because a gap drawn by the parent is drawn whether or not the child rendered —
+        // and on a city with no cuisines, no promotion and no meals yet, three absent
+        // sections stacked their gaps into a void under the search box.
+        for (var i = 0; i < plan.length; i++)
           // Each section settles into place on its own short delay, capped at six so a
           // long home still lands as an arrival rather than a wait. `LuqmaEntrance` is a
           // no-op under reduced motion.
@@ -105,7 +108,6 @@ class _Sections extends StatelessWidget {
             index: i,
             child: HomeSectionRegistry.build(plan[i]) ?? const SizedBox.shrink(),
           ),
-        ],
       ],
     );
   }

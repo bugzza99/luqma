@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:luqma_core/luqma_core.dart';
 
 import '../../merchant/open_merchant.dart';
+import 'section_gap.dart';
 
 /// A promotion slot on the home screen.
 ///
@@ -49,7 +50,8 @@ class AdSlotSection extends ConsumerWidget {
     // blocks, and one that cannot load should cost itself and not the restaurants.
     if (banners.isEmpty) return const SizedBox.shrink();
 
-    return Padding(
+    return SectionGap(
+      child: Padding(
       key: slotKey(section.key),
       padding: const EdgeInsets.symmetric(horizontal: Space.gutter),
       child: banners.length == 1
@@ -58,6 +60,7 @@ class AdSlotSection extends ConsumerWidget {
               child: _Banner(promotion: banners.first),
             )
           : _Carousel(banners: banners),
+    ),
     );
   }
 }

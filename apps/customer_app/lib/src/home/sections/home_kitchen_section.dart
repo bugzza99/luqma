@@ -5,6 +5,7 @@ import 'package:luqma_core/luqma_core.dart';
 import '../../kitchen/open_meal.dart';
 import '../../shell/customer_tab.dart';
 import 'section_header.dart';
+import 'section_gap.dart';
 
 /// Today's home-cooked meals.
 ///
@@ -29,7 +30,8 @@ class HomeKitchenSection extends ConsumerWidget {
     // load should cost itself, not the screen.
     if (meals.isEmpty) return const SizedBox.shrink();
 
-    return Column(
+    return SectionGap(
+      child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         SectionHeader(
@@ -50,6 +52,7 @@ class HomeKitchenSection extends ConsumerWidget {
           ),
         ),
       ],
+    ),
     );
   }
 }
