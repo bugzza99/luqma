@@ -860,7 +860,13 @@ class _RatingCardState extends ConsumerState<_RatingCard> {
         borderRadius: Radii.cardAll,
         border: Border.all(color: colors.hairline),
       ),
-      child: _sent
+      // `_sent` alone was this card's whole memory, and it lived in the widget — so
+      // leaving the screen and coming back reset it and the card asked again for a
+      // rating the customer had already given. `rate` upserts, so answering twice
+      // replaced the first verdict silently, from a form that starts empty: five stars
+      // could become three for no reason but being asked twice. The order is the memory
+      // now; `_sent` only covers the instant between the write and the stream catching up.
+      child: _sent || ref.watch(hasRatedProvider(widget.order.id)).value == true
           ? Row(
               children: [
                 Icon(Icons.favorite_rounded, color: colors.brand),

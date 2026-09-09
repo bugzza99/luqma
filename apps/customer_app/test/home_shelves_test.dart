@@ -1,4 +1,5 @@
 import 'package:customer_app/src/home/see_all_screen.dart';
+import 'package:customer_app/src/merchant/merchant_screen.dart';
 import 'package:customer_app/src/home/sections/item_tile.dart';
 import 'package:customer_app/src/home/sections/merchant_list_section.dart';
 import 'package:customer_app/src/home/sections/merchant_tile.dart';
@@ -184,6 +185,29 @@ void main() {
 
       expect(find.byKey(ItemTile.shopKey), findsOneWidget);
       expect(find.text('مطعم أ'), findsOneWidget);
+    });
+
+    // Tapping a dish used to land on the shop's page with the dish nowhere in sight: the
+    // customer picked «فراخ مشوية» and got a menu to go and find it in again. The shop
+    // still opens — adding anything needs it, and dismissing the sheet should leave them
+    // there — but the dish they actually pressed comes with them.
+    testWidgets('tapping one carries the dish into the shop it came from',
+        (tester) async {
+      await pump(
+        tester,
+        const PopularItemsSection(section: popular),
+        items: [dish('i1', 'فراخ مشوية', merchantName: 'مطعم أ')],
+        merchants: [shop('m1', 'مطعم أ')],
+      );
+
+      await tester.tap(find.byKey(ItemTile.tileKey('i1')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+
+      final opened = tester.widget<MerchantScreen>(find.byType(MerchantScreen));
+      expect(opened.merchantId, 'm1');
+      expect(opened.openItemId, 'i1',
+          reason: 'the shop opens, and so does the dish that was pressed');
     });
 
     testWidgets('most ordered comes first', (tester) async {

@@ -11,9 +11,19 @@ import 'merchant_hours.dart';
 
 /// One merchant: who they are, what they cook, and what is in the basket so far.
 class MerchantScreen extends ConsumerWidget {
-  const MerchantScreen({super.key, required this.merchantId});
+  const MerchantScreen({super.key, required this.merchantId, this.openItemId});
 
   final String merchantId;
+
+  /// A dish to present the moment the menu arrives.
+  ///
+  /// Tapping a dish on the home used to land on the shop's page with the dish nowhere in
+  /// sight — the customer picked «سمك مشوي» and got a menu to find it in again. It opens
+  /// here rather than as a sheet of its own because adding anything needs the shop:
+  /// whether it is open, whether the dish is still available, and whose basket this is.
+  /// Dismissing the sheet leaves them on the shop's page, which is where somebody who
+  /// tapped a dish from that shop wants to be.
+  final String? openItemId;
 
   static const cartBarKey = Key('merchant.cartBar');
   static const closedBannerKey = Key('merchant.closed');
@@ -103,7 +113,8 @@ class MerchantScreen extends ConsumerWidget {
       onRetry: () => ref.invalidate(merchantProvider(merchantId)),
       loading: const Scaffold(body: Center(child: CircularProgressIndicator())),
       builder: (context, value) =>
-          _Loaded(merchant: value, categories: categories, items: items),
+          _Loaded(merchant: value, categories: categories, items: items,
+              openItemId: openItemId),
     );
   }
 }
@@ -113,17 +124,45 @@ class _Loaded extends ConsumerStatefulWidget {
     required this.merchant,
     required this.categories,
     required this.items,
+    this.openItemId,
   });
 
   final Merchant merchant;
   final List<MenuCategory> categories;
   final List<MenuItem> items;
+  final String? openItemId;
 
   @override
   ConsumerState<_Loaded> createState() => _LoadedState();
 }
 
 class _LoadedState extends ConsumerState<_Loaded> {
+  /// Presented once, on the first build that has the menu.
+  ///
+  /// `_Loaded` is built from a stream, so it rebuilds whenever the shop or the menu
+  /// changes — without this the sheet would be pushed again on every one of them, and a
+  /// customer editing their choice would watch a second copy open on top of it.
+  bool _presented = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final wanted = widget.openItemId;
+    if (wanted == null) return;
+
+    // After the first frame: this runs during `initState`, and pushing a route while the
+    // tree is still being built is the thing Flutter asserts about.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _presented) return;
+      final item = widget.items.where((i) => i.id == wanted).firstOrNull;
+      // Gone from the menu since the home last loaded it. The shop's page is still the
+      // right place to have landed, so nothing is said and nothing opens.
+      if (item == null) return;
+      _presented = true;
+      _openItem(item);
+    });
+  }
+
   /// Which category the chips have narrowed the menu to, or null for the whole menu.
   /// Screen-local and ephemeral — it does not need to outlive the route, so it is state
   /// here rather than a provider.

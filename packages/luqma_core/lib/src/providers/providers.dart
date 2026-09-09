@@ -618,6 +618,14 @@ Stream<List<Order>> ordersFor(Ref ref, String uid) =>
 Stream<Order> order(Ref ref, String orderId) =>
     ref.watch(orderRepositoryProvider).watchOrder(orderId);
 
+/// Whether this order has already been rated.
+///
+/// Live rather than fetched once, so the card answers a rating written from another
+/// device — or a moment ago on this one — without the screen being reopened.
+@riverpod
+Stream<bool> hasRated(Ref ref, String orderId) =>
+    ref.watch(orderRepositoryProvider).watchHasRated(orderId);
+
 // ------------------------------------------------------------------ config
 
 /// The one path from AdminApp to this phone.

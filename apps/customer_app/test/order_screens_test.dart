@@ -82,6 +82,10 @@ void main() {
     Failure? failure,
     List<Merchant> merchants = const [],
     bool dark = false,
+
+    /// Orders that already carry a rating when the screen opens — what returning to an
+    /// order rated last week looks like.
+    List<String> ratedOrderIds = const [],
   }) async {
     // A real phone, not the 800x600 test window. This screen stacks a hero, a five-step
     // track, a bill and the order's own lines, so on a window wider than it is tall the
@@ -92,6 +96,11 @@ void main() {
     addTearDown(tester.view.reset);
 
     orders = FakeOrderRepository(seed: seed, failure: failure);
+    // Seeded before the tree is built: `watchHasRated` is read as the card first builds,
+    // so a rating added afterwards is a rating the screen never sees.
+    for (final id in ratedOrderIds) {
+      orders.ratings.add({'orderId': id, 'stars': 5});
+    }
     links = FakeExternalLinks();
 
     await tester.pumpWidget(
@@ -662,6 +671,27 @@ void main() {
       );
 
       expect(find.byKey(OrderScreen.rateKey), findsOneWidget);
+    });
+
+    // The card's memory used to be a `bool` inside the widget, so leaving the screen and
+    // coming back asked again for a rating already given — and `rate` upserts, so
+    // answering the second time replaced the first verdict from a form that starts
+    // empty. Five stars could become three for no reason but being asked twice.
+    testWidgets('does not come back for an order that was already rated',
+        (tester) async {
+      await pump(
+        tester,
+        const OrderScreen(orderId: 'o1'),
+        seed: [order(status: OrderStatus.delivered)],
+        ratedOrderIds: const ['o1'],
+      );
+      await tester.pumpAndSettle();
+      await reveal(tester, find.byKey(OrderScreen.rateKey));
+
+      // No form at all: the question has been answered, and asking it again is how a
+      // five-star verdict gets replaced by whatever an empty form is set to.
+      expect(find.byKey(OrderScreen.starKey(5)), findsNothing);
+      expect(find.byKey(OrderScreen.sendRatingKey), findsNothing);
     });
 
     testWidgets('the stars are filed against the order', (tester) async {

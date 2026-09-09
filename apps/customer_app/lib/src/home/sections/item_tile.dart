@@ -38,7 +38,8 @@ class ItemTile extends ConsumerWidget {
       width: width,
       child: LuqmaPressable(
         key: tileKey(item.id),
-        onTap: () => openMerchant(context, item.merchantId),
+        onTap: () =>
+            openMerchant(context, item.merchantId, openItemId: item.id),
         child: Container(
           clipBehavior: Clip.antiAlias,
           decoration: BoxDecoration(
