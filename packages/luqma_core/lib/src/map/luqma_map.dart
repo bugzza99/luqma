@@ -1,6 +1,7 @@
 import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:maplibre_gl/maplibre_gl.dart';
 
@@ -161,6 +162,9 @@ class _LuqmaMapState extends State<LuqmaMap> {
 
   final Map<String, LuqmaMapMarker> _bySymbolId = {};
 
+  /// The set of places the camera was last framed on.
+  String? _framedOn;
+
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).luqma;
@@ -194,6 +198,14 @@ class _LuqmaMapState extends State<LuqmaMap> {
               compassEnabled: false,
               rotateGesturesEnabled: false,
               tiltGesturesEnabled: false,
+              // The map lives inside a scrolling page, and a vertical drag is a gesture
+              // both of them want. Claiming the pan and the pinch here means a finger that
+              // starts on the map moves the map — otherwise the page scrolls away under
+              // it and the map can only ever be looked at.
+              gestureRecognizers: {
+                Factory<OneSequenceGestureRecognizer>(
+                    EagerGestureRecognizer.new),
+              },
               onMapCreated: (c) {
                 _controller = c;
                 c.onSymbolTapped.add(_symbolTapped);
@@ -287,11 +299,25 @@ class _LuqmaMapState extends State<LuqmaMap> {
     final emphasised = await _pinImage(colors.accent, scale: 1.35);
     if (generation != _drawGeneration || !mounted) return;
 
+    // Every pin is drawn, colliding or not. Collision is a property of the symbol layer
+    // rather than of a symbol, so it is set on the manager once — and a pin the renderer
+    // decided to hide is a place the customer cannot choose, now that choosing one is how
+    // the address gets set.
+    await controller.setSymbolIconAllowOverlap(true);
+
     await controller.addImage('luqma-pin', pin);
     await controller.addImage('luqma-pin-emphasised', emphasised);
     if (generation != _drawGeneration) return;
 
-    if (widget.showLabels && widget.markers.length > 1) {
+    // Framed once per set of places, not on every redraw. Choosing a pin redraws — the
+    // chosen one changes shape and gains its name — and re-framing there would yank the
+    // view back from wherever the customer had panned to, on the very gesture that means
+    // "this one". The camera moves when the *places* change; after that the map is theirs.
+    final frame = widget.markers.map((m) => m.id).join('|');
+    final reframe = frame != _framedOn;
+    _framedOn = frame;
+
+    if (reframe && widget.markers.length > 1) {
       final latitudes = widget.markers.map((m) => m.lat).toList()..sort();
       final longitudes = widget.markers.map((m) => m.lng).toList()..sort();
       await controller.moveCamera(CameraUpdate.newLatLngBounds(
@@ -309,8 +335,14 @@ class _LuqmaMapState extends State<LuqmaMap> {
 
     for (final marker in widget.markers) {
       if (generation != _drawGeneration) return;
+      // Labelled only where the label is worth its width. MapLibre hides icons that
+      // collide, and a name baked into a pin is wide — so twenty-seven of them in a strip
+      // this short left three visible and the rest silently dropped, which reads as a map
+      // that lost its data. The chosen one carries its name; the rest are pins, and
+      // `iconAllowOverlap` below stops the renderer discarding any of them.
+      final labelled = widget.showLabels && marker.emphasised;
       final imageId = 'luqma-label-${marker.id}';
-      if (widget.showLabels) {
+      if (labelled) {
         final image = await _labelledPin(marker, colors, textScaler);
         if (generation != _drawGeneration || !mounted) return;
         await controller.addImage(imageId, image);
@@ -318,8 +350,11 @@ class _LuqmaMapState extends State<LuqmaMap> {
       final symbol = await controller.addSymbol(
         SymbolOptions(
           geometry: LatLng(marker.lat, marker.lng),
-          iconImage: widget.showLabels ? imageId
-              : marker.emphasised ? 'luqma-pin-emphasised' : 'luqma-pin',
+          iconImage: labelled
+              ? imageId
+              : marker.emphasised
+                  ? 'luqma-pin-emphasised'
+                  : 'luqma-pin',
           iconSize: 1,
           // Anchored at its point rather than centred on it: a pin whose middle sits on
           // the destination is a pin aiming half a street away.

@@ -215,9 +215,15 @@ void main() {
           name: 'مكان', lat: 31.31, lng: 30.30),
       ]);
       final panel = tester.widget<LuqmaMap>(find.byType(LuqmaMap));
-      expect(panel.height, 132);
+      // Tall enough to aim at. The artboard drew a 132 strip, which is a picture of a map
+      // rather than something a finger can pan and pinch inside — and since a pin is now
+      // how the address gets chosen, the map has to be big enough to press.
+      expect(panel.height, greaterThanOrEqualTo(240));
       expect(panel.showLabels, isTrue);
+      // Still not a pin-drop: tapping empty ground sets nothing, because a point on a
+      // street is not an address anybody can deliver to. Tapping a *landmark* does.
       expect(panel.onTap, isNull);
+      expect(panel.onMarkerTap, isNotNull);
       expect(panel.markers.map((m) => m.id), ['real']);
       expect(panel.markers.single.label, 'المكتبة');
       expect(panel.markers.single.lat, mapped.lat);

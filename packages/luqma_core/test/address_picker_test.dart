@@ -196,4 +196,57 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('شارع البحر'), findsOneWidget);
   });
+  // The map is a slot above the form, and it can write to it: pressing a pin is meant to
+  // be the same act as pressing a landmark's chip. A slot that could only read would be a
+  // second way of saying something the form never hears.
+  testWidgets('the top slot chooses a landmark, and the choice reaches the address',
+      (tester) async {
+    Address? saved;
+    AddressPickerSelection? seen;
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          geographyRepositoryProvider.overrideWithValue(
+            FakeGeographyRepository(zones: zones, landmarks: landmarks),
+          ),
+        ],
+        child: MaterialApp(
+          theme: LuqmaTheme.light,
+          locale: const Locale('ar'),
+          supportedLocales: LuqmaStrings.supportedLocales,
+          localizationsDelegates: LuqmaStrings.localizationsDelegates,
+          home: Scaffold(
+            body: AddressPicker(
+              onSaved: (a) => saved = a,
+              top: (zone, selection) {
+                seen = selection;
+                return const SizedBox.shrink();
+              },
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('المعمورة'));
+    await tester.pumpAndSettle();
+
+    // The slot is handed this zone's landmarks, not every landmark in the city.
+    expect(seen!.landmarks.map((l) => l.zoneId).toSet(), {'maamoura'});
+    expect(seen!.landmarkId, isNull);
+
+    seen!.choose('l1');
+    await tester.pumpAndSettle();
+
+    // The form now agrees: the slot's choice is the chip's choice.
+    expect(seen!.landmarkId, 'l1');
+
+    await tester.enterText(find.byKey(AddressPicker.buildingKey), '12');
+    await tester.tap(find.byKey(AddressPicker.saveKey));
+    await tester.pumpAndSettle();
+
+    expect(saved!.landmarkId, 'l1');
+  });
 }

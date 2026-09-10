@@ -31,6 +31,7 @@ class AddressPicker extends ConsumerStatefulWidget {
     required this.onSaved,
     this.afterZone,
     this.afterDetails,
+    this.top,
     this.saving = false,
   });
 
@@ -40,6 +41,14 @@ class AddressPicker extends ConsumerStatefulWidget {
   // Slots keep customer-only context out of a form also used during onboarding.
   final Widget Function(Zone? zone)? afterZone;
   final Widget Function(Zone? zone)? afterDetails;
+
+  /// Above everything, and unlike the other two it can *write* to the form.
+  ///
+  /// The customer's map lives here. It is given the landmarks of the chosen zone, which
+  /// one is chosen, and a callback that chooses another — so pressing a pin is the same
+  /// act as pressing its chip, rather than a second way to say the same thing that the
+  /// form does not hear.
+  final Widget Function(Zone? zone, AddressPickerSelection selection)? top;
   final bool saving;
   static const fieldHeight = 50.0;
 
@@ -119,6 +128,27 @@ class _AddressPickerState extends ConsumerState<AddressPicker> {
       key: _formKey,
       child: Column(
         children: [
+          // Outside the scroll view on purpose, and this is the whole reason the slot
+          // exists as a separate one rather than as another `after…`.
+          //
+          // What goes here is a map, and a map inside a scrolling page is two widgets
+          // fighting over one finger: leave the drag to the page and the map can only be
+          // looked at; give it to the map and the page stops scrolling anywhere near it,
+          // which on a panel this tall is most of the screen. It was tried that way — the
+          // swipes meant to scroll the form panned the map out over the sea instead.
+          // Pinned above the scroll, neither gesture is ambiguous: on the map it is a map
+          // gesture, below it is a scroll.
+          ?widget.top?.call(
+            zone,
+            AddressPickerSelection(
+              landmarks: landmarks,
+              landmarkId: _namingOwnLandmark ? null : _landmarkId,
+              choose: (id) => setState(() {
+                _namingOwnLandmark = false;
+                _landmarkId = id;
+              }),
+            ),
+          ),
           Expanded(
             child: SingleChildScrollView(
               padding: const EdgeInsets.all(Space.gutter),
@@ -308,4 +338,28 @@ class _SectionLabel extends StatelessWidget {
   Widget build(BuildContext context) {
     return Text(text, style: Theme.of(context).textTheme.titleMedium);
   }
+}
+
+/// What the [AddressPicker.top] slot is handed: the landmarks it may show, which one is
+/// chosen, and the way to choose another.
+///
+/// A record would have done, and this is a class because the slot is a public API and a
+/// positional record shifts meaning silently when somebody adds a field to it.
+@immutable
+class AddressPickerSelection {
+  const AddressPickerSelection({
+    required this.landmarks,
+    required this.landmarkId,
+    required this.choose,
+  });
+
+  /// The chosen zone's landmarks, already filtered — a landmark from another zone is a
+  /// place on the other side of town.
+  final List<Landmark> landmarks;
+
+  /// The chosen landmark, or null when none is or when the customer is naming their own.
+  final String? landmarkId;
+
+  /// Chooses one, exactly as pressing its chip does.
+  final ValueChanged<String> choose;
 }

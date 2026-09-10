@@ -86,10 +86,13 @@ class _AddressEditorScreenState extends ConsumerState<AddressEditorScreen> {
               afterZone: (zone) => _FeeNotice(
                 zone: zone, merchantId: widget.merchantId,
               ),
+              top: (zone, selection) => _LandmarkMap(
+                zoneId: zone?.id,
+                selection: selection,
+              ),
               afterDetails: (zone) => Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  _LandmarkMap(zoneId: zone?.id),
                   LuqmaEntrance(
                     index: 4,
                     child: Padding(
@@ -210,30 +213,55 @@ class _FeeNotice extends ConsumerWidget {
   }
 }
 
+/// The zone's landmarks, and the way most people will actually pick one.
+///
+/// It sits above everything else and takes real height, because on a street somebody
+/// recognises a pharmacy on a corner long before they recognise its name in a list — and
+/// the artboard's 132 strip was a picture of a map rather than a map.
 class _LandmarkMap extends ConsumerWidget {
-  const _LandmarkMap({required this.zoneId});
+  const _LandmarkMap({required this.zoneId, required this.selection});
 
   final String? zoneId;
-  static const _height = 132.0;
+  final AddressPickerSelection selection;
+
+  /// Tall enough to pan and pinch inside. The pins spread across a town, and a strip
+  /// short enough to be a decoration is one nobody can aim at.
+  static const _height = 260.0;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final landmarks = (ref.watch(landmarksProvider).value ?? <Landmark>[])
-        .where((l) => l.zoneId == zoneId && l.lat != null && l.lng != null)
+    // Only the ones that can be drawn. Every landmark seeded from the address research
+    // carries coordinates; one typed into AdminApp by hand does not, and a pin at a
+    // guessed location is worse than a name in a list.
+    final landmarks = selection.landmarks
+        .where((l) => l.lat != null && l.lng != null)
         .toList();
     if (landmarks.isEmpty) return const SizedBox.shrink();
 
     return Padding(
-      padding: const EdgeInsets.only(top: Space.xl),
+      padding: const EdgeInsets.only(bottom: Space.xl),
       child: LuqmaEntrance(
-        index: 3,
+        index: 0,
         child: LuqmaMap(
           key: ValueKey('addressEditor.map.$zoneId'),
           height: _height,
           showLabels: true,
-          markers: [for (final l in landmarks) LuqmaMapMarker(
-            id: l.id, lat: l.lat!, lng: l.lng!, label: l.name,
-          )],
+          markers: [
+            for (final l in landmarks)
+              LuqmaMapMarker(
+                id: l.id,
+                lat: l.lat!,
+                lng: l.lng!,
+                label: l.name,
+                // The chosen one is the emphasised pin, and the only one carrying its
+                // name: twenty-seven names at once is a map nobody can read, and the
+                // customer already knows which they pressed.
+                emphasised: l.id == selection.landmarkId,
+              ),
+          ],
+          // Pressing a pin is pressing its chip. Anything else would be a second way to
+          // say the same thing that the form does not hear.
+          onMarkerTap: (marker) => selection.choose(marker.id),
         ),
       ),
     );
