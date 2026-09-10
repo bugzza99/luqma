@@ -39,6 +39,7 @@ export 'src/repositories/admin_repository.dart';
 export 'src/repositories/billing_repository.dart';
 export 'src/repositories/config_repository.dart';
 export 'src/repositories/courier_order_repository.dart';
+export 'src/repositories/courier_queue_drain.dart';
 export 'src/repositories/courier_write_queue.dart';
 export 'src/repositories/customer_repository.dart';
 export 'src/repositories/daily_meal_repository.dart';

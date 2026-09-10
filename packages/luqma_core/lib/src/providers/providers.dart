@@ -1,4 +1,5 @@
 ﻿import 'package:flutter/foundation.dart';
+import 'dart:async';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 import '../auth/auth_service.dart';
@@ -21,6 +22,7 @@ import '../repositories/admin_repository.dart';
 import '../repositories/billing_repository.dart';
 import '../repositories/config_repository.dart';
 import '../repositories/courier_order_repository.dart';
+import '../repositories/courier_queue_drain.dart';
 import '../repositories/courier_write_queue.dart';
 import '../repositories/cuisine_repository.dart';
 import '../repositories/customer_repository.dart';
@@ -401,6 +403,20 @@ CourierWriteQueue courierWriteQueue(Ref ref) {
     store: ref.watch(courierWriteStoreProvider),
   );
   ref.onDispose(queue.dispose);
+
+  // And something that actually sends it. The queue was written to be driven — its own
+  // `flush` says so — and for as long as it has existed the only caller was a retry
+  // button on one screen. A courier could take cash at a door, tap delivered with no
+  // signal, walk back into coverage, and leave the order unsettled until somebody
+  // happened to press that button, under a banner promising «هيتبعت أول ما النت يرجع».
+  //
+  // Scoped here so the drain lives and dies with the queue it drains, and is therefore
+  // account-scoped for the same reason: a shared shop handset changing couriers must not
+  // have one rider's taps replayed under the next one's name.
+  final drain = CourierQueueDrain(queue);
+  unawaited(drain.start());
+  ref.onDispose(drain.dispose);
+
   return queue;
 }
 
