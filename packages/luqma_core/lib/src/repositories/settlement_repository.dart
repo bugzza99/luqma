@@ -41,6 +41,12 @@ abstract interface class SettlementRepository {
     required String merchantId,
     required int amount,
     String? note,
+
+    /// Names this attempt, so a retry after a lost reply returns the original receipt
+    /// instead of collecting the cash a second time. The screen makes one per press and
+    /// keeps it across retries; null is the old behaviour and still accepted, because an
+    /// APK already on a phone cannot learn a new argument.
+    String? clientPaymentId,
   });
 }
 
@@ -98,6 +104,12 @@ class SupabaseSettlementRepository implements SettlementRepository {
     required String merchantId,
     required int amount,
     String? note,
+
+    /// Names this attempt, so a retry after a lost reply returns the original receipt
+    /// instead of collecting the cash a second time. The screen makes one per press and
+    /// keeps it across retries; null is the old behaviour and still accepted, because an
+    /// APK already on a phone cannot learn a new argument.
+    String? clientPaymentId,
   }) {
     return Result.guard(() async {
       // An RPC rather than two writes: the receipt and the balance move together or
@@ -109,6 +121,7 @@ class SupabaseSettlementRepository implements SettlementRepository {
           'p_merchant_id': merchantId,
           'p_amount': amount,
           'p_note': note,
+          'p_client_payment_id': clientPaymentId,
         },
       );
       return result['remaining'] as int;
@@ -183,6 +196,12 @@ class FakeSettlementRepository implements SettlementRepository {
     required String merchantId,
     required int amount,
     String? note,
+
+    /// Names this attempt, so a retry after a lost reply returns the original receipt
+    /// instead of collecting the cash a second time. The screen makes one per press and
+    /// keeps it across retries; null is the old behaviour and still accepted, because an
+    /// APK already on a phone cannot learn a new argument.
+    String? clientPaymentId,
   }) async {
     if (failure != null) return Result.err(failure!);
     if (writeFailure != null) return Result.err(writeFailure!);

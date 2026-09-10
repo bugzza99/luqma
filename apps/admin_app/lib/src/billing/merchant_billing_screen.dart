@@ -697,9 +697,19 @@ class _Settlements extends ConsumerWidget {
 
     if (amount == null || !context.mounted) return;
 
+    // One id for this collection, made before the first attempt and reused by every
+    // retry. Without it a reply lost on a shop's wifi turned into a second subtraction:
+    // the function took the money again and wrote a second receipt, and a 100 debt became
+    // 100 of credit — money the platform now owes for cash it collected once.
+    final attempt = newClientOrderId();
+
     final result = await ref
         .read(settlementRepositoryProvider)
-        .recordPayment(merchantId: merchant.id, amount: amount);
+        .recordPayment(
+          merchantId: merchant.id,
+          amount: amount,
+          clientPaymentId: attempt,
+        );
     if (!context.mounted) return;
 
     // The result is read rather than discarded. A collection that failed and a
@@ -720,8 +730,31 @@ class _Settlements extends ConsumerWidget {
           ),
         );
       case Err():
+        // «جرّب تاني» is now safe advice rather than a guess. A failure here can mean the
+        // request never landed *or* that it landed and the reply did not, and the two are
+        // indistinguishable from this side — so the sentence used to invite the admin to
+        // collect the same cash twice. Retrying carries the same id, which the server
+        // answers with the original receipt.
         ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-          const SnackBar(content: Text('التحصيل مااتسجّلش. جرّب تاني.')),
+          SnackBar(
+            content: const Text('التحصيل مااتسجّلش. جرّب تاني.'),
+            action: SnackBarAction(
+              label: 'جرّب تاني',
+              onPressed: () async {
+                final retry = await ref
+                    .read(settlementRepositoryProvider)
+                    .recordPayment(
+                      merchantId: merchant.id,
+                      amount: amount,
+                      clientPaymentId: attempt,
+                    );
+                if (retry is Ok) {
+                  ref.invalidate(merchantProvider(merchant.id));
+                  ref.invalidate(commissionPaymentsProvider(merchant.id));
+                }
+              },
+            ),
+          ),
         );
     }
   }
