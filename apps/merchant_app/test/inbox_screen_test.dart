@@ -97,6 +97,23 @@ void main() {
   }
 
   group('what an order card says', () {
+    testWidgets('the checkout instruction is visible before accepting', (tester) async {
+      // Decode the row shape, rather than requiring a new constructor argument: the
+      // original defect must fail as missing text, not as a test that cannot compile.
+      final incoming = Order.fromJson({
+        ...order().toJson(),
+        'note': 'من غير شطة\nالدور التالت، الجرس مكسور',
+      });
+      await pump(tester, seed: [incoming]);
+      expect(find.text('من غير شطة\nالدور التالت، الجرس مكسور'), findsOneWidget);
+      expect(find.text('ملاحظة العميل'), findsOneWidget);
+    });
+
+    testWidgets('no checkout instruction draws no note section', (tester) async {
+      await pump(tester, seed: [order()]);
+      expect(find.text('ملاحظة العميل'), findsNothing);
+    });
+
     testWidgets('the number, what was ordered, and what to collect',
         (tester) async {
       await pump(tester, seed: [order()]);

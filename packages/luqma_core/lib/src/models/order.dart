@@ -236,6 +236,12 @@ abstract class Order with _$Order {
     required OrderType type,
     required List<OrderLine> items,
     required OrderPricing pricing,
+    /// The customer's instruction for the whole order, frozen at placement.
+    ///
+    /// Dish notes stay on their lines. This one must travel with the order from the
+    /// acceptance screen to the kitchen, or storing it merely moves the point at
+    /// which the customer's request disappears. Older orders have none.
+    String? note,
     @Default(OrderStatus.placed) OrderStatus status,
 
     /// Set on a customer with no delivered order yet, so the merchant can confirm by

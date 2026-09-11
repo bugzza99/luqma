@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:luqma_core/luqma_core.dart';
 
+import 'order_note.dart';
+
 /// What is already being cooked or carried.
 ///
 /// The inbox answers "yes or no"; this answers "where is it now". Its only job is to
@@ -133,6 +135,7 @@ class _Card extends ConsumerWidget {
                 ],
               ),
             ),
+          OrderNote(note: order.note),
           const Padding(
             padding: EdgeInsets.symmetric(vertical: Space.sm),
             child: Divider(height: 1),
@@ -229,5 +232,4 @@ class _Stage extends StatelessWidget {
     );
   }
 }
-
 

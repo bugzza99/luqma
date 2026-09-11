@@ -78,6 +78,21 @@ void main() {
   }
 
   group('what is on the board', () {
+    testWidgets('the checkout instruction stays visible while cooking', (tester) async {
+      final cooking = Order.fromJson({
+        ...order(status: OrderStatus.preparing).toJson(),
+        'note': 'من غير شطة\nالدور التالت، الجرس مكسور',
+      });
+      await pump(tester, seed: [cooking]);
+      expect(find.text('من غير شطة\nالدور التالت، الجرس مكسور'), findsOneWidget);
+      expect(find.text('ملاحظة العميل'), findsOneWidget);
+    });
+
+    testWidgets('no checkout instruction draws no note section', (tester) async {
+      await pump(tester, seed: [order()]);
+      expect(find.text('ملاحظة العميل'), findsNothing);
+    });
+
     testWidgets('orders that have been accepted and not yet finished',
         (tester) async {
       await pump(tester, seed: [

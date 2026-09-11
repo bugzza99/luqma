@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:luqma_core/luqma_core.dart';
 
 import '../alarm/order_alarm.dart';
+import 'order_note.dart';
 
 /// Orders waiting for an answer.
 ///
@@ -222,6 +223,7 @@ class _OrderCard extends ConsumerWidget {
                       ],
                     ),
                   ),
+                OrderNote(note: order.note),
                 const Padding(
                   padding: EdgeInsets.symmetric(vertical: Space.sm),
                   child: Divider(height: 1),
