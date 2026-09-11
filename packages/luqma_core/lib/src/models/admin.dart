@@ -116,6 +116,7 @@ class StaffMember {
     this.merchantId,
     this.name,
     this.phone,
+    this.pausedUntil,
   });
 
   final String uid;
@@ -130,6 +131,13 @@ class StaffMember {
   final String? phone;
   final bool isActive;
 
+  /// When a courier expects to be back. Null or past means available.
+  final DateTime? pausedUntil;
+
+  /// Derived: null or in the past means available.
+  bool isAvailableAt(DateTime time) =>
+      pausedUntil == null || !time.isBefore(pausedUntil!);
+
   factory StaffMember.fromJson(Map<String, dynamic> json) => StaffMember(
     uid: json['uid'] as String,
     scope: json['scope'] as String,
@@ -138,6 +146,11 @@ class StaffMember {
     name: json['name'] as String?,
     phone: json['phone'] as String?,
     isActive: json['isActive'] as bool? ?? true,
+    pausedUntil: switch (json['pausedUntil']) {
+      null => null,
+      String s => DateTime.tryParse(s)?.toLocal(),
+      _ => null,
+    },
   );
 
   static StaffMember fromRow(Map<String, dynamic> row) =>

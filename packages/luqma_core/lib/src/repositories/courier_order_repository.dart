@@ -24,6 +24,9 @@ abstract interface class CourierOrderRepository {
   /// platform when they hold the platform row. Live.
   Stream<List<Order>> watchCarried();
 
+  /// Which shops this rider carries for: merchant IDs, with null meaning the platform. Live.
+  Stream<List<String?>> watchCarriedMerchants();
+
   Stream<Order> watchOrder(String orderId);
 
   /// Takes the order out, and puts this courier's name on it.
@@ -100,6 +103,16 @@ class SupabaseCourierOrderRepository implements CourierOrderRepository {
       ins: [RowIn('status', [for (final s in _onTheRun) s.name])],
     ).map(
       (orders) => orders..sort((a, b) => a.orderNumber.compareTo(b.orderNumber)),
+    );
+  }
+
+  @override
+  Stream<List<String?>> watchCarriedMerchants() {
+    return watchRows(
+      db: _db,
+      table: 'courier_merchants',
+      map: (row) => row['merchant_id'] as String?,
+      filters: [RowFilter('is_active', 'true')],
     );
   }
 
@@ -284,6 +297,12 @@ class FakeCourierOrderRepository implements CourierOrderRepository {
           .toList()
         ..sort((a, b) => a.orderNumber.compareTo(b.orderNumber)),
     );
+  }
+
+  @override
+  Stream<List<String?>> watchCarriedMerchants() {
+    if (failure != null) return Stream.error(failure!);
+    return _live(() => List<String?>.unmodifiable(_carried));
   }
 
   @override

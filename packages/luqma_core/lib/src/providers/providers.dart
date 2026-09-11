@@ -465,6 +465,16 @@ Stream<List<Order>> platformDeliveries(Ref ref, String cityId) =>
 Stream<List<Order>> carriedDeliveries(Ref ref) =>
     ref.watch(courierOrderRepositoryProvider).watchCarried();
 
+/// Which shops this rider carries for: merchant IDs, with null meaning the platform. Live.
+@riverpod
+Stream<List<String?>> carriedMerchants(Ref ref) =>
+    ref.watch(courierOrderRepositoryProvider).watchCarriedMerchants();
+
+/// One staff member row, watched live.
+@riverpod
+Stream<StaffMember?> staffMember(Ref ref, String uid) =>
+    ref.watch(staffRepositoryProvider).watchStaffMember(uid);
+
 @Riverpod(keepAlive: true)
 DailyMealRepository dailyMealRepository(Ref ref) =>
     SupabaseDailyMealRepository(ref.watch(supabaseProvider));

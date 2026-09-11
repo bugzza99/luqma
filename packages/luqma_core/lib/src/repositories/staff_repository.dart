@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../data/live_query.dart';
@@ -14,8 +16,14 @@ import '../result.dart';
 abstract interface class StaffRepository {
   Stream<List<StaffMember>> watchStaff();
 
+  /// One staff account, live.
+  Stream<StaffMember?> watchStaffMember(String uid);
+
   /// Deactivating keeps the account and its history while shutting the door immediately.
   Future<Result<void>> setActive(String uid, {required bool active});
+
+  /// Sets when a courier expects to be back. Null or past means available.
+  Future<Result<void>> setPausedUntil(String uid, DateTime? until);
 
   /// Mints a new account. [merchantId] is required for merchant-scope accounts and
   /// refused for platform ones — an owner without a shop would sign in to nothing.
@@ -33,6 +41,26 @@ class SupabaseStaffRepository implements StaffRepository {
   SupabaseStaffRepository(this._db);
 
   final SupabaseClient _db;
+
+  @override
+  Stream<StaffMember?> watchStaffMember(String uid) {
+    return watchRows(
+      db: _db,
+      table: 'staff',
+      map: StaffMember.fromRow,
+      filters: [RowFilter('uid', uid)],
+    ).map((members) => members.firstOrNull);
+  }
+
+  @override
+  Future<Result<void>> setPausedUntil(String uid, DateTime? until) {
+    return Result.guardWrite(
+      () => _db.from('staff').update({
+        'paused_until': until?.toUtc().toIso8601String(),
+      }).eq('uid', uid).select('uid'),
+      (_) {},
+    );
+  }
 
   @override
   Stream<List<StaffMember>> watchStaff() {
@@ -138,10 +166,49 @@ class FakeStaffRepository implements StaffRepository {
   /// Everything held right now, for assertions.
   List<StaffMember> get all => List.unmodifiable(_members.values);
 
+  final _changed = StreamController<void>.broadcast();
+
+  Stream<T> _live<T>(T Function() read) => Stream.multi((listener) {
+        listener.add(read());
+        final sub = _changed.stream.listen((_) => listener.add(read()));
+        listener.onCancel = sub.cancel;
+      });
+
+  void _notify() {
+    if (!_changed.isClosed) _changed.add(null);
+  }
+
+  void dispose() => _changed.close();
+
   @override
   Stream<List<StaffMember>> watchStaff() {
     if (failure != null) return Stream.error(failure!);
-    return Stream.value(_members.values.toList());
+    return _live(() => _members.values.toList());
+  }
+
+  @override
+  Stream<StaffMember?> watchStaffMember(String uid) {
+    if (failure != null) return Stream.error(failure!);
+    return _live(() => _members[uid]);
+  }
+
+  @override
+  Future<Result<void>> setPausedUntil(String uid, DateTime? until) async {
+    if (failure != null) return Result.err(failure!);
+    final existing = _members[uid];
+    if (existing == null) return const Result.err(NotFoundFailure());
+    _members[uid] = StaffMember(
+      uid: existing.uid,
+      scope: existing.scope,
+      role: existing.role,
+      merchantId: existing.merchantId,
+      name: existing.name,
+      phone: existing.phone,
+      isActive: existing.isActive,
+      pausedUntil: until,
+    );
+    _notify();
+    return const Result.ok(null);
   }
 
   @override
@@ -167,7 +234,9 @@ class FakeStaffRepository implements StaffRepository {
       name: existing.name,
       phone: existing.phone,
       isActive: active,
+      pausedUntil: existing.pausedUntil,
     );
+    _notify();
     return const Result.ok(null);
   }
 
