@@ -573,6 +573,23 @@ DATABASE_URL=<luqma-test session pooler> npm --prefix supabase run test:stack
 - **Western numerals** for prices (`150 ج`), not Eastern.
 - **Multi-city data model, Edku-only launch.** Everything carries `cityId`.
 - **No driver app.** Courier is a mode inside MerchantApp, driven by `staff.role`.
+  Reaffirmed 2026-09-11 against the September design handoff, which ships eleven screens
+  as a dedicated Courier App and says in its own README that the owner approved it. The
+  owner did not: asked directly, they kept the mode. The handoff is amended on this point
+  and `design/design_handoff_luqma_apps/README.md` says so at the top.
+  **Courier mode also stays one screen.** The handoff's eleven — a filtered queue, a
+  five-step pickup flow, earnings, availability, a problem sheet — are a richer product
+  than somebody can read one-handed at a junction, which is what the existing screen was
+  deliberately sized for. It gets modifications, not a shell of its own.
+- **A courier works for several merchants, and that is new.** Agreed 2026-09-11 from the
+  same handoff, and it is the one part of that divergence the owner kept. Edku's couriers
+  freelance across shops; a one-merchant scope either leaves capacity unused or forces
+  platform scope on everybody.
+  It is not a UI change. `staff.merchant_id` is a scalar, and the access-token hook copies
+  it into the JWT as a single `merchant_id` claim that `belongs_to_merchant`,
+  `is_merchant_owner` and `is_courier_for` all read. Three merchants do not fit in that
+  field. **An owner stays bound to one merchant** — only the courier relationship becomes
+  many-to-many — so `is_merchant_owner`, which guards the money, does not move.
 - **AdminApp never goes on Google Play.** Direct APK.
 - **Dynamic means values plus home-screen composition** — never full server-driven UI.
   The section registry is a fixed map of widget builders; the server picks and orders them.
