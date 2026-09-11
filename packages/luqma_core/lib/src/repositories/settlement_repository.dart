@@ -12,6 +12,9 @@ import '../result.dart';
 /// repository with a `save` would be an interface promising something the database
 /// refuses, which is how a screen comes to show a button that cannot work.
 abstract interface class SettlementRepository {
+  /// Complete account totals, not the sum of either bounded list.
+  Future<Result<SettlementSummary>> summaryFor(String merchantId);
+
   /// The merchant's settlements, newest first.
   ///
   /// [limit] because a statement screen shows a page, not a year. The policy already
@@ -54,6 +57,22 @@ class SupabaseSettlementRepository implements SettlementRepository {
   SupabaseSettlementRepository(this._db);
 
   final SupabaseClient _db;
+
+  @override
+  Future<Result<SettlementSummary>> summaryFor(String merchantId) =>
+      Result.guard(() async {
+        final row = await _db.rpc<Map<String, dynamic>?>(
+          'settlement_summary',
+          params: {'p_merchant_id': merchantId},
+        );
+        if (row == null) throw const PermissionFailure();
+        return SettlementSummary(
+          orders: row['orders'] as int,
+          taken: row['taken'] as int,
+          platformOwes: row['platform_owes'] as int,
+          paid: row['paid'] as int,
+        );
+      });
 
   @override
   Future<Result<List<OrderSettlement>>> forMerchant(
@@ -161,6 +180,15 @@ class FakeSettlementRepository implements SettlementRepository {
 
   /// Everything recorded through [recordPayment].
   List<CommissionPayment> get recorded => List.unmodifiable(_payments);
+
+  @override
+  Future<Result<SettlementSummary>> summaryFor(String merchantId) async {
+    if (failure != null) return Result.err(failure!);
+    return Result.ok(SettlementSummary.of(
+      _settlements.where((s) => s.merchantId == merchantId),
+      payments: _payments.where((p) => p.merchantId == merchantId),
+    ));
+  }
 
   @override
   Future<Result<List<OrderSettlement>>> forMerchant(

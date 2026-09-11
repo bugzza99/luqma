@@ -96,13 +96,18 @@ Future<List<CommissionPayment>> commissionPayments(Ref ref, String merchantId) a
   return result.valueOrThrow;
 }
 
-/// What the statement adds up to.
+/// The complete account, aggregated by the server.
 ///
-/// Derived from the same fetch rather than asked separately, so the total on the screen
-/// and the rows under it can never be answers to two different questions.
+/// A total and its evidence must state the same scope. The screens name this as the
+/// account from the beginning and name the rows as the newest page; they no longer
+/// imply that the bounded rows add up to this figure. Separate reads are snapshots,
+/// not a promise that the page and account were fetched in one transaction.
 @riverpod
-Future<SettlementSummary> settlementSummary(Ref ref, String merchantId) async =>
-    SettlementSummary.of(await ref.watch(merchantSettlementsProvider(merchantId).future));
+Future<SettlementSummary> settlementSummary(Ref ref, String merchantId) async {
+  final result =
+      await ref.watch(settlementRepositoryProvider).summaryFor(merchantId);
+  return result.valueOrThrow;
+}
 
 @Riverpod(keepAlive: true)
 PopularItemsRepository popularItemsRepository(Ref ref) =>

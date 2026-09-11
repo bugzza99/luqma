@@ -146,11 +146,31 @@ void main() {
     testWidgets('a failed read offers a way out', (tester) async {
       await pump(tester, failure: const OfflineFailure());
 
-      expect(find.byType(LuqmaErrorView), findsOneWidget);
+      // The account and the page each have their own retryable read.
+      expect(find.byType(LuqmaErrorView), findsNWidgets(2));
     });
   });
 
   group('the summary', () {
+    testWidgets('account totals outlive both hundred-row pages', (tester) async {
+      await pump(tester, merchant: shop(owed: 47500), seed: [
+        for (var i = 0; i < 101; i++)
+          settlement(orderId: 'o$i', amount: 200, platformOwes: 300),
+        settlement(orderId: 'reversed', amount: 90000, platformOwes: 90000,
+          reversedAt: DateTime(2026, 8, 25)),
+      ], payments: [for (var i = 0; i < 101; i++) payment(id: 'p$i', amount: 100)]);
+      final summary = find.byKey(StatementScreen.summaryKey);
+      expect(find.descendant(of: summary, matching: find.text('303 ج')), findsOneWidget);
+      expect(find.descendant(of: summary, matching: find.text('202 ج')), findsOneWidget);
+      expect(find.descendant(of: summary, matching: find.text('101 ج')), findsOneWidget);
+      expect(find.descendant(of: summary, matching: find.text('475 ج')), findsOneWidget);
+      expect(find.text('إجمالي الحساب من البداية'), findsOneWidget);
+      expect(find.text('المعروض أحدث 100 شحنة فقط'), findsOneWidget);
+      await tester.tap(find.byKey(StatementScreen.paymentsTabKey));
+      await tester.pumpAndSettle();
+      expect(find.text('المعروض أحدث 100 دفعة فقط'), findsOneWidget);
+    });
+
     testWidgets('counts only what still stands', (tester) async {
       await pump(tester, seed: [
         settlement(orderId: 'o1', amount: 2000),

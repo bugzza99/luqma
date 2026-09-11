@@ -607,10 +607,10 @@ class _Settlements extends ConsumerWidget {
 
     return _Card(
       cardKey: MerchantBillingScreen.settlementsKey,
-      title: 'الحساب على الأوردرات',
+      title: 'إجمالي الحساب من البداية',
       child: LuqmaAsyncView(
         value: summary,
-        onRetry: () => ref.invalidate(merchantSettlementsProvider(merchant.id)),
+        onRetry: () => ref.invalidate(settlementSummaryProvider(merchant.id)),
         builder: (context, s) => Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -719,6 +719,7 @@ class _Settlements extends ConsumerWidget {
       case Ok(:final value):
         ref.invalidate(merchantProvider(merchant.id));
         ref.invalidate(commissionPaymentsProvider(merchant.id));
+        ref.invalidate(settlementSummaryProvider(merchant.id));
         ScaffoldMessenger.maybeOf(context)?.showSnackBar(
           SnackBar(
             key: MerchantBillingScreen.collectedKey,
@@ -751,6 +752,7 @@ class _Settlements extends ConsumerWidget {
                 if (retry is Ok) {
                   ref.invalidate(merchantProvider(merchant.id));
                   ref.invalidate(commissionPaymentsProvider(merchant.id));
+                  ref.invalidate(settlementSummaryProvider(merchant.id));
                 }
               },
             ),

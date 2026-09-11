@@ -362,6 +362,21 @@ void main() {
           reversedAt: reversedAt,
         );
 
+
+    testWidgets('billing reads the whole account beyond a hundred settlements', (tester) async {
+      await pump(tester,
+        seed: merchant(model: RevenueModel.commission, value: 1000),
+        settlements: [
+          for (var i = 0; i < 101; i++)
+            settlement(orderId: 'o$i', amount: 200, platformOwes: 300),
+          settlement(orderId: 'reversed', amount: 90000, platformOwes: 90000,
+            reversedAt: DateTime(2026, 8, 25)),
+        ]);
+      expect(find.text('303 ج', skipOffstage: false), findsOneWidget);
+      expect(find.text('202 ج', skipOffstage: false), findsOneWidget);
+      expect(find.text('إجمالي الحساب من البداية', skipOffstage: false), findsOneWidget);
+    });
+
     testWidgets('a commission merchant shows what is outstanding', (tester) async {
       await pump(
         tester,
