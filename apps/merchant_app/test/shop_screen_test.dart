@@ -127,4 +127,11 @@ void main() {
 
     expect(find.textContaining('جرّب تاني'), findsOneWidget);
   });
+
+  testWidgets('offers the address tile leading to the address editor', (tester) async {
+    await pump(tester);
+
+    expect(find.byKey(ShopScreen.addressKey), findsOneWidget);
+    expect(find.text('عنوان المطعم'), findsOneWidget);
+  });
 }

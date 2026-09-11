@@ -71,6 +71,11 @@ void main() {
     String zoneId = 'z1',
     String phone = '01111111111',
     MerchantType type = MerchantType.restaurant,
+    String? landmarkId,
+    String? landmarkName,
+    String? street,
+    double? lat,
+    double? lng,
   }) =>
       Merchant(
         id: id,
@@ -80,6 +85,11 @@ void main() {
         zoneId: zoneId,
         phone: phone,
         status: MerchantStatus.approved,
+        landmarkId: landmarkId,
+        landmarkName: landmarkName,
+        street: street,
+        lat: lat,
+        lng: lng,
       );
 
   late FakeCourierOrderRepository deliveries;
@@ -208,6 +218,42 @@ void main() {
 
       expect(find.textContaining('المعمورة'), findsWidgets);
       expect(find.textContaining('صيدلية النور'), findsWidgets);
+    });
+
+    testWidgets('shows the shop address when the merchant has one', (tester) async {
+      await pump(
+        tester,
+        seed: [order()],
+        merchants: [
+          merchant(
+            id: 'm1',
+            zoneId: 'z1',
+            landmarkName: 'الميدان الرئيسي',
+            street: 'شارع الجيش',
+          ),
+        ],
+      );
+
+      expect(find.byKey(CourierScreen.shopAddressKey('o1')), findsOneWidget);
+      expect(find.textContaining('الميدان الرئيسي'), findsWidgets);
+      expect(find.textContaining('شارع الجيش'), findsWidgets);
+    });
+
+    testWidgets('draws nothing for the shop address when the merchant has none',
+        (tester) async {
+      await pump(
+        tester,
+        seed: [order()],
+        merchants: [
+          merchant(
+            id: 'm1',
+            landmarkName: null,
+            street: null,
+          ),
+        ],
+      );
+
+      expect(find.byKey(CourierScreen.shopAddressKey('o1')), findsNothing);
     });
 
     // The single number that has to be right. Cash: this is what a person hands over.

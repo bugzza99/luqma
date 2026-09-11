@@ -23,7 +23,10 @@ void main() {
   ];
 
   Future<void> pumpPicker(WidgetTester tester, {
-    Address? initial, ValueChanged<Address>? onSaved,
+    Address? initial,
+    ValueChanged<Address>? onSaved,
+    bool lockZone = false,
+    bool showUnitDetails = true,
   }) async {
     await tester.pumpWidget(
       ProviderScope(
@@ -40,6 +43,8 @@ void main() {
           home: Scaffold(
             body: AddressPicker(
               initial: initial,
+              lockZone: lockZone,
+              showUnitDetails: showUnitDetails,
               onSaved: onSaved ?? (_) {},
             ),
           ),
@@ -339,6 +344,48 @@ void main() {
 
       expect(saved!.landmarkId, 'l2');
       expect(saved!.lat, isNull, reason: 'the old pin is not this landmark');
+    });
+  });
+
+  group('zone locking and detail control', () {
+    testWidgets(
+        'lockZone restricts zone selection to initial and shows landmarks immediately',
+        (tester) async {
+      Address? saved;
+      await pumpPicker(
+        tester,
+        initial: const Address(id: 'a1', zoneId: 'maamoura'),
+        lockZone: true,
+        onSaved: (a) => saved = a,
+      );
+
+      // Only the locked zone is offered; other zones are not
+      expect(find.text('المعمورة'), findsOneWidget);
+      expect(find.text('الشط'), findsNothing);
+
+      // Landmarks for the locked zone are displayed immediately without tapping a zone
+      expect(find.text('صيدلية النور'), findsOneWidget);
+
+      await tester.tap(find.text('صيدلية النور'));
+      await tester.tap(find.byKey(AddressPicker.saveKey));
+      await tester.pumpAndSettle();
+
+      expect(saved!.zoneId, 'maamoura');
+      expect(saved!.landmarkId, 'l1');
+    });
+
+    testWidgets('showUnitDetails: false omits building, floor, apartment',
+        (tester) async {
+      await pumpPicker(
+        tester,
+        initial: const Address(id: 'a1', zoneId: 'maamoura'),
+        showUnitDetails: false,
+      );
+
+      expect(find.byKey(AddressPicker.streetKey), findsOneWidget);
+      expect(find.byKey(AddressPicker.buildingKey), findsNothing);
+      expect(find.byKey(AddressPicker.floorKey), findsNothing);
+      expect(find.byKey(AddressPicker.apartmentKey), findsNothing);
     });
   });
 }

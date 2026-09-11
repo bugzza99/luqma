@@ -33,6 +33,8 @@ class AddressPicker extends ConsumerStatefulWidget {
     this.afterDetails,
     this.top,
     this.saving = false,
+    this.lockZone = false,
+    this.showUnitDetails = true,
   });
 
   final Address? initial;
@@ -50,6 +52,17 @@ class AddressPicker extends ConsumerStatefulWidget {
   /// form does not hear.
   final Widget Function(Zone? zone, AddressPickerSelection selection)? top;
   final bool saving;
+
+  /// When true, the zone from [initial] is fixed and cannot be changed.
+  ///
+  /// Used by the merchant address editor: the shop's zone is `merchants.zone_id`,
+  /// which prices delivery and bounds orders, and is guarded by the database against
+  /// client writes.
+  final bool lockZone;
+
+  /// When false, omits the building, floor, and apartment fields.
+  /// A shop has a street and a landmark, but no apartment.
+  final bool showUnitDetails;
   static const fieldHeight = 50.0;
 
   static const saveKey = Key('address.save');
@@ -197,17 +210,32 @@ class _AddressPickerState extends ConsumerState<AddressPicker> {
                           spacing: Space.sm,
                           runSpacing: Space.sm,
                           children: [
-                            for (final z in zones)
-                              LuqmaChip(
-                                label: z.name,
-                                selected: _zoneId == z.id,
-                                onTap: () => setState(() {
-                                  _zoneId = z.id;
-                                  // A landmark only means anything inside its own zone.
-                                  _landmarkId = null;
-                                  _namingOwnLandmark = false;
-                                }),
-                              ),
+                            // A locked zone is drawn as what it is — a statement, not a
+                            // choice. A chip that looks pressable and answers with
+                            // nothing is a control that lies, and this one is locked
+                            // because the database refuses the write, so pressing it
+                            // would have been a silent refusal either way.
+                            if (widget.lockZone)
+                              Text(
+                                zones
+                                        .where((z) => z.id == _zoneId)
+                                        .firstOrNull
+                                        ?.name ??
+                                    '',
+                                style: Theme.of(context).textTheme.titleMedium,
+                              )
+                            else
+                              for (final z in zones)
+                                LuqmaChip(
+                                  label: z.name,
+                                  selected: _zoneId == z.id,
+                                  onTap: () => setState(() {
+                                    _zoneId = z.id;
+                                    // A landmark only means anything inside its own zone.
+                                    _landmarkId = null;
+                                    _namingOwnLandmark = false;
+                                  }),
+                                ),
                           ],
                         ),
                         if (_zoneId == null) ...[
@@ -295,19 +323,21 @@ class _AddressPickerState extends ConsumerState<AddressPicker> {
                         const SizedBox(height: Space.sm),
                         _field(AddressPicker.streetKey, strings.addressStreet,
                           _street, (v) => _street = v),
-                        const SizedBox(height: Space.md),
-                        Row(
-                          children: [
-                            Expanded(child: _field(AddressPicker.buildingKey,
-                              strings.addressBuilding, _building, (v) => _building = v)),
-                            const SizedBox(width: Space.md),
-                            Expanded(child: _field(AddressPicker.floorKey,
-                              strings.addressFloor, _floor, (v) => _floor = v)),
-                            const SizedBox(width: Space.md),
-                            Expanded(child: _field(AddressPicker.apartmentKey,
-                              strings.addressApartment, _apartment, (v) => _apartment = v)),
-                          ],
-                        ),
+                        if (widget.showUnitDetails) ...[
+                          const SizedBox(height: Space.md),
+                          Row(
+                            children: [
+                              Expanded(child: _field(AddressPicker.buildingKey,
+                                strings.addressBuilding, _building, (v) => _building = v)),
+                              const SizedBox(width: Space.md),
+                              Expanded(child: _field(AddressPicker.floorKey,
+                                strings.addressFloor, _floor, (v) => _floor = v)),
+                              const SizedBox(width: Space.md),
+                              Expanded(child: _field(AddressPicker.apartmentKey,
+                                strings.addressApartment, _apartment, (v) => _apartment = v)),
+                            ],
+                          ),
+                        ],
                       ],
                     ),
                   ),

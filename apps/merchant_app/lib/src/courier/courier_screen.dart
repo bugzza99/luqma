@@ -49,6 +49,7 @@ class CourierScreen extends ConsumerStatefulWidget {
   static Key cashKey(String id) => Key('courier.cash.$id');
   static Key callKey(String id) => Key('courier.call.$id');
   static Key callMerchantKey(String id) => Key('courier.callMerchant.$id');
+  static Key shopAddressKey(String id) => Key('courier.shopAddress.$id');
   static Key platformBadgeKey(String id) => Key('courier.platform.$id');
   static Key navigateKey(String id) => Key('courier.navigate.$id');
   static Key navigateWazeKey(String id) => Key('courier.navigateWaze.$id');
@@ -302,6 +303,9 @@ class _Card extends ConsumerWidget {
     // its own piece of work rather than something to fake on this card.
     final merchant = ref.watch(merchantProvider(order.merchantId)).value;
     final merchantPhone = merchant?.phone;
+    final shopZone =
+        zones.where((z) => z.id == merchant?.zoneId).firstOrNull?.name;
+    final shopAddress = merchant?.formatAddress(zoneName: shopZone);
 
     // Where this order stands for the person holding it, which is the server's account
     // of it moved on by whatever this phone has queued and not yet sent. Reading the
@@ -389,6 +393,29 @@ class _Card extends ConsumerWidget {
                     ),
                   ],
                 ),
+                if (shopAddress != null && shopAddress.isNotEmpty) ...[
+                  const SizedBox(height: Space.xs),
+                  Row(
+                    key: CourierScreen.shopAddressKey(order.id),
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(
+                        Icons.storefront_outlined,
+                        size: Sizes.iconSm,
+                        color: colors.textSecondary,
+                      ),
+                      const SizedBox(width: Space.xs),
+                      Expanded(
+                        child: Text(
+                          shopAddress,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: colors.textSecondary,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
                 const SizedBox(height: Space.sm),
                 if (line != null && line.isNotEmpty)
                   Row(

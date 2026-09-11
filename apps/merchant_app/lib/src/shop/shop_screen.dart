@@ -6,6 +6,7 @@ import 'package:luqma_core/luqma_core.dart';
 
 import 'courier_roster_screen.dart';
 import 'hours_screen.dart';
+import 'merchant_address_screen.dart';
 import 'statement_screen.dart';
 
 
@@ -28,6 +29,7 @@ class ShopScreen extends ConsumerWidget {
   static const walletKey = Key('shop.wallet');
   static const promotionsKey = Key('shop.promotions');
   static const hoursKey = Key('shop.hours');
+  static const addressKey = Key('shop.address');
   static const rosterKey = Key('shop.roster');
   static const noFeedbackKey = Key('shop.noFeedback');
 
@@ -95,6 +97,20 @@ class ShopScreen extends ConsumerWidget {
                     onTap: () => Navigator.of(context).push(
                       MaterialPageRoute<void>(
                         builder: (_) => HoursScreen(merchantId: staff.merchantId!),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: Space.lg),
+                  _Tile(
+                    tileKey: ShopScreen.addressKey,
+                    icon: Icons.storefront_rounded,
+                    title: 'عنوان المطعم',
+                    subtitle: merchant?.formatAddress() ??
+                        'مكان المحل عشان الطيارين يوصلوا له',
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) =>
+                            MerchantAddressScreen(merchantId: staff.merchantId!),
                       ),
                     ),
                   ),

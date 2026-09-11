@@ -95,10 +95,12 @@ class _Open extends ConsumerWidget {
     final minutes = await showModalBottomSheet<int>(
       context: context,
       isScrollControlled: true,
-      builder: (sheetContext) => SafeArea(
-        key: BusyToggle.sheetKey,
-        child: Padding(
-          padding: const EdgeInsets.all(Space.gutter),
+      builder: (sheetContext) {
+        final now = ref.read(clockProvider)();
+        return SafeArea(
+          key: BusyToggle.sheetKey,
+          child: Padding(
+            padding: const EdgeInsets.all(Space.gutter),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -129,9 +131,22 @@ class _Open extends ConsumerWidget {
                             style: OutlinedButton.styleFrom(
                               minimumSize: const Size.fromHeight(56),
                             ),
-                            child: Text(
-                              LuqmaStrings.of(sheetContext).minutes(choice),
-                              style: LuqmaType.button,
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text(
+                                  'حتى ${luqmaClockTime(now.add(Duration(minutes: choice)), LuqmaStrings.of(sheetContext))}',
+                                  style: LuqmaType.button,
+                                ),
+                                Text(
+                                  LuqmaStrings.of(sheetContext).minutes(choice),
+                                  style: LuqmaType.caption.copyWith(
+                                    color: Theme.of(sheetContext)
+                                        .luqma
+                                        .textSecondary,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                         ),
@@ -142,8 +157,9 @@ class _Open extends ConsumerWidget {
             ],
           ),
         ),
-      ),
-    );
+      );
+    },
+  );
 
     if (minutes == null) return;
 
