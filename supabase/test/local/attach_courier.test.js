@@ -145,3 +145,81 @@ describe('attaching a courier by their number', () => {
       /only this shop/);
   });
 });
+
+/**
+ * And then the shop has to be able to read the rider it just attached.
+ *
+ * `read_staff` lets an owner see the staff whose **`staff.merchant_id`** is their shop.
+ * That column is a scalar and holds one shop, so a rider who works for the koshari place
+ * and was attached to the fish place is, to the fish place, an attachment row with no name
+ * and no telephone number on it — which is the roster screen showing a blank where a
+ * person goes, for exactly the riders the join table was built for.
+ */
+describe('reading the rider a shop attached', () => {
+  const OWNER = '00000000-0000-0000-0000-0000000000b3';
+  const RIDER = '00000000-0000-0000-0000-0000000000d6';
+  let db, fish, koshari;
+
+  const as = (uid, claims) => db.exec(`
+    create or replace function auth.uid() returns uuid language sql stable
+      as $fn$ select '${uid}'::uuid $fn$;
+    create or replace function auth.jwt() returns jsonb language sql stable
+      as $fn$ select '${JSON.stringify({ app_metadata: claims })}'::jsonb $fn$;`);
+
+  before(async () => {
+    db = await freshDatabase();
+    await db.exec(`
+      insert into auth.users (id) values ('${OWNER}'), ('${RIDER}');
+      grant usage on schema auth to authenticated;
+      insert into cities (id,name) values ('edku','إدكو');`);
+    const zone = (await db.query(
+      `insert into zones (city_id,name,default_delivery_fee)
+       values ('edku','الزغبي',1000) returning id`)).rows[0].id;
+    const shop = async (n) => (await db.query(
+      `insert into merchants (city_id,type,name,zone_id,phone,status)
+       values ('edku','restaurant',$1,$2,'0100','approved') returning id`,
+      [n, zone])).rows[0].id;
+    fish = await shop('السمك');
+    koshari = await shop('الكشري');
+
+    await db.query(
+      `insert into staff (uid,scope,role,merchant_id,is_active,name,phone)
+       values ($1,'merchant','owner',$2,true,'صاحب السمك','01000000010')`, [OWNER, fish]);
+    // The rider's own row still names the koshari place.
+    await db.query(
+      `insert into staff (uid,scope,role,merchant_id,is_active,name,phone)
+       values ($1,'merchant','courier',$2,true,'محمود','01000000011')`, [RIDER, koshari]);
+    await db.query(
+      'insert into courier_merchants (courier_uid, merchant_id) values ($1,$2)',
+      [RIDER, fish]);
+  });
+
+  after(async () => { await db?.close(); });
+
+  it('shows the owner the name and number of a rider on their roster', async () => {
+    await as(OWNER, { role: 'owner', scope: 'merchant', merchant_id: fish });
+    await db.exec('set role authenticated');
+    const r = await db.query('select name, phone from staff where uid = $1', [RIDER]);
+    await db.exec('reset role');
+
+    assert.equal(r.rowCount, 1, 'a roster row with no person on it is a blank line');
+    assert.equal(r.rows[0].name, 'محمود');
+  });
+
+  // And no further. Being able to read one's own riders is not a directory.
+  it('and no staff the shop has not attached', async () => {
+    const stranger = '00000000-0000-0000-0000-0000000000d7';
+    await db.query(`insert into auth.users (id) values ('${stranger}')`);
+    await db.query(
+      `insert into staff (uid,scope,role,merchant_id,is_active,name,phone)
+       values ($1,'merchant','courier',$2,true,'غريب','01000000012')`,
+      [stranger, koshari]);
+
+    await as(OWNER, { role: 'owner', scope: 'merchant', merchant_id: fish });
+    await db.exec('set role authenticated');
+    const r = await db.query('select uid from staff where uid = $1', [stranger]);
+    await db.exec('reset role');
+
+    assert.equal(r.rowCount, 0);
+  });
+});

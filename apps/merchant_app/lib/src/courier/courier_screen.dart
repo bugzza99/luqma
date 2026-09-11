@@ -70,15 +70,6 @@ class CourierScreen extends ConsumerStatefulWidget {
 class _CourierScreenState extends ConsumerState<CourierScreen> {
   String? _selectedFilter;
 
-  static String _formatClock(DateTime time) {
-    int h = time.hour;
-    final m = time.minute.toString().padLeft(2, '0');
-    final isPm = h >= 12;
-    h = h % 12;
-    if (h == 0) h = 12;
-    final period = isPm ? 'م' : 'ص';
-    return '$h:$m $period';
-  }
 
   Future<void> _pause(BuildContext context, String uid) async {
     final now = ref.read(clockProvider)();
@@ -124,7 +115,7 @@ class _CourierScreenState extends ConsumerState<CourierScreen> {
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
                                 Text(
-                                  'حتى ${_formatClock(now.add(Duration(minutes: choice)))}',
+                                  'حتى ${luqmaClockTime(now.add(Duration(minutes: choice)), LuqmaStrings.of(sheetContext))}',
                                   style: LuqmaType.button,
                                 ),
                                 Text(
@@ -950,7 +941,7 @@ class _CourierPausedBanner extends ConsumerWidget {
           const SizedBox(width: Space.sm),
           Expanded(
             child: Text(
-              'متوقف — هترجع بعد ${strings.minutes(left)} (${_CourierScreenState._formatClock(pausedUntil)})',
+              'متوقف — هترجع بعد ${strings.minutes(left)} (${luqmaClockTime(pausedUntil, strings)})',
               style: Theme.of(context)
                   .textTheme
                   .bodyMedium

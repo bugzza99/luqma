@@ -12,22 +12,15 @@ import 'package:luqma_core/luqma_core.dart';
 /// numerals throughout. [LuqmaStrings] supplies the words; the digits and punctuation are
 /// assembled here.
 
-/// [when] on a 12-hour clock, e.g. `8:45 م`. Western digits, no leading zero on the
-/// hour, minutes padded to two. [strings] supplies only the ص/م marker.
-String formatClockTime(DateTime when, LuqmaStrings strings) {
-  // `.hour` on a UTC `DateTime` is the UTC hour. `TimestampConverter` already localises
-  // everything parsed from the server, so nothing in the app reaches here with a UTC
-  // value today — but these take a bare `DateTime` and a caller cannot see that
-  // requirement from the signature. Egypt is UTC+2 or +3, so getting it wrong shows an
-  // order placed ten minutes ago as three hours old, and across midnight as yesterday.
-  // Localising is a no-op for a value that is already local.
-  final local = when.toLocal();
-  final isPm = local.hour >= 12;
-  var hour = local.hour % 12;
-  if (hour == 0) hour = 12;
-  final minute = local.minute.toString().padLeft(2, '0');
-  return '$hour:$minute ${isPm ? strings.clockPm : strings.clockAm}';
-}
+/// [when] on a 12-hour clock, e.g. `8:45 م`.
+///
+/// The formatting is `luqmaClockTime` in `luqma_core` now. It had reached four copies
+/// across three apps — this one, the opening hours beside it, and two written in the same
+/// week in the merchant app that had gone further and hardcoded `ص` and `م` into a screen
+/// while the l10n keys existed. The name stays because these call sites read better for
+/// it and renaming twenty of them is churn.
+String formatClockTime(DateTime when, LuqmaStrings strings) =>
+    luqmaClockTime(when, strings);
 
 /// The day [when] fell on, seen from [now]: `النهارده`, `امبارح`, a colloquial weekday
 /// name within the last week, and a plain `d/m/yyyy` before that — order history runs

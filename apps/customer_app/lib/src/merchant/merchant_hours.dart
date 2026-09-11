@@ -55,14 +55,5 @@ int? closingMinuteAt(Merchant merchant, DateTime now) {
 /// On-the-hour times drop the `:00`, matching the artboard's «مفتوح لحد 1 ص». Western
 /// digits and the ص/م marker only, for the same reason [formatClockTime] gives: `intl`'s
 /// `ar` locale would bring Arabic-Indic digits this app does not use.
-String formatDayMinute(int minuteOfDay, LuqmaStrings strings) {
-  final m = minuteOfDay % 1440;
-  final isPm = m >= 720;
-  var hour = (m ~/ 60) % 12;
-  if (hour == 0) hour = 12;
-  final minute = m % 60;
-  final marker = isPm ? strings.clockPm : strings.clockAm;
-  return minute == 0
-      ? '$hour $marker'
-      : '$hour:${minute.toString().padLeft(2, '0')} $marker';
-}
+String formatDayMinute(int minuteOfDay, LuqmaStrings strings) =>
+    luqmaClockMinute(minuteOfDay, strings);

@@ -13,6 +13,7 @@ import '../models/home_section.dart';
 import '../models/menu_item.dart';
 import '../models/merchant.dart';
 import '../models/billing.dart';
+import '../models/courier_roster.dart';
 import '../models/daily_meal.dart';
 import '../models/order.dart';
 import '../models/promotion.dart';
@@ -22,6 +23,7 @@ import '../repositories/admin_repository.dart';
 import '../repositories/billing_repository.dart';
 import '../repositories/config_repository.dart';
 import '../repositories/courier_order_repository.dart';
+import '../repositories/courier_roster_repository.dart';
 import '../repositories/courier_queue_drain.dart';
 import '../repositories/courier_write_queue.dart';
 import '../repositories/cuisine_repository.dart';
@@ -77,6 +79,15 @@ CuisineRepository cuisineRepository(Ref ref) =>
 @Riverpod(keepAlive: true)
 SettlementRepository settlementRepository(Ref ref) =>
     SupabaseSettlementRepository(ref.watch(supabaseProvider));
+
+@Riverpod(keepAlive: true)
+CourierRosterRepository courierRosterRepository(Ref ref) =>
+    SupabaseCourierRosterRepository(ref.watch(supabaseProvider));
+
+/// The active couriers carrying for this shop. Live.
+@riverpod
+Stream<List<CourierRosterItem>> courierRoster(Ref ref, String merchantId) =>
+    ref.watch(courierRosterRepositoryProvider).watchRoster(merchantId);
 
 /// One merchant's statement, newest first.
 ///
