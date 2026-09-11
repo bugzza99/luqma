@@ -214,7 +214,11 @@ class _Card extends ConsumerWidget {
                         child: OutlinedButton.icon(
                           key: CourierScreen.navigateKey(order.id),
                           onPressed: () =>
-                              ref.read(mapNavigatorProvider).navigateTo(line),
+                              ref.read(mapNavigatorProvider).navigateTo(
+                                    line,
+                                    lat: order.address?.lat,
+                                    lng: order.address?.lng,
+                                  ),
                           icon: const Icon(Icons.navigation_rounded, size: Sizes.iconSm),
                           label: Text(strings.navigateToCustomer,
                               overflow: TextOverflow.ellipsis),

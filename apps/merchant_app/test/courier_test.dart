@@ -210,6 +210,53 @@ void main() {
       expect(navigator.lastQuery, contains('صيدلية النور'));
     });
 
+    // Google does not know «جنب صيدلية النور»: the names here are local knowledge, and a
+    // search for one lands the courier in the middle of the governorate or nowhere. When
+    // the order carries a coordinate, that is what the maps app is given — the words stay
+    // above the button, because the pin is the landmark and the door is still a floor and
+    // a flat number.
+    testWidgets('drives to the pin when the order has one', (tester) async {
+      await pump(
+        tester,
+        seed: [
+          order().copyWith(
+            address: address.copyWith(lat: 31.3084, lng: 30.2939),
+          ),
+        ],
+      );
+
+      await tester.tap(find.byKey(CourierScreen.navigateKey('o1')));
+      await tester.pumpAndSettle();
+
+      expect(navigator.lastLat, 31.3084);
+      expect(navigator.lastLng, 30.2939);
+      expect(navigator.lastQuery, contains('صيدلية النور'),
+          reason: 'the words still ride along, for a maps app that cannot use a pin');
+    });
+
+    // Most of Edku's landmarks have no coordinate yet, and words are the primary address
+    // here by design. Nothing about that path may change.
+    testWidgets('and by the words when it has none', (tester) async {
+      await pump(tester, seed: [order()]);
+
+      await tester.tap(find.byKey(CourierScreen.navigateKey('o1')));
+      await tester.pumpAndSettle();
+
+      expect(navigator.lastLat, isNull);
+      expect(navigator.lastQuery, contains('المعمورة'));
+    });
+
+    // What the maps app is actually handed. A pin is `query=lat,lng`, which Google Maps
+    // centres on exactly; the words are a search, which is a guess it makes for us.
+    test('the url carries the pin rather than the name', () {
+      final pinned = GoogleMapsNavigator.uriFor('جنب صيدلية النور',
+          lat: 31.3084, lng: 30.2939);
+      expect(pinned.queryParameters['query'], '31.3084,30.2939');
+
+      final worded = GoogleMapsNavigator.uriFor('جنب صيدلية النور');
+      expect(worded.queryParameters['query'], 'جنب صيدلية النور');
+    });
+
     testWidgets('offers nothing to navigate to when there is no address',
         (tester) async {
       await pump(tester, seed: [order(at: null)]);

@@ -13,7 +13,11 @@ void main() {
   ];
 
   const landmarks = [
-    Landmark(id: 'l1', cityId: 'edku', zoneId: 'maamoura', name: 'صيدلية النور'),
+    // Pinned, because the map layer draws only landmarks that carry a coordinate —
+    // and because a pin that reaches nothing beyond the customer's own screen is the
+    // thing these tests exist to prevent.
+    Landmark(id: 'l1', cityId: 'edku', zoneId: 'maamoura', name: 'صيدلية النور',
+        lat: 31.3084, lng: 30.2939),
     Landmark(id: 'l2', cityId: 'edku', zoneId: 'maamoura', name: 'مسجد الفتح'),
     Landmark(id: 'l3', cityId: 'edku', zoneId: 'shatt', name: 'موقف التوك توك'),
   ];
@@ -248,5 +252,93 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(saved!.landmarkId, 'l1');
+  });
+
+  /// Where a coordinate comes from, and how far it gets.
+  ///
+  /// The columns exist, the repository writes them, and the form never put a value in
+  /// either — so every address in the product had a null pin, and the map, the courier's
+  /// maps app and the order snapshot were all reading a coordinate nothing ever set.
+  group('the pin on a saved address', () {
+    testWidgets("is the chosen landmark's, so it can reach the courier",
+        (tester) async {
+      Address? saved;
+      await pumpPicker(tester, onSaved: (a) => saved = a);
+      await tester.tap(find.text('المعمورة'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('صيدلية النور'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(AddressPicker.saveKey));
+      await tester.pumpAndSettle();
+
+      expect(saved!.lat, 31.3084);
+      expect(saved!.lng, 30.2939);
+    });
+
+    // Most of the city's landmarks have no coordinate yet, and inventing one would put a
+    // marker on a guess. Words are the primary address here; the pin is the supporting
+    // layer.
+    testWidgets('is nothing when the landmark has none', (tester) async {
+      Address? saved;
+      await pumpPicker(tester, onSaved: (a) => saved = a);
+      await tester.tap(find.text('المعمورة'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('مسجد الفتح'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(AddressPicker.saveKey));
+      await tester.pumpAndSettle();
+
+      expect(saved!.lat, isNull);
+      expect(saved!.lng, isNull);
+    });
+
+    // Editing the floor must not silently unpin the address. The form rebuilt the whole
+    // model from its own fields, so everything it did not ask about was dropped.
+    testWidgets('survives an edit that does not touch the landmark', (tester) async {
+      Address? saved;
+      await pumpPicker(
+        tester,
+        initial: const Address(
+          id: 'a1',
+          zoneId: 'maamoura',
+          landmarkNote: 'قدام الفرن',
+          lat: 31.31,
+          lng: 30.29,
+        ),
+        onSaved: (a) => saved = a,
+      );
+      await tester.enterText(find.byKey(AddressPicker.floorKey), '3');
+      await tester.tap(find.byKey(AddressPicker.saveKey));
+      await tester.pumpAndSettle();
+
+      expect(saved!.floor, '3');
+      expect(saved!.lat, 31.31);
+    });
+
+    // And moving to a different landmark moves the pin with it. A coordinate left over
+    // from the place somebody used to live next to sends the courier there.
+    testWidgets('is cleared when the landmark changes to an unpinned one',
+        (tester) async {
+      Address? saved;
+      await pumpPicker(
+        tester,
+        initial: const Address(
+          id: 'a1',
+          zoneId: 'maamoura',
+          landmarkId: 'l1',
+          landmarkName: 'صيدلية النور',
+          lat: 31.3084,
+          lng: 30.2939,
+        ),
+        onSaved: (a) => saved = a,
+      );
+      await tester.tap(find.text('مسجد الفتح'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(AddressPicker.saveKey));
+      await tester.pumpAndSettle();
+
+      expect(saved!.landmarkId, 'l2');
+      expect(saved!.lat, isNull, reason: 'the old pin is not this landmark');
+    });
   });
 }

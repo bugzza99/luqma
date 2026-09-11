@@ -12,20 +12,37 @@ part 'navigation.g.dart';
 ///
 /// An interface only so the screens above can be tested; there is nothing else to swap.
 abstract interface class MapNavigator {
-  Future<void> navigateTo(String query);
+  /// [query] is the address in words. [lat]/[lng] are the pin, when the order carries
+  /// one — both halves or neither, which is how they are stored and frozen.
+  Future<void> navigateTo(String query, {double? lat, double? lng});
 }
 
 class GoogleMapsNavigator implements MapNavigator {
   const GoogleMapsNavigator();
 
-  @override
-  Future<void> navigateTo(String query) async {
-    // A search query, not coordinates. The addresses here are a zone and a landmark —
-    // "next to Al-Nour pharmacy" — because Edku's streets are not systematically
-    // numbered, and a pin dropped on a guess is worse than a name a person can read.
-    final uri = Uri.parse(
-      'https://www.google.com/maps/search/?api=1&query=${Uri.encodeComponent(query)}',
+  /// What gets opened.
+  ///
+  /// A coordinate when the order has one, and the words when it does not. For phases
+  /// this was words only, with a comment saying a pin dropped on a guess is worse than a
+  /// name a person can read — true, and not the situation any more: the pins are the
+  /// admin's own landmarks, placed deliberately, and they arrive on the order frozen.
+  ///
+  /// The words are the weaker half here and always were. **Google does not know
+  /// «صيدلية النور»** — these names are local knowledge, not map data — so searching one
+  /// lands the courier somewhere in the governorate or nowhere at all. A real coordinate
+  /// is the first thing this hand-off has ever had that the maps app can actually use.
+  @visibleForTesting
+  static Uri uriFor(String query, {double? lat, double? lng}) {
+    final pin = lat != null && lng != null ? '$lat,$lng' : null;
+    return Uri.parse(
+      'https://www.google.com/maps/search/?api=1'
+      '&query=${Uri.encodeComponent(pin ?? query)}',
     );
+  }
+
+  @override
+  Future<void> navigateTo(String query, {double? lat, double? lng}) async {
+    final uri = uriFor(query, lat: lat, lng: lng);
     // No maps app and no browser is possible on a cheap handset, and the courier is
     // in the street. `ExternalLinks` swallows the PlatformException so the tap does not
     // crash the delivery screen; the address is already written above the button, which
@@ -38,9 +55,15 @@ class GoogleMapsNavigator implements MapNavigator {
 @visibleForTesting
 class FakeNavigator implements MapNavigator {
   String? lastQuery;
+  double? lastLat;
+  double? lastLng;
 
   @override
-  Future<void> navigateTo(String query) async => lastQuery = query;
+  Future<void> navigateTo(String query, {double? lat, double? lng}) async {
+    lastQuery = query;
+    lastLat = lat;
+    lastLng = lng;
+  }
 }
 
 @Riverpod(keepAlive: true)

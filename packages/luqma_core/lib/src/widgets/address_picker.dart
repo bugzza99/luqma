@@ -95,18 +95,41 @@ class _AddressPickerState extends ConsumerState<AddressPicker> {
     _formKey.currentState!.save();
 
     final landmark = landmarks.where((l) => l.id == _landmarkId).firstOrNull;
+    final chosen = _namingOwnLandmark ? null : landmark;
+
+    // Where a coordinate comes from.
+    //
+    // There is exactly one source today: the landmark. The pins on the map *are* the
+    // landmarks and pressing one chooses it — there is no free drop — so the pin on an
+    // address is the pin of the place it is next to. Carrying it here is what lets it be
+    // frozen onto the order and handed to the courier's maps app; the columns have
+    // existed since the map landed, the repository writes them, and this form was the one
+    // place that never put a value in either.
+    //
+    // The fallback keeps a pin the address already had rather than quietly clearing it
+    // when somebody edits their floor — but only while the landmark is unchanged. A
+    // coordinate left over from the place they used to live next to sends the courier
+    // there, which is worse than sending him the words.
+    final samePlace = chosen?.id == widget.initial?.landmarkId;
+    final lat = chosen?.lat ?? (samePlace ? widget.initial?.lat : null);
+    final lng = chosen?.lng ?? (samePlace ? widget.initial?.lng : null);
+
     widget.onSaved(
       Address(
         id: widget.initial?.id ?? '',
         zoneId: _zoneId!,
-        landmarkId: _namingOwnLandmark ? null : landmark?.id,
-        landmarkName: _namingOwnLandmark ? null : landmark?.name,
+        landmarkId: chosen?.id,
+        landmarkName: chosen?.name,
         landmarkNote: _namingOwnLandmark ? _landmarkNote : null,
         street: _street,
         building: _building,
         floor: _floor,
         apartment: _apartment,
         label: widget.initial?.label,
+        // Both halves or neither: the column check refuses half a pin, and half a pin is
+        // a marker in the Gulf of Guinea rather than no marker at all.
+        lat: lng == null ? null : lat,
+        lng: lat == null ? null : lng,
       ),
     );
   }
