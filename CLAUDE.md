@@ -569,6 +569,20 @@ DATABASE_URL=<luqma-test session pooler> npm --prefix supabase run test:stack
   apps have no self-serve reset. The way back stays a phone call to an admin, who issues
   a new password through `reset-customer-password`. Do not reopen this as a gap.
 - **Cash on delivery only.** The model is payment-method aware for later, nothing more.
+- **A courier is paid outside the app, and the app's job is the facts.** Settled
+  2026-09-11 when the earnings screen was specified and it turned out nothing in the
+  product knew what a courier earns — no table, no column, no rule, only a colour note in
+  a design pack. There is no courier pay model and none is being built. The screen counts
+  what the app already knows: deliveries made, cash in hand, and which shop each belongs
+  to. That is what a rider and a shop argue over at the end of a shift, and the app can
+  settle it without inventing a wage.
+- **A delivery that came back is recorded, counted on its own, and carries no money.**
+  The customer refused, or was not there. Today that is an ordinary `cancelled` with a
+  reason and `cancelled_by = 'courier'`, so the data already exists; what was missing is
+  counting it apart from an order the customer cancelled before it ever left. **Whether
+  the courier is paid for that trip is the shop's decision, made between them** — the
+  owner's call, and deliberately not a rule in here. Sales figures exclude it; the
+  courier's own count shows it beside the deliveries that landed.
 - **Arabic RTL only**, with i18n scaffolding so English is a file, not a rewrite.
 - **Western numerals** for prices (`150 ج`), not Eastern.
 - **Multi-city data model, Edku-only launch.** Everything carries `cityId`.
