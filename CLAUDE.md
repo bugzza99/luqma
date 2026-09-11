@@ -599,7 +599,27 @@ DATABASE_URL=<luqma-test session pooler> npm --prefix supabase run test:stack
   captured rather than verified and the password is what protects the account.
 - **The brand name is never a text widget.** It is `LuqmaLockup`, backed by SVG. Lemonada is
   not a bundled font. Cairo renders everything else.
-- **The owner enters merchant menus and shoots photos personally.** Merchants never self-onboard.
+- **The owner enters merchant menus and shoots photos personally.**
+  **Amended 2026-09-11: there is a way in, and it is an application rather than an
+  account.** MerchantApp gains a signup page asking one question — courier, restaurant, or
+  home kitchen — and what it writes is a row in `staff_applications`: a name, a phone, a
+  kind, and whatever the applicant typed about themselves. **That row has no privileges of
+  any sort.** The owner reads it in AdminApp, telephones, and approves; approval is what
+  calls `create-staff-account`, which remains the only thing that may mint a `staff` row.
+  The reason for that shape: `staff` is what every policy in the database reads to decide
+  who you are, so a screen writing it directly would give that boundary an anonymous
+  writer, and anybody who installs the APK a row in it.
+  A merchant **does** fill in their own details now, and the owner checks them on the call
+  and corrects what is wrong from AdminApp. The zone, the hours, the delivery fee, the
+  plan and the menu stay the owner's to settle — a shop that describes its own zone wrongly
+  sends couriers to the wrong part of town, which is why this was closed in the first
+  place.
+  **A courier's attachment is granted, never claimed.** An applicant may not name the shops
+  they carry for: a rider who could attach themselves to every shop in Edku would read
+  every customer's address and telephone number in the city.
+  This replaced a decision taken an hour earlier the same day — that a merchant owner could
+  create courier accounts for their own shop. With an approval queue nobody needs to, and
+  the narrower privilege is the one not granted.
 - **Edku's zone and landmark names are entered from AdminApp, not from a file.** The names
   in `data/edku.json` are structurally correct placeholders and were never meant to ship
   as they are; the places screen edits both, and that is the path. So this is data entry
