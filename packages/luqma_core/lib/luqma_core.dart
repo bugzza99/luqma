@@ -90,6 +90,7 @@ export 'src/widgets/error_view.dart';
 export 'src/widgets/notice.dart';
 export 'src/widgets/pressable.dart';
 export 'src/widgets/chip.dart';
+export 'src/widgets/bill_line.dart';
 export 'src/widgets/luqma_lockup.dart';
 export 'src/widgets/menu_editor.dart';
 export 'src/widgets/force_update_gate.dart';

@@ -818,10 +818,10 @@ class _Bill extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _Line(label: 'الأصناف', value: strings.price(pricing.subtotal)),
+          LuqmaBillLine(label: 'الأصناف', value: strings.price(pricing.subtotal)),
           if (pricing.subtotalDiscount > 0) ...[
             const SizedBox(height: Space.sm),
-            _Line(
+            LuqmaBillLine(
               key: CheckoutScreen.billDiscountKey,
               label: 'خصم الكود',
               value: '− ${strings.price(pricing.subtotalDiscount)}',
@@ -833,14 +833,14 @@ class _Bill extends StatelessWidget {
           // can be non-zero at once — folding them together hides which one moved.
           if (pricing.deliveryDiscount > 0) ...[
             const SizedBox(height: Space.sm),
-            _Line(
+            LuqmaBillLine(
               label: 'خصم التوصيل',
               value: '− ${strings.price(pricing.deliveryDiscount)}',
               emphasis: true,
             ),
           ],
           const SizedBox(height: Space.sm),
-          _Line(
+          LuqmaBillLine(
             label: zoneName == null ? 'التوصيل' : 'التوصيل — $zoneName',
             // Never a zero that looks like free delivery when the truth is that no
             // address has been chosen yet.
@@ -871,38 +871,6 @@ class _Bill extends StatelessWidget {
   }
 }
 
-class _Line extends StatelessWidget {
-  const _Line({
-    super.key,
-    required this.label,
-    required this.value,
-    this.emphasis = false,
-  });
-
-  final String label;
-  final String value;
-  final bool emphasis;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colors = theme.luqma;
-    final tone = emphasis ? colors.success : colors.textPrimary;
-
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Expanded(
-          child: Text(label,
-              style: theme.textTheme.bodyMedium
-                  ?.copyWith(color: colors.textPrimary)),
-        ),
-        const SizedBox(width: Space.sm),
-        Text(value, style: theme.textTheme.bodyMedium?.copyWith(color: tone)),
-      ],
-    );
-  }
-}
 
 class _CashNote extends StatelessWidget {
   const _CashNote();
