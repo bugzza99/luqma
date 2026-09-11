@@ -14,6 +14,7 @@ import '../models/menu_item.dart';
 import '../models/merchant.dart';
 import '../models/billing.dart';
 import '../models/courier_roster.dart';
+import '../models/courier_summary.dart';
 import '../models/daily_meal.dart';
 import '../models/order.dart';
 import '../models/promotion.dart';
@@ -480,6 +481,14 @@ Stream<List<Order>> carriedDeliveries(Ref ref) =>
 @riverpod
 Stream<List<String?>> carriedMerchants(Ref ref) =>
     ref.watch(courierOrderRepositoryProvider).watchCarriedMerchants();
+
+/// Summary of what this courier did today: completed deliveries, returns,
+/// cash in hand, and the per-shop breakdown.
+@riverpod
+Future<CourierDaySummary> courierDaySummary(Ref ref) async {
+  final result = await ref.watch(courierOrderRepositoryProvider).daySummary();
+  return result.valueOrThrow;
+}
 
 /// One staff member row, watched live.
 @riverpod

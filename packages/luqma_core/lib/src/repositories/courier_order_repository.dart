@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../data/column_names.dart';
 import '../data/live_query.dart';
+import '../models/courier_summary.dart';
 import '../models/order.dart';
 import '../result.dart';
 
@@ -37,6 +38,10 @@ abstract interface class CourierOrderRepository {
   /// Nobody at the door, wrong address, order refused. Needs a reason: it is what the
   /// admin reads, and what eventually blocks a customer who does this repeatedly.
   Future<Result<void>> markFailed(String orderId, {required String reason});
+
+  /// What this courier did today (or on [day]): delivered count, returned count,
+  /// cash in hand, and the per-shop breakdown.
+  Future<Result<CourierDaySummary>> daySummary({DateTime? day});
 }
 
 /// What a courier has on their hands: ready to collect, or already out.
@@ -191,6 +196,22 @@ class SupabaseCourierOrderRepository implements CourierOrderRepository {
       }).eq('id', orderId).select('id');
     }, (_) {});
   }
+
+  @override
+  Future<Result<CourierDaySummary>> daySummary({DateTime? day}) {
+    return Result.guard(() async {
+      final data = await _db.rpc(
+        'courier_day_summary',
+        params: {
+          if (day != null)
+            'p_day':
+                '${day.year.toString().padLeft(4, '0')}-${day.month.toString().padLeft(2, '0')}-${day.day.toString().padLeft(2, '0')}',
+        },
+      );
+      if (data == null) return CourierDaySummary.empty;
+      return CourierDaySummary.fromJson(Map<String, dynamic>.from(data as Map));
+    });
+  }
 }
 
 /// In-memory deliveries, for tests and for building the courier screens without a
@@ -200,12 +221,21 @@ class FakeCourierOrderRepository implements CourierOrderRepository {
     List<Order> seed = const [],
     this.failure,
     Iterable<String?>? carriedMerchants,
+    this.courierUid,
+    DateTime Function()? now,
   })  : _orders = {for (final o in seed) o.id: o},
         _carried = carriedMerchants != null
             ? Set<String?>.of(carriedMerchants)
-            : <String?>{};
+            : <String?>{},
+        _now = now ?? DateTime.now;
 
   final Map<String, Order> _orders;
+
+  /// The courier this repository acts as. Only this courier's work is counted
+  /// in shift summaries.
+  String? courierUid;
+
+  final DateTime Function() _now;
 
   /// The shops this courier carries for, modeling the `courier_merchants` join table.
   /// Null is the platform row: home kitchens, and merchants that do not deliver for
@@ -355,5 +385,32 @@ class FakeCourierOrderRepository implements CourierOrderRepository {
     _orders[orderId] = apply(order).copyWith(status: to);
     _notify();
     return const Result.ok(null);
+  }
+
+  @override
+  Future<Result<CourierDaySummary>> daySummary({DateTime? day}) async {
+    if (failure != null) return Result.err(failure!);
+
+    final target = day?.toLocal() ?? _now().toLocal();
+
+    final matching = _orders.values.where((o) {
+      if (courierUid != null && o.courierUid != courierUid) return false;
+
+      final happenedAt = (o.deliveredAt ?? o.placedAt)?.toLocal();
+      if (happenedAt != null) {
+        if (happenedAt.year != target.year ||
+            happenedAt.month != target.month ||
+            happenedAt.day != target.day) {
+          return false;
+        }
+      }
+
+      final isDelivered = o.status == OrderStatus.delivered;
+      final isReturned = o.status == OrderStatus.cancelled &&
+          o.cancelledBy == OrderActor.courier;
+      return isDelivered || isReturned;
+    });
+
+    return Result.ok(CourierDaySummary.of(matching));
   }
 }

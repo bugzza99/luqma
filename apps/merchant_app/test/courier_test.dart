@@ -134,6 +134,8 @@ void main() {
       seed: seed,
       failure: failure,
       carriedMerchants: carried,
+      courierUid: courierStaff.uid,
+      now: () => clockTime,
     );
     navigator = FakeNavigator();
     links = FakeExternalLinks(answer: phoneCanDial);
@@ -932,6 +934,112 @@ void main() {
         await prefs.getString('courier_write_queue.account.c1.v1'),
         isNotNull,
       );
+    });
+  });
+
+  group('shift summary', () {
+    testWidgets('a rider who has done nothing is told nothing, not an error or empty box', (tester) async {
+      await pump(tester, seed: const []);
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(CourierScreen.summaryKey), findsNothing);
+      expect(find.text('شغل النهاردة'), findsNothing);
+      expect(find.byKey(CourierScreen.errorKey), findsNothing);
+    });
+
+    testWidgets('shows three totals and per-shop split above the queue', (tester) async {
+      final now = DateTime(2026, 9, 22, 14, 0);
+      await pump(
+        tester,
+        now: now,
+        seed: [
+          // Delivered order from shop 1 (m1 - 'مطعم الشاطئ')
+          order(id: 'o_deliv_1', courierUid: 'c1', status: OrderStatus.delivered)
+              .copyWith(
+            merchantId: 'm1',
+            merchantName: 'مطعم الشاطئ',
+            deliveredAt: now,
+            pricing: const OrderPricing(subtotal: 12000, deliveryFee: 1000, total: 13000),
+          ),
+          // Second delivered order from shop 1 (m1 - 'مطعم الشاطئ')
+          order(id: 'o_deliv_2', courierUid: 'c1', status: OrderStatus.delivered)
+              .copyWith(
+            merchantId: 'm1',
+            merchantName: 'مطعم الشاطئ',
+            deliveredAt: now,
+            pricing: const OrderPricing(subtotal: 7000, deliveryFee: 0, total: 7000),
+          ),
+          // Return from shop 1 (m1 - 'مطعم الشاطئ'): trip made, 0 cash
+          order(id: 'o_ret_1', courierUid: 'c1', status: OrderStatus.cancelled)
+              .copyWith(
+            merchantId: 'm1',
+            merchantName: 'مطعم الشاطئ',
+            cancelledBy: OrderActor.courier,
+            deliveredAt: now,
+            pricing: const OrderPricing(subtotal: 9000, deliveryFee: 1000, total: 10000),
+          ),
+          // Delivered order from shop 2 (m2 - 'بيتزا روما')
+          order(id: 'o_deliv_3', courierUid: 'c1', status: OrderStatus.delivered)
+              .copyWith(
+            merchantId: 'm2',
+            merchantName: 'بيتزا روما',
+            deliveredAt: now,
+            pricing: const OrderPricing(subtotal: 5000, deliveryFee: 0, total: 5000),
+          ),
+          // One active order in queue
+          order(id: 'o_active', courierUid: 'c1', status: OrderStatus.preparing)
+              .copyWith(merchantId: 'm1', merchantName: 'مطعم الشاطئ'),
+        ],
+        carriedMerchants: const {'m1', 'm2'},
+      );
+      await tester.pumpAndSettle();
+
+      // Summary card is present
+      expect(find.byKey(CourierScreen.summaryKey), findsOneWidget);
+      expect(find.text('شغل النهاردة'), findsOneWidget);
+
+      // Three totals:
+      // 1. Deliveries: 3
+      expect(find.byKey(CourierScreen.summaryDeliveredKey), findsOneWidget);
+      expect(find.descendant(of: find.byKey(CourierScreen.summaryDeliveredKey), matching: find.text('3 طلبات')), findsOneWidget);
+
+      // 2. Returns: 1
+      expect(find.byKey(CourierScreen.summaryReturnedKey), findsOneWidget);
+      expect(find.descendant(of: find.byKey(CourierScreen.summaryReturnedKey), matching: find.text('طلب واحد')), findsOneWidget);
+
+      // 3. Cash in hand: 13000 + 7000 + 5000 = 25000 piastres = 250 ج
+      expect(find.byKey(CourierScreen.summaryCashKey), findsOneWidget);
+      expect(find.descendant(of: find.byKey(CourierScreen.summaryCashKey), matching: find.text('250 ج')), findsOneWidget);
+
+      // Per-shop split:
+      // m1 (مطعم الشاطئ): 200 ج (20000 piastres)
+      expect(find.byKey(CourierScreen.summaryShopKey('m1')), findsOneWidget);
+      expect(find.descendant(of: find.byKey(CourierScreen.summaryShopKey('m1')), matching: find.text('200 ج')), findsOneWidget);
+
+      // m2 (بيتزا روما): 50 ج (5000 piastres)
+      expect(find.byKey(CourierScreen.summaryShopKey('m2')), findsOneWidget);
+      expect(find.descendant(of: find.byKey(CourierScreen.summaryShopKey('m2')), matching: find.text('50 ج')), findsOneWidget);
+
+      // Must not mention wages, earnings, share, or debt
+      expect(find.textContaining('أرباح'), findsNothing);
+      expect(find.textContaining('أجر'), findsNothing);
+      expect(find.textContaining('نسبة'), findsNothing);
+      expect(find.textContaining('مستحق'), findsNothing);
+
+      // Queue is also visible below summary
+      expect(find.byKey(CourierScreen.cardKey('o_active')), findsOneWidget);
+    });
+
+    testWidgets('summary error does not break the screen or show error card', (tester) async {
+      await pump(
+        tester,
+        failure: const OfflineFailure(),
+        seed: const [],
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(CourierScreen.summaryKey), findsNothing);
+      expect(find.text('شغل النهاردة'), findsNothing);
     });
   });
 }

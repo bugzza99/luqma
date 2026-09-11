@@ -32,6 +32,12 @@ class CourierScreen extends ConsumerStatefulWidget {
   static Key carriedShopKey(String? id) =>
       Key('courier.carriedShop.${id ?? "platform"}');
 
+  static const summaryKey = Key('courier.summary');
+  static const summaryDeliveredKey = Key('courier.summary.delivered');
+  static const summaryReturnedKey = Key('courier.summary.returned');
+  static const summaryCashKey = Key('courier.summary.cash');
+  static Key summaryShopKey(String id) => Key('courier.summary.shop.$id');
+
   static const customReasonInputKey = Key('courier.customReasonInput');
   static const customReasonSubmitKey = Key('courier.customReasonSubmit');
 
@@ -168,6 +174,7 @@ class _CourierScreenState extends ConsumerState<CourierScreen> {
 
     void retryDeliveries() {
       ref.invalidate(carriedDeliveriesProvider);
+      ref.invalidate(courierDaySummaryProvider);
     }
 
     return Scaffold(
@@ -196,6 +203,7 @@ class _CourierScreenState extends ConsumerState<CourierScreen> {
           const _PendingBanner(),
           const _RejectedBanner(),
           const _CarriedShopsBar(),
+          const _CourierDaySummaryView(),
           Expanded(
             child: LuqmaAsyncView(
               value: deliveries,
@@ -527,6 +535,7 @@ class _Card extends ConsumerWidget {
                         ? null
                         : () => _submit(
                               context,
+                              ref,
                               ref
                                   .read(courierWriteQueueProvider)
                                   .markOnTheWay(order.id, courierUid: courierUid!),
@@ -602,6 +611,7 @@ class _Card extends ConsumerWidget {
 
     _submit(
       context,
+      ref,
       ref.read(courierWriteQueueProvider).markDelivered(order.id),
     );
   }
@@ -694,6 +704,7 @@ class _Card extends ConsumerWidget {
 
     _submit(
       context,
+      ref,
       ref
           .read(courierWriteQueueProvider)
           .markFailed(order.id, reason: reason),
@@ -705,10 +716,12 @@ class _Card extends ConsumerWidget {
   /// "failed" — the tap did not die, it is waiting.
   Future<void> _submit(
     BuildContext context,
+    WidgetRef ref,
     Future<CourierSubmitOutcome> pending,
   ) async {
     final outcome = await pending;
     if (!context.mounted) return;
+    ref.invalidate(courierDaySummaryProvider);
 
     if (outcome case CourierRejected(:final failure)) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1047,6 +1060,84 @@ class _CarriedMerchantName extends ConsumerWidget {
       style: LuqmaType.caption.copyWith(
         color: colors.textPrimary,
         fontWeight: FontWeight.w600,
+      ),
+    );
+  }
+}
+
+/// What the rider did today. If nothing has happened yet on this shift (0 delivered,
+/// 0 returned, 0 cash), the rider is told nothing — no empty card, no heading, no error
+/// card. When work has happened, shows deliveries, returns, cash in hand, and the per-shop split.
+class _CourierDaySummaryView extends ConsumerWidget {
+  const _CourierDaySummaryView();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final summaryAsync = ref.watch(courierDaySummaryProvider);
+    final summary = summaryAsync.value;
+
+    if (summary == null || summary.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    final theme = Theme.of(context);
+    final colors = theme.luqma;
+    final strings = LuqmaStrings.of(context);
+
+    return Container(
+      key: CourierScreen.summaryKey,
+      margin: const EdgeInsets.symmetric(
+        horizontal: Space.gutter,
+        vertical: Space.xs,
+      ),
+      padding: const EdgeInsets.all(Space.md),
+      decoration: BoxDecoration(
+        color: colors.card,
+        borderRadius: Radii.cardAll,
+        border: Border.all(color: colors.hairline),
+        boxShadow: Elevations.card,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            'شغل النهاردة',
+            style: theme.textTheme.titleMedium,
+          ),
+          const SizedBox(height: Space.sm),
+          LuqmaBillLine(
+            key: CourierScreen.summaryDeliveredKey,
+            label: 'اتسلّم',
+            value: strings.orderCount(summary.delivered),
+          ),
+          const SizedBox(height: Space.xs),
+          LuqmaBillLine(
+            key: CourierScreen.summaryReturnedKey,
+            label: 'اترجع',
+            value: strings.orderCount(summary.returned),
+          ),
+          const SizedBox(height: Space.xs),
+          LuqmaBillLine(
+            key: CourierScreen.summaryCashKey,
+            label: 'كاش في إيدك',
+            value: strings.price(summary.cash),
+          ),
+          if (summary.shops.isNotEmpty) ...[
+            const SizedBox(height: Space.sm),
+            Divider(color: colors.hairline, height: 1),
+            const SizedBox(height: Space.xs),
+            for (final shop in summary.shops)
+              Padding(
+                padding: const EdgeInsets.only(top: Space.xs),
+                child: LuqmaBillLine(
+                  key: CourierScreen.summaryShopKey(shop.merchantId),
+                  label:
+                      '${shop.merchantName} (${shop.delivered} تسليم${shop.returned > 0 ? ' · ${shop.returned} رجوع' : ''})',
+                  value: strings.price(shop.cash),
+                ),
+              ),
+          ],
+        ],
       ),
     );
   }

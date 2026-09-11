@@ -290,4 +290,160 @@ void main() {
       );
     });
   });
+
+  group('FakeCourierOrderRepository.daySummary', () {
+    const rider = 'rider-1';
+    const other = 'rider-2';
+
+    test('counts deliveries and cash in hand for this courier', () async {
+      final repo = FakeCourierOrderRepository(
+        seed: [
+          makeOrder(id: 'o1', merchantId: 'm_fish', merchantName: 'السمك', status: OrderStatus.delivered)
+              .copyWith(courierUid: rider, pricing: const OrderPricing(subtotal: 12000, deliveryFee: 0, total: 12000)),
+          makeOrder(id: 'o2', merchantId: 'm_fish', merchantName: 'السمك', status: OrderStatus.delivered)
+              .copyWith(courierUid: rider, pricing: const OrderPricing(subtotal: 8000, deliveryFee: 0, total: 8000)),
+          makeOrder(id: 'o3', merchantId: 'm_koshari', merchantName: 'الكشري', status: OrderStatus.delivered)
+              .copyWith(courierUid: rider, pricing: const OrderPricing(subtotal: 5000, deliveryFee: 0, total: 5000)),
+        ],
+        courierUid: rider,
+      );
+
+      final result = await repo.daySummary();
+      final summary = result.valueOrThrow;
+
+      expect(summary.delivered, 3);
+      expect(summary.returned, 0);
+      expect(summary.cash, 25000);
+      expect(summary.shops.length, 2);
+    });
+
+    test('counts courier-cancelled order as return and adds no cash', () async {
+      final repo = FakeCourierOrderRepository(
+        seed: [
+          makeOrder(id: 'o1', merchantId: 'm_fish', merchantName: 'السمك', status: OrderStatus.delivered)
+              .copyWith(courierUid: rider, pricing: const OrderPricing(subtotal: 10000, deliveryFee: 0, total: 10000)),
+          makeOrder(id: 'o2', merchantId: 'm_fish', merchantName: 'السمك', status: OrderStatus.cancelled)
+              .copyWith(
+                courierUid: rider,
+                cancelledBy: OrderActor.courier,
+                pricing: const OrderPricing(subtotal: 9000, deliveryFee: 0, total: 9000),
+              ),
+        ],
+        courierUid: rider,
+      );
+
+      final result = await repo.daySummary();
+      final summary = result.valueOrThrow;
+
+      expect(summary.delivered, 1);
+      expect(summary.returned, 1);
+      expect(summary.cash, 10000);
+    });
+
+    test('does not count customer-cancelled order as return', () async {
+      final repo = FakeCourierOrderRepository(
+        seed: [
+          makeOrder(id: 'o1', merchantId: 'm_fish', merchantName: 'السمك', status: OrderStatus.cancelled)
+              .copyWith(
+                courierUid: rider,
+                cancelledBy: OrderActor.customer,
+                pricing: const OrderPricing(subtotal: 7000, deliveryFee: 0, total: 7000),
+              ),
+        ],
+        courierUid: rider,
+      );
+
+      final result = await repo.daySummary();
+      final summary = result.valueOrThrow;
+
+      expect(summary.delivered, 0);
+      expect(summary.returned, 0);
+      expect(summary.cash, 0);
+    });
+
+    test('never counts another rider work', () async {
+      final repo = FakeCourierOrderRepository(
+        seed: [
+          makeOrder(id: 'o1', merchantId: 'm_fish', merchantName: 'السمك', status: OrderStatus.delivered)
+              .copyWith(courierUid: other, pricing: const OrderPricing(subtotal: 30000, deliveryFee: 0, total: 30000)),
+        ],
+        courierUid: rider,
+      );
+
+      final result = await repo.daySummary();
+      final summary = result.valueOrThrow;
+
+      expect(summary.delivered, 0);
+      expect(summary.cash, 0);
+    });
+
+    test('only counts orders from today', () async {
+      final today = DateTime(2026, 9, 25, 14, 0);
+      final past = DateTime(2020, 1, 1, 10, 0);
+
+      final repo = FakeCourierOrderRepository(
+        seed: [
+          makeOrder(id: 'o_today', merchantId: 'm_fish', merchantName: 'السمك', status: OrderStatus.delivered)
+              .copyWith(courierUid: rider, deliveredAt: today, pricing: const OrderPricing(subtotal: 5000, deliveryFee: 0, total: 5000)),
+          makeOrder(id: 'o_past', merchantId: 'm_fish', merchantName: 'السمك', status: OrderStatus.delivered)
+              .copyWith(courierUid: rider, deliveredAt: past, pricing: const OrderPricing(subtotal: 40000, deliveryFee: 0, total: 40000)),
+        ],
+        courierUid: rider,
+        now: () => today,
+      );
+
+      final result = await repo.daySummary();
+      final summary = result.valueOrThrow;
+
+      expect(summary.delivered, 1);
+      expect(summary.cash, 5000);
+    });
+
+    test('splits by shop, biggest cash first', () async {
+      final repo = FakeCourierOrderRepository(
+        seed: [
+          makeOrder(id: 'o1', merchantId: 'm_koshari', merchantName: 'الكشري', status: OrderStatus.delivered)
+              .copyWith(courierUid: rider, pricing: const OrderPricing(subtotal: 5000, deliveryFee: 0, total: 5000)),
+          makeOrder(id: 'o2', merchantId: 'm_fish', merchantName: 'السمك', status: OrderStatus.delivered)
+              .copyWith(courierUid: rider, pricing: const OrderPricing(subtotal: 20000, deliveryFee: 0, total: 20000)),
+        ],
+        courierUid: rider,
+      );
+
+      final result = await repo.daySummary();
+      final summary = result.valueOrThrow;
+
+      expect(summary.shops.length, 2);
+      expect(summary.shops[0].merchantName, 'السمك');
+      expect(summary.shops[0].cash, 20000);
+      expect(summary.shops[1].merchantName, 'الكشري');
+      expect(summary.shops[1].cash, 5000);
+    });
+
+    test('rider who did nothing today gets empty summary', () async {
+      final repo = FakeCourierOrderRepository(
+        seed: const [],
+        courierUid: rider,
+      );
+
+      final result = await repo.daySummary();
+      final summary = result.valueOrThrow;
+
+      expect(summary.isEmpty, isTrue);
+      expect(summary.delivered, 0);
+      expect(summary.returned, 0);
+      expect(summary.cash, 0);
+      expect(summary.shops, isEmpty);
+    });
+
+    test('surfaces errors when repository has a failure', () async {
+      final repo = FakeCourierOrderRepository(
+        failure: const OfflineFailure(),
+        courierUid: rider,
+      );
+
+      final result = await repo.daySummary();
+      expect(result.failureOrNull, isA<OfflineFailure>());
+    });
+  });
 }

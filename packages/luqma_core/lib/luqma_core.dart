@@ -22,6 +22,7 @@ export 'src/models/billing.dart';
 export 'src/models/converters.dart';
 export 'src/models/coupon.dart';
 export 'src/models/courier_roster.dart';
+export 'src/models/courier_summary.dart';
 export 'src/models/daily_meal.dart';
 export 'src/models/geography.dart';
 export 'src/models/home_section.dart';
