@@ -165,8 +165,23 @@ void main() {
       expect(styles.map((s) => s.fontFamily), isNot(contains('Lemonada')));
     });
 
-    test('body text never drops below 15sp', () {
-      expect(LuqmaType.body.fontSize, greaterThanOrEqualTo(15));
+    // `docs/14` has said 15sp since Phase 0, and this asked it of one token while
+    // `bodySmall` sat at 13 and carried a hundred call sites across the three apps —
+    // merchant and dish descriptions, secondary rows, the lines under every card. The
+    // published rule and the token set disagreed for nine phases because the test only
+    // ever looked at the token that already complied.
+    //
+    // Settled on 2026-09-11: the token moves. `caption` stays at 12 and is deliberately
+    // not in this list — it is a label, not body text, and the rule was never about it.
+    test('no style used for body text drops below 15sp', () {
+      for (final (name, style) in [
+        ('body', LuqmaType.body),
+        ('bodyStrong', LuqmaType.bodyStrong),
+        ('bodySmall', LuqmaType.bodySmall),
+      ]) {
+        expect(style.fontSize, greaterThanOrEqualTo(15),
+            reason: '$name is body text, and Arabic loses legibility faster than Latin');
+      }
     });
 
     test('prices use tabular figures so columns line up', () {

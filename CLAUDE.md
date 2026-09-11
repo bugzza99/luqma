@@ -649,13 +649,20 @@ DATABASE_URL=<luqma-test session pooler> npm --prefix supabase run test:stack
 - Cards are **white with a soft shadow**, never `Surface #E5D3C1` — it is invisible on cream.
 - No colour is written in a screen. Everything comes from tokens in `luqma_core`.
 - Minimum body text is **15sp**, not 14. Arabic loses legibility faster than Latin.
-  **`bodySmall` is 13sp and is used ~80 times across the three apps** — merchant and dish
-  descriptions, secondary rows — so the published rule and the token set disagree, and
-  have since Phase 0. Deferred deliberately on 2026-09-08 rather than settled inside a
-  screen commit: raising one token repaints 42 screens, and the narrow cards are where it
-  would clip. Decide it once the redesign is finished, and decide it in one place — either
-  the token moves or the rule says 13sp is for secondary text, which is what the code
-  already does.
+  **Settled 2026-09-11: the token moved.** `bodySmall` was 13sp across a hundred call
+  sites in the three apps — merchant and dish descriptions, the secondary row under every
+  card — so the published rule and the token set disagreed from Phase 0 until the
+  customer redesign closed. It is 15 now, the same size as `body`, differing from it in
+  colour and role rather than in size. `caption` stays at 12 and is deliberately outside
+  the rule: it is a label, not body text.
+  `theme_test` asked the question of `body` alone, which is how a rule about body text
+  passed for nine phases while the token most of it used sat two points under. It now
+  asks it of every style used for body text.
+  It cost one layout: the admin billing screen's record button sits below the fold on a
+  360x780 phone with the larger text, and its test had been tapping where the button
+  happened to be. The body is a `ListView`, so the fix is to scroll to it — but a screen
+  that is *not* scrollable would have been a real defect, and that is what to look for
+  when this bites again.
 - Minimum touch target 48×48dp with 8dp between targets.
 - Every uploaded image becomes a `media` document and is invisible until an admin approves it.
   There is no second path for images.

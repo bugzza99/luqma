@@ -201,6 +201,13 @@ void main() {
 
   group('recording a payment', () {
     Future<void> record(WidgetTester tester, {String months = '1'}) async {
+      // Scrolled to rather than tapped where it happened to be. The screen body is a
+      // `ListView` and this button sits below the fold on a 360x780 phone — it only used
+      // to be reachable because the secondary text under every card was 13sp. Raising
+      // that token to the 15 `docs/14` has always asked for pushed it eleven points past
+      // the bottom, and the tap landed outside the render tree.
+      await tester.ensureVisible(find.byKey(MerchantBillingScreen.recordKey));
+      await tester.pumpAndSettle();
       await tester.tap(find.byKey(MerchantBillingScreen.recordKey));
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(MerchantBillingScreen.planChoiceKey('basic')));
