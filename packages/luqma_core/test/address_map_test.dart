@@ -41,11 +41,18 @@ void main() {
 
       expect(labelled.width, greaterThan(bare.width),
           reason: 'the name is not in the bitmap');
-      // Not taller, deliberately: a labelled marker replaces the bare pin rather than
-      // sitting on top of one, and it points with a small tick instead of the 48 teardrop
-      // so a row of named places does not become a wall. Asserted so the relationship is
-      // recorded rather than rediscovered.
-      expect(labelled.height, lessThan(bare.height));
+      // A labelled marker **replaces** the bare pin rather than sitting on top of one:
+      // it points with a small tick instead of the 48-point teardrop, so a row of named
+      // places does not become a wall.
+      //
+      // This said `lessThan(bare.height)` — 48, a number that happened to be true while
+      // the name was set in the 12sp caption token. Raising it to body made the chip two
+      // points taller than the teardrop and failed a test about something else entirely.
+      // The property is that the label is not stacked on a whole pin, so that is what is
+      // measured: a stacked one would be the chip plus another 48.
+      expect(labelled.height, lessThan(bare.height * 1.2),
+          reason: 'a name stacked on a whole teardrop would be half as tall again, '
+              'and twenty-seven of those in a strip is a wall');
 
       bare.dispose();
       labelled.dispose();
@@ -136,6 +143,84 @@ void main() {
       // `_labelledPin`.
       expect(await heightAt(const TextScaler.linear(2)),
           greaterThan(await heightAt(TextScaler.noScaling)));
+    });
+  });
+
+  /// Why the name was unreadable on a real phone.
+  ///
+  /// The bitmap was painted at **logical** pixels and the renderer places it at
+  /// **device** pixels. `MapLibreMapController.java` decodes the bytes with
+  /// `inScaled = false` and both densities zeroed, then calls `addImage` with no pixel
+  /// ratio — so a 120-pixel-wide PNG occupies 120 device pixels, which on a 2.75x handset
+  /// is 44 logical points. A 12sp label arrives at roughly four.
+  ///
+  /// Nothing about it looked wrong in a test: every existing assertion here is a
+  /// comparison between two bitmaps, and both shrank by the same factor.
+  testWidgets('the pin is rasterised for the screen it lands on', (tester) async {
+    await tester.runAsync(() async {
+      Future<(int, int)> sizeAt(double ratio) async {
+        final image = await decode(await LuqmaMap.labelledPinForTest(
+          const LuqmaMapMarker(
+            id: 'x',
+            lat: 31.30,
+            lng: 30.29,
+            label: 'مسجد الفتح',
+          ),
+          LuqmaColors.light,
+          TextScaler.noScaling,
+          pixelRatio: ratio,
+        ));
+        final size = (image.width, image.height);
+        image.dispose();
+        return size;
+      }
+
+      final (w1, h1) = await sizeAt(1);
+      final (w3, h3) = await sizeAt(3);
+
+      // Three times the pixels in each direction, within a pixel of rounding. Not merely
+      // "bigger": a label that grew by less than the ratio still arrives smaller than it
+      // was drawn.
+      expect(w3, closeTo(w1 * 3, 3));
+      expect(h3, closeTo(h1 * 3, 3));
+    });
+
+    await tester.runAsync(() async {
+      final bare = await decode(await LuqmaMap.pinForTest(
+        LuqmaColors.light.brand,
+        pixelRatio: 3,
+      ));
+      final logical = await decode(await LuqmaMap.pinForTest(LuqmaColors.light.brand));
+
+      // The plain pin is the touch target for choosing an address, so it has the same
+      // problem and needs the same answer.
+      expect(bare.width, closeTo(logical.width * 3, 3));
+
+      bare.dispose();
+      logical.dispose();
+    });
+  });
+
+  // 12sp was the smallest token in the product, chosen when the label was the only thing
+  // on the bitmap rather than something to be read at arm's length on a moving map.
+  testWidgets('a landmark name is set at readable body size', (tester) async {
+    await tester.runAsync(() async {
+      final image = await decode(await LuqmaMap.labelledPinForTest(
+        const LuqmaMapMarker(id: 'x', lat: 31.30, lng: 30.29, label: 'مسجد الفتح'),
+        LuqmaColors.light,
+        TextScaler.noScaling,
+      ));
+      final painter = TextPainter(
+        text: TextSpan(text: 'مسجد الفتح', style: LuqmaType.body),
+        textDirection: TextDirection.rtl,
+      )..layout();
+
+      // Measured against the body token rather than against a pixel count, so raising the
+      // type scale moves both together instead of failing this.
+      expect(image.height, greaterThanOrEqualTo(painter.height));
+
+      painter.dispose();
+      image.dispose();
     });
   });
 }

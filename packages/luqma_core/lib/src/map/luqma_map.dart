@@ -121,13 +121,16 @@ class LuqmaMap extends StatefulWidget {
   static Future<Uint8List> labelledPinForTest(
     LuqmaMapMarker marker,
     LuqmaColors colors,
-    TextScaler textScaler,
-  ) =>
-      _LuqmaMapState._labelledPin(marker, colors, textScaler);
+    TextScaler textScaler, {
+    double pixelRatio = 1,
+  }) =>
+      _LuqmaMapState._labelledPin(marker, colors, textScaler,
+          pixelRatio: pixelRatio);
 
   /// The bare pin, for the comparison that gives [labelledPinForTest] its meaning.
   @visibleForTesting
-  static Future<Uint8List> pinForTest(Color colour) => _LuqmaMapState._pinImage(colour);
+  static Future<Uint8List> pinForTest(Color colour, {double pixelRatio = 1}) =>
+      _LuqmaMapState._pinImage(colour, pixelRatio: pixelRatio);
 
   final bool showLabels;
 
@@ -290,13 +293,17 @@ class _LuqmaMapState extends State<LuqmaMap> {
     // Read before the first await, while this context is certainly still mounted.
     final colors = Theme.of(context).luqma;
     final textScaler = MediaQuery.textScalerOf(context);
+    // The renderer places these bitmaps at device pixels, so this is what keeps a pin the
+    // size it was drawn rather than the size the screen's density divides it down to.
+    final pixelRatio = MediaQuery.devicePixelRatioOf(context);
 
     // `marker-15` used to be named here — an identifier from a sprite sheet this style
     // does not declare and nothing ever registered, so no pin could render at all. The
     // image is drawn in Dart and handed to the renderer instead, which also means it
     // carries the brand's colour rather than whatever a sprite happened to contain.
-    final pin = await _pinImage(colors.brand);
-    final emphasised = await _pinImage(colors.accent, scale: 1.35);
+    final pin = await _pinImage(colors.brand, pixelRatio: pixelRatio);
+    final emphasised =
+        await _pinImage(colors.accent, scale: 1.35, pixelRatio: pixelRatio);
     if (generation != _drawGeneration || !mounted) return;
 
     // Every pin is drawn, colliding or not. Collision is a property of the symbol layer
@@ -343,7 +350,8 @@ class _LuqmaMapState extends State<LuqmaMap> {
       final labelled = widget.showLabels && marker.emphasised;
       final imageId = 'luqma-label-${marker.id}';
       if (labelled) {
-        final image = await _labelledPin(marker, colors, textScaler);
+        final image = await _labelledPin(marker, colors, textScaler,
+            pixelRatio: pixelRatio);
         if (generation != _drawGeneration || !mounted) return;
         await controller.addImage(imageId, image);
       }
@@ -373,12 +381,26 @@ class _LuqmaMapState extends State<LuqmaMap> {
 
   // Baking text into the marker keeps the label attached to its actual coordinate
   // during a pan, without introducing a remotely hosted Arabic font dependency.
+  //
+  // [pixelRatio] is why the name was unreadable on a handset. The renderer places this
+  // bitmap at **device** pixels: `MapLibreMapController.java` decodes the bytes with
+  // `inScaled = false` and both densities zeroed, then calls `addImage` with no ratio of
+  // its own. So a bitmap painted at logical pixels arrives divided by the screen's
+  // density — on a 2.75x phone a 12sp label lands at roughly four, which is what somebody
+  // was looking at when they said they could not read it.
+  //
+  // Nothing in this file's tests could see it: every assertion was one bitmap against
+  // another, and both shrank by the same factor.
   static Future<Uint8List> _labelledPin(
-    LuqmaMapMarker marker, LuqmaColors colors, TextScaler textScaler,
-  ) async {
+    LuqmaMapMarker marker, LuqmaColors colors, TextScaler textScaler, {
+    double pixelRatio = 1,
+  }) async {
     final text = TextPainter(
       text: TextSpan(text: marker.label,
-        style: LuqmaType.caption.copyWith(color: colors.textPrimary)),
+        // Body, not `caption`. The caption token is the smallest in the product and was
+        // chosen when this was the only thing on the bitmap; a name read at arm's length
+        // off a moving map is not a caption.
+        style: LuqmaType.body.copyWith(color: colors.textPrimary)),
       textDirection: TextDirection.rtl,
       textScaler: textScaler,
     )..layout();
@@ -387,6 +409,10 @@ class _LuqmaMapState extends State<LuqmaMap> {
     final height = labelHeight + Sizes.iconSm;
     final recorder = ui.PictureRecorder();
     final canvas = Canvas(recorder);
+    // Everything below is drawn in logical units and the canvas maps them onto the
+    // denser bitmap, so the geometry stays readable rather than being multiplied at each
+    // call site.
+    canvas.scale(pixelRatio);
     canvas.drawRRect(Radii.fieldAll.toRRect(Rect.fromLTWH(0, 0, width, labelHeight)),
       Paint()..color = colors.card);
     text.paint(canvas, const Offset(Space.sm, Space.xs));
@@ -396,7 +422,8 @@ class _LuqmaMapState extends State<LuqmaMap> {
       ..lineTo(width / 2 + Space.xs, labelHeight)
       ..close(), Paint()..color = colors.brand);
     final picture = recorder.endRecording();
-    final image = await picture.toImage(width.ceil(), height.ceil());
+    final image = await picture.toImage(
+        (width * pixelRatio).ceil(), (height * pixelRatio).ceil());
     final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
     image.dispose();
     picture.dispose();
@@ -408,10 +435,18 @@ class _LuqmaMapState extends State<LuqmaMap> {
   ///
   /// Drawn here so the map needs no sprite sheet and no bundled asset: one less file to
   /// host, and the colour comes from the theme like everything else in the product.
-  static Future<Uint8List> _pinImage(Color colour, {double scale = 1}) async {
+  static Future<Uint8List> _pinImage(
+    Color colour, {
+    double scale = 1,
+    double pixelRatio = 1,
+  }) async {
     final size = 48.0 * scale;
     final recorder = ui.PictureRecorder();
     final canvas = Canvas(recorder);
+    // Same reason as the labelled pin: 48 logical points became 48 device pixels, which
+    // is 17 points on an ordinary phone — under half the 48dp this is supposed to be, on
+    // the control a customer taps to choose where their food goes.
+    canvas.scale(pixelRatio);
     final radius = size / 3;
     final centre = Offset(size / 2, radius + size * .06);
 
@@ -432,8 +467,9 @@ class _LuqmaMapState extends State<LuqmaMap> {
       Paint()..blendMode = BlendMode.clear,
     );
 
-    final image =
-        await recorder.endRecording().toImage(size.ceil(), size.ceil());
+    final image = await recorder
+        .endRecording()
+        .toImage((size * pixelRatio).ceil(), (size * pixelRatio).ceil());
     final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
     return bytes!.buffer.asUint8List();
   }

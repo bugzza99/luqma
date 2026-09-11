@@ -61,8 +61,13 @@ abstract final class LuqmaPalette {
   //
   // Here rather than as a role on [LuqmaColors] because it is not a role any of the forty
   // screens has. It is a literal, and this is the file literals live in.
-  static const water = Color(0xFFBBD4DE);
-  static const waterDark = Color(0xFF16323F);
+  //
+  // Both were a step paler than they should have been and the shoreline nearly vanished:
+  // the old light swatch scored **1.32:1** on cream and the dark one 1.44:1 on the dark
+  // ground, which is a slightly different beige rather than the edge of the sea. These
+  // clear the 1.6:1 that `map_style_test` asks of a large field of colour.
+  static const water = Color(0xFF8FBED0);
+  static const waterDark = Color(0xFF1D4456);
 
   // Status. Only two colours beyond the brand set, both required to express order state.
   // [danger] is a brighter red than the burgundy so the two do not read as the same thing;

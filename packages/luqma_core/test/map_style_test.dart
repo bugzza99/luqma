@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -128,5 +129,92 @@ void main() {
       expect((water['paint'] as Map)['fill-color'],
           isNot((earth['paint'] as Map)['fill-color']));
     }
+  });
+
+  /// Whether any of it can actually be seen.
+  ///
+  /// The style had layers for roads, buildings and water throughout, and the archive has
+  /// the geometry — a tile over the middle of Edku carries 87 roads and 77 buildings. It
+  /// read as an empty beige rectangle on a real phone because **every feature was painted
+  /// within a hair of the ground it sat on**: roads white on cream at 1.17:1, the widest
+  /// roads at 1.24:1, and buildings in `hairline`, which the palette file itself labels
+  /// decorative-only at 1.5:1 and says a meaningful boundary needs 3:1.
+  ///
+  /// `isNot(...)` above is what let that through: two colours that differ by nothing
+  /// visible are still two different strings. These ask the question in the unit the eye
+  /// uses.
+  group('the map can be read', () {
+    // WCAG's relative luminance and contrast ratio, which is what every other colour
+    // decision in this product is argued in.
+    double luminance(String hex) {
+      final v = int.parse(hex.substring(1), radix: 16);
+      double channel(int c) {
+        final s = c / 255;
+        return s <= 0.03928 ? s / 12.92 : math.pow((s + 0.055) / 1.055, 2.4) as double;
+      }
+      return 0.2126 * channel((v >> 16) & 0xFF) +
+          0.7152 * channel((v >> 8) & 0xFF) +
+          0.0722 * (channel(v & 0xFF));
+    }
+
+    double contrast(String a, String b) {
+      final (x, y) = (luminance(a), luminance(b));
+      final (hi, lo) = x > y ? (x, y) : (y, x);
+      return (hi + 0.05) / (lo + 0.05);
+    }
+
+    String ground(List<Map<String, dynamic>> layers) =>
+        ((layers.firstWhere((l) => l['id'] == 'background')['paint']) as Map)
+            ['background-color'] as String;
+
+    // 3:1, the ratio this palette already cites for a boundary that means something, and
+    // the ratio WCAG asks of a non-text graphic. A line thin enough to be a road on a
+    // phone held at arm-s length needs at least that.
+    test('every line on it clears 3:1 against the ground', () {
+      for (final (colors, isDark) in [(light, false), (dark, true)]) {
+        final layers =
+            (styleFor(colors, dark: isDark)['layers'] as List).cast<Map<String, dynamic>>();
+        final under = ground(layers);
+
+        final lines = layers.where((l) => l['type'] == 'line');
+        expect(lines, isNotEmpty);
+        for (final layer in lines) {
+          final colour = (layer['paint'] as Map)['line-color'] as String;
+          expect(contrast(colour, under), greaterThanOrEqualTo(3.0),
+              reason: 'layer ${layer['id']} is drawn at '
+                  '${contrast(colour, under).toStringAsFixed(2)}:1 on the ground in '
+                  '${isDark ? 'dark' : 'light'}, which is a line nobody can see');
+        }
+      }
+    });
+
+    // A block of buildings is what tells somebody which street they are on once they are
+    // close in, and a fill alone cannot carry that at a subtle tone. The outline is the
+    // part that has to be visible, which the loop above now checks.
+    test('buildings are drawn with an outline, not a wash alone', () {
+      for (final (colors, isDark) in [(light, false), (dark, true)]) {
+        final layers =
+            (styleFor(colors, dark: isDark)['layers'] as List).cast<Map<String, dynamic>>();
+        final buildings =
+            layers.where((l) => (l['id'] as String).startsWith('buildings'));
+
+        expect(buildings.map((l) => l['type']), containsAll(['fill', 'line']));
+      }
+    });
+
+    // A large field of colour reads at a lower ratio than a line does, so this floor is
+    // lower on purpose — but 1.3:1 is not a shoreline, it is a slightly different beige.
+    test('water reads as water beside the land', () {
+      for (final (colors, isDark) in [(light, false), (dark, true)]) {
+        final layers =
+            (styleFor(colors, dark: isDark)['layers'] as List).cast<Map<String, dynamic>>();
+        final water =
+            ((layers.firstWhere((l) => l['id'] == 'water')['paint']) as Map)
+                ['fill-color'] as String;
+
+        expect(contrast(water, ground(layers)), greaterThanOrEqualTo(1.6),
+            reason: 'the shoreline is the most useful landmark in this city');
+      }
+    });
   });
 }
