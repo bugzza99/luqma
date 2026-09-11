@@ -332,6 +332,44 @@ void main() {
       expect(find.byKey(CourierScreen.pendingKey), findsNothing);
     });
 
+    // A delivery that can be *started* offline and not *finished* offline is the worse
+    // half missing: the cash changes hands at the door, and the tap that records it is
+    // the one the card refuses to offer. The card read `order.status` alone, so after a
+    // queued «بدأت التوصيل» the server still said `preparing` and the button on offer
+    // was «بدأت التوصيل» again.
+    testWidgets('a run started with no signal can still be finished with no signal',
+        (tester) async {
+      await pump(tester, seed: [order(status: OrderStatus.preparing)]);
+      deliveries.failure = const OfflineFailure();
+
+      await tester.tap(find.byKey(CourierScreen.outKey('o1')));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(CourierScreen.pendingKey), findsOneWidget);
+      // The card moves with the courier, and says plainly that the server has not heard
+      // it yet — that sentence is what stops the marking from being a lie.
+      expect(find.byKey(CourierScreen.unsentKey('o1')), findsOneWidget);
+      expect(find.byKey(CourierScreen.deliveredKey('o1')), findsOneWidget,
+          reason: 'the next tap of the delivery has to be reachable');
+
+      await tester.tap(find.byKey(CourierScreen.deliveredKey('o1')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('اه، تم'));
+      await tester.pumpAndSettle();
+
+      // Both taps are held, in the order they were made.
+      expect(find.byKey(CourierScreen.deliveredKey('o1')), findsNothing,
+          reason: 'there is nothing left to tap, so nothing is offered twice');
+
+      deliveries.failure = null;
+      await tester.tap(find.byKey(CourierScreen.retryKey));
+      await tester.pumpAndSettle();
+
+      expect(deliveries['o1']!.status, OrderStatus.delivered);
+      expect(deliveries['o1']!.courierUid, 'c1');
+      expect(find.byKey(CourierScreen.pendingKey), findsNothing);
+    });
+
     // Dropping a conflicting write is right; dropping it silently is not. The banner
     // above promises "هيتبعت أول ما النت يرجع", so a count that quietly falls by one
     // reads as sent — while the cash for that order is already in the courier's pocket.

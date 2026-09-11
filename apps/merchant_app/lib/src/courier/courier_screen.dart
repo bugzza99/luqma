@@ -29,6 +29,7 @@ class CourierScreen extends ConsumerWidget {
   static Key deliveredKey(String id) => Key('courier.delivered.$id');
   static Key failedKey(String id) => Key('courier.failed.$id');
   static Key noAddressKey(String id) => Key('courier.noAddress.$id');
+  static Key unsentKey(String id) => Key('courier.unsent.$id');
   static Key reasonKey(int index) => Key('courier.reason.$index');
 
   /// Why a delivery comes back. Chosen, not typed: this gets answered in the street.
@@ -115,7 +116,15 @@ class _Card extends ConsumerWidget {
     final zoneName =
         zones.where((z) => z.id == order.zoneId).firstOrNull?.name ?? '';
     final line = order.address?.format(zoneName: zoneName);
-    final onTheRoad = order.status == OrderStatus.outForDelivery;
+
+    // Where this order stands for the person holding it, which is the server's account
+    // of it moved on by whatever this phone has queued and not yet sent. Reading the
+    // status alone left a run that could be started with no signal and not finished
+    // with none — and finishing it is the half that carries the cash.
+    final queued = ref.watch(courierPendingWritesProvider).value ??
+        const <PendingCourierWrite>[];
+    final progress = CourierProgress.of(order.id, order.status, queued);
+    final unsent = lastQueuedFor(order.id, queued);
 
     return Container(
       key: CourierScreen.cardKey(order.id),
@@ -218,7 +227,35 @@ class _Card extends ConsumerWidget {
                   ],
                 ),
                 const SizedBox(height: Space.md),
-                if (!onTheRoad)
+                if (unsent != null) ...[
+                  // Said before the buttons, not after: the courier is about to act on
+                  // the state above, and «هيتبعت» is what makes moving the card forward
+                  // an honest thing to do rather than a claim the server never heard.
+                  Row(
+                    key: CourierScreen.unsentKey(order.id),
+                    children: [
+                      Icon(Icons.cloud_off_outlined,
+                          size: Sizes.iconSm, color: colors.textSecondary),
+                      const SizedBox(width: Space.sm),
+                      Expanded(
+                        child: Text(
+                          switch (unsent) {
+                            CourierWriteKind.onTheWay =>
+                              'بدأت التوصيل — هيتبعت أول ما النت يرجع',
+                            CourierWriteKind.delivered =>
+                              'التسليم اتسجّل — هيتبعت أول ما النت يرجع',
+                            CourierWriteKind.failed =>
+                              'اللي حصل اتسجّل — هيتبعت أول ما النت يرجع',
+                          },
+                          style: theme.textTheme.bodySmall
+                              ?.copyWith(color: colors.textSecondary),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: Space.md),
+                ],
+                if (progress == CourierProgress.toCollect)
                   FilledButton(
                     key: CourierScreen.outKey(order.id),
                     onPressed: courierUid == null
@@ -234,7 +271,9 @@ class _Card extends ConsumerWidget {
                     ),
                     child: Text(strings.startedDelivery),
                   )
-                else ...[
+                // `finished` draws neither: this phone has already recorded the end of
+                // this delivery, and a second tap would queue the same one twice.
+                else if (progress == CourierProgress.onTheRoad) ...[
                   FilledButton(
                     key: CourierScreen.deliveredKey(order.id),
                     onPressed: () => _confirmDelivered(context, ref, strings),
