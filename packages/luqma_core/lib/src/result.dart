@@ -1,4 +1,4 @@
-﻿import 'package:postgrest/postgrest.dart' show PostgrestException;
+import 'package:postgrest/postgrest.dart' show PostgrestException;
 
 import 'models/coupon.dart' show CouponRejection;
 
@@ -56,6 +56,10 @@ sealed class Failure {
         case 'P0002':
           return const NotFoundFailure();
         case '23505':
+          if (error.message.contains('staff_applications_one_open') ||
+              (error.details?.toString().contains('staff_applications_one_open') ?? false)) {
+            return const AlreadyAppliedFailure();
+          }
           return const ConflictFailure();
         case '23503':
           // A foreign key said no: deleting a merchant that has taken orders is the
@@ -123,6 +127,13 @@ final class EmailTakenFailure extends Failure {
 /// [EmailTakenFailure] — "هذا الرقم مسجل بالفعل" asks for signing in, not retyping.
 final class PhoneTakenFailure extends Failure {
   const PhoneTakenFailure();
+}
+
+/// The phone number already has an open application. Its own type because the sentence
+/// it earns — "there is already an application with this number" — tells the applicant
+/// to wait for the call, not to try again or sign in.
+final class AlreadyAppliedFailure extends Failure {
+  const AlreadyAppliedFailure();
 }
 
 /// What was chosen is not an image this build can read — a video, a PDF, a file that

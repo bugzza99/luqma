@@ -46,6 +46,8 @@ import '../repositories/promotion_repository.dart';
 import '../repositories/push_token_repository.dart';
 import '../repositories/search_repository.dart';
 import '../repositories/settlement_repository.dart';
+import '../models/staff_application.dart';
+import '../repositories/staff_application_repository.dart';
 import '../repositories/staff_repository.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -215,6 +217,15 @@ IssueRepository issueRepository(Ref ref) =>
 @Riverpod(keepAlive: true)
 StaffRepository staffRepository(Ref ref) =>
     SupabaseStaffRepository(ref.watch(supabaseProvider));
+
+@Riverpod(keepAlive: true)
+StaffApplicationRepository staffApplicationRepository(Ref ref) =>
+    SupabaseStaffApplicationRepository(ref.watch(supabaseProvider));
+
+/// The open applications waiting for a phone call, newest first. Live.
+@riverpod
+Stream<List<StaffApplication>> pendingStaffApplications(Ref ref) =>
+    ref.watch(staffApplicationRepositoryProvider).watchPending();
 
 @Riverpod(keepAlive: true)
 ConfigRepository configRepository(Ref ref) =>

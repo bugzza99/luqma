@@ -57,6 +57,8 @@ export 'src/repositories/order_repository.dart';
 export 'src/repositories/popular_items_repository.dart';
 export 'src/repositories/profile_repository.dart';
 export 'src/repositories/promotion_repository.dart';
+export 'src/models/staff_application.dart';
+export 'src/repositories/staff_application_repository.dart';
 export 'src/repositories/staff_repository.dart';
 export 'src/repositories/merchant_repository.dart';
 export 'src/result.dart';

@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:luqma_core/luqma_core.dart';
 
+import 'apply_screen.dart';
+
 /// The way in.
 ///
 /// Email and password, because a merchant account is created *for* somebody by the
@@ -13,6 +15,7 @@ class SignInScreen extends ConsumerStatefulWidget {
   static const emailKey = Key('signIn.email');
   static const passwordKey = Key('signIn.password');
   static const submitKey = Key('signIn.submit');
+  static const applyKey = Key('signIn.apply');
   static const errorKey = Key('signIn.error');
 
   @override
@@ -131,6 +134,16 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                       minimumSize: const Size.fromHeight(50),
                     ),
                     child: Text(_busy ? 'لحظة…' : 'دخول'),
+                  ),
+                  const SizedBox(height: Space.md),
+                  TextButton(
+                    key: SignInScreen.applyKey,
+                    onPressed: () => Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => const ApplyScreen(),
+                      ),
+                    ),
+                    child: const Text('طلب انضمام جديد'),
                   ),
                 ],
               ),

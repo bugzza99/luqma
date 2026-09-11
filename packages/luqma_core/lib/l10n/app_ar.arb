@@ -179,6 +179,10 @@
   "@errorPhoneTaken": {
     "description": "A customer sign-up hit a phone number GoTrue already has."
   },
+  "errorAlreadyApplied": "في طلب متقدم بالرقم ده بالفعل — حد من الإدارة هيكلمك",
+  "@errorAlreadyApplied": {
+    "description": "An applicant tried to submit a staff application with a phone number that already has an open application."
+  },
   "actionRetry": "حاول تاني",
   "@actionRetry": {
     "description": "The control on an error view that reads the failed thing again."
