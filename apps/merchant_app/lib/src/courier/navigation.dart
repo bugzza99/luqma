@@ -10,29 +10,38 @@ part 'navigation.g.dart';
 /// is already installed, already knows the roads, is free, and talks — none of which a
 /// map inside this app would be. What this app is for is the order, not the driving.
 ///
+/// Which maps application handles the hand-off.
+enum MapApp {
+  googleMaps,
+  waze,
+}
+
+/// Hands an address to whatever maps app is on the phone.
+///
+/// A hand-off rather than a map in the app, and that is the whole decision. Google Maps
+/// and Waze are already installed, already know the roads, are free, and talk — none of
+/// which a map inside this app would be. What this app is for is the order, not the driving.
+///
 /// An interface only so the screens above can be tested; there is nothing else to swap.
 abstract interface class MapNavigator {
   /// [query] is the address in words. [lat]/[lng] are the pin, when the order carries
   /// one — both halves or neither, which is how they are stored and frozen.
-  Future<void> navigateTo(String query, {double? lat, double? lng});
+  Future<void> navigateTo(
+    String query, {
+    double? lat,
+    double? lng,
+    MapApp app = MapApp.googleMaps,
+  });
 }
 
-class GoogleMapsNavigator implements MapNavigator {
-  const GoogleMapsNavigator();
+class ExternalMapNavigator implements MapNavigator {
+  const ExternalMapNavigator({this.links = const PhoneExternalLinks()});
 
-  /// What gets opened.
-  ///
-  /// A coordinate when the order has one, and the words when it does not. For phases
-  /// this was words only, with a comment saying a pin dropped on a guess is worse than a
-  /// name a person can read — true, and not the situation any more: the pins are the
-  /// admin's own landmarks, placed deliberately, and they arrive on the order frozen.
-  ///
-  /// The words are the weaker half here and always were. **Google does not know
-  /// «صيدلية النور»** — these names are local knowledge, not map data — so searching one
-  /// lands the courier somewhere in the governorate or nowhere at all. A real coordinate
-  /// is the first thing this hand-off has ever had that the maps app can actually use.
+  final ExternalLinks links;
+
+  /// Google Maps URL with pin if available, falling back to query.
   @visibleForTesting
-  static Uri uriFor(String query, {double? lat, double? lng}) {
+  static Uri googleMapsUriFor(String query, {double? lat, double? lng}) {
     final pin = lat != null && lng != null ? '$lat,$lng' : null;
     return Uri.parse(
       'https://www.google.com/maps/search/?api=1'
@@ -40,14 +49,33 @@ class GoogleMapsNavigator implements MapNavigator {
     );
   }
 
+  /// Waze universal deep link with pin (ll) if available, falling back to search query (q).
+  @visibleForTesting
+  static Uri wazeUriFor(String query, {double? lat, double? lng}) {
+    final pin = lat != null && lng != null ? '$lat,$lng' : null;
+    return Uri.parse(
+      pin != null
+          ? 'https://waze.com/ul?ll=$pin&navigate=yes'
+          : 'https://waze.com/ul?q=${Uri.encodeComponent(query)}&navigate=yes',
+    );
+  }
+
   @override
-  Future<void> navigateTo(String query, {double? lat, double? lng}) async {
-    final uri = uriFor(query, lat: lat, lng: lng);
+  Future<void> navigateTo(
+    String query, {
+    double? lat,
+    double? lng,
+    MapApp app = MapApp.googleMaps,
+  }) async {
+    final uri = switch (app) {
+      MapApp.googleMaps => googleMapsUriFor(query, lat: lat, lng: lng),
+      MapApp.waze => wazeUriFor(query, lat: lat, lng: lng),
+    };
     // No maps app and no browser is possible on a cheap handset, and the courier is
     // in the street. `ExternalLinks` swallows the PlatformException so the tap does not
     // crash the delivery screen; the address is already written above the button, which
     // is what a person falls back to.
-    await const PhoneExternalLinks().open(uri);
+    await links.open(uri);
   }
 }
 
@@ -57,14 +85,22 @@ class FakeNavigator implements MapNavigator {
   String? lastQuery;
   double? lastLat;
   double? lastLng;
+  MapApp? lastApp;
 
   @override
-  Future<void> navigateTo(String query, {double? lat, double? lng}) async {
+  Future<void> navigateTo(
+    String query, {
+    double? lat,
+    double? lng,
+    MapApp app = MapApp.googleMaps,
+  }) async {
     lastQuery = query;
     lastLat = lat;
     lastLng = lng;
+    lastApp = app;
   }
 }
 
 @Riverpod(keepAlive: true)
-MapNavigator mapNavigator(Ref ref) => const GoogleMapsNavigator();
+MapNavigator mapNavigator(Ref ref) =>
+    ExternalMapNavigator(links: ref.watch(externalLinksProvider));

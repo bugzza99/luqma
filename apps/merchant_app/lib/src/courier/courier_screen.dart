@@ -24,7 +24,10 @@ class CourierScreen extends ConsumerWidget {
   static Key cardKey(String id) => Key('courier.card.$id');
   static Key cashKey(String id) => Key('courier.cash.$id');
   static Key callKey(String id) => Key('courier.call.$id');
+  static Key callMerchantKey(String id) => Key('courier.callMerchant.$id');
+  static Key platformBadgeKey(String id) => Key('courier.platform.$id');
   static Key navigateKey(String id) => Key('courier.navigate.$id');
+  static Key navigateWazeKey(String id) => Key('courier.navigateWaze.$id');
   static Key outKey(String id) => Key('courier.out.$id');
   static Key deliveredKey(String id) => Key('courier.delivered.$id');
   static Key failedKey(String id) => Key('courier.failed.$id');
@@ -107,6 +110,18 @@ class _Card extends ConsumerWidget {
         zones.where((z) => z.id == order.zoneId).firstOrNull?.name ?? '';
     final line = order.address?.format(zoneName: zoneName);
 
+    // The kitchen this rider is collecting from. Null while loading or on failure, in
+    // which case the card draws everything else: a rider at a junction does not care why
+    // a lookup failed.
+    //
+    // **Only the telephone.** `merchants` carries a zone and a phone number and no
+    // address of any kind — no street, no landmark, no coordinate. Drawing the zone name
+    // here would put «إدكو» under a shop and call it where to collect, which is worse
+    // than nothing: it looks like information. The shop needs a real address, and that is
+    // its own piece of work rather than something to fake on this card.
+    final merchant = ref.watch(merchantProvider(order.merchantId)).value;
+    final merchantPhone = merchant?.phone;
+
     // Where this order stands for the person holding it, which is the server's account
     // of it moved on by whatever this phone has queued and not yet sent. Reading the
     // status alone left a run that could be started with no signal and not finished
@@ -167,9 +182,22 @@ class _Card extends ConsumerWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Expanded(
-                      child: Text(
-                        order.merchantName,
-                        style: theme.textTheme.titleMedium,
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Flexible(
+                            child: Text(
+                              order.merchantName,
+                              style: theme.textTheme.titleMedium,
+                            ),
+                          ),
+                          if (order.deliveryBy == DeliveryBy.platform) ...[
+                            const SizedBox(width: Space.sm),
+                            _PlatformBadge(
+                              key: CourierScreen.platformBadgeKey(order.id),
+                            ),
+                          ],
+                        ],
                       ),
                     ),
                     const SizedBox(width: Space.sm),
@@ -182,7 +210,20 @@ class _Card extends ConsumerWidget {
                 ),
                 const SizedBox(height: Space.sm),
                 if (line != null && line.isNotEmpty)
-                  Text(line, style: theme.textTheme.titleMedium)
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(
+                        Icons.location_on_outlined,
+                        size: Sizes.iconSm,
+                        color: colors.textSecondary,
+                      ),
+                      const SizedBox(width: Space.xs),
+                      Expanded(
+                        child: Text(line, style: theme.textTheme.titleMedium),
+                      ),
+                    ],
+                  )
                 else
                   Text(
                     'مفيش عنوان مكتوب — كلّم العميل',
@@ -192,6 +233,29 @@ class _Card extends ConsumerWidget {
                 const SizedBox(height: Space.md),
                 Row(
                   children: [
+                    if (merchantPhone != null && merchantPhone.isNotEmpty) ...[
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          key: CourierScreen.callMerchantKey(order.id),
+                          onPressed: () => openExternalLink(
+                            context,
+                            ref,
+                            Uri(scheme: 'tel', path: merchantPhone),
+                            whenUnavailable:
+                                'مقدرناش نفتح الاتصال. الرقم $merchantPhone',
+                          ),
+                          icon: const Icon(Icons.storefront_rounded, size: Sizes.iconSm),
+                          label: Text(
+                            merchant?.type == MerchantType.homeKitchen ? 'المطبخ' : 'المحل',
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          style: OutlinedButton.styleFrom(
+                            minimumSize: const Size.fromHeight(Sizes.minTarget),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: Sizes.targetGap),
+                    ],
                     Expanded(
                       child: OutlinedButton.icon(
                         key: CourierScreen.callKey(order.id),
@@ -205,35 +269,55 @@ class _Card extends ConsumerWidget {
                           whenUnavailable:
                               'مقدرناش نفتح الاتصال. الرقم ${order.customerPhone}',
                         ),
-                        icon: const Icon(Icons.phone_rounded, size: Sizes.iconSm),
+                        icon: const Icon(Icons.person_rounded, size: Sizes.iconSm),
                         label: Text(order.customerName, overflow: TextOverflow.ellipsis),
                         style: OutlinedButton.styleFrom(
                           minimumSize: const Size.fromHeight(Sizes.minTarget),
                         ),
                       ),
                     ),
-                    if (line != null && line.isNotEmpty) ...[
-                      const SizedBox(width: Sizes.targetGap),
+                  ],
+                ),
+                if (line != null && line.isNotEmpty) ...[
+                  const SizedBox(height: Sizes.targetGap),
+                  Row(
+                    children: [
                       Expanded(
                         child: OutlinedButton.icon(
                           key: CourierScreen.navigateKey(order.id),
-                          onPressed: () =>
-                              ref.read(mapNavigatorProvider).navigateTo(
-                                    line,
-                                    lat: order.address?.lat,
-                                    lng: order.address?.lng,
-                                  ),
+                          onPressed: () => ref.read(mapNavigatorProvider).navigateTo(
+                                line,
+                                lat: order.address?.lat,
+                                lng: order.address?.lng,
+                                app: MapApp.googleMaps,
+                              ),
                           icon: const Icon(Icons.navigation_rounded, size: Sizes.iconSm),
-                          label: Text(strings.navigateToCustomer,
-                              overflow: TextOverflow.ellipsis),
+                          label: const Text('Google Maps', overflow: TextOverflow.ellipsis),
+                          style: OutlinedButton.styleFrom(
+                            minimumSize: const Size.fromHeight(Sizes.minTarget),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: Sizes.targetGap),
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          key: CourierScreen.navigateWazeKey(order.id),
+                          onPressed: () => ref.read(mapNavigatorProvider).navigateTo(
+                                line,
+                                lat: order.address?.lat,
+                                lng: order.address?.lng,
+                                app: MapApp.waze,
+                              ),
+                          icon: const Icon(Icons.explore_outlined, size: Sizes.iconSm),
+                          label: const Text('Waze', overflow: TextOverflow.ellipsis),
                           style: OutlinedButton.styleFrom(
                             minimumSize: const Size.fromHeight(Sizes.minTarget),
                           ),
                         ),
                       ),
                     ],
-                  ],
-                ),
+                  ),
+                ],
                 const SizedBox(height: Space.md),
                 if (unsent != null) ...[
                   // Said before the buttons, not after: the courier is about to act on
@@ -529,3 +613,32 @@ class _RejectedBanner extends ConsumerWidget {
     );
   }
 }
+
+/// A small badge on platform orders so couriers carrying both kinds in one queue see which is which.
+class _PlatformBadge extends StatelessWidget {
+  const _PlatformBadge({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).luqma;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: Space.sm,
+        vertical: Space.xs,
+      ),
+      decoration: BoxDecoration(
+        color: colors.brand,
+        borderRadius: Radii.pillAll,
+      ),
+      child: Text(
+        'منصة',
+        style: LuqmaType.caption.copyWith(
+          color: colors.onBrand,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+    );
+  }
+}
+

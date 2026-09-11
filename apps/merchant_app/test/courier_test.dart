@@ -65,9 +65,27 @@ void main() {
         courierUid: courierUid,
       );
 
+  Merchant merchant({
+    String id = 'm1',
+    String name = 'مطعم الشاطئ',
+    String zoneId = 'z1',
+    String phone = '01111111111',
+    MerchantType type = MerchantType.restaurant,
+  }) =>
+      Merchant(
+        id: id,
+        cityId: 'edku',
+        type: type,
+        name: name,
+        zoneId: zoneId,
+        phone: phone,
+        status: MerchantStatus.approved,
+      );
+
   late FakeCourierOrderRepository deliveries;
   late FakeNavigator navigator;
   late FakeExternalLinks links;
+  late FakeMerchantRepository merchantRepo;
 
   Future<void> pump(
     WidgetTester tester, {
@@ -80,7 +98,13 @@ void main() {
     },
     bool phoneCanDial = true,
     Iterable<String?>? carriedMerchants,
+    List<Merchant>? merchants,
+    Failure? merchantFailure,
   }) async {
+    tester.view.physicalSize = const Size(1080, 2340);
+    tester.view.devicePixelRatio = 3;
+    addTearDown(tester.view.reset);
+
     final carried = carriedMerchants ??
         (claims['scope'] == 'platform'
             ? const {null}
@@ -96,6 +120,14 @@ void main() {
     );
     navigator = FakeNavigator();
     links = FakeExternalLinks(answer: phoneCanDial);
+    merchantRepo = FakeMerchantRepository(
+      seed: merchants ?? [
+        merchant(),
+        merchant(id: 'm2', name: 'بيتزا روما', phone: '01222222222'),
+        merchant(id: 'm3', name: 'حلويات الشرق', phone: '01333333333'),
+      ],
+      failure: merchantFailure,
+    );
 
     await tester.pumpWidget(
       ProviderScope(
@@ -106,6 +138,7 @@ void main() {
             ),
           ),
           courierOrderRepositoryProvider.overrideWithValue(deliveries),
+          merchantRepositoryProvider.overrideWithValue(merchantRepo),
           geographyRepositoryProvider
               .overrideWithValue(FakeGeographyRepository(zones: zones)),
           mapNavigatorProvider.overrideWithValue(navigator),
@@ -278,18 +311,144 @@ void main() {
     // What the maps app is actually handed. A pin is `query=lat,lng`, which Google Maps
     // centres on exactly; the words are a search, which is a guess it makes for us.
     test('the url carries the pin rather than the name', () {
-      final pinned = GoogleMapsNavigator.uriFor('جنب صيدلية النور',
+      final pinned = ExternalMapNavigator.googleMapsUriFor('جنب صيدلية النور',
           lat: 31.3084, lng: 30.2939);
       expect(pinned.queryParameters['query'], '31.3084,30.2939');
 
-      final worded = GoogleMapsNavigator.uriFor('جنب صيدلية النور');
+      final worded = ExternalMapNavigator.googleMapsUriFor('جنب صيدلية النور');
       expect(worded.queryParameters['query'], 'جنب صيدلية النور');
+    });
+
+    testWidgets('hands the address to Waze', (tester) async {
+      await pump(tester, seed: [order()]);
+
+      await tester.tap(find.byKey(CourierScreen.navigateWazeKey('o1')));
+      await tester.pumpAndSettle();
+
+      expect(navigator.lastApp, MapApp.waze);
+      expect(navigator.lastQuery, contains('المعمورة'));
+      expect(navigator.lastQuery, contains('صيدلية النور'));
+    });
+
+    testWidgets('drives Waze to the pin when the order has one', (tester) async {
+      await pump(
+        tester,
+        seed: [
+          order().copyWith(
+            address: address.copyWith(lat: 31.3084, lng: 30.2939),
+          ),
+        ],
+      );
+
+      await tester.tap(find.byKey(CourierScreen.navigateWazeKey('o1')));
+      await tester.pumpAndSettle();
+
+      expect(navigator.lastApp, MapApp.waze);
+      expect(navigator.lastLat, 31.3084);
+      expect(navigator.lastLng, 30.2939);
+      expect(navigator.lastQuery, contains('صيدلية النور'));
+    });
+
+    test('waze url carries the pin rather than the name', () {
+      final pinned = ExternalMapNavigator.wazeUriFor('جنب صيدلية النور',
+          lat: 31.3084, lng: 30.2939);
+      expect(pinned.queryParameters['ll'], '31.3084,30.2939');
+      expect(pinned.queryParameters['navigate'], 'yes');
+
+      final worded = ExternalMapNavigator.wazeUriFor('جنب صيدلية النور');
+      expect(worded.queryParameters['q'], 'جنب صيدلية النور');
+      expect(worded.queryParameters['navigate'], 'yes');
+    });
+
+    test('ExternalMapNavigator hands off through ExternalLinks for both apps',
+        () async {
+      final fakeLinks = FakeExternalLinks();
+      final nav = ExternalMapNavigator(links: fakeLinks);
+
+      await nav.navigateTo('المعمورة', app: MapApp.googleMaps);
+      expect(fakeLinks.opened.first.host, 'www.google.com');
+
+      await nav.navigateTo('المعمورة', app: MapApp.waze);
+      expect(fakeLinks.opened.last.host, 'waze.com');
+      expect(fakeLinks.opened.last.queryParameters['q'], 'المعمورة');
     });
 
     testWidgets('offers nothing to navigate to when there is no address',
         (tester) async {
       await pump(tester, seed: [order(at: null)]);
       expect(find.byKey(CourierScreen.navigateKey('o1')), findsNothing);
+      expect(find.byKey(CourierScreen.navigateWazeKey('o1')), findsNothing);
+    });
+  });
+
+  group('who to call at the kitchen', () {
+    // The shop's telephone and the customer's are two different numbers on one card, and
+    // a rider at a door ringing the wrong one is the failure this has to prevent.
+    //
+    // There is no shop *address* here and deliberately so: `merchants` carries a zone and
+    // a phone and nothing else — no street, no landmark, no coordinate. Drawing the zone
+    // would put «إدكو» under a shop and call it where to collect.
+    testWidgets('a call button for the shop, distinct from the one for the customer',
+        (tester) async {
+      await pump(tester, seed: [order()]);
+
+      expect(find.byKey(CourierScreen.callMerchantKey('o1')), findsOneWidget);
+      expect(find.byKey(CourierScreen.callKey('o1')), findsOneWidget);
+    });
+
+    testWidgets('tapping the merchant call button dials the merchant phone',
+        (tester) async {
+      await pump(tester, seed: [order()]);
+
+      await tester.tap(find.byKey(CourierScreen.callMerchantKey('o1')));
+      await tester.pumpAndSettle();
+
+      expect(links.opened.single.scheme, 'tel');
+      expect(links.opened.single.path, '01111111111');
+    });
+
+    testWidgets('a handset that refuses tel: on merchant call reads the number out',
+        (tester) async {
+      await pump(tester, seed: [order()], phoneCanDial: false);
+
+      await tester.tap(find.byKey(CourierScreen.callMerchantKey('o1')));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('01111111111'), findsWidgets);
+    });
+
+    testWidgets('if the merchant cannot be read, the card still draws everything else',
+        (tester) async {
+      await pump(tester,
+          seed: [order()], merchantFailure: const OfflineFailure());
+
+      expect(find.byKey(CourierScreen.cardKey('o1')), findsOneWidget);
+      expect(find.byKey(CourierScreen.cashKey('o1')), findsOneWidget);
+      expect(find.byKey(CourierScreen.callKey('o1')), findsOneWidget);
+      expect(find.byKey(CourierScreen.callMerchantKey('o1')), findsNothing);
+      expect(find.textContaining('أحمد محمود'), findsWidgets);
+    });
+  });
+
+  group('the platform badge', () {
+    testWidgets('shows a «منصة» badge on platform orders', (tester) async {
+      await pump(
+        tester,
+        seed: [order().copyWith(deliveryBy: DeliveryBy.platform)],
+      );
+
+      expect(find.byKey(CourierScreen.platformBadgeKey('o1')), findsOneWidget);
+      expect(find.text('منصة'), findsOneWidget);
+    });
+
+    testWidgets('does not show the badge on ordinary shop orders', (tester) async {
+      await pump(
+        tester,
+        seed: [order().copyWith(deliveryBy: DeliveryBy.merchant)],
+      );
+
+      expect(find.byKey(CourierScreen.platformBadgeKey('o1')), findsNothing);
+      expect(find.text('منصة'), findsNothing);
     });
   });
 
@@ -457,6 +616,8 @@ void main() {
       expect(find.byKey(CourierScreen.deliveredKey('o1')), findsOneWidget,
           reason: 'the next tap of the delivery has to be reachable');
 
+      await tester.ensureVisible(find.byKey(CourierScreen.deliveredKey('o1')));
+      await tester.pumpAndSettle();
       await tester.tap(find.byKey(CourierScreen.deliveredKey('o1')));
       await tester.pumpAndSettle();
       await tester.tap(find.text('اه، تم'));
