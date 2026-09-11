@@ -621,6 +621,24 @@ DATABASE_URL=<luqma-test session pooler> npm --prefix supabase run test:stack
   `1.0.0` on حول لقمة, directly under the owner's photo and description — a technical
   detail presented as part of who they are, and a second source of truth that would
   eventually disagree with the store.
+- **The apps are `0.9.0` until they are on Play, and nothing builds `--split-per-abi`.**
+  Two decisions taken together on 2026-09-11, both about the number a customer reads out
+  on a support call. `1.0.0` is reserved for the first build anybody can download; before
+  that it would be claiming a release that has not happened. And `--split-per-abi` adds
+  1000 × the architecture's index to the version code, so build 9 shipped as **2009** —
+  which the owner read as a year, reasonably. That offset exists so several architectures
+  of one release can coexist on Play and we ship exactly one, so it bought nothing. The
+  output is a single `app-release.apk` now and the version code is the build number in
+  `pubspec.yaml`.
+  The build number **never repeats and only ever rises**; it starts at 10 because 1 and 9
+  have both been on a handset, and Android refuses a code lower than one it has seen. A
+  repo whose version sat at `+1` while a phone carried `2008` is how that was discovered.
+- **`min_supported_version` is compared against the version *name*, not the code.**
+  `LuqmaConfig._requiresUpdate` parses three dotted integers, so setting it to `1.0.0`
+  from AdminApp while the apps are `0.9.0` walls every customer out of the product with
+  no back door — the gate is deliberately un-bypassable. It is unset in production today,
+  which is the only reason changing the version name was safe. Raise it to a version that
+  actually exists, and never above what is installed.
 
 ## Rules that are easy to break by accident
 

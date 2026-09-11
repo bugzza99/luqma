@@ -1,5 +1,5 @@
 {
-  "_comment": "Edku itself. The zone and landmark names here are no longer placeholders: they come from the address research in Documents/Codex/2026-09-09/edku-address-research — 43 places observed on Google Maps with real coordinates, minus the 8 in المعدية, which the owner excluded. Every landmark sits in the area its own source names; none was assigned by guess, because a wrong zone sends a courier to the wrong part of town. The seven neighbourhood names inside the city (القلفاط، الطابية، غرب السمني، خط خنيفر، المحكمة غرب، أبو بكر الصديق، قبلي ممدوح عشرة) are real but no source places any landmark in them, so the city is one zone until somebody with local knowledge splits it from AdminApp. Delivery fees are still the owner's to set.",
+  "_comment": "Edku itself. The zone and landmark names here are no longer placeholders: they come from the address research in Documents/Codex/2026-09-09/edku-address-research — 43 places observed on Google Maps with real coordinates, المعدية and its 8 places were excluded at first and added back on 2026-09-11 at the owner's request. Its points sit in two clusters about seven kilometres apart — five around 30.17 and three around 30.25 — which is what the sources say and is not a transcription error; the research file flags two of the school names as possibly one place listed twice. Split it or correct it from AdminApp, which is the path for this. Every landmark sits in the area its own source names; none was assigned by guess, because a wrong zone sends a courier to the wrong part of town. The seven neighbourhood names inside the city (القلفاط، الطابية، غرب السمني، خط خنيفر، المحكمة غرب، أبو بكر الصديق، قبلي ممدوح عشرة) are real but no source places any landmark in them, so the city is one zone until somebody with local knowledge splits it from AdminApp. Delivery fees are still the owner's to set.",
   "city": {
     "id": "edku",
     "name": "إدكو",
@@ -23,6 +23,12 @@
       "name": "منشية الأمل",
       "defaultDeliveryFee": 1500,
       "sortOrder": 2
+    },
+    {
+      "id": "maadiya",
+      "name": "المعدية",
+      "defaultDeliveryFee": 1500,
+      "sortOrder": 3
     }
   ],
   "landmarks": [
@@ -235,6 +241,54 @@
       "name": "صيدلية الجزيرة",
       "lat": 31.3027364,
       "lng": 30.3107392
+    },
+    {
+      "zoneId": "maadiya",
+      "name": "المعدية",
+      "lat": 31.2838358,
+      "lng": 30.2455033
+    },
+    {
+      "zoneId": "maadiya",
+      "name": "محطة قطار المعدية",
+      "lat": 31.2673033,
+      "lng": 30.1745691
+    },
+    {
+      "zoneId": "maadiya",
+      "name": "مدرسة المعدية الثانوية المشتركة",
+      "lat": 31.2688999,
+      "lng": 30.1803588
+    },
+    {
+      "zoneId": "maadiya",
+      "name": "مدرسة المعدية الاعدادية المشتركه",
+      "lat": 31.2661203,
+      "lng": 30.1749165
+    },
+    {
+      "zoneId": "maadiya",
+      "name": "مدرسة المعدية الابتدائية المشتركة",
+      "lat": 31.2677242,
+      "lng": 30.1755029
+    },
+    {
+      "zoneId": "maadiya",
+      "name": "مدرسة بني المعدية",
+      "lat": 31.2676486,
+      "lng": 30.1758945
+    },
+    {
+      "zoneId": "maadiya",
+      "name": "مدرسة المعديه الفنيه بنات",
+      "lat": 31.2786712,
+      "lng": 30.2523813
+    },
+    {
+      "zoneId": "maadiya",
+      "name": "مدرسة المعدية الرسمية لغات",
+      "lat": 31.2799523,
+      "lng": 30.2504565
     }
   ],
   "plans": [
