@@ -211,6 +211,12 @@ class _OrderCard extends ConsumerWidget {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(item.name, style: theme.textTheme.bodyMedium),
+                              if (item.options.isNotEmpty)
+                                Text(
+                                  item.options.map((option) => option.name).join('، '),
+                                  style: LuqmaType.bodySmall
+                                      .copyWith(color: colors.textSecondary),
+                                ),
                               if (item.note != null && item.note!.isNotEmpty)
                                 Text(
                                   item.note!,

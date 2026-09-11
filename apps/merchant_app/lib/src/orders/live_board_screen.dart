@@ -125,13 +125,27 @@ class _Card extends ConsumerWidget {
             Padding(
               padding: const EdgeInsets.only(bottom: Space.xs),
               child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
                     '${item.quantity}×',
                     style: LuqmaType.bodyStrong.copyWith(color: colors.brand),
                   ),
                   const SizedBox(width: Space.sm),
-                  Expanded(child: Text(item.name)),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(item.name),
+                        if (item.options.isNotEmpty)
+                          Text(
+                            item.options.map((option) => option.name).join('، '),
+                            style: LuqmaType.bodySmall
+                                .copyWith(color: colors.textSecondary),
+                          ),
+                      ],
+                    ),
+                  ),
                 ],
               ),
             ),

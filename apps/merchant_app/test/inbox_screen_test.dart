@@ -96,6 +96,49 @@ void main() {
     await tester.pump(const Duration(milliseconds: 50));
   }
 
+  testWidgets('chosen extras qualify their dish, before the next dish', (tester) async {
+    final incoming = order().copyWith(items: [
+      OrderLine.fromJson({
+        ...line.toJson(),
+        'optionIds': ['large', 'cheese'],
+        'optionsTotal': 750,
+        'options': [
+          {'id': 'large', 'name': 'حجم كبير', 'price': 500},
+          {'id': 'cheese', 'name': 'جبنة زيادة', 'price': 250},
+        ],
+      }),
+      const OrderLine(itemId: 'i2', name: 'سلطة', unitPrice: 1000, quantity: 1),
+    ]);
+    await pump(tester, seed: [incoming]);
+    final extras = find.text('حجم كبير، جبنة زيادة');
+    expect(extras, findsOneWidget);
+    expect(tester.getTopLeft(extras).dy,
+        greaterThanOrEqualTo(tester.getBottomLeft(find.text('فراخ مشوية')).dy));
+    expect(tester.getBottomLeft(extras).dy,
+        lessThanOrEqualTo(tester.getTopLeft(find.text('سلطة')).dy));
+    expect(find.text(''), findsNothing);
+  });
+
+  testWidgets('no chosen extras draws no extra text or space', (tester) async {
+    // Old rows have ids but no frozen names. They must still open without inventing
+    // names from a menu that may have changed since the order was placed.
+    for (final snapshot in [<String, dynamic>{}, <String, dynamic>{'options': []}]) {
+      final incoming = order().copyWith(items: [
+        OrderLine.fromJson({
+          ...(line.toJson()..remove('options')),
+          'optionIds': ['old'],
+          ...snapshot,
+        }),
+      ]);
+      await pump(tester, seed: [incoming]);
+      expect(find.text(''), findsNothing);
+      expect(find.text('حجم كبير، جبنة زيادة'), findsNothing);
+      final dish = find.text('فراخ مشوية');
+      final row = find.ancestor(of: dish, matching: find.byType(Row)).first;
+      expect(tester.getSize(row).height, tester.getSize(dish).height);
+    }
+  });
+
   group('what an order card says', () {
     testWidgets('the checkout instruction is visible before accepting', (tester) async {
       // Decode the row shape, rather than requiring a new constructor argument: the
