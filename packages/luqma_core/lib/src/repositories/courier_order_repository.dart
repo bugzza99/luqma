@@ -1,4 +1,4 @@
-﻿import 'dart:async';
+import 'dart:async';
 
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -19,6 +19,10 @@ abstract interface class CourierOrderRepository {
 
   /// For Luqma's own courier: home kitchens, and merchants that do not deliver. Live.
   Stream<List<Order>> watchForPlatform(String cityId);
+
+  /// Everything this courier carries: all shops they are attached to, plus the
+  /// platform when they hold the platform row. Live.
+  Stream<List<Order>> watchCarried();
 
   Stream<Order> watchOrder(String orderId);
 
@@ -81,6 +85,18 @@ class SupabaseCourierOrderRepository implements CourierOrderRepository {
         // last week's.
         RowFilter('delivery_by', DeliveryBy.platform.name),
       ],
+      ins: [RowIn('status', [for (final s in _onTheRun) s.name])],
+    ).map(
+      (orders) => orders..sort((a, b) => a.orderNumber.compareTo(b.orderNumber)),
+    );
+  }
+
+  @override
+  Stream<List<Order>> watchCarried() {
+    return watchRows(
+      db: _db,
+      table: 'orders',
+      map: _toOrder,
       ins: [RowIn('status', [for (final s in _onTheRun) s.name])],
     ).map(
       (orders) => orders..sort((a, b) => a.orderNumber.compareTo(b.orderNumber)),
@@ -167,10 +183,36 @@ class SupabaseCourierOrderRepository implements CourierOrderRepository {
 /// In-memory deliveries, for tests and for building the courier screens without a
 /// backend. Re-applies the same transition rules as the real one.
 class FakeCourierOrderRepository implements CourierOrderRepository {
-  FakeCourierOrderRepository({List<Order> seed = const [], this.failure})
-      : _orders = {for (final o in seed) o.id: o};
+  FakeCourierOrderRepository({
+    List<Order> seed = const [],
+    this.failure,
+    Iterable<String?>? carriedMerchants,
+  })  : _orders = {for (final o in seed) o.id: o},
+        _carried = carriedMerchants != null
+            ? Set<String?>.of(carriedMerchants)
+            : <String?>{};
 
   final Map<String, Order> _orders;
+
+  /// The shops this courier carries for, modeling the `courier_merchants` join table.
+  /// Null is the platform row: home kitchens, and merchants that do not deliver for
+  /// themselves.
+  final Set<String?> _carried;
+
+  /// Attaches this courier to [merchantId] (null means the platform).
+  void attach(String? merchantId) {
+    _carried.add(merchantId);
+    _notify();
+  }
+
+  /// Detaches this courier from [merchantId] (null means the platform).
+  void detach(String? merchantId) {
+    _carried.remove(merchantId);
+    _notify();
+  }
+
+  /// Whether this courier carries for [merchantId] (null means platform).
+  bool carries(String? merchantId) => _carried.contains(merchantId);
 
   /// Mutable on purpose: a test takes the repository offline and back online, which is
   /// the exact transition the courier write queue exists to survive.
@@ -216,6 +258,29 @@ class FakeCourierOrderRepository implements CourierOrderRepository {
               o.cityId == cityId &&
               o.deliveryBy == DeliveryBy.platform &&
               _onTheRun.contains(o.status))
+          .toList()
+        ..sort((a, b) => a.orderNumber.compareTo(b.orderNumber)),
+    );
+  }
+
+  @override
+  Stream<List<Order>> watchCarried() {
+    if (failure != null) return Stream.error(failure!);
+    return _live(
+      () => _orders.values
+          .where((o) {
+            if (!_onTheRun.contains(o.status)) return false;
+            // The read policy on `orders`:
+            // 1. Merchant order from a shop this courier carries:
+            if (_carried.contains(o.merchantId)) {
+              return true;
+            }
+            // 2. Platform delivery when holding the platform row (null):
+            if (o.deliveryBy == DeliveryBy.platform && _carried.contains(null)) {
+              return true;
+            }
+            return false;
+          })
           .toList()
         ..sort((a, b) => a.orderNumber.compareTo(b.orderNumber)),
     );

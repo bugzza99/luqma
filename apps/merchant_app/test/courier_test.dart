@@ -79,8 +79,21 @@ void main() {
       'merchantId': 'm1',
     },
     bool phoneCanDial = true,
+    Iterable<String?>? carriedMerchants,
   }) async {
-    deliveries = FakeCourierOrderRepository(seed: seed, failure: failure);
+    final carried = carriedMerchants ??
+        (claims['scope'] == 'platform'
+            ? const {null}
+            : {
+                for (final o in seed)
+                  if (o.deliveryBy == DeliveryBy.platform) null else o.merchantId,
+                if (claims['merchantId'] != null) claims['merchantId'] as String,
+              });
+    deliveries = FakeCourierOrderRepository(
+      seed: seed,
+      failure: failure,
+      carriedMerchants: carried,
+    );
     navigator = FakeNavigator();
     links = FakeExternalLinks(answer: phoneCanDial);
 
@@ -194,6 +207,22 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.textContaining('01000000000'), findsWidgets);
+    });
+
+    // A rider carrying for several shops needs to know which kitchen to go to;
+    // the shop name is the decision and carries the weight.
+    testWidgets('the shop name has prominence on the card', (tester) async {
+      await pump(tester, seed: [order()]);
+
+      final card = find.byKey(CourierScreen.cardKey('o1'));
+      expect(
+        find.descendant(of: card, matching: find.text('مطعم الشاطئ')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: card, matching: find.text('طلب رقم 101')),
+        findsOneWidget,
+      );
     });
   });
 
@@ -346,6 +375,35 @@ void main() {
 
       expect(find.byKey(CourierScreen.cardKey('ours')), findsOneWidget);
       expect(find.byKey(CourierScreen.cardKey('theirs')), findsNothing);
+    });
+  });
+
+  group('carrying for several shops', () {
+    testWidgets('shows orders from every attached shop in one queue',
+        (tester) async {
+      await pump(
+        tester,
+        seed: [
+          order(id: 'o1', number: 101).copyWith(
+            merchantId: 'm1',
+            merchantName: 'مطعم الشاطئ',
+          ),
+          order(id: 'o2', number: 102).copyWith(
+            merchantId: 'm2',
+            merchantName: 'بيتزا روما',
+          ),
+          order(id: 'o3', number: 103).copyWith(
+            merchantId: 'm3',
+            merchantName: 'حلويات الشرق',
+          ),
+        ],
+        carriedMerchants: {'m1', 'm2'},
+      );
+
+      // The courier carries m1 and m2, but not m3.
+      expect(find.byKey(CourierScreen.cardKey('o1')), findsOneWidget);
+      expect(find.byKey(CourierScreen.cardKey('o2')), findsOneWidget);
+      expect(find.byKey(CourierScreen.cardKey('o3')), findsNothing);
     });
   });
 

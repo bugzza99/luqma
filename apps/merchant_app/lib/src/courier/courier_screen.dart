@@ -45,22 +45,12 @@ class CourierScreen extends ConsumerWidget {
     final staff = ref.watch(staffIdentityProvider);
     final colors = Theme.of(context).luqma;
 
-    // A merchant's courier carries that merchant's orders; the platform's carries the
-    // home kitchens and the merchants that do not deliver.
-    final deliveries = staff.scope == StaffScope.platform
-        ? ref.watch(platformDeliveriesProvider(ref.watch(currentCityProvider)))
-        : staff.merchantId == null
-            ? const AsyncValue<List<Order>>.data([])
-            : ref.watch(merchantDeliveriesProvider(staff.merchantId!));
+    // What this courier carries: all attached merchants, plus the platform if they hold
+    // the platform row. One live queue regardless of how many shops they carry for.
+    final deliveries = ref.watch(carriedDeliveriesProvider);
 
-    // Reads again whichever of the two this courier is actually on. Invalidating both
-    // would tear down a stream nobody on this screen is watching.
     void retryDeliveries() {
-      if (staff.scope == StaffScope.platform) {
-        ref.invalidate(platformDeliveriesProvider(ref.read(currentCityProvider)));
-      } else if (staff.merchantId != null) {
-        ref.invalidate(merchantDeliveriesProvider(staff.merchantId!));
-      }
+      ref.invalidate(carriedDeliveriesProvider);
     }
 
     return Scaffold(
@@ -171,10 +161,24 @@ class _Card extends ConsumerWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Text(
-                  'طلب رقم ${order.orderNumber} · ${order.merchantName}',
-                  style: theme.textTheme.bodySmall
-                      ?.copyWith(color: colors.textSecondary),
+                // The shop name has the weight the decision has: a rider carrying for
+                // several shops is choosing which kitchen to collect from first.
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: Text(
+                        order.merchantName,
+                        style: theme.textTheme.titleMedium,
+                      ),
+                    ),
+                    const SizedBox(width: Space.sm),
+                    Text(
+                      'طلب رقم ${order.orderNumber}',
+                      style: theme.textTheme.bodySmall
+                          ?.copyWith(color: colors.textSecondary),
+                    ),
+                  ],
                 ),
                 const SizedBox(height: Space.sm),
                 if (line != null && line.isNotEmpty)

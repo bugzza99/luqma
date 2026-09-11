@@ -1,4 +1,4 @@
-﻿import 'package:flutter/foundation.dart';
+import 'package:flutter/foundation.dart';
 import 'dart:async';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
@@ -458,6 +458,12 @@ Stream<List<Order>> merchantDeliveries(Ref ref, String merchantId) =>
 @riverpod
 Stream<List<Order>> platformDeliveries(Ref ref, String cityId) =>
     ref.watch(courierOrderRepositoryProvider).watchForPlatform(cityId);
+
+/// Everything this courier carries: all shops they are attached to, plus the
+/// platform when they hold the platform row. Live.
+@riverpod
+Stream<List<Order>> carriedDeliveries(Ref ref) =>
+    ref.watch(courierOrderRepositoryProvider).watchCarried();
 
 @Riverpod(keepAlive: true)
 DailyMealRepository dailyMealRepository(Ref ref) =>

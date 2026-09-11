@@ -60,6 +60,9 @@ class _OfflineOnce implements CourierOrderRepository {
   Stream<List<Order>> watchForPlatform(String cityId) => _real.watchForPlatform(cityId);
 
   @override
+  Stream<List<Order>> watchCarried() => _real.watchCarried();
+
+  @override
   Stream<Order> watchOrder(String orderId) => _real.watchOrder(orderId);
 }
 

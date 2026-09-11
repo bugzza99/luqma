@@ -48,6 +48,9 @@ class _Slow implements CourierOrderRepository {
   Stream<List<Order>> watchForPlatform(String cityId) => const Stream.empty();
 
   @override
+  Stream<List<Order>> watchCarried() => const Stream.empty();
+
+  @override
   Stream<Order> watchOrder(String orderId) => const Stream.empty();
 }
 
@@ -70,6 +73,9 @@ class _Dead implements CourierOrderRepository {
 
   @override
   Stream<List<Order>> watchForPlatform(String cityId) => const Stream.empty();
+
+  @override
+  Stream<List<Order>> watchCarried() => const Stream.empty();
 
   @override
   Stream<Order> watchOrder(String orderId) => const Stream.empty();
