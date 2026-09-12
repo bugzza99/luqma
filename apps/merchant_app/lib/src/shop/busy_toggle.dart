@@ -216,7 +216,7 @@ class _Open extends ConsumerWidget {
                                   const SizedBox(height: 2),
                                   Text(
                                     'يرجع الساعة ${luqmaClockTime(now.add(Duration(minutes: choice)), strings)}',
-                                    style: LuqmaType.caption.copyWith(
+                                    style: LuqmaType.bodySmall.copyWith(
                                       color: sheetColors.textSecondary,
                                     ),
                                   ),

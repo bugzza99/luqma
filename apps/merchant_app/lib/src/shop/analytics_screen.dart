@@ -295,17 +295,17 @@ class _UnfulfilledCard extends StatelessWidget {
             if (sales.cancelledByCustomer > 0)
               Text(
                 '${sales.cancelledByCustomer} من العميل',
-                style: LuqmaType.caption.copyWith(color: colors.textSecondary),
+                style: LuqmaType.bodySmall.copyWith(color: colors.textSecondary),
               ),
             if (sales.cancelledByMerchant > 0)
               Text(
                 '${sales.cancelledByMerchant} من المحل',
-                style: LuqmaType.caption.copyWith(color: colors.textSecondary),
+                style: LuqmaType.bodySmall.copyWith(color: colors.textSecondary),
               ),
             if (sales.returned > 0)
               Text(
                 '${sales.returned} رجع مع الطيار',
-                style: LuqmaType.caption.copyWith(color: colors.textSecondary),
+                style: LuqmaType.bodySmall.copyWith(color: colors.textSecondary),
               ),
           ],
         ],

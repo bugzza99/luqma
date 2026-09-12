@@ -203,7 +203,7 @@ class _OrderView extends ConsumerWidget {
                         totalCount > 1
                             ? 'طلب جديد (${index + 1} من $totalCount) • عاجل'
                             : 'طلب جديد • عاجل',
-                        style: LuqmaType.caption.copyWith(
+                        style: LuqmaType.bodySmall.copyWith(
                           color: colors.onBrand,
                           fontWeight: FontWeight.bold,
                         ),

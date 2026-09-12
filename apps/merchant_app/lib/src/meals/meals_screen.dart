@@ -279,7 +279,7 @@ class _MealCard extends ConsumerWidget {
                       Expanded(
                         child: Text(
                           '${meal.date} · الاستلام ${_window(meal)}',
-                          style: LuqmaType.caption.copyWith(color: colors.textSecondary),
+                          style: LuqmaType.bodySmall.copyWith(color: colors.textSecondary),
                         ),
                       ),
                       _FulfilmentBadge(

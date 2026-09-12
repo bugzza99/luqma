@@ -140,7 +140,7 @@ class _Charges extends ConsumerWidget {
                     padding: const EdgeInsets.only(bottom: Space.xs),
                     child: Text(
                       'المعروض أحدث 100 شحنة فقط',
-                      style: LuqmaType.caption.copyWith(
+                      style: LuqmaType.bodySmall.copyWith(
                         color: Theme.of(context).luqma.textSecondary,
                       ),
                     ),
@@ -188,7 +188,7 @@ class _Payments extends ConsumerWidget {
                 padding: const EdgeInsets.only(bottom: Space.xs),
                 child: Text(
                   'المعروض أحدث 100 دفعة فقط',
-                  style: LuqmaType.caption.copyWith(
+                  style: LuqmaType.bodySmall.copyWith(
                     color: Theme.of(context).luqma.textSecondary,
                   ),
                 ),

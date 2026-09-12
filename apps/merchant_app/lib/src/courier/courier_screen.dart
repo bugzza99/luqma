@@ -118,19 +118,30 @@ class _CourierScreenState extends ConsumerState<CourierScreen> {
                             style: OutlinedButton.styleFrom(
                               minimumSize: const Size.fromHeight(56),
                             ),
+                            // Both halves flexible, not a `spaceBetween` of two fixed
+                            // texts. The hour is the thing being chosen and the duration
+                            // is the gloss on it; at 15sp the pair overflowed a narrow
+                            // phone by fifteen pixels, and the half that would have been
+                            // clipped is the one that says when the rider is back.
                             child: Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
-                                Text(
-                                  'حتى ${luqmaClockTime(now.add(Duration(minutes: choice)), LuqmaStrings.of(sheetContext))}',
-                                  style: LuqmaType.button,
+                                Expanded(
+                                  child: Text(
+                                    'حتى ${luqmaClockTime(now.add(Duration(minutes: choice)), LuqmaStrings.of(sheetContext))}',
+                                    style: LuqmaType.button,
+                                  ),
                                 ),
-                                Text(
-                                  LuqmaStrings.of(sheetContext).minutes(choice),
-                                  style: LuqmaType.caption.copyWith(
-                                    color: Theme.of(sheetContext)
-                                        .luqma
-                                        .textSecondary,
+                                const SizedBox(width: Space.sm),
+                                Flexible(
+                                  child: Text(
+                                    LuqmaStrings.of(sheetContext).minutes(choice),
+                                    textAlign: TextAlign.end,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: LuqmaType.bodySmall.copyWith(
+                                      color: Theme.of(sheetContext)
+                                          .luqma
+                                          .textSecondary,
+                                    ),
                                   ),
                                 ),
                               ],

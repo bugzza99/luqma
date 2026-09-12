@@ -549,7 +549,7 @@ class _Card extends ConsumerWidget {
           const SizedBox(height: Space.xs),
           Text(
             'من ${_day(promotion.startAt)} لـ ${_day(promotion.endAt)}',
-            style: LuqmaType.caption.copyWith(color: colors.textSecondary),
+            style: LuqmaType.bodySmall.copyWith(color: colors.textSecondary),
           ),
           // Approved is not live. Without this, a merchant whose campaign starts on
           // Tuesday opens the app on Monday and thinks something is broken.
