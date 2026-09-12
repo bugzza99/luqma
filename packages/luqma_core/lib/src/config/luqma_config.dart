@@ -286,6 +286,23 @@ class LuqmaConfig {
     return false;
   }
 
+  /// Whether [candidate] is a newer version than [ceiling], as the force-update gate
+  /// compares them. False when either does not parse — a comparison that cannot be made is
+  /// not a reason to refuse anything.
+  ///
+  /// Public so the admin's config screen asks the question in exactly the arithmetic the
+  /// gate will later apply. A second copy of the comparison would be the one that disagrees
+  /// on `0.10.0` against `0.9.0`, which a string compare gets backwards.
+  static bool versionExceeds(String? candidate, String? ceiling) {
+    final a = _parseVersion(candidate);
+    final b = _parseVersion(ceiling);
+    if (a == null || b == null) return false;
+    for (var i = 0; i < 3; i++) {
+      if (a[i] != b[i]) return a[i] > b[i];
+    }
+    return false;
+  }
+
   static List<int>? _parseVersion(String? raw) {
     if (raw == null) return null;
     final parts = raw.split('.');

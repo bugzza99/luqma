@@ -254,6 +254,28 @@ class _ConfigFormState extends ConsumerState<_ConfigForm> {
       );
       return false;
     }
+    // A minimum nobody can install walls every phone on that app out, with no way past
+    // it — the gate is un-bypassable on purpose. All three apps share one version, so this
+    // build's own is the newest that exists. The admin field is the one that matters most:
+    // set above this build, it locks out the only app that could put it back.
+    //
+    // `appVersionProvider` reads like `0.9.0 (10)`; the version is the part before the
+    // space. A build that cannot say what it is refuses nothing on a guess.
+    final existing = ref.read(appVersionProvider).split(' ').first;
+    for (final field in [_customerMinVersion, _merchantMinVersion, _adminMinVersion]) {
+      if (LuqmaConfig.versionExceeds(field.text.trim(), existing)) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'أحدث نسخة موجودة $existing. لو حطيت رقم أعلى منها، التطبيق هيقفل '
+              'في وش كل اللي بيستخدموه ومفيش طريقة يتفتح غير بتحديث مش موجود.',
+            ),
+          ),
+        );
+        return false;
+      }
+    }
+
     // The pair is validated together: a max below a min describes no valid fee at all.
     if (Money.parse(_feeMin.text.trim())! > Money.parse(_feeMax.text.trim())!) {
       ScaffoldMessenger.of(context).showSnackBar(

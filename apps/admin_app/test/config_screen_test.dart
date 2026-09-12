@@ -13,6 +13,7 @@ void main() {
     Map<String, Object> seed = const {},
     Failure? setFailure,
     Map<String, Object>? returnedValues,
+    String appVersion = '',
   }) async {
     config = FakeConfigRepository(
       seed: seed,
@@ -22,7 +23,10 @@ void main() {
 
     await tester.pumpWidget(
       ProviderScope(
-        overrides: [configRepositoryProvider.overrideWithValue(config)],
+        overrides: [
+          configRepositoryProvider.overrideWithValue(config),
+          appVersionProvider.overrideWithValue(appVersion),
+        ],
         child: MaterialApp(
           theme: LuqmaTheme.light,
           locale: const Locale('ar'),
@@ -271,5 +275,72 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(LuqmaErrorView), findsOneWidget);
+  });
+
+  /// A version nobody can install.
+  ///
+  /// `min_supported_version` is compared against the version *name*, and the force-update
+  /// gate has no back door by design — so a minimum set above what exists walls every phone
+  /// on that app out of the product. The admin field is the worst of the three: set above
+  /// the admin's own build, it locks out the only app that could undo it.
+  ///
+  /// All three apps share one version, so the admin build's own version is the newest that
+  /// exists, and that is the ceiling.
+  group('a minimum version nobody can install', () {
+    Future<void> setField(WidgetTester tester, String labelPart, String value) async {
+      final field = find.descendant(
+        of: find.ancestor(
+          of: find.textContaining(labelPart),
+          matching: find.byType(ListTile),
+        ),
+        matching: find.byType(TextField),
+      );
+      await tester.ensureVisible(field);
+      await tester.enterText(field, value);
+      await tester.pumpAndSettle();
+    }
+
+    Future<void> save(WidgetTester tester) async {
+      await tester.ensureVisible(find.byKey(ConfigScreen.saveKey));
+      await tester.tap(find.byKey(ConfigScreen.saveKey));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('is refused for the admin app, which would lock out its own undo',
+        (tester) async {
+      await pump(tester, appVersion: '0.9.0 (10)');
+      await setField(tester, 'أقل نسخة مدعومة — الأدمن', '1.0.0');
+      await save(tester);
+
+      expect(config.setCalls, isEmpty, reason: 'nothing may reach the control plane');
+      expect(find.textContaining('0.9.0'), findsWidgets,
+          reason: 'the refusal names the newest version that exists');
+    });
+
+    testWidgets('and for the customer app too', (tester) async {
+      await pump(tester, appVersion: '0.9.0 (10)');
+      await setField(tester, 'أقل نسخة مدعومة — العميل', '0.10.0');
+      await save(tester);
+
+      expect(config.setCalls, isEmpty, reason: '0.10.0 is above 0.9.0 numerically');
+    });
+
+    testWidgets('but the version that exists, or an older one, saves', (tester) async {
+      await pump(tester, appVersion: '0.9.0 (10)');
+      await setField(tester, 'أقل نسخة مدعومة — العميل', '0.9.0');
+      await setField(tester, 'أقل نسخة مدعومة — التاجر', '0.8.2');
+      await save(tester);
+
+      expect(config.setCalls, hasLength(1));
+    });
+
+    // A build that cannot say what it is must not start refusing things on a guess.
+    testWidgets('and a build with no version of its own does not guess', (tester) async {
+      await pump(tester);
+      await setField(tester, 'أقل نسخة مدعومة — الأدمن', '9.9.9');
+      await save(tester);
+
+      expect(config.setCalls, hasLength(1));
+    });
   });
 }
