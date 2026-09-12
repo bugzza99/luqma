@@ -487,6 +487,15 @@ variable; it simply runs in the shell that already has the right one.
 `flutter test` runs files concurrently — so in parallel the suite fails somewhere
 different every run and none of it is about the code.
 
+**`npm --prefix supabase test` is capped at two files at a time**, and the cap is the
+point. Node's test runner defaults to one worker per core and each PGlite instance is a
+whole Postgres compiled to WebAssembly; once the suite passed about forty files this
+machine ran out of memory and the run came back with a *different* set of a dozen failures
+each time, none of which reproduce when the file is run alone. That reads as flaky tests
+and is a full disk of RAM. Same family as the `-j 1` on `test_live` and the Gradle daemon
+that died mid-build the day somebody ran the schema suite beside it: **if a suite fails
+differently every run, count the processes before reading the diff.**
+
 `supabase test` runs on **PGlite**, Postgres compiled to WebAssembly: the real migrations,
 the real constraint machinery, no container. `test:stack` and `test_live` need policies,
 `auth.uid()` and the claims hook, which only exist in a real Postgres — that is the

@@ -326,7 +326,7 @@ class _CourierRosterScreenState extends ConsumerState<CourierRosterScreen> {
                               style: theme.textTheme.labelSmall?.copyWith(
                                 color: isAvailable
                                     ? colors.success
-                                    : colors.accent,
+                                    : colors.price,
                                 fontWeight: FontWeight.bold,
                               ),
                             ),

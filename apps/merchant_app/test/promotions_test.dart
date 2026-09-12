@@ -38,6 +38,8 @@ void main() {
     WidgetTester tester, {
     List<Promotion> seed = const [],
     Map<String, Object> config = const {},
+    RevenueModel revenueModel = RevenueModel.subscription,
+    int revenueValue = 0,
   }) async {
     // The same fixed hour the fixtures are built around. Without it the fake answers the
     // push cap against the wall clock while every campaign here is dated relative to
@@ -68,6 +70,23 @@ void main() {
             ),
           ),
           promotionRepositoryProvider.overrideWithValue(promotions),
+          merchantRepositoryProvider.overrideWithValue(
+            FakeMerchantRepository(
+              seed: [
+                Merchant(
+                  id: 'm1',
+                  cityId: 'edku',
+                  type: MerchantType.restaurant,
+                  name: 'Shop',
+                  zoneId: 'z1',
+                  phone: '01000000000',
+                  revenueModel: revenueModel,
+                  revenueValue: revenueValue,
+                ),
+              ],
+            ),
+          ),
+          billingRepositoryProvider.overrideWithValue(FakeBillingRepository()),
           remoteConfigServiceProvider.overrideWithValue(remoteConfig),
         ],
         child: MaterialApp(
@@ -86,6 +105,33 @@ void main() {
   }
 
   group('what a merchant sees of their own', () {
+    for (final model in [RevenueModel.subscription, RevenueModel.prepaid]) {
+      testWidgets('$model does not advertise a commission', (tester) async {
+        await pump(tester, revenueModel: model);
+        expect(find.textContaining('نسبة عمولة'), findsNothing);
+      });
+    }
+
+    testWidgets('commission preserves the configured basis points', (
+      tester,
+    ) async {
+      await pump(
+        tester,
+        revenueModel: RevenueModel.commission,
+        revenueValue: 825,
+      );
+      expect(find.textContaining('نسبة عمولة 8.25%'), findsOneWidget);
+    });
+
+    testWidgets('missing plan and term do not invent paid entitlements', (
+      tester,
+    ) async {
+      await pump(tester);
+      expect(find.text('لقمة برو'), findsNothing);
+      expect(find.text('تجدد في نهاية الشهر'), findsNothing);
+      expect(find.textContaining('أصناف غير محدودة'), findsNothing);
+    });
+
     testWidgets('every campaign, whatever became of it', (tester) async {
       await pump(
         tester,
@@ -105,7 +151,9 @@ void main() {
       );
     });
 
-    testWidgets('shows the plan card and the three request types', (tester) async {
+    testWidgets('shows the plan card and the three request types', (
+      tester,
+    ) async {
       await pump(tester);
 
       // M08 Plan card
@@ -117,6 +165,31 @@ void main() {
       expect(find.text('رفع الترتيب'), findsOneWidget);
       expect(find.text('إشعار جماعي'), findsOneWidget);
     });
+
+    testWidgets(
+      'request descriptions are body text and small prices have contrast',
+      (tester) async {
+        await pump(tester);
+        for (final description in [
+          'اظهر في الصفحة الرئيسية',
+          'يظهر محلك في الأول',
+          'يوصل لكل عملاء إدكو',
+        ]) {
+          final text = tester.widget<Text>(find.text(description));
+          expect(text.style!.fontSize, greaterThanOrEqualTo(15));
+        }
+        for (final price in ['150 ج / أسبوع', '80 ج / أسبوع', '250 ج / مرة']) {
+          final text = tester.widget<Text>(find.text(price));
+          final ink = text.style!.color!;
+          final ground = LuqmaTheme.light.luqma.card;
+          final a = ink.computeLuminance();
+          final b = ground.computeLuminance();
+          final contrast =
+              (a > b ? a + 0.05 : b + 0.05) / (a > b ? b + 0.05 : a + 0.05);
+          expect(contrast, greaterThanOrEqualTo(4.5));
+        }
+      },
+    );
 
     // The whole point of requiring a reason. A merchant who is told only "rejected"
     // asks again with the same thing.

@@ -106,6 +106,22 @@ void main() {
   }
 
   group('CourierRosterScreen listing', () {
+    testWidgets('paused status text meets normal-text contrast', (tester) async {
+      await pumpRoster(tester);
+      final labelFinder = find.textContaining('متوقف حتى');
+      final label = tester.widget<Text>(labelFinder);
+      final background = tester.widgetList<Container>(find.ancestor(
+        of: labelFinder, matching: find.byType(Container),
+      )).map((c) => c.decoration).whereType<BoxDecoration>()
+          .firstWhere((d) => d.color != null).color!;
+      final ground = Color.alphaBlend(background, LuqmaTheme.light.luqma.card);
+      final a = label.style!.color!.computeLuminance();
+      final b = ground.computeLuminance();
+      final contrast = (a > b ? a + 0.05 : b + 0.05) /
+          (a > b ? b + 0.05 : a + 0.05);
+      expect(contrast, greaterThanOrEqualTo(4.5));
+    });
+
     testWidgets('displays active couriers with name, phone, and availability status',
         (tester) async {
       await pumpRoster(tester);

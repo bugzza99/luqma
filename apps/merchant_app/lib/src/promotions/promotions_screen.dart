@@ -56,8 +56,7 @@ class MerchantPromotionsScreen extends ConsumerWidget {
       AsyncData(:final value) => value,
       _ => null,
     };
-    final subscription =
-        switch (ref.watch(subscriptionProvider(merchantId))) {
+    final subscription = switch (ref.watch(subscriptionProvider(merchantId))) {
       AsyncData(:final value) => value,
       _ => null,
     };
@@ -147,25 +146,31 @@ class _PlanCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).luqma;
-    final planName = plan?.name ??
-        (merchant?.revenueModel == RevenueModel.prepaid
-            ? 'رصيد مسبق الدفع'
-            : 'لقمة برو');
+    final planName =
+        plan?.name ??
+        switch (merchant?.revenueModel) {
+          RevenueModel.prepaid => 'رصيد مسبق الدفع',
+          RevenueModel.commission => 'عمولة على الطلبات',
+          RevenueModel.subscription => 'اشتراك',
+          null => 'بيانات الخطة غير متاحة',
+        };
 
     final renewalText = subscription != null
-        ? 'تجدد في ${_formatDate(subscription!.expiresAt)}'
+        ? 'ينتهي في ${_formatDate(subscription!.expiresAt)}'
         : merchant?.revenueModel == RevenueModel.prepaid
-            ? 'رصيد مسبق الدفع للطلبات'
-            : 'تجدد في نهاية الشهر';
+        ? 'رصيد مسبق الدفع للطلبات'
+        : null;
 
-    final itemsLimit = plan != null && !plan!.features.hasUnlimitedItems
+    final itemsLimit = plan == null
+        ? null
+        : !plan!.features.hasUnlimitedItems
         ? '${plan!.features.maxItems} صنف بالصور'
         : 'أصناف غير محدودة بالصور';
 
-    final commissionRate = merchant != null &&
-            merchant!.revenueModel == RevenueModel.commission
-        ? '${(merchant!.revenueValue / 100).toStringAsFixed(0)}%'
-        : '٨%';
+    final commissionRate =
+        merchant != null && merchant!.revenueModel == RevenueModel.commission
+        ? '${(merchant!.revenueValue / 100).toStringAsFixed(2)}%'
+        : null;
 
     return Container(
       decoration: BoxDecoration(
@@ -212,24 +217,34 @@ class _PlanCard extends StatelessWidget {
                     fontWeight: FontWeight.bold,
                   ),
                 ),
-                const SizedBox(height: Space.xs),
-                Text(
-                  renewalText,
-                  style: LuqmaType.bodySmall.copyWith(
-                    color: colors.onBrand.withValues(alpha: 0.90),
+                if (renewalText != null) ...[
+                  const SizedBox(height: Space.xs),
+                  Text(
+                    renewalText,
+                    style: LuqmaType.bodySmall.copyWith(
+                      color: colors.onBrand.withValues(alpha: 0.90),
+                    ),
                   ),
-                ),
+                ],
                 const SizedBox(height: Space.md),
                 Wrap(
                   spacing: Space.md,
                   runSpacing: Space.xs,
                   children: [
-                    _FeaturePill(text: '✓ إحصائيات مفصلة', color: colors.onBrand),
-                    _FeaturePill(text: '✓ $itemsLimit', color: colors.onBrand),
                     _FeaturePill(
-                      text: '✓ نسبة عمولة $commissionRate',
+                      text: '✓ إحصائيات مفصلة',
                       color: colors.onBrand,
                     ),
+                    if (itemsLimit != null)
+                      _FeaturePill(
+                        text: '✓ $itemsLimit',
+                        color: colors.onBrand,
+                      ),
+                    if (commissionRate != null)
+                      _FeaturePill(
+                        text: '✓ نسبة عمولة $commissionRate',
+                        color: colors.onBrand,
+                      ),
                   ],
                 ),
               ],
@@ -250,8 +265,10 @@ class _FeaturePill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding:
-          const EdgeInsets.symmetric(horizontal: Space.sm, vertical: Space.xs),
+      padding: const EdgeInsets.symmetric(
+        horizontal: Space.sm,
+        vertical: Space.xs,
+      ),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.12),
         borderRadius: Radii.pillAll,
@@ -268,10 +285,7 @@ class _FeaturePill extends StatelessWidget {
 }
 
 class _RequestTypes extends ConsumerWidget {
-  const _RequestTypes({
-    required this.merchantId,
-    required this.pushOpen,
-  });
+  const _RequestTypes({required this.merchantId, required this.pushOpen});
 
   final String merchantId;
   final bool pushOpen;
@@ -365,7 +379,7 @@ class _RequestTypes extends ConsumerWidget {
                       const SizedBox(height: 2),
                       Text(
                         item.desc,
-                        style: LuqmaType.caption.copyWith(
+                        style: LuqmaType.bodySmall.copyWith(
                           color: colors.textSecondary,
                         ),
                       ),
@@ -388,11 +402,11 @@ class _RequestTypes extends ConsumerWidget {
                       key: item.key,
                       onPressed: item.enabled
                           ? () => _ask(
-                                context,
-                                ref,
-                                merchantId,
-                                initialChannel: item.channel,
-                              )
+                              context,
+                              ref,
+                              merchantId,
+                              initialChannel: item.channel,
+                            )
                           : null,
                       style: FilledButton.styleFrom(
                         padding: const EdgeInsets.symmetric(

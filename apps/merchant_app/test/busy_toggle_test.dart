@@ -95,7 +95,7 @@ void main() {
       expect(find.byKey(BusyToggle.sheetKey), findsOneWidget);
     });
 
-    testWidgets('pause sheet presents the design layout with header and cards',
+    testWidgets('pause sheet explains the pause in legible body text',
         (tester) async {
       await pump(tester, now: DateTime(2026, 9, 22, 14, 0));
 
@@ -108,6 +108,9 @@ void main() {
         find.text('هيتوقف ظهور محلك للعملاء. هيرجع تلقائياً بعد المدة اللي تختارها.'),
         findsOneWidget,
       );
+      final explanation = tester.widget<Text>(find.text(
+        'هيتوقف ظهور محلك للعملاء. هيرجع تلقائياً بعد المدة اللي تختارها.'));
+      expect(explanation.style!.fontSize, greaterThanOrEqualTo(15));
     });
 
     testWidgets('pause options name the exact reopen time, not just the duration',

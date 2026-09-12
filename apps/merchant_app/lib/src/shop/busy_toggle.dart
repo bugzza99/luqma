@@ -163,7 +163,7 @@ class _Open extends ConsumerWidget {
                           const SizedBox(height: Space.xs),
                           Text(
                             'هيتوقف ظهور محلك للعملاء. هيرجع تلقائياً بعد المدة اللي تختارها.',
-                            style: LuqmaType.caption.copyWith(
+                            style: LuqmaType.bodySmall.copyWith(
                               color: sheetColors.textSecondary,
                             ),
                           ),

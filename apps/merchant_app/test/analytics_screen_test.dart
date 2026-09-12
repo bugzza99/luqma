@@ -191,15 +191,15 @@ void main() {
   });
 
   group('top dishes', () {
-    testWidgets('displays dishes in quantity order and empty message when none',
+    testWidgets('displays each dish quantity in descending order',
         (tester) async {
       final orders = [
         makeOrder(
           id: 'o1',
           subtotal: 10000,
           items: [
-            line('i1', 'سمك بلطي', 3, 3000),
             line('i2', 'شوربة سي فود', 1, 1000),
+            line('i1', 'سمك بلطي', 3, 3000),
           ],
           placedAt: cairoNow,
         ),
@@ -208,9 +208,15 @@ void main() {
       await pump(tester, orders: orders);
 
       expect(find.text('سمك بلطي'), findsOneWidget);
-      expect(find.textContaining('3'), findsWidgets);
       expect(find.text('شوربة سي فود'), findsOneWidget);
-      expect(find.textContaining('1'), findsWidgets);
+      expect(tester.getTopLeft(find.text('سمك بلطي')).dy,
+          lessThan(tester.getTopLeft(find.text('شوربة سي فود')).dy));
+      for (final (id, quantity) in [('i1', 3), ('i2', 1)]) {
+        expect(find.descendant(
+          of: find.byKey(AnalyticsScreen.itemKey(id)),
+          matching: find.text('$quantity طلب'),
+        ), findsOneWidget);
+      }
     });
 
     testWidgets('empty message when no dishes sold', (tester) async {

@@ -216,6 +216,23 @@ void main() {
       final missingReview = await repo.review('non-existent', status: StaffApplicationStatus.approved);
       expect(missingReview.failureOrNull, isA<NotFoundFailure>());
     });
+
+    test('review note limit rejects atomically and counts Unicode characters', () async {
+      await repo.apply(kind: StaffApplicationKind.courier,
+        name: 'Rider', phone: '01000000100');
+      final id = (await repo.watchPending().first).single.id;
+      final refused = await repo.review(id,
+        status: StaffApplicationStatus.rejected, note: '😀' * 501);
+      expect(refused.failureOrNull, isA<ConflictFailure>());
+      final pending = (await repo.watchPending().first).single;
+      expect(pending.reviewedAt, isNull);
+      expect(pending.reviewNote, isNull);
+
+      final accepted = await repo.review(id,
+        status: StaffApplicationStatus.rejected, note: '  ${'😀' * 500}  ');
+      expect(accepted.isOk, isTrue);
+      expect(await repo.watchPending().first, isEmpty);
+    });
   });
 
   group('Failure classification and ErrorView', () {

@@ -198,6 +198,11 @@ class FakeStaffApplicationRepository implements StaffApplicationRepository {
     if (existing == null || !existing.isPending) {
       return const Result.err(NotFoundFailure());
     }
+    // The RPC trims the note before Postgres checks char_length (code points).
+    // Reject before replacing the pending row, just as a failed UPDATE rolls back.
+    if ((note?.trim().runes.length ?? 0) > 500) {
+      return const Result.err(ConflictFailure());
+    }
     _applications[id] = StaffApplication(
       id: existing.id,
       kind: existing.kind,
