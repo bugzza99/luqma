@@ -480,5 +480,139 @@
   "courierNothingSelected": "اختر كابتن لعرض ارتباطاته",
   "@courierNothingSelected": {
     "description": "Empty state on wide layout when no courier is selected."
+  },
+
+  "customerDetailMemberSince": "عضو منذ {month} {year}",
+  "@customerDetailMemberSince": {
+    "description": "Label indicating when a customer joined.",
+    "placeholders": {
+      "month": { "type": "String" },
+      "year": { "type": "String" }
+    }
+  },
+
+  "customerDetailMemberNew": "عضو جديد",
+  "@customerDetailMemberNew": {
+    "description": "Label for a customer with no join date recorded."
+  },
+
+  "customerStatOrders": "طلبات",
+  "@customerStatOrders": {
+    "description": "Mini-stat label for total orders placed by customer."
+  },
+
+  "customerStatTotal": "إجمالي",
+  "@customerStatTotal": {
+    "description": "Mini-stat label for total money spent by customer."
+  },
+
+  "customerStatRejects": "رفض",
+  "@customerStatRejects": {
+    "description": "Mini-stat label for orders rejected/refused."
+  },
+
+  "customerResetBlockTitle": "🔐 إعادة تعيين كلمة السر",
+  "@customerResetBlockTitle": {
+    "description": "Header for the password reset verification block in customer detail."
+  },
+
+  "customerResetBlockPrompt": "قبل التوليد، اسأل العميل: آخر طلب متى وكان كام؟ أو العنوان المحفوظ؟",
+  "@customerResetBlockPrompt": {
+    "description": "Instructions reminding admin to ask verification questions before resetting password."
+  },
+
+  "customerResetLastOrderLabel": "آخر طلب:",
+  "@customerResetLastOrderLabel": {
+    "description": "Label for the last order verification fact."
+  },
+
+  "customerResetAddressLabel": "العنوان:",
+  "@customerResetAddressLabel": {
+    "description": "Label for the saved address verification fact."
+  },
+
+  "customerResetNoOrders": "مفيش طلبات سابقة",
+  "@customerResetNoOrders": {
+    "description": "Text when customer has placed no orders."
+  },
+
+  "customerResetNoAddresses": "مفيش عنوان محفوظ",
+  "@customerResetNoAddresses": {
+    "description": "Text when customer has no saved addresses."
+  },
+
+  "customerResetNoHistoryOrAddress": "العميل معندوش طلبات سابقة ولا عناوين محفوظة للتحقق منها.",
+  "@customerResetNoHistoryOrAddress": {
+    "description": "Plain message explaining a brand-new customer has no verification facts."
+  },
+
+  "customerResetGenerateButton": "توليد كلمة سر جديدة",
+  "@customerResetGenerateButton": {
+    "description": "Button to generate a new customer password."
+  },
+
+  "customerRecentOrdersTitle": "آخر 5 طلبات",
+  "@customerRecentOrdersTitle": {
+    "description": "Title for the customer recent orders section."
+  },
+
+  "customerRecentOrdersEmpty": "مفيش طلبات سابقة.",
+  "@customerRecentOrdersEmpty": {
+    "description": "Empty state when customer has no order history."
+  },
+
+  "customerBlockAction": "حظر العميل",
+  "@customerBlockAction": {
+    "description": "Button action to block a customer."
+  },
+
+  "customerUnblockAction": "فك الحظر",
+  "@customerUnblockAction": {
+    "description": "Button action to unblock a customer."
+  },
+
+  "customerCallAction": "اتصل",
+  "@customerCallAction": {
+    "description": "Button action to call the customer by phone."
+  },
+
+  "customerCallUnavailable": "مفيش تطبيق اتصال على الجهاز.",
+  "@customerCallUnavailable": {
+    "description": "SnackBar message when the device has no dialer to open tel: URL."
+  },
+
+  "customerResetDialogTitle": "كلمة السر الجديدة",
+  "@customerResetDialogTitle": {
+    "description": "Title of dialog displaying the freshly generated password."
+  },
+
+  "customerResetFailedTitle": "مقدرناش",
+  "@customerResetFailedTitle": {
+    "description": "Title of dialog when password generation fails."
+  },
+
+  "customerResetStaffConflict": "ده حساب موظف مش عميل — غيّرها من شاشة الموظفين.",
+  "@customerResetStaffConflict": {
+    "description": "Error message when attempting to reset a staff member's password from customer screen."
+  },
+
+  "customerResetGenericError": "حاول تاني.",
+  "@customerResetGenericError": {
+    "description": "Fallback error message when password reset fails."
+  },
+
+  "customerResetDone": "تمام",
+  "@customerResetDone": {
+    "description": "Dismiss button for new password dialog."
+  },
+
+  "customerNothingSelected": "اختر عميلاً لعرض التفاصيل",
+  "@customerNothingSelected": {
+    "description": "Placeholder on wide screens when no customer is selected."
+  },
+
+  "customerBackTooltip": "رجوع",
+  "@customerBackTooltip": {
+    "description": "Tooltip for the back button in customer detail."
   }
 }

@@ -42,3 +42,50 @@ String luqmaClockMinute(
   if (minute == 0 && !padHour) return '$hour $marker';
   return '$hour:${minute.toString().padLeft(2, '0')} $marker';
 }
+
+/// The day [when] fell on, seen from [now]: `النهارده`, `امبارح`, a colloquial weekday
+/// name within the last week, and a plain `d/m/yyyy` before that.
+String luqmaOrderDay(DateTime when, DateTime now, LuqmaStrings strings) {
+  final local = when.toLocal();
+  final localNow = now.toLocal();
+  final startOfToday = DateTime.utc(localNow.year, localNow.month, localNow.day);
+  final startOfThatDay = DateTime.utc(local.year, local.month, local.day);
+  final daysApart = startOfToday.difference(startOfThatDay).inDays;
+
+  if (daysApart <= 0) return strings.orderDayToday;
+  if (daysApart == 1) return strings.orderDayYesterday;
+  if (daysApart < 7) {
+    return switch (local.weekday) {
+      DateTime.monday => strings.orderDayMon,
+      DateTime.tuesday => strings.orderDayTue,
+      DateTime.wednesday => strings.orderDayWed,
+      DateTime.thursday => strings.orderDayThu,
+      DateTime.friday => strings.orderDayFri,
+      DateTime.saturday => strings.orderDaySat,
+      DateTime.sunday => strings.orderDaySun,
+      _ => '${local.day}/${local.month}/${local.year}',
+    };
+  }
+  return '${local.day}/${local.month}/${local.year}';
+}
+
+/// Arabic month names for join dates and history.
+String luqmaMonthName(int month) {
+  const months = [
+    'يناير',
+    'فبراير',
+    'مارس',
+    'أبريل',
+    'مايو',
+    'يونيو',
+    'يوليو',
+    'أغسطس',
+    'سبتمبر',
+    'أكتوبر',
+    'نوفمبر',
+    'ديسمبر',
+  ];
+  if (month < 1 || month > 12) return '';
+  return months[month - 1];
+}
+
