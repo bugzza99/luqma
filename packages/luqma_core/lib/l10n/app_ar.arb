@@ -614,5 +614,117 @@
   "customerBackTooltip": "رجوع",
   "@customerBackTooltip": {
     "description": "Tooltip for the back button in customer detail."
+  },
+
+  "issuesTitle": "الشكاوى",
+  "@issuesTitle": {
+    "description": "Title for the issues queue screen."
+  },
+
+  "issuesEmpty": "مفيش شكاوى.",
+  "@issuesEmpty": {
+    "description": "Empty state when there are no issues."
+  },
+
+  "issuesFilterAll": "كل الحالات",
+  "@issuesFilterAll": {
+    "description": "Filter tab to show all issues."
+  },
+
+  "issuesFilterOpen": "المفتوحة",
+  "@issuesFilterOpen": {
+    "description": "Filter tab to show open issues only."
+  },
+
+  "issuesFilterClosed": "مغلقة",
+  "@issuesFilterClosed": {
+    "description": "Filter tab to show closed issues only."
+  },
+
+  "issuesOpenAction": "افتح",
+  "@issuesOpenAction": {
+    "description": "Button to open the detail of an issue."
+  },
+
+  "issuesCloseAction": "اقفل",
+  "@issuesCloseAction": {
+    "description": "Button to close an open issue."
+  },
+
+  "issuesCloseDialogTitle": "قفل الشكوى",
+  "@issuesCloseDialogTitle": {
+    "description": "Title of the close issue dialog."
+  },
+
+  "issuesCloseDialogNoteLabel": "ملاحظة (اختياري)",
+  "@issuesCloseDialogNoteLabel": {
+    "description": "Label for the optional note when closing an issue."
+  },
+
+  "issuesCloseDialogNoteHint": "كلّمنا المطعم واتحلّت.",
+  "@issuesCloseDialogNoteHint": {
+    "description": "Hint text for the closing note."
+  },
+
+  "issuesCloseDialogCancel": "إلغاء",
+  "@issuesCloseDialogCancel": {
+    "description": "Cancel button in the close issue dialog."
+  },
+
+  "issuesCloseDialogConfirm": "اقفل الشكوى",
+  "@issuesCloseDialogConfirm": {
+    "description": "Confirm button in the close issue dialog."
+  },
+
+  "issuesDetailCustomerSaid": "ما قاله العميل",
+  "@issuesDetailCustomerSaid": {
+    "description": "Heading for what the customer reported in issue detail."
+  },
+
+  "issuesDetailAdminNote": "ملاحظة الإدارة",
+  "@issuesDetailAdminNote": {
+    "description": "Heading for admin note in issue detail."
+  },
+
+  "issuesDetailResolveAction": "إغلاق كمحلولة",
+  "@issuesDetailResolveAction": {
+    "description": "Action button in issue detail to close the issue as resolved."
+  },
+
+  "issuesDetailResolved": "تم إغلاق هذه الشكوى",
+  "@issuesDetailResolved": {
+    "description": "Status banner when an issue is closed."
+  },
+
+  "issuesDetailNothingSelected": "اختر شكوى من القائمة لعرض التفاصيل.",
+  "@issuesDetailNothingSelected": {
+    "description": "Placeholder on wide screens when no issue is selected."
+  },
+
+  "issuesStatusOpen": "مفتوحة",
+  "@issuesStatusOpen": {
+    "description": "Status badge for open issues."
+  },
+
+  "issuesStatusClosed": "مقفولة",
+  "@issuesStatusClosed": {
+    "description": "Status badge for closed issues."
+  },
+
+  "issuesBackTooltip": "رجوع",
+  "@issuesBackTooltip": {
+    "description": "Tooltip for the back button in issue detail."
+  },
+
+  "dashboardAttentionOrders": "{count, plural, =1{طلب واحد يحتاج انتباه} =2{طلبان يحتاجان انتباه} few{{count} طلبات تحتاج انتباه} many{{count} طلبًا يحتاج انتباه} other{{count} طلب يحتاج انتباه}}",
+  "@dashboardAttentionOrders": {
+    "description": "Banner count of orders needing attention.",
+    "placeholders": { "count": { "type": "int" } }
+  },
+
+  "dashboardAttentionIssues": "{count, plural, =1{مشكلة واحدة مفتوحة} =2{مشكلتان مفتوحتان} few{{count} مشاكل مفتوحة} many{{count} مشكلة مفتوحة} other{{count} مشكلة مفتوحة}}",
+  "@dashboardAttentionIssues": {
+    "description": "Banner count of open issues on the dashboard.",
+    "placeholders": { "count": { "type": "int" } }
   }
 }

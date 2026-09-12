@@ -86,4 +86,75 @@ void main() {
 
     expect(await stillOpen(), isFalse);
   });
+
+  testWidgets('tapping an issue opens its detail and returning goes back',
+      (tester) async {
+    await pump(tester);
+
+    await tester.tap(find.text('افتح'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('ما قاله العميل'), findsOneWidget);
+    expect(find.text('الأكل وصل بارد'), findsWidgets);
+
+    // Return back
+    await tester.tap(find.byTooltip('رجوع'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('الشكاوى'), findsOneWidget);
+    expect(find.text('افتح'), findsOneWidget);
+  });
+
+  testWidgets('closing from the detail view closes the ticket', (tester) async {
+    await pump(tester);
+
+    await tester.tap(find.text('افتح'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('issueDetail.close')));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(IssuesScreen.confirmKey));
+    await tester.pumpAndSettle();
+
+    expect(await stillOpen(), isFalse);
+  });
+
+  testWidgets('wide layout displays queue and detail side by side',
+      (tester) async {
+    tester.view.physicalSize = const Size(1200, 900);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    issues = FakeIssueRepository(seed: [open]);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [issueRepositoryProvider.overrideWithValue(issues)],
+        child: MaterialApp(
+          theme: LuqmaTheme.light,
+          locale: const Locale('ar'),
+          localizationsDelegates: LuqmaStrings.localizationsDelegates,
+          supportedLocales: LuqmaStrings.supportedLocales,
+          home: const Directionality(
+            textDirection: TextDirection.rtl,
+            child: IssuesScreen(),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // Before selection on wide screen, empty placeholder is shown beside list
+    expect(find.text('اختر شكوى من القائمة لعرض التفاصيل.'), findsOneWidget);
+    expect(find.text('الأكل وصل بارد'), findsOneWidget);
+
+    // After selection, detail appears on right pane
+    await tester.tap(find.text('افتح'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('ما قاله العميل'), findsOneWidget);
+    expect(find.text('الأكل وصل بارد'), findsWidgets);
+  });
 }
+
