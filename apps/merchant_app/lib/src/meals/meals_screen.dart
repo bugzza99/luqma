@@ -24,10 +24,14 @@ class MealsScreen extends ConsumerWidget {
   static const descriptionKey = Key('meals.description');
   static const saveKey = Key('meals.save');
   static const confirmCloseKey = Key('meals.confirmClose');
+  static const headerBannerKey = Key('meals.headerBanner');
+  static const deliveryPickupKey = Key('meals.delivery.pickup');
+  static const deliveryCourierKey = Key('meals.delivery.courier');
 
   static Key mealKey(String id) => Key('meals.meal.$id');
   static Key remainingKey(String id) => Key('meals.remaining.$id');
   static Key closeKey(String id) => Key('meals.close.$id');
+  static Key fulfilmentKey(String id) => Key('meals.fulfilment.$id');
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -40,32 +44,38 @@ class MealsScreen extends ConsumerWidget {
 
     return Scaffold(
       backgroundColor: colors.background,
-      appBar: AppBar(title: const Text('أكل النهارده')),
+      appBar: AppBar(title: const Text('أكل بيتي النهارده')),
       body: LuqmaAsyncView(
         value: meals,
         errorKey: MealsScreen.errorKey,
         onRetry: () => ref.invalidate(merchantMealsProvider(merchantId)),
-        empty: LuqmaEmptyView(
-            key: MealsScreen.emptyKey,
-            icon: Icons.soup_kitchen_outlined,
-            title: 'لسه منشرتش أكلة',
-            message: 'قول بتطبخ إيه النهارده وكام طبق، والباقي علينا.',
-          ),
+        empty: const LuqmaEmptyView(
+          key: MealsScreen.emptyKey,
+          icon: Icons.soup_kitchen_outlined,
+          title: 'لسه منشرتش أكلة',
+          message: 'قول بتطبخ إيه النهارده وكام طبق، والباقي علينا.',
+        ),
         isEmpty: (value) => value.isEmpty,
         builder: (context, value) => ListView.separated(
-            padding: const EdgeInsets.fromLTRB(
-              Space.gutter,
-              Space.gutter,
-              Space.gutter,
-              Space.xxxl * 2,
-            ),
-            itemCount: value.length,
-            separatorBuilder: (_, _) => const SizedBox(height: Space.md),
-            itemBuilder: (context, i) => _MealCard(
-              meal: value[i],
-              isToday: value[i].date == ref.watch(todayProvider),
-            ),
-          )
+          padding: const EdgeInsets.fromLTRB(
+            Space.gutter,
+            Space.gutter,
+            Space.gutter,
+            Space.xxxl * 2,
+          ),
+          itemCount: value.length + 1,
+          separatorBuilder: (_, _) => const SizedBox(height: Space.md),
+          itemBuilder: (context, i) {
+            if (i == 0) {
+              return const _HeaderBanner();
+            }
+            final meal = value[i - 1];
+            return _MealCard(
+              meal: meal,
+              isToday: meal.date == ref.watch(todayProvider),
+            );
+          },
+        ),
       ),
       floatingActionButton: FloatingActionButton.extended(
         key: addKey,
@@ -104,6 +114,113 @@ class MealsScreen extends ConsumerWidget {
   }
 }
 
+/// The warm banner at the top of the meals list reminding the cook of today's focus.
+class _HeaderBanner extends ConsumerWidget {
+  const _HeaderBanner();
+
+  static const _months = [
+    'يناير',
+    'فبراير',
+    'مارس',
+    'أبريل',
+    'مايو',
+    'يونيو',
+    'يوليو',
+    'أغسطس',
+    'سبتمبر',
+    'أكتوبر',
+    'نوفمبر',
+    'ديسمبر',
+  ];
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
+    final colors = theme.luqma;
+    final strings = LuqmaStrings.of(context);
+    final now = ref.watch(clockProvider)();
+    final weekday = switch (now.weekday) {
+      DateTime.monday => strings.orderDayMon,
+      DateTime.tuesday => strings.orderDayTue,
+      DateTime.wednesday => strings.orderDayWed,
+      DateTime.thursday => strings.orderDayThu,
+      DateTime.friday => strings.orderDayFri,
+      DateTime.saturday => strings.orderDaySat,
+      _ => strings.orderDaySun,
+    };
+    final monthName = _months[(now.month - 1) % 12];
+    final dateDisplay = '$weekday ${now.day} $monthName';
+
+    return Container(
+      key: MealsScreen.headerBannerKey,
+      padding: const EdgeInsets.all(Space.md),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [LuqmaPalette.orange, LuqmaPalette.orangeLight],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: Radii.cardAll,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'وجبة اليوم — $dateDisplay',
+            style: theme.textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.bold,
+              color: colors.onAccent,
+            ),
+          ),
+          const SizedBox(height: Space.xs),
+          Text(
+            'وجبة واحدة كل يوم. اطبخها بجودة، ابيعها بسعر صح.',
+            style: LuqmaType.bodySmall.copyWith(
+              color: colors.onAccent.withValues(alpha: 0.9),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Small pill badge indicating how customer will receive their meal.
+class _FulfilmentBadge extends StatelessWidget {
+  const _FulfilmentBadge({super.key, required this.option});
+
+  final DeliveryOption option;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).luqma;
+    final label = switch (option) {
+      DeliveryOption.pickup => '🏠 استلام من البيت',
+      DeliveryOption.platformCourier => '🛵 توصيل',
+      DeliveryOption.sellerArrangement => '🤝 اتفاق خاص',
+    };
+
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: Space.sm,
+        vertical: Space.xs,
+      ),
+      decoration: BoxDecoration(
+        color: colors.surface,
+        borderRadius: Radii.pillAll,
+        border: Border.all(color: colors.hairline),
+      ),
+      child: Text(
+        label,
+        style: LuqmaType.caption.copyWith(
+          color: colors.textSecondary,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+    );
+  }
+}
+
 class _MealCard extends ConsumerWidget {
   const _MealCard({required this.meal, required this.isToday});
 
@@ -122,7 +239,7 @@ class _MealCard extends ConsumerWidget {
       opacity: isToday ? 1 : 0.62,
       child: Container(
         key: MealsScreen.mealKey(meal.id),
-        padding: const EdgeInsets.all(Space.md),
+        clipBehavior: Clip.antiAlias,
         decoration: BoxDecoration(
           color: colors.card,
           borderRadius: Radii.cardAll,
@@ -132,60 +249,86 @@ class _MealCard extends ConsumerWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Text(meal.name, style: theme.textTheme.titleMedium),
-                ),
-                Text(
-                  strings.price(meal.price),
-                  style: LuqmaType.priceSmall.copyWith(color: colors.price),
-                ),
-              ],
-            ),
-            const SizedBox(height: Space.xs),
-            Text(
-              '${meal.date} · الاستلام ${_window(meal)}',
-              style: LuqmaType.caption.copyWith(color: colors.textSecondary),
-            ),
-            const SizedBox(height: Space.sm),
-            Row(
-              key: MealsScreen.remainingKey(meal.id),
-              children: [
-                Expanded(
-                  child: Text(
-                    // Sold, not just left: it is the number a cook actually wants at the
-                    // end of a day, and it is what decides how much to cook tomorrow.
-                    'اتباع $sold من ${meal.totalQty}',
-                    style: LuqmaType.bodyStrong.copyWith(color: colors.textPrimary),
-                  ),
-                ),
-                Text(
-                  strings.portionsLeft(meal.remainingOrZero),
-                  style: LuqmaType.bodySmall.copyWith(
-                    color: meal.isSoldOut ? colors.danger : colors.textSecondary,
-                  ),
-                ),
-              ],
-            ),
-            if (meal.status == DailyMealStatus.closed) ...[
-              const SizedBox(height: Space.sm),
-              Text(
-                'اتقفلت',
-                style: LuqmaType.bodySmall.copyWith(color: colors.danger),
+            SizedBox(
+              height: 140,
+              child: LuqmaImage(
+                url: meal.imageUrl,
+                name: meal.name,
+                fit: BoxFit.cover,
               ),
-            ] else if (isToday) ...[
-              const SizedBox(height: Space.md),
-              OutlinedButton(
-                key: MealsScreen.closeKey(meal.id),
-                onPressed: () => _confirmClose(context, ref),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: colors.danger,
-                  minimumSize: const Size.fromHeight(Sizes.minTarget),
-                ),
-                child: const Text('اقفل الأكلة'),
+            ),
+            Padding(
+              padding: const EdgeInsets.all(Space.md),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(meal.name, style: theme.textTheme.titleMedium),
+                      ),
+                      Text(
+                        strings.price(meal.price),
+                        style: LuqmaType.priceSmall.copyWith(color: colors.price),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: Space.xs),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          '${meal.date} · الاستلام ${_window(meal)}',
+                          style: LuqmaType.caption.copyWith(color: colors.textSecondary),
+                        ),
+                      ),
+                      _FulfilmentBadge(
+                        key: MealsScreen.fulfilmentKey(meal.id),
+                        option: meal.deliveryOption,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: Space.sm),
+                  Row(
+                    key: MealsScreen.remainingKey(meal.id),
+                    children: [
+                      Expanded(
+                        child: Text(
+                          // Sold, not just left: it is the number a cook actually wants at the
+                          // end of a day, and it is what decides how much to cook tomorrow.
+                          'اتباع $sold من ${meal.totalQty}',
+                          style: LuqmaType.bodyStrong.copyWith(color: colors.textPrimary),
+                        ),
+                      ),
+                      Text(
+                        strings.portionsLeft(meal.remainingOrZero),
+                        style: LuqmaType.bodySmall.copyWith(
+                          color: meal.isSoldOut ? colors.danger : colors.textSecondary,
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (meal.status == DailyMealStatus.closed) ...[
+                    const SizedBox(height: Space.sm),
+                    Text(
+                      'اتقفلت',
+                      style: LuqmaType.bodySmall.copyWith(color: colors.danger),
+                    ),
+                  ] else if (isToday) ...[
+                    const SizedBox(height: Space.md),
+                    OutlinedButton(
+                      key: MealsScreen.closeKey(meal.id),
+                      onPressed: () => _confirmClose(context, ref),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: colors.danger,
+                        minimumSize: const Size.fromHeight(Sizes.minTarget),
+                      ),
+                      child: const Text('اقفل الأكلة'),
+                    ),
+                  ],
+                ],
               ),
-            ],
+            ),
           ],
         ),
       ),
@@ -235,7 +378,7 @@ class _MealCard extends ConsumerWidget {
   }
 }
 
-/// Three fields and a window. Nothing else belongs here.
+/// Three fields, a window, and a fulfilment mode.
 class _MealForm extends ConsumerStatefulWidget {
   const _MealForm({
     required this.merchantId,
@@ -271,6 +414,9 @@ class _MealFormState extends ConsumerState<_MealForm> {
   int _start = 13 * 60;
   int _end = 16 * 60;
 
+  /// Default is customer pickup from the home kitchen.
+  DeliveryOption _deliveryOption = DeliveryOption.pickup;
+
   @override
   void dispose() {
     _name.dispose();
@@ -302,8 +448,10 @@ class _MealFormState extends ConsumerState<_MealForm> {
         // moves the second one, and only the server may.
         remainingQty: quantity,
         mediaId: _mediaId,
+        imageUrl: _mediaUrl,
         pickupWindowStart: _start,
         pickupWindowEnd: _end,
+        deliveryOption: _deliveryOption,
         status: DailyMealStatus.published,
       ),
     );
@@ -312,6 +460,7 @@ class _MealFormState extends ConsumerState<_MealForm> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final colors = theme.luqma;
 
     return Padding(
       padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
@@ -324,13 +473,38 @@ class _MealFormState extends ConsumerState<_MealForm> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Text('أكلة النهارده', style: theme.textTheme.titleLarge),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        'وجبة اليوم',
+                        style: theme.textTheme.titleLarge,
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: 'إغلاق',
+                      icon: const Icon(Icons.close_rounded),
+                      onPressed: () => Navigator.of(context).pop(),
+                    ),
+                  ],
+                ),
                 const SizedBox(height: Space.md),
                 Flexible(
                   child: SingleChildScrollView(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
+                        MediaPicker(
+                          kind: MediaKind.dailyMeal,
+                          url: _mediaUrl,
+                          name: _name.text.trim().isEmpty ? 'وجبة' : _name.text.trim(),
+                          height: 140,
+                          onUploaded: (media) => setState(() {
+                            _mediaId = media.id;
+                            _mediaUrl = media.url;
+                          }),
+                        ),
+                        const SizedBox(height: Space.md),
                         TextFormField(
                           key: MealsScreen.nameKey,
                           controller: _name,
@@ -367,7 +541,7 @@ class _MealFormState extends ConsumerState<_MealForm> {
                                 controller: _quantity,
                                 keyboardType: TextInputType.number,
                                 decoration: const InputDecoration(
-                                  labelText: 'كام طبق',
+                                  labelText: 'كام طبق (حصة)',
                                 ),
                                 // A meal with no portions is not a meal.
                                 validator: (v) {
@@ -398,23 +572,49 @@ class _MealFormState extends ConsumerState<_MealForm> {
                             _end = e;
                           }),
                         ),
+                        const SizedBox(height: Space.md),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'طريقة الاستلام',
+                              style: LuqmaType.caption.copyWith(
+                                color: colors.textSecondary,
+                              ),
+                            ),
+                            const SizedBox(height: Space.sm),
+                            Wrap(
+                              spacing: Space.sm,
+                              children: [
+                                ChoiceChip(
+                                  key: MealsScreen.deliveryPickupKey,
+                                  label: const Text('🏠 استلام من البيت'),
+                                  selected: _deliveryOption == DeliveryOption.pickup,
+                                  onSelected: (selected) {
+                                    if (selected) {
+                                      setState(() => _deliveryOption = DeliveryOption.pickup);
+                                    }
+                                  },
+                                ),
+                                ChoiceChip(
+                                  key: MealsScreen.deliveryCourierKey,
+                                  label: const Text('🛵 توصيل'),
+                                  selected:
+                                      _deliveryOption == DeliveryOption.platformCourier,
+                                  onSelected: (selected) {
+                                    if (selected) {
+                                      setState(() =>
+                                          _deliveryOption = DeliveryOption.platformCourier);
+                                    }
+                                  },
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
                       ],
                     ),
                   ),
-                ),
-                const SizedBox(height: Space.md),
-                // A meal is published in the morning and gone by the evening, so its
-                // photograph is the only thing a customer has to go on — there is no
-                // reputation attached to a dish that exists for one day.
-                MediaPicker(
-                  kind: MediaKind.dailyMeal,
-                  url: _mediaUrl,
-                  name: _name.text.trim().isEmpty ? 'وجبة' : _name.text.trim(),
-                  height: 140,
-                  onUploaded: (media) => setState(() {
-                    _mediaId = media.id;
-                    _mediaUrl = media.url;
-                  }),
                 ),
                 const SizedBox(height: Space.md),
                 FilledButton(
@@ -423,7 +623,7 @@ class _MealFormState extends ConsumerState<_MealForm> {
                   style: FilledButton.styleFrom(
                     minimumSize: const Size.fromHeight(50),
                   ),
-                  child: const Text('انشر'),
+                  child: const Text('نشر وجبة اليوم'),
                 ),
               ],
             ),

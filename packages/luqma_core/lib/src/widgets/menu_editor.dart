@@ -3,13 +3,16 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../l10n/app_localizations.dart';
 import '../l10n/money.dart';
+import '../models/media.dart';
 import '../models/menu_item.dart';
 import '../models/merchant.dart';
 import '../models/money.dart';
 import '../providers/providers.dart';
 import '../theme/colors.dart';
-import '../models/media.dart';
 import '../theme/dimens.dart';
+import '../theme/typography.dart';
+import 'chip.dart';
+import 'luqma_image.dart';
 import 'media_picker.dart';
 
 /// Editing a merchant's menu.
@@ -18,7 +21,7 @@ import 'media_picker.dart';
 /// enters every menu personally during onboarding and merchants edit theirs afterwards,
 /// so two implementations would be two sets of validation rules over the same data, and
 /// they would drift. The only thing that differs is where [merchantId] comes from.
-class MenuEditor extends ConsumerWidget {
+class MenuEditor extends ConsumerStatefulWidget {
   const MenuEditor({super.key, required this.merchantId});
 
   final String merchantId;
@@ -28,35 +31,159 @@ class MenuEditor extends ConsumerWidget {
   static const descriptionFieldKey = Key('menu.description');
   static const availableSwitchKey = Key('menu.available');
   static const saveItemKey = Key('menu.saveItem');
+  static const deleteItemKey = Key('menu.deleteItem');
+  static const confirmDeleteKey = Key('menu.confirmDelete');
   static const itemPhotoKey = Key('menu.itemPhoto');
+  static const addCategoryKey = Key('menu.addCategory');
+  static const categoryNameFieldKey = Key('menu.categoryName');
+  static const saveCategoryKey = Key('menu.saveCategory');
+  static const allCategoriesChipKey = Key('menu.categoryChip.all');
+  static const pendingReviewBannerKey = Key('menu.pendingReviewBanner');
 
+  static Key categoryChipKey(String categoryId) =>
+      Key('menu.categoryChip.$categoryId');
   static Key addItemKey(String categoryId) => Key('menu.addItem.$categoryId');
   static Key unavailableKey(String itemId) => Key('menu.unavailable.$itemId');
+  static Key itemAvailableSwitchKey(String itemId) =>
+      Key('menu.itemAvailableSwitch.$itemId');
+  static Key itemKebabKey(String itemId) => Key('menu.itemKebab.$itemId');
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<MenuEditor> createState() => _MenuEditorState();
+}
+
+class _MenuEditorState extends ConsumerState<MenuEditor> {
+  String? _selectedCategoryId;
+
+  @override
+  Widget build(BuildContext context) {
     final strings = LuqmaStrings.of(context);
     final categories =
-        ref.watch(menuCategoriesProvider(merchantId)).value ??
+        ref.watch(menuCategoriesProvider(widget.merchantId)).value ??
         const <MenuCategory>[];
     final items =
-        ref.watch(menuItemsProvider(merchantId)).value ?? const <MenuItem>[];
+        ref.watch(menuItemsProvider(widget.merchantId)).value ??
+        const <MenuItem>[];
 
     if (categories.isEmpty) {
       return Center(child: Text(strings.menuNoCategories));
     }
 
-    return ListView(
-      padding: const EdgeInsets.all(Space.gutter),
+    final filteredCategories = _selectedCategoryId == null
+        ? categories
+        : categories.where((c) => c.id == _selectedCategoryId).toList();
+
+    return Column(
       children: [
-        for (final category in categories)
-          _CategorySection(
-            merchantId: merchantId,
-            category: category,
-            items: items.where((i) => i.categoryId == category.id).toList(),
+        // Category filter chips across the top (M03)
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          padding: const EdgeInsets.symmetric(
+            horizontal: Space.gutter,
+            vertical: Space.sm,
           ),
+          child: Row(
+            children: [
+              LuqmaChip(
+                key: MenuEditor.allCategoriesChipKey,
+                label: '${strings.menuAllCategories} (${items.length})',
+                selected: _selectedCategoryId == null,
+                onTap: () => setState(() => _selectedCategoryId = null),
+              ),
+              const SizedBox(width: Space.sm),
+              for (final category in categories) ...[
+                LuqmaChip(
+                  key: MenuEditor.categoryChipKey(category.id),
+                  label:
+                      '${category.name} (${items.where((i) => i.categoryId == category.id).length})',
+                  selected: _selectedCategoryId == category.id,
+                  onTap: () => setState(() => _selectedCategoryId = category.id),
+                ),
+                const SizedBox(width: Space.sm),
+              ],
+              LuqmaChip(
+                key: MenuEditor.addCategoryKey,
+                label: strings.menuAddCategory,
+                selected: false,
+                dashed: true,
+                onTap: () => _addCategory(
+                  context,
+                  ref,
+                  widget.merchantId,
+                  categories,
+                ),
+              ),
+            ],
+          ),
+        ),
+        const Divider(height: 1),
+        Expanded(
+          child: ListView(
+            padding: const EdgeInsets.all(Space.gutter),
+            children: [
+              for (final category in filteredCategories)
+                _CategorySection(
+                  merchantId: widget.merchantId,
+                  category: category,
+                  categories: categories,
+                  items: items.where((i) => i.categoryId == category.id).toList(),
+                ),
+            ],
+          ),
+        ),
       ],
     );
+  }
+
+  Future<void> _addCategory(
+    BuildContext context,
+    WidgetRef ref,
+    String merchantId,
+    List<MenuCategory> categories,
+  ) async {
+    final controller = TextEditingController();
+    final strings = LuqmaStrings.of(context);
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(strings.menuNewCategory),
+        content: TextField(
+          key: MenuEditor.categoryNameFieldKey,
+          controller: controller,
+          autofocus: true,
+          decoration: InputDecoration(
+            labelText: strings.menuCategoryNameRequired,
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: Text(strings.menuCancel),
+          ),
+          FilledButton(
+            key: MenuEditor.saveCategoryKey,
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: Text(strings.addressSave),
+          ),
+        ],
+      ),
+    );
+
+    if ((confirmed ?? false) && controller.text.trim().isNotEmpty) {
+      final newName = controller.text.trim();
+      final nextSort = categories.isEmpty
+          ? 0
+          : categories.map((c) => c.sortOrder).reduce((a, b) => a > b ? a : b) + 1;
+      final newCat = MenuCategory(
+        id: '',
+        name: newName,
+        sortOrder: nextSort,
+      );
+      await ref.read(menuRepositoryProvider).saveCategories(
+            merchantId,
+            [...categories, newCat],
+          );
+    }
   }
 }
 
@@ -64,11 +191,13 @@ class _CategorySection extends ConsumerWidget {
   const _CategorySection({
     required this.merchantId,
     required this.category,
+    required this.categories,
     required this.items,
   });
 
   final String merchantId;
   final MenuCategory category;
+  final List<MenuCategory> categories;
   final List<MenuItem> items;
 
   @override
@@ -88,8 +217,14 @@ class _CategorySection extends ConsumerWidget {
               ),
               TextButton(
                 key: MenuEditor.addItemKey(category.id),
-                onPressed: () =>
-                    _editItem(context, ref, merchantId, null, category.id),
+                onPressed: () => _editItem(
+                  context,
+                  ref,
+                  merchantId,
+                  null,
+                  category.id,
+                  categories,
+                ),
                 child: Text(strings.menuAddItem),
               ),
             ],
@@ -98,8 +233,16 @@ class _CategorySection extends ConsumerWidget {
           for (final item in items)
             _ItemRow(
               item: item,
-              onTap: () =>
-                  _editItem(context, ref, merchantId, item, category.id),
+              categories: categories,
+              merchantId: merchantId,
+              onTap: () => _editItem(
+                context,
+                ref,
+                merchantId,
+                item,
+                category.id,
+                categories,
+              ),
             ),
         ],
       ),
@@ -107,61 +250,171 @@ class _CategorySection extends ConsumerWidget {
   }
 }
 
-class _ItemRow extends StatelessWidget {
-  const _ItemRow({required this.item, required this.onTap});
+class _ItemRow extends ConsumerWidget {
+  const _ItemRow({
+    required this.item,
+    required this.categories,
+    required this.merchantId,
+    required this.onTap,
+  });
 
   final MenuItem item;
+  final List<MenuCategory> categories;
+  final String merchantId;
   final VoidCallback onTap;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final colors = theme.luqma;
     final strings = LuqmaStrings.of(context);
 
-    return InkWell(
-      onTap: onTap,
-      borderRadius: Radii.cardAll,
-      child: Container(
-        margin: const EdgeInsets.only(bottom: Space.sm),
-        padding: const EdgeInsets.all(Space.md),
-        constraints: const BoxConstraints(minHeight: Sizes.minTarget),
-        decoration: BoxDecoration(
-          color: colors.card,
-          borderRadius: Radii.cardAll,
-          border: Border.all(color: colors.hairline),
-        ),
-        child: Row(
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(item.name, style: theme.textTheme.titleMedium),
-                  // An unavailable item stays on the merchant's menu and leaves the
-                  // customer's, so which is which has to read at a glance.
-                  if (!item.isAvailable)
+    return Opacity(
+      opacity: item.isAvailable ? 1.0 : 0.62,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: Radii.cardAll,
+        child: Container(
+          margin: const EdgeInsets.only(bottom: Space.sm),
+          padding: const EdgeInsets.all(Space.md),
+          constraints: const BoxConstraints(minHeight: Sizes.minTarget),
+          decoration: BoxDecoration(
+            color: colors.card,
+            borderRadius: Radii.cardAll,
+            border: Border.all(color: colors.hairline),
+            boxShadow: Elevations.card,
+          ),
+          child: Row(
+            children: [
+              // Dish thumbnail or monogram (48x48 rounded 8)
+              ClipRRect(
+                borderRadius: const BorderRadius.all(Radius.circular(8)),
+                child: SizedBox(
+                  width: 48,
+                  height: 48,
+                  child: LuqmaImage(
+                    url: item.imageUrl,
+                    name: item.name,
+                  ),
+                ),
+              ),
+              const SizedBox(width: Space.md),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(item.name, style: theme.textTheme.titleMedium),
+                    const SizedBox(height: 2),
                     Text(
-                      strings.menuUnavailable,
-                      key: MenuEditor.unavailableKey(item.id),
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: colors.danger,
+                      strings.price(item.price),
+                      style: LuqmaType.priceSmall.copyWith(
+                        color: colors.price,
                       ),
                     ),
+                    if (!item.isAvailable)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 2),
+                        child: Text(
+                          strings.menuUnavailable,
+                          key: MenuEditor.unavailableKey(item.id),
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: colors.danger,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              // Availability toggle directly on row (M03)
+              Switch(
+                key: MenuEditor.itemAvailableSwitchKey(item.id),
+                value: item.isAvailable,
+                activeThumbColor: colors.success,
+                onChanged: (val) async {
+                  await ref
+                      .read(menuRepositoryProvider)
+                      .saveItem(item.copyWith(isAvailable: val));
+                },
+              ),
+              // Kebab menu for actions (M03)
+              PopupMenuButton<String>(
+                key: MenuEditor.itemKebabKey(item.id),
+                tooltip: 'خيارات',
+                icon: const Icon(Icons.more_vert, size: Sizes.iconMd),
+                itemBuilder: (context) => [
+                  PopupMenuItem(
+                    value: 'edit',
+                    child: Row(
+                      children: [
+                        const Icon(Icons.edit_outlined, size: Sizes.iconSm),
+                        const SizedBox(width: Space.sm),
+                        Text(strings.menuEditItem),
+                      ],
+                    ),
+                  ),
+                  PopupMenuItem(
+                    value: 'delete',
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.delete_outline,
+                          size: Sizes.iconSm,
+                          color: colors.danger,
+                        ),
+                        const SizedBox(width: Space.sm),
+                        Text(
+                          strings.menuDeleteItem,
+                          style: TextStyle(color: colors.danger),
+                        ),
+                      ],
+                    ),
+                  ),
                 ],
+                onSelected: (val) {
+                  if (val == 'edit') {
+                    onTap();
+                  } else if (val == 'delete') {
+                    _confirmDeleteItem(context, ref, item);
+                  }
+                },
               ),
-            ),
-            Text(
-              strings.price(item.price),
-              style: theme.textTheme.bodyLarge?.copyWith(
-                color: colors.price,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
+  }
+
+  Future<void> _confirmDeleteItem(
+    BuildContext context,
+    WidgetRef ref,
+    MenuItem item,
+  ) async {
+    final colors = Theme.of(context).luqma;
+    final strings = LuqmaStrings.of(context);
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(strings.menuDeleteItemConfirm),
+        content: Text('«${item.name}» ${strings.menuDeleteItemMessage}'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: Text(strings.menuCancel),
+          ),
+          FilledButton(
+            key: MenuEditor.confirmDeleteKey,
+            style: FilledButton.styleFrom(backgroundColor: colors.danger),
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: Text(strings.menuDeleteConfirmAction),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed ?? false) {
+      await ref.read(menuRepositoryProvider).deleteItem(item.id);
+    }
   }
 }
 
@@ -171,17 +424,23 @@ Future<void> _editItem(
   String merchantId,
   MenuItem? existing,
   String categoryId,
+  List<MenuCategory> categories,
 ) {
   return showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
+    shape: const RoundedRectangleBorder(borderRadius: Radii.sheetTop),
     builder: (sheetContext) => _ItemSheet(
       merchantId: merchantId,
       categoryId: categoryId,
+      categories: categories,
       existing: existing,
       onSave: (item) async {
         await ref.read(menuRepositoryProvider).saveItem(item);
         if (sheetContext.mounted) Navigator.of(sheetContext).pop();
+      },
+      onDelete: (itemId) async {
+        await ref.read(menuRepositoryProvider).deleteItem(itemId);
       },
     ),
   );
@@ -191,14 +450,18 @@ class _ItemSheet extends StatefulWidget {
   const _ItemSheet({
     required this.merchantId,
     required this.categoryId,
+    required this.categories,
     required this.existing,
     required this.onSave,
+    this.onDelete,
   });
 
   final String merchantId;
   final String categoryId;
+  final List<MenuCategory> categories;
   final MenuItem? existing;
   final Future<void> Function(MenuItem) onSave;
+  final Future<void> Function(String)? onDelete;
 
   @override
   State<_ItemSheet> createState() => _ItemSheetState();
@@ -207,6 +470,7 @@ class _ItemSheet extends StatefulWidget {
 class _ItemSheetState extends State<_ItemSheet> {
   final _formKey = GlobalKey<FormState>();
 
+  late String _categoryId = widget.categoryId;
   late String _name = widget.existing?.name ?? '';
   late String _price = widget.existing == null
       ? ''
@@ -219,9 +483,12 @@ class _ItemSheetState extends State<_ItemSheet> {
   /// carries an id, and resolving it to a URL is a read this sheet does not need — the
   /// picker draws the dish's monogram until a new photograph replaces it.
   String? _mediaUrl;
+  bool _photoPendingReview = false;
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = theme.luqma;
     final strings = LuqmaStrings.of(context);
 
     return Padding(
@@ -231,15 +498,89 @@ class _ItemSheetState extends State<_ItemSheet> {
         top: Space.xl,
         bottom: MediaQuery.viewInsetsOf(context).bottom + Space.xl,
       ),
-      // Scrolls, because the sheet now carries a photograph as well as the fields, and a
-      // keyboard takes half the screen the moment somebody touches the name. A bottom
-      // sheet that cannot scroll is one where the price is behind the keyboard.
+      // Scrolls, because the sheet carries a photograph, form fields, and buttons,
+      // and soft keyboards consume half the vertical viewport.
       child: SingleChildScrollView(
         child: Form(
           key: _formKey,
           child: Column(
             mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              // Header with title and close action (M04)
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      widget.existing == null
+                          ? strings.menuNewItem
+                          : strings.menuEditItem,
+                      style: theme.textTheme.titleLarge,
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close),
+                    tooltip: 'إغلاق',
+                    onPressed: () => Navigator.of(context).pop(),
+                  ),
+                ],
+              ),
+              const SizedBox(height: Space.md),
+
+              // Photo slot card with pending review banner (M04)
+              Container(
+                padding: const EdgeInsets.all(Space.md),
+                decoration: BoxDecoration(
+                  color: colors.card,
+                  borderRadius: Radii.cardAll,
+                  border: Border.all(color: colors.hairline),
+                  boxShadow: Elevations.card,
+                ),
+                child: Column(
+                  children: [
+                    MediaPicker(
+                      key: MenuEditor.itemPhotoKey,
+                      kind: MediaKind.menuItem,
+                      url: _mediaUrl ?? widget.existing?.imageUrl,
+                      name: _name.isEmpty ? (widget.existing?.name ?? '') : _name,
+                      ownerId: widget.existing?.id,
+                      height: 120,
+                      onUploaded: (media) => setState(() {
+                        _mediaId = media.id;
+                        _mediaUrl = media.url;
+                        _photoPendingReview = true;
+                      }),
+                    ),
+                    if (_photoPendingReview) ...[
+                      const SizedBox(height: Space.sm),
+                      Container(
+                        key: MenuEditor.pendingReviewBannerKey,
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(Space.sm),
+                        // Tokens, not two amber literals. `CLAUDE.md` is explicit that no
+                        // colour is written in a screen, and these two were invented
+                        // here — a wash and an ink that exist nowhere else in the
+                        // product and that nothing keeps in step with either theme.
+                        // A photograph waiting for approval is exactly what the accent
+                        // is for, and `priceStrong` is the ink the palette already
+                        // records as passing on a pale ground.
+                        decoration: BoxDecoration(
+                          color: colors.accent.withValues(alpha: .12),
+                          borderRadius: Radii.fieldAll,
+                        ),
+                        child: Text(
+                          strings.menuItemUnderReview,
+                          style: LuqmaType.bodySmall
+                              .copyWith(color: colors.price),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              const SizedBox(height: Space.md),
+
+              // Name field
               TextFormField(
                 key: MenuEditor.nameFieldKey,
                 initialValue: _name,
@@ -250,20 +591,27 @@ class _ItemSheetState extends State<_ItemSheet> {
                 onSaved: (v) => _name = v!.trim(),
               ),
               const SizedBox(height: Space.md),
-              TextFormField(
-                key: MenuEditor.priceFieldKey,
-                initialValue: _price,
-                decoration: InputDecoration(labelText: strings.menuItemPrice),
-                keyboardType: TextInputType.number,
-                // Refused rather than rounded: a price the app cannot read exactly would
-                // otherwise become a menu that says one figure while the courier collects
-                // another.
-                validator: (v) => Money.parse(v ?? '') == null
-                    ? strings.menuPriceInvalid
-                    : null,
-                onSaved: (v) => _price = v!,
-              ),
-              const SizedBox(height: Space.md),
+
+              // Category selector if multiple categories exist
+              if (widget.categories.length > 1) ...[
+                DropdownButtonFormField<String>(
+                  initialValue: _categoryId,
+                  decoration: const InputDecoration(labelText: 'الفئة'),
+                  items: [
+                    for (final cat in widget.categories)
+                      DropdownMenuItem(
+                        value: cat.id,
+                        child: Text(cat.name),
+                      ),
+                  ],
+                  onChanged: (val) {
+                    if (val != null) setState(() => _categoryId = val);
+                  },
+                ),
+                const SizedBox(height: Space.md),
+              ],
+
+              // Description field
               TextFormField(
                 key: MenuEditor.descriptionFieldKey,
                 initialValue: _description,
@@ -274,33 +622,100 @@ class _ItemSheetState extends State<_ItemSheet> {
                 onSaved: (v) => _description = v,
               ),
               const SizedBox(height: Space.md),
-              SwitchListTile(
-                key: MenuEditor.availableSwitchKey,
-                value: _available,
-                title: Text(strings.menuItemAvailable),
-                contentPadding: EdgeInsets.zero,
-                onChanged: (v) => setState(() => _available = v),
+
+              // Price field
+              TextFormField(
+                key: MenuEditor.priceFieldKey,
+                initialValue: _price,
+                decoration: InputDecoration(
+                  labelText: strings.menuItemPrice,
+                  suffixText: 'ج',
+                ),
+                keyboardType: TextInputType.number,
+                validator: (v) => Money.parse(v ?? '') == null
+                    ? strings.menuPriceInvalid
+                    : null,
+                onSaved: (v) => _price = v!,
+              ),
+              const SizedBox(height: Space.md),
+
+              // Availability toggle card (M04)
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: Space.md,
+                  vertical: Space.sm,
+                ),
+                decoration: BoxDecoration(
+                  color: colors.card,
+                  borderRadius: Radii.fieldAll,
+                  border: Border.all(color: colors.hairline),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            strings.menuItemAvailableTitle,
+                            style: theme.textTheme.titleMedium,
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            strings.menuItemAvailableSubtitle,
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: colors.textSecondary,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Switch(
+                      key: MenuEditor.availableSwitchKey,
+                      value: _available,
+                      activeThumbColor: colors.success,
+                      onChanged: (v) => setState(() => _available = v),
+                    ),
+                  ],
+                ),
               ),
               const SizedBox(height: Space.lg),
-              // The dish's photograph. Six hundred of these is the owner's launch week, so
-              // it sits in the same sheet as the name and the price rather than behind a
-              // second trip into a gallery screen.
-              MediaPicker(
-                key: MenuEditor.itemPhotoKey,
-                kind: MediaKind.menuItem,
-                url: _mediaUrl,
-                name: _name.isEmpty ? (widget.existing?.name ?? '') : _name,
-                ownerId: widget.existing?.id,
-                onUploaded: (media) => setState(() {
-                  _mediaId = media.id;
-                  _mediaUrl = media.url;
-                }),
-              ),
-              const SizedBox(height: Space.lg),
-              FilledButton(
-                key: MenuEditor.saveItemKey,
-                onPressed: _submit,
-                child: Text(strings.menuSaveItem),
+
+              // Action buttons (M04: Delete + Save)
+              Row(
+                children: [
+                  if (widget.existing != null) ...[
+                    Expanded(
+                      flex: 1,
+                      child: OutlinedButton(
+                        key: MenuEditor.deleteItemKey,
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: colors.danger,
+                          side: BorderSide(color: colors.danger),
+                          minimumSize: const Size.fromHeight(Sizes.minTarget),
+                        ),
+                        onPressed: () => _confirmDelete(context),
+                        child: Text(strings.menuDeleteItem),
+                      ),
+                    ),
+                    const SizedBox(width: Space.md),
+                  ],
+                  Expanded(
+                    flex: 2,
+                    child: FilledButton(
+                      key: MenuEditor.saveItemKey,
+                      style: FilledButton.styleFrom(
+                        minimumSize: const Size.fromHeight(Sizes.minTarget),
+                      ),
+                      onPressed: _submit,
+                      child: Text(
+                        widget.existing == null
+                            ? strings.menuSaveItem
+                            : strings.menuSaveItemChanges,
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
@@ -309,17 +724,46 @@ class _ItemSheetState extends State<_ItemSheet> {
     );
   }
 
+  Future<void> _confirmDelete(BuildContext context) async {
+    final colors = Theme.of(context).luqma;
+    final strings = LuqmaStrings.of(context);
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(strings.menuDeleteItemConfirm),
+        content: Text(
+          '«${widget.existing!.name}» ${strings.menuDeleteItemMessage}',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: Text(strings.menuCancel),
+          ),
+          FilledButton(
+            key: MenuEditor.confirmDeleteKey,
+            style: FilledButton.styleFrom(backgroundColor: colors.danger),
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: Text(strings.menuDeleteConfirmAction),
+          ),
+        ],
+      ),
+    );
+
+    if ((confirmed ?? false) && context.mounted) {
+      await widget.onDelete?.call(widget.existing!.id);
+      if (context.mounted) Navigator.of(context).pop();
+    }
+  }
+
   void _submit() {
     if (!_formKey.currentState!.validate()) return;
     _formKey.currentState!.save();
 
     widget.onSave(
       MenuItem(
-        // Empty means create. Reusing the existing id is what keeps an edit from
-        // producing a second copy of the same dish.
         id: widget.existing?.id ?? '',
         merchantId: widget.merchantId,
-        categoryId: widget.categoryId,
+        categoryId: _categoryId,
         name: _name,
         price: Money.parse(_price)!,
         description: _description,

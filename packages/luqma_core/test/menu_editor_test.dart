@@ -35,6 +35,11 @@ void main() {
   late FakeMenuRepository repository;
 
   Future<void> pump(WidgetTester tester) async {
+    tester.view.physicalSize = const Size(390 * 2, 844 * 2);
+    tester.view.devicePixelRatio = 2.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
     repository = FakeMenuRepository(categories: categories, items: items);
     await tester.pumpWidget(
       ProviderScope(
@@ -155,5 +160,67 @@ void main() {
       tester.widget<TextFormField>(find.byKey(MenuEditor.priceFieldKey)).initialValue,
       '120',
     );
+  });
+
+  testWidgets('category chips filter the items', (tester) async {
+    await pump(tester);
+
+    // Initially both items are present when all categories are active
+    expect(find.text('فراخ مشوية'), findsOneWidget);
+    expect(find.text('عصير مانجو'), findsOneWidget);
+
+    // Tapping category c1 filters to only c1 items
+    await tester.tap(find.byKey(MenuEditor.categoryChipKey('c1')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('فراخ مشوية'), findsOneWidget);
+    expect(find.text('عصير مانجو'), findsNothing);
+
+    // Tapping all categories restores all items
+    await tester.tap(find.byKey(MenuEditor.allCategoriesChipKey));
+    await tester.pumpAndSettle();
+
+    expect(find.text('فراخ مشوية'), findsOneWidget);
+    expect(find.text('عصير مانجو'), findsOneWidget);
+  });
+
+  testWidgets('toggling item availability switch directly updates the item', (tester) async {
+    await pump(tester);
+
+    await tester.tap(find.byKey(MenuEditor.itemAvailableSwitchKey('i1')));
+    await tester.pumpAndSettle();
+
+    expect(repository.saved.last.id, 'i1');
+    expect(repository.saved.last.isAvailable, false);
+  });
+
+  testWidgets('deleting an existing item removes it from repository', (tester) async {
+    await pump(tester);
+
+    await tester.tap(find.text('فراخ مشوية'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(MenuEditor.deleteItemKey));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(MenuEditor.confirmDeleteKey));
+    await tester.pumpAndSettle();
+
+    expect(repository.deleted, contains('i1'));
+  });
+
+  testWidgets('adding a category with + فئة saves new category', (tester) async {
+    await pump(tester);
+
+    await tester.ensureVisible(find.byKey(MenuEditor.addCategoryKey));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(MenuEditor.addCategoryKey));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byKey(MenuEditor.categoryNameFieldKey), 'سندوتشات');
+    await tester.tap(find.byKey(MenuEditor.saveCategoryKey));
+    await tester.pumpAndSettle();
+
+    expect(repository.categories.any((c) => c.name == 'سندوتشات'), isTrue);
   });
 }

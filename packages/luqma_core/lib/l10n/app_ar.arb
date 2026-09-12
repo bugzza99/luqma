@@ -97,6 +97,66 @@
   "menuPriceInvalid": "اكتب سعر صحيح",
   "@menuPriceInvalid": {},
 
+  "menuTitle": "القائمة",
+  "@menuTitle": {},
+
+  "menuAllCategories": "الكل",
+  "@menuAllCategories": {},
+
+  "menuAddCategory": "+ فئة",
+  "@menuAddCategory": {},
+
+  "menuNewCategory": "فئة جديدة",
+  "@menuNewCategory": {},
+
+  "menuCategoryNameRequired": "اكتب اسم الفئة",
+  "@menuCategoryNameRequired": {},
+
+  "menuDeleteItem": "حذف",
+  "@menuDeleteItem": {},
+
+  "menuDeleteItemConfirm": "حذف الصنف؟",
+  "@menuDeleteItemConfirm": {},
+
+  "menuDeleteItemMessage": "الصنف هيتشال من القائمة نهائيًا. مفيش رجوع.",
+  "@menuDeleteItemMessage": {},
+
+  "menuDeleteConfirmAction": "احذف",
+  "@menuDeleteConfirmAction": {},
+
+  "menuCancel": "إلغاء",
+  "@menuCancel": {},
+
+  "menuItemUnderReview": "⏳ الصورة الحالية قيد المراجعة",
+  "@menuItemUnderReview": {},
+
+  "menuItemAvailableSubtitle": "لو نفد الصنف، أوقف مؤقتاً",
+  "@menuItemAvailableSubtitle": {},
+
+  "menuItemAvailableTitle": "متاح للطلب",
+  "@menuItemAvailableTitle": {},
+
+  "menuEditItem": "تعديل صنف",
+  "@menuEditItem": {},
+
+  "menuNewItem": "صنف جديد",
+  "@menuNewItem": {},
+
+  "menuPhotoHint": "يتم مراجعتها من الأدمن قبل الظهور",
+  "@menuPhotoHint": {},
+
+  "menuPhotoLabel": "صورة الصنف",
+  "@menuPhotoLabel": {},
+
+  "menuChangePhoto": "تغيير الصورة",
+  "@menuChangePhoto": {},
+
+  "menuAddNewItem": "+ إضافة صنف جديد",
+  "@menuAddNewItem": {},
+
+  "menuSaveItemChanges": "حفظ التغييرات",
+  "@menuSaveItemChanges": {},
+
   "appName": "لقمة",
   "@appName": {},
 

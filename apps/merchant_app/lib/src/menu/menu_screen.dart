@@ -20,7 +20,7 @@ class MenuScreen extends ConsumerWidget {
 
     return Scaffold(
       backgroundColor: colors.background,
-      appBar: AppBar(title: const Text('المنيو')),
+      appBar: AppBar(title: Text(LuqmaStrings.of(context).menuTitle)),
       body: merchantId == null
           ? const Center(
               key: noMerchantKey,
