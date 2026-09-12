@@ -72,9 +72,6 @@ describe('what a rider did today', () => {
       await db.query(
         `insert into staff (uid,scope,role,merchant_id,is_active)
          values ($1,'merchant','courier',$2,true)`, [uid, fish]);
-      await db.query(
-        'insert into courier_merchants (courier_uid, merchant_id) values ($1,$2)',
-        [uid, fish]);
     }
 
     await order({ merchant: fish, status: 'delivered', total: 12000, courier: RIDER });

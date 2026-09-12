@@ -334,6 +334,7 @@ void main() {
       expect(find.byKey(StatementScreen.paymentRowKey('pay-1')), findsOneWidget);
       expect(find.textContaining('300'), findsWidgets);
       expect(find.text('دفع كاش، الباقي الأسبوع الجاي'), findsOneWidget);
+      expect(tester.widget<Text>(find.text('دفع كاش، الباقي الأسبوع الجاي')).style?.fontSize, 15);
     });
 
     // Money coming off the debt reads in the other direction from a charge. The sign is

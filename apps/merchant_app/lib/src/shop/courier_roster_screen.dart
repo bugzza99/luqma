@@ -206,12 +206,12 @@ class _CourierRosterScreenState extends ConsumerState<CourierRosterScreen> {
                               minimumSize: const Size(0, Sizes.minTarget),
                             ),
                             child: _adding
-                                ? const SizedBox(
+                                ? SizedBox(
                                     width: Sizes.iconSm,
                                     height: Sizes.iconSm,
                                     child: CircularProgressIndicator(
                                       strokeWidth: 2,
-                                      color: Colors.white,
+                                      color: colors.onBrand,
                                     ),
                                   )
                                 : const Text('إضافة'),

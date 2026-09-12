@@ -7,6 +7,7 @@ import '../data/live_query.dart';
 import '../models/courier_summary.dart';
 import '../models/order.dart';
 import '../result.dart';
+import '../util/cairo_day.dart';
 
 /// Orders as the person carrying them sees them.
 ///
@@ -223,11 +224,16 @@ class FakeCourierOrderRepository implements CourierOrderRepository {
     Iterable<String?>? carriedMerchants,
     this.courierUid,
     DateTime Function()? now,
+    Map<String, DateTime> updatedAt = const {},
   })  : _orders = {for (final o in seed) o.id: o},
         _carried = carriedMerchants != null
             ? Set<String?>.of(carriedMerchants)
             : <String?>{},
-        _now = now ?? DateTime.now;
+        _now = now ?? DateTime.now {
+    for (final order in seed) {
+      _updatedAt[order.id] = updatedAt[order.id] ?? _now();
+    }
+  }
 
   final Map<String, Order> _orders;
 
@@ -236,6 +242,8 @@ class FakeCourierOrderRepository implements CourierOrderRepository {
   String? courierUid;
 
   final DateTime Function() _now;
+  // Seeded rows default to their insertion time, just as orders.updated_at does.
+  final Map<String, DateTime> _updatedAt = {};
 
   /// The shops this courier carries for, modeling the `courier_merchants` join table.
   /// Null is the platform row: home kitchens, and merchants that do not deliver for
@@ -353,7 +361,7 @@ class FakeCourierOrderRepository implements CourierOrderRepository {
   Future<Result<void>> markDelivered(String orderId) => _move(
         orderId,
         OrderStatus.delivered,
-        (o) => o.copyWith(deliveredAt: DateTime.now()),
+        (o) => o.copyWith(deliveredAt: _now()),
       );
 
   @override
@@ -383,6 +391,7 @@ class FakeCourierOrderRepository implements CourierOrderRepository {
     }
 
     _orders[orderId] = apply(order).copyWith(status: to);
+    _updatedAt[orderId] = _now();
     _notify();
     return const Result.ok(null);
   }
@@ -391,19 +400,13 @@ class FakeCourierOrderRepository implements CourierOrderRepository {
   Future<Result<CourierDaySummary>> daySummary({DateTime? day}) async {
     if (failure != null) return Result.err(failure!);
 
-    final target = day?.toLocal() ?? _now().toLocal();
+    final target = day == null ? cairoDay(_now()) : DateTime.utc(day.year, day.month, day.day);
 
     final matching = _orders.values.where((o) {
-      if (courierUid != null && o.courierUid != courierUid) return false;
+      if (courierUid == null || o.courierUid != courierUid) return false;
 
-      final happenedAt = (o.deliveredAt ?? o.placedAt)?.toLocal();
-      if (happenedAt != null) {
-        if (happenedAt.year != target.year ||
-            happenedAt.month != target.month ||
-            happenedAt.day != target.day) {
-          return false;
-        }
-      }
+      final happenedAt = o.deliveredAt ?? _updatedAt[o.id];
+      if (happenedAt == null || cairoDay(happenedAt) != target) return false;
 
       final isDelivered = o.status == OrderStatus.delivered;
       final isReturned = o.status == OrderStatus.cancelled &&

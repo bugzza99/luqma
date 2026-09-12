@@ -50,13 +50,7 @@ describe('a courier carries for more than one shop', () => {
       `insert into staff (uid,scope,role,merchant_id,is_active)
        values ($1,'merchant','owner',$2,true)`, [OWNER_A, fish]);
 
-    // Attached explicitly, because these rows are created after the migration ran and its
-    // backfill only sees what was already there. The backfill itself is a one-shot over
-    // production data and is verified by the run, not here — a PGlite database has no
-    // staff until this fixture makes some.
-    await db.query(
-      'insert into courier_merchants (courier_uid, merchant_id) values ($1,$2)',
-      [COURIER, fish]);
+    // The insert trigger grants the initial scope for accounts created after backfill.
   });
 
   after(async () => { await db?.close(); });
@@ -158,15 +152,16 @@ describe('a courier carries for more than one shop', () => {
   describe('who may change the roster', () => {
     const ownerClaims = (m) => ({ role: 'owner', scope: 'merchant', merchant_id: m });
 
-    it('lets a shop owner attach a courier to their own shop', async () => {
+    it('requires the phone RPC even for an owner attaching to their own shop', async () => {
+      const newcomer = '00000000-0000-0000-0000-0000000000d8';
+      await db.query('insert into auth.users(id) values ($1)', [newcomer]);
+      await db.query(`insert into staff(uid,role,scope,merchant_id)
+        values ($1,'courier','merchant',$2)`, [newcomer, koshari]);
       await as(OWNER_A, ownerClaims(fish));
       await db.exec('set role authenticated');
-      await db.query(
-        `delete from courier_merchants where courier_uid = $1 and merchant_id = $2`,
-        [COURIER, fish]);
-      await db.query(
+      await assert.rejects(() => db.query(
         'insert into courier_merchants (courier_uid, merchant_id) values ($1,$2)',
-        [COURIER, fish]);
+        [newcomer, fish]), { code: '42501' });
       await db.exec('reset role');
     });
 
@@ -256,8 +251,8 @@ describe('a courier who has been detached', () => {
       `insert into staff (uid,scope,role,merchant_id,is_active)
        values ($1,'merchant','courier',$2,true)`, [COURIER, shop]);
     await db.query(
-      `insert into courier_merchants (courier_uid, merchant_id, is_active)
-       values ($1,$2,false)`, [COURIER, shop]);
+      `update courier_merchants set is_active=false where courier_uid=$1 and merchant_id=$2`,
+      [COURIER, shop]);
 
     order = (await db.query(
       `insert into orders (city_id,customer_uid,customer_name,customer_phone,
@@ -317,13 +312,16 @@ describe('a courier who has been detached', () => {
     // the wrong reason: the stale `merchant_id` satisfied the predicate, so a test about
     // the platform row was being answered by the very claim this change exists to stop
     // trusting.
-    await db.exec('set role authenticated');
-    const can = await db.query(
-      `select public.is_courier_for_order(null, $1, 'platform') as yes`, [shop]);
+    await db.exec(`create or replace function auth.jwt() returns jsonb language sql stable
+      as $$ select '{"app_metadata":{"role":"courier","scope":"merchant"}}'::jsonb $$;
+      set role authenticated`);
+    const visible = await db.query('select id from orders where id=$1',[platformOrder]);
+    const changed = await db.query(`update orders set status='outForDelivery',courier_uid=$1
+      where id=$2 returning id`,[COURIER,platformOrder]);
     await db.exec('reset role');
 
-    assert.equal(can.rows[0].yes, true,
-      'the platform row is the attachment; the scope column is the old shape');
-    assert.ok(platformOrder);
+    assert.equal(visible.rowCount, 1);
+    assert.equal(changed.rowCount, 1,
+      'the actual order can be picked up using only the platform attachment');
   });
 });

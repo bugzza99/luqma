@@ -133,10 +133,10 @@ class FakeCourierRosterRepository implements CourierRosterRepository {
     this.attachFailure,
     this.detachFailure,
   })  : _items = List.of(seed),
-        _staffByPhone = staffByPhone != null ? Map.of(staffByPhone) : null;
+        _staffByPhone = Map.of(staffByPhone ?? const {});
 
   final List<CourierRosterItem> _items;
-  final Map<String, StaffMember>? _staffByPhone;
+  final Map<String, StaffMember> _staffByPhone;
 
   Failure? failure;
   Failure? attachFailure;
@@ -185,7 +185,7 @@ class FakeCourierRosterRepository implements CourierRosterRepository {
     final normalized = Phone.normalize(phone);
 
     StaffMember? staff;
-    if (_staffByPhone != null) {
+    {
       staff = _staffByPhone[normalized] ??
           _staffByPhone.values.cast<StaffMember?>().firstWhere(
                 (s) =>
@@ -197,9 +197,9 @@ class FakeCourierRosterRepository implements CourierRosterRepository {
       }
     }
 
-    final courierUid = staff?.uid ?? 'courier-$normalized';
-    final name = staff?.name ?? 'محمود';
-    final pausedUntil = staff?.pausedUntil;
+    final courierUid = staff.uid;
+    final name = staff.name;
+    final pausedUntil = staff.pausedUntil;
 
     final index = _items.indexWhere(
       (item) => item.merchantId == merchantId && item.courierUid == courierUid,

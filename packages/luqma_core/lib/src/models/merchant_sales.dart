@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 
 import 'order.dart';
+import '../util/cairo_day.dart';
 
 /// One day of sales in the window.
 ///
@@ -199,15 +200,15 @@ class MerchantSales {
     final current = now?.call() ?? DateTime.now();
 
     // The window covers [fromAt, toAt) where toAt is tomorrow midnight.
-    final todayMidnight = DateTime(current.year, current.month, current.day);
-    final afterDay = DateTime(todayMidnight.year, todayMidnight.month, todayMidnight.day + 1);
-    final fromAt = DateTime(afterDay.year, afterDay.month, afterDay.day - clampedDays);
+    final todayMidnight = cairoDay(current);
+    final afterDay = todayMidnight.add(const Duration(days: 1));
+    final fromAt = afterDay.subtract(Duration(days: clampedDays));
     final toAt = afterDay;
 
     // Pre-populate every day of the series so empty days are represented.
     final byDayMap = <String, ({int orders, int sales})>{};
     for (var i = 0; i < clampedDays; i++) {
-      final d = DateTime(fromAt.year, fromAt.month, fromAt.day + i);
+      final d = fromAt.add(Duration(days: i));
       final dayStr =
           '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
       byDayMap[dayStr] = (orders: 0, sales: 0);
@@ -218,16 +219,14 @@ class MerchantSales {
     var cancelledByCustomer = 0;
     var cancelledByMerchant = 0;
     var returned = 0;
-    final itemQuantities = <String, int>{};
-    final itemNames = <String, String>{};
+    final itemQuantities = <(String, String), int>{};
 
     for (final o in orders) {
       if (o.merchantId != merchantId) continue;
       final placed = o.placedAt;
       if (placed == null) continue;
 
-      final placedNormalized =
-          current.isUtc ? placed.toUtc() : placed.toLocal();
+      final placedNormalized = cairoDay(placed);
       if (placedNormalized.isBefore(fromAt) || !placedNormalized.isBefore(toAt)) {
         continue;
       }
@@ -247,9 +246,8 @@ class MerchantSales {
         }
 
         for (final line in o.items) {
-          itemQuantities[line.itemId] =
-              (itemQuantities[line.itemId] ?? 0) + line.quantity;
-          itemNames[line.itemId] = line.name;
+          final key = (line.itemId, line.name);
+          itemQuantities[key] = (itemQuantities[key] ?? 0) + line.quantity;
         }
       } else if (o.status == OrderStatus.cancelled) {
         if (o.cancelledBy == OrderActor.customer) {
@@ -272,8 +270,8 @@ class MerchantSales {
 
     final topItems = itemQuantities.entries.map((e) {
       return MerchantSalesTopItem(
-        itemId: e.key,
-        name: itemNames[e.key] ?? '',
+        itemId: e.key.$1,
+        name: e.key.$2,
         quantity: e.value,
       );
     }).toList()

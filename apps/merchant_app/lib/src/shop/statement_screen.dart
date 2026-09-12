@@ -468,7 +468,11 @@ class _PaymentRow extends StatelessWidget {
                     // here rather than kept on the admin's side: a merchant should read
                     // the same note the admin wrote rather than remember it.
                     payment.note!,
-                    style: LuqmaType.caption.copyWith(color: colors.textSecondary),
+                    // `bodySmall`, not `caption`. This is a sentence a person wrote —
+                    // «دفع كاش، الباقي الأسبوع الجاي» — and it is the one thing on this
+                    // screen that settles an argument three weeks later. `caption` is 12
+                    // and is for labels; the 15sp floor is for text somebody reads.
+                    style: LuqmaType.bodySmall.copyWith(color: colors.textSecondary),
                   ),
                 ],
               ],

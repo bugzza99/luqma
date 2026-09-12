@@ -42,6 +42,7 @@ dependencies:
   url_launcher: ^6.3.0
 
   intl: any
+  timezone: ^0.10.1
   sentry_flutter: ^9.0.0
 
   # Downscaling a photo before it is uploaded. Pure Dart on purpose: it runs in an

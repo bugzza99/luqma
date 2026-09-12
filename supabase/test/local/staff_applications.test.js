@@ -66,19 +66,14 @@ describe('applying to join', () => {
 
   // The whole reason this table exists rather than a row in `staff`.
   it('and that row grants nothing', async () => {
+    const applicant = '00000000-0000-0000-0000-0000000000f3';
+    await db.query('insert into auth.users(id) values ($1)',[applicant]);
     await as(null, {});
-    const cols = await db.query(
-      `select column_name from information_schema.columns
-        where table_name = 'staff_applications'`);
-    const names = cols.rows.map((r) => r.column_name);
-    assert.ok(!names.includes('role') || true);
-    // Nothing anywhere joins to it to decide access: no policy in the database mentions
-    // this table except its own.
-    const refs = await db.query(
-      `select count(*)::int as n from pg_policies
-        where schemaname = 'public' and tablename <> 'staff_applications'
-          and (qual ilike '%staff_applications%' or with_check ilike '%staff_applications%')`);
-    assert.equal(refs.rows[0].n, 0);
+    await role('anon', () => apply('courier', 'Applicant', '01000000888'));
+    await assert.rejects(() => role('anon', () => db.query(
+      `insert into staff(uid,scope,role) values ($1,'platform','admin')`, [applicant])),
+      { code: '42501' });
+    assert.equal((await db.query('select uid from staff where uid=$1',[applicant])).rowCount,0);
   });
 
   it('cannot read the queue it just wrote to', async () => {
@@ -103,7 +98,7 @@ describe('applying to join', () => {
       () => role('anon', () => db.query(
         `insert into staff_applications (kind,name,phone,status)
          values ('courier','ذكي','01000000199','approved')`)),
-      /row-level security|violates/i);
+      /row-level security|violates|permission denied/i);
   });
 
   describe('the queue', () => {

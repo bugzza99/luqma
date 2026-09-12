@@ -143,6 +143,11 @@ class FakeStaffApplicationRepository implements StaffApplicationRepository {
     if (failure != null) return Result.err(failure!);
 
     final normalized = Phone.normalize(phone);
+    if (name.trim().runes.length < 2 || name.trim().runes.length > 80 ||
+        normalized.runes.length < 6 || normalized.runes.length > 20 ||
+        (note?.trim().runes.length ?? 0) > 500) {
+      return const Result.err(ConflictFailure());
+    }
     final hasOpen = _applications.values.any(
       (a) => a.isPending && Phone.normalize(a.phone) == normalized,
     );
@@ -186,6 +191,9 @@ class FakeStaffApplicationRepository implements StaffApplicationRepository {
     String? staffUid,
   }) async {
     if (failure != null) return Result.err(failure!);
+    if (status == StaffApplicationStatus.pending) {
+      return const Result.err(ConflictFailure());
+    }
     final existing = _applications[id];
     if (existing == null || !existing.isPending) {
       return const Result.err(NotFoundFailure());
