@@ -415,5 +415,70 @@
   "courierDetachTooltip": "إلغاء الربط",
   "@courierDetachTooltip": {
     "description": "Tooltip for the button that detaches a courier from a shop or platform."
+  },
+
+  "courierAddShop": "إضافة محل",
+  "@courierAddShop": {
+    "description": "Picker action to attach courier to a shop."
+  },
+
+  "courierAddToPlatform": "إضافة للمنصة",
+  "@courierAddToPlatform": {
+    "description": "Action button to grant the platform row when courier does not already hold it."
+  },
+
+  "courierDetachConfirmTitle": "إلغاء الربط",
+  "@courierDetachConfirmTitle": {
+    "description": "Confirmation title for detaching a courier."
+  },
+
+  "courierDetachConfirmMessage": "هل أنت متأكد من إلغاء الربط؟ سيتوقف الكابتن عن استلام طلبات هذا المحل فوراً.",
+  "@courierDetachConfirmMessage": {
+    "description": "Confirmation dialog warning that detaching stops order visibility immediately."
+  },
+
+  "courierDetachConfirmAction": "تأكيد إلغاء الربط",
+  "@courierDetachConfirmAction": {
+    "description": "Confirmation action button label."
+  },
+
+  "courierSelectShopPrompt": "اختر محلاً لربط الكابتن به",
+  "@courierSelectShopPrompt": {
+    "description": "Dialog title or prompt to pick a shop for courier."
+  },
+
+  "courierSuspendedBadge": "موقوف",
+  "@courierSuspendedBadge": {
+    "description": "Badge indicating staff member is inactive."
+  },
+
+  "staffFilterAll": "الكل",
+  "@staffFilterAll": {
+    "description": "Filter chip for all staff members."
+  },
+
+  "staffFilterAdmins": "أدمن",
+  "@staffFilterAdmins": {
+    "description": "Filter chip for admins."
+  },
+
+  "staffFilterModerators": "مشرفين",
+  "@staffFilterModerators": {
+    "description": "Filter chip for moderators."
+  },
+
+  "staffFilterCouriers": "كباتن",
+  "@staffFilterCouriers": {
+    "description": "Filter chip for couriers."
+  },
+
+  "staffFilterOwners": "أصحاب محال",
+  "@staffFilterOwners": {
+    "description": "Filter chip for merchant owners."
+  },
+
+  "courierNothingSelected": "اختر كابتن لعرض ارتباطاته",
+  "@courierNothingSelected": {
+    "description": "Empty state on wide layout when no courier is selected."
   }
 }
