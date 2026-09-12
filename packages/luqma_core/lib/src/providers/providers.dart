@@ -17,6 +17,7 @@ import '../models/courier_roster.dart';
 import '../models/courier_summary.dart';
 import '../models/daily_meal.dart';
 import '../models/order.dart';
+import '../models/merchant_sales.dart';
 import '../models/promotion.dart';
 import '../models/settlement.dart';
 import '../repositories/address_repository.dart';
@@ -41,6 +42,7 @@ import '../repositories/merchant_order_repository.dart';
 import '../repositories/merchant_repository.dart';
 import '../repositories/order_repository.dart';
 import '../repositories/popular_items_repository.dart';
+import '../repositories/merchant_sales_repository.dart';
 import '../repositories/profile_repository.dart';
 import '../repositories/promotion_repository.dart';
 import '../repositories/push_token_repository.dart';
@@ -120,6 +122,26 @@ Future<List<CommissionPayment>> commissionPayments(Ref ref, String merchantId) a
 Future<SettlementSummary> settlementSummary(Ref ref, String merchantId) async {
   final result =
       await ref.watch(settlementRepositoryProvider).summaryFor(merchantId);
+  return result.valueOrThrow;
+}
+
+@Riverpod(keepAlive: true)
+MerchantSalesRepository merchantSalesRepository(Ref ref) =>
+    SupabaseMerchantSalesRepository(ref.watch(supabaseProvider));
+
+/// Sales figures for [merchantId] over [days].
+///
+/// Auto-disposed: sales figures are a snapshot over a chosen window, re-read on demand
+/// or when switching range chips.
+@riverpod
+Future<MerchantSales> merchantSales(
+  Ref ref,
+  String merchantId, {
+  int days = 7,
+}) async {
+  final result = await ref
+      .watch(merchantSalesRepositoryProvider)
+      .getSales(merchantId, days: days);
   return result.valueOrThrow;
 }
 
