@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -9,9 +10,11 @@ import 'order_note.dart';
 
 /// Orders waiting for an answer.
 ///
-/// The one screen this app exists for. A merchant who does not answer does not cook, and
-/// somebody waits for food nobody started — so the card carries everything needed to
-/// decide, and the decision is two taps from a hand that is holding something hot.
+/// The one screen this app exists for. Restyled to M01: the order that needs an answer
+/// is the whole screen, not a card in a list — a full-bleed treatment on burgundy, the
+/// total in orange on a cream panel, a ring counting down to `acceptDeadlineAt`, and two
+/// large, well-separated actions. The countdown is instant orders only: a pre-order has
+/// no deadline.
 class InboxScreen extends ConsumerWidget {
   const InboxScreen({super.key});
 
@@ -25,6 +28,7 @@ class InboxScreen extends ConsumerWidget {
   static Key acceptKey(String id) => Key('inbox.accept.$id');
   static Key rejectKey(String id) => Key('inbox.reject.$id');
   static Key countdownKey(String id) => Key('inbox.countdown.$id');
+  static Key ringKey(String id) => Key('inbox.ring.$id');
   static Key lateKey(String id) => Key('inbox.late.$id');
   static Key newCustomerKey(String id) => Key('inbox.new.$id');
   static Key prepChoiceKey(int minutes) => Key('inbox.prep.$minutes');
@@ -54,56 +58,65 @@ class InboxScreen extends ConsumerWidget {
     final incoming = ref.watch(incomingOrdersProvider(merchantId));
     final ringing = ref.watch(orderAlarmProvider);
 
-    return Scaffold(
-      backgroundColor: colors.background,
-      appBar: AppBar(
-        title: const Text('الطلبات الجديدة'),
-        // Across the whole bar, not a button in a corner. The sound has done its job the
-        // moment somebody is looking, and making them hunt for accept first is exactly
-        // what gets an app muted for good.
-        bottom: ringing
-            ? PreferredSize(
-                preferredSize: const Size.fromHeight(Sizes.minTarget + Space.md),
-                child: _SilenceBar(
-                  onSilence: () => ref.read(orderAlarmProvider.notifier).acknowledge(),
-                ),
-              )
-            : null,
+    return LuqmaAsyncView<List<Order>>(
+      value: incoming,
+      errorKey: InboxScreen.errorKey,
+      onRetry: () => ref.invalidate(incomingOrdersProvider(merchantId)),
+      empty: Scaffold(
+        backgroundColor: colors.background,
+        appBar: AppBar(title: const Text('الطلبات الجديدة')),
+        body: Column(
+          children: [
+            const LuqmaNotificationBanner(
+              reason: 'من غيرها مش هتعرف إن فيه أوردر جديد إلا لما تفتح التطبيق '
+                  'بنفسك — والعميل مستني رد في تسعين ثانية.',
+              margin: EdgeInsets.all(Space.gutter),
+            ),
+            Expanded(
+              child: LuqmaEmptyView(
+                key: InboxScreen.emptyKey,
+                icon: Icons.check_circle_outline_rounded,
+                title: 'مفيش طلبات مستنية',
+                message: 'أول ما يجي طلب هتسمع صوت.',
+              ),
+            ),
+          ],
+        ),
       ),
-      // Matched on `hasError` rather than on the `AsyncError` type, and matched first.
-      // A stream that fails before it ever emits stays `AsyncLoading` with the error
-      // hanging off it, so an `AsyncError()` arm never fires and the screen spins for
-      // ever on a dropped connection — which on this screen reads as a quiet evening.
-      body: Column(
-        children: [
-          const LuqmaNotificationBanner(
-            reason: 'من غيرها مش هتعرف إن فيه أوردر جديد إلا لما تفتح التطبيق '
-                'بنفسك — والعميل مستني رد في تسعين ثانية.',
-            margin: EdgeInsets.all(Space.gutter),
-          ),
-          Expanded(
-            child: LuqmaAsyncView(
-        value: incoming,
-        errorKey: InboxScreen.errorKey,
-        onRetry: () => ref.invalidate(incomingOrdersProvider(merchantId)),
-        empty: LuqmaEmptyView(
-            key: InboxScreen.emptyKey,
-            icon: Icons.check_circle_outline_rounded,
-            title: 'مفيش طلبات مستنية',
-            message: 'أول ما يجي طلب هتسمع صوت.',
-          ),
-        isEmpty: (value) => value.isEmpty,
-        builder: (context, value) => ListView.separated(
-            padding: const EdgeInsets.all(Space.gutter),
-            itemCount: value.length,
-            separatorBuilder: (_, _) => const SizedBox(height: Space.md),
-            itemBuilder: (context, i) =>
-                LuqmaEntrance(index: i, child: _OrderCard(order: value[i])),
-          )
+      isEmpty: (value) => value.isEmpty,
+      builder: (context, value) {
+        return Scaffold(
+          backgroundColor: colors.brand,
+          body: SafeArea(
+            bottom: false,
+            child: Column(
+              children: [
+                if (ringing)
+                  _SilenceBar(
+                    onSilence: () =>
+                        ref.read(orderAlarmProvider.notifier).acknowledge(),
+                  ),
+                Expanded(
+                  child: value.length == 1
+                      ? _OrderView(
+                          order: value.first,
+                          index: 0,
+                          totalCount: 1,
+                        )
+                      : PageView.builder(
+                          itemCount: value.length,
+                          itemBuilder: (context, i) => _OrderView(
+                            order: value[i],
+                            index: i,
+                            totalCount: value.length,
+                          ),
+                        ),
+                ),
+              ],
             ),
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 }
@@ -119,7 +132,7 @@ class _SilenceBar extends StatelessWidget {
     final colors = Theme.of(context).luqma;
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(Space.gutter, 0, Space.gutter, Space.sm),
+      padding: const EdgeInsets.fromLTRB(Space.gutter, Space.xs, Space.gutter, Space.sm),
       child: FilledButton.icon(
         key: InboxScreen.silenceKey,
         onPressed: onSilence,
@@ -136,10 +149,17 @@ class _SilenceBar extends StatelessWidget {
   }
 }
 
-class _OrderCard extends ConsumerWidget {
-  const _OrderCard({required this.order});
+/// The full-screen M01 order view.
+class _OrderView extends ConsumerWidget {
+  const _OrderView({
+    required this.order,
+    required this.index,
+    required this.totalCount,
+  });
 
   final Order order;
+  final int index;
+  final int totalCount;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -149,136 +169,218 @@ class _OrderCard extends ConsumerWidget {
 
     return Container(
       key: InboxScreen.cardKey(order.id),
-      decoration: BoxDecoration(
-        color: colors.card,
-        borderRadius: Radii.cardAll,
-        border: Border.all(color: colors.hairline),
-        boxShadow: Elevations.card,
-      ),
+      color: colors.brand,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          // Top Burgundy Header: Urgent badge and order number.
           Padding(
-            padding: const EdgeInsets.fromLTRB(Space.md, Space.md, Space.md, 0),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            padding: const EdgeInsets.fromLTRB(Space.gutter, Space.sm, Space.gutter, Space.xs),
+            child: Column(
               children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: Space.md,
+                    vertical: Space.xs,
+                  ),
+                  decoration: BoxDecoration(
+                    color: colors.onBrand.withValues(alpha: 0.14),
+                    borderRadius: Radii.pillAll,
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      Text(
-                        'طلب رقم ${order.orderNumber}',
-                        style: theme.textTheme.titleMedium,
+                      Container(
+                        width: 8,
+                        height: 8,
+                        decoration: BoxDecoration(
+                          color: colors.accent,
+                          shape: BoxShape.circle,
+                        ),
                       ),
+                      const SizedBox(width: Space.xs + 2),
                       Text(
-                        order.customerName,
-                        style: theme.textTheme.bodySmall
-                            ?.copyWith(color: colors.textSecondary),
+                        totalCount > 1
+                            ? 'طلب جديد (${index + 1} من $totalCount) • عاجل'
+                            : 'طلب جديد • عاجل',
+                        style: LuqmaType.caption.copyWith(
+                          color: colors.onBrand,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                     ],
                   ),
                 ),
-                _Deadline(order: order),
+                const SizedBox(height: Space.xs),
+                Text(
+                  'طلب رقم ${order.orderNumber}',
+                  style: LuqmaType.screenTitle.copyWith(
+                    color: colors.onBrand,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  order.type == OrderType.preorder
+                      ? 'طلب مسبق'
+                      : 'وصل للتو — بانتظار الرد',
+                  style: LuqmaType.bodySmall.copyWith(
+                    color: colors.onBrand.withValues(alpha: 0.85),
+                  ),
+                ),
               ],
             ),
           ),
-          if (order.isNewCustomer)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(Space.md, Space.sm, Space.md, 0),
-              child: _NewCustomerBadge(orderId: order.id, strings: strings),
-            ),
-          Padding(
-            padding: const EdgeInsets.all(Space.md),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                for (final item in order.items)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: Space.xs),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // The count first and loud. Cooking one of something when two
-                        // were ordered is the mistake this layout exists to prevent.
-                        Text(
-                          '${item.quantity}×',
-                          style: LuqmaType.bodyStrong.copyWith(color: colors.brand),
-                        ),
-                        const SizedBox(width: Space.sm),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(item.name, style: theme.textTheme.bodyMedium),
-                              if (item.options.isNotEmpty)
-                                Text(
-                                  item.options.map((option) => option.name).join('، '),
-                                  style: LuqmaType.bodySmall
-                                      .copyWith(color: colors.textSecondary),
+
+          // Ring countdown: instant orders only — pre-orders carry no deadline.
+          if (order.type == OrderType.instant && order.acceptDeadlineAt != null) ...[
+            const SizedBox(height: Space.xs),
+            _CountdownRing(order: order),
+            const SizedBox(height: Space.xs),
+          ] else ...[
+            const SizedBox(height: Space.sm),
+          ],
+
+          // Cream Panel with rounded top corners.
+          Expanded(
+            child: Container(
+              decoration: BoxDecoration(
+                color: colors.background,
+                borderRadius: Radii.sheetTop,
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Expanded(
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.all(Space.gutter),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          // Total order price in orange on cream.
+                          _TotalHeader(total: order.pricing.total),
+                          const SizedBox(height: Space.sm),
+
+                          // First-time customer risk flag.
+                          if (order.isNewCustomer) ...[
+                            _NewCustomerBadge(
+                              orderId: order.id,
+                              strings: strings,
+                            ),
+                            const SizedBox(height: Space.sm),
+                          ],
+
+                          // Order lines with quantities and selected options.
+                          for (final item in order.items)
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: Space.xs),
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    '${item.quantity}×',
+                                    style: LuqmaType.bodyStrong
+                                        .copyWith(color: colors.brand),
+                                  ),
+                                  const SizedBox(width: Space.sm),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(item.name,
+                                            style: theme.textTheme.bodyMedium),
+                                        if (item.options.isNotEmpty)
+                                          Text(
+                                            item.options
+                                                .map((o) => o.name)
+                                                .join('، '),
+                                            style: LuqmaType.bodySmall.copyWith(
+                                                color: colors.textSecondary),
+                                          ),
+                                        if (item.note != null &&
+                                            item.note!.isNotEmpty)
+                                          Text(
+                                            item.note!,
+                                            style: LuqmaType.bodySmall.copyWith(
+                                                color: colors.danger),
+                                          ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+
+                          // Customer note for the whole order.
+                          OrderNote(note: order.note),
+
+                          const SizedBox(height: Space.sm),
+
+                          // Customer info card on white surface.
+                          _CustomerCard(order: order),
+                        ],
+                      ),
+                    ),
+                  ),
+
+                  // Two large well-separated bottom actions.
+                  Container(
+                    padding: const EdgeInsets.all(Space.gutter),
+                    decoration: BoxDecoration(
+                      color: colors.background,
+                      border: Border(top: BorderSide(color: colors.hairline)),
+                    ),
+                    child: SafeArea(
+                      top: false,
+                      child: Row(
+                        children: [
+                          Expanded(
+                            flex: 1,
+                            child: OutlinedButton(
+                              key: InboxScreen.rejectKey(order.id),
+                              onPressed: () => _reject(context, ref),
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: colors.danger,
+                                side: BorderSide(color: colors.danger, width: 2),
+                                shape: const RoundedRectangleBorder(
+                                  borderRadius: Radii.cardAll,
                                 ),
-                              if (item.note != null && item.note!.isNotEmpty)
-                                Text(
-                                  item.note!,
-                                  style: LuqmaType.bodySmall
-                                      .copyWith(color: colors.danger),
-                                ),
-                            ],
+                                minimumSize: const Size.fromHeight(56),
+                              ),
+                              child: Text(
+                                strings.rejectOrder,
+                                style: LuqmaType.button
+                                    .copyWith(color: colors.danger),
+                              ),
+                            ),
                           ),
-                        ),
-                      ],
+                          const SizedBox(width: Space.md),
+                          Expanded(
+                            flex: 2,
+                            child: FilledButton(
+                              key: InboxScreen.acceptKey(order.id),
+                              onPressed: () => _accept(context, ref),
+                              style: FilledButton.styleFrom(
+                                backgroundColor: colors.success,
+                                foregroundColor: colors.onBrand,
+                                shape: const RoundedRectangleBorder(
+                                  borderRadius: Radii.cardAll,
+                                ),
+                                minimumSize: const Size.fromHeight(56),
+                              ),
+                              child: Text(
+                                strings.acceptOrder,
+                                style: LuqmaType.button
+                                    .copyWith(color: colors.onBrand),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
-                OrderNote(note: order.note),
-                const Padding(
-                  padding: EdgeInsets.symmetric(vertical: Space.sm),
-                  child: Divider(height: 1),
-                ),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      strings.collectFromCustomer,
-                      style: theme.textTheme.bodySmall
-                          ?.copyWith(color: colors.textSecondary),
-                    ),
-                    Text(
-                      strings.price(order.pricing.total),
-                      style: LuqmaType.price.copyWith(color: colors.price),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(Space.md, 0, Space.md, Space.md),
-            child: Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton(
-                    key: InboxScreen.rejectKey(order.id),
-                    onPressed: () => _reject(context, ref),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: colors.danger,
-                      minimumSize: const Size.fromHeight(Sizes.minTarget),
-                    ),
-                    child: Text(strings.rejectOrder),
-                  ),
-                ),
-                const SizedBox(width: Sizes.targetGap),
-                Expanded(
-                  flex: 2,
-                  child: FilledButton(
-                    key: InboxScreen.acceptKey(order.id),
-                    onPressed: () => _accept(context, ref),
-                    style: FilledButton.styleFrom(
-                      minimumSize: const Size.fromHeight(Sizes.minTarget),
-                    ),
-                    child: Text(strings.acceptOrder),
-                  ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ],
@@ -289,8 +391,6 @@ class _OrderCard extends ConsumerWidget {
   Future<void> _accept(BuildContext context, WidgetRef ref) async {
     final minutes = await showModalBottomSheet<int>(
       context: context,
-      // Five targets at 56dp do not fit in the default sheet on a small phone, and the
-      // last of them is the one a busy kitchen reaches for.
       isScrollControlled: true,
       builder: (sheetContext) => _ChoiceSheet(
         sheetKey: InboxScreen.prepSheetKey,
@@ -337,14 +437,12 @@ class _OrderCard extends ConsumerWidget {
     if (reason == null || !context.mounted) return;
 
     ref.read(orderAlarmProvider.notifier).acknowledge();
-    final result =
-        await ref.read(merchantOrderRepositoryProvider).reject(order.id, reason: reason);
+    final result = await ref
+        .read(merchantOrderRepositoryProvider)
+        .reject(order.id, reason: reason);
     if (context.mounted) _reportIfFailed(context, result);
   }
 
-  /// A refusal here means somebody else moved the order first — the customer cancelled,
-  /// or the deadline task took it. Silence would leave the merchant tapping a button
-  /// that appears to do nothing.
   void _reportIfFailed(BuildContext context, Result<void> result) {
     if (result case Err(:final failure)) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -360,27 +458,18 @@ class _OrderCard extends ConsumerWidget {
   }
 }
 
-/// The countdown to `acceptDeadlineAt`.
-///
-/// Computed on the device from a timestamp the server wrote, so nothing has to tick
-/// server-side for this to be right. Instant orders only: a pre-order was accepted the
-/// moment the seller published the meal, so a timer on it counts down to a deadline that
-/// does not exist.
-class _Deadline extends ConsumerStatefulWidget {
-  const _Deadline({required this.order});
+/// The circular countdown ring to `acceptDeadlineAt`.
+class _CountdownRing extends ConsumerStatefulWidget {
+  const _CountdownRing({required this.order});
 
   final Order order;
 
   @override
-  ConsumerState<_Deadline> createState() => _DeadlineState();
+  ConsumerState<_CountdownRing> createState() => _CountdownRingState();
 }
 
-class _DeadlineState extends ConsumerState<_Deadline> {
-  /// The shared clock. The countdown a merchant watches is the whole point of this
-  /// widget, so a test that cannot move time can only check it by waiting in real
-  /// seconds — which is how a suite starts taking minutes.
+class _CountdownRingState extends ConsumerState<_CountdownRing> {
   DateTime get _now => ref.read(clockProvider)();
-
   Timer? _tick;
 
   @override
@@ -389,11 +478,6 @@ class _DeadlineState extends ConsumerState<_Deadline> {
     _start();
   }
 
-  /// Ticks only while there is something left to count.
-  ///
-  /// Past the deadline the pill says "late" and never changes again, so a timer running
-  /// on it would redraw a fixed string once a second for as long as the order sits
-  /// there — and would keep the screen from ever going idle.
   void _start() {
     final deadline = widget.order.acceptDeadlineAt;
     if (deadline == null || !deadline.isAfter(_now)) return;
@@ -418,57 +502,231 @@ class _DeadlineState extends ConsumerState<_Deadline> {
 
     final colors = Theme.of(context).luqma;
     final left = deadline.difference(_now);
-
-    if (left.isNegative) {
-      // Not a negative timer. The order is still here and still wanted; what changed is
-      // that it is now late, which is a different thing to say.
-      return _Pill(
-        pillKey: InboxScreen.lateKey(widget.order.id),
-        text: 'متأخر',
-        background: colors.danger,
-        foreground: colors.onBrand,
-      );
-    }
+    final isLate = left.isNegative;
 
     final minutes = left.inMinutes;
     final seconds = left.inSeconds % 60;
 
-    return _Pill(
-      pillKey: InboxScreen.countdownKey(widget.order.id),
-      text: '$minutes:${seconds.toString().padLeft(2, '0')}',
-      // Under a minute the colour changes as well as the number: a merchant glancing
-      // across a kitchen reads colour before digits.
-      background: minutes < 1 ? colors.danger : colors.surface,
-      foreground: minutes < 1 ? colors.onBrand : colors.textPrimary,
+    // Normalizing countdown progress against the standard window.
+    final totalSeconds = widget.order.placedAt != null
+        ? deadline.difference(widget.order.placedAt!).inSeconds
+        : 90;
+    final validTotal = totalSeconds > 0 ? totalSeconds : 90;
+    final progress = isLate ? 1.0 : (left.inSeconds / validTotal).clamp(0.0, 1.0);
+    final activeColor = isLate
+        ? colors.danger
+        : (minutes < 1 ? colors.danger : colors.accent);
+
+    return Center(
+      child: SizedBox(
+        key: InboxScreen.ringKey(widget.order.id),
+        width: 116,
+        height: 116,
+        child: CustomPaint(
+          painter: _RingPainter(
+            progress: progress,
+            trackColor: colors.onBrand.withValues(alpha: 0.18),
+            progressColor: activeColor,
+            strokeWidth: 7,
+          ),
+          child: Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (isLate) ...[
+                  Text(
+                    'متأخر',
+                    key: InboxScreen.lateKey(widget.order.id),
+                    style: LuqmaType.sectionTitle.copyWith(
+                      color: colors.onBrand,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  Text(
+                    'فات وقت القبول',
+                    style: LuqmaType.caption.copyWith(
+                      color: colors.onBrand.withValues(alpha: 0.8),
+                    ),
+                  ),
+                ] else ...[
+                  Text(
+                    '$minutes:${seconds.toString().padLeft(2, '0')}',
+                    key: InboxScreen.countdownKey(widget.order.id),
+                    style: LuqmaType.display.copyWith(
+                      color: colors.onBrand,
+                      fontSize: 28,
+                    ),
+                  ),
+                  Text(
+                    'باقي للقبول',
+                    style: LuqmaType.caption.copyWith(
+                      color: colors.onBrand.withValues(alpha: 0.8),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
 
-class _Pill extends StatelessWidget {
-  const _Pill({
-    required this.pillKey,
-    required this.text,
-    required this.background,
-    required this.foreground,
+class _RingPainter extends CustomPainter {
+  const _RingPainter({
+    required this.progress,
+    required this.trackColor,
+    required this.progressColor,
+    this.strokeWidth = 7.0,
   });
 
-  final Key pillKey;
-  final String text;
-  final Color background;
-  final Color foreground;
+  final double progress;
+  final Color trackColor;
+  final Color progressColor;
+  final double strokeWidth;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = Offset(size.width / 2, size.height / 2);
+    final radius = (size.width - strokeWidth) / 2;
+
+    final trackPaint = Paint()
+      ..color = trackColor
+      ..strokeWidth = strokeWidth
+      ..style = PaintingStyle.stroke;
+    canvas.drawCircle(center, radius, trackPaint);
+
+    if (progress > 0) {
+      final progressPaint = Paint()
+        ..color = progressColor
+        ..strokeWidth = strokeWidth
+        ..strokeCap = StrokeCap.round
+        ..style = PaintingStyle.stroke;
+
+      canvas.drawArc(
+        Rect.fromCircle(center: center, radius: radius),
+        -pi / 2,
+        2 * pi * progress,
+        false,
+        progressPaint,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _RingPainter oldDelegate) =>
+      oldDelegate.progress != progress ||
+      oldDelegate.progressColor != progressColor ||
+      oldDelegate.trackColor != trackColor;
+}
+
+/// The total in orange on the cream panel.
+class _TotalHeader extends StatelessWidget {
+  const _TotalHeader({required this.total});
+
+  final int total;
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).luqma;
+    final strings = LuqmaStrings.of(context);
+
     return Container(
-      key: pillKey,
-      padding: const EdgeInsets.symmetric(
-        horizontal: Space.md,
-        vertical: Space.xs + 2,
+      padding: const EdgeInsets.only(bottom: Space.sm),
+      decoration: BoxDecoration(
+        border: Border(bottom: BorderSide(color: colors.hairline)),
       ),
-      decoration: BoxDecoration(color: background, borderRadius: Radii.pillAll),
-      child: Text(
-        text,
-        style: LuqmaType.bodyStrong.copyWith(color: foreground),
+      child: Column(
+        children: [
+          Text(
+            strings.collectFromCustomer,
+            style: LuqmaType.caption.copyWith(
+              color: colors.textSecondary,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: Space.xs),
+          Text(
+            strings.price(total),
+            style: LuqmaType.display.copyWith(color: colors.price),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Customer details card on white surface.
+class _CustomerCard extends StatelessWidget {
+  const _CustomerCard({required this.order});
+
+  final Order order;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).luqma;
+
+    return Container(
+      padding: const EdgeInsets.all(Space.md),
+      decoration: BoxDecoration(
+        color: colors.card,
+        borderRadius: Radii.cardAll,
+        border: Border.all(color: colors.hairline),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Text(
+                'العميل: ',
+                style: LuqmaType.bodyStrong.copyWith(color: colors.textPrimary),
+              ),
+              Expanded(
+                child: Text(
+                  order.customerName,
+                  style: LuqmaType.body.copyWith(color: colors.textSecondary),
+                ),
+              ),
+            ],
+          ),
+          if (order.address?.street != null && order.address!.street!.isNotEmpty) ...[
+            const SizedBox(height: Space.xs),
+            Row(
+              children: [
+                Text(
+                  'الشارع: ',
+                  style: LuqmaType.bodyStrong.copyWith(color: colors.textPrimary),
+                ),
+                Expanded(
+                  child: Text(
+                    order.address!.street!,
+                    style: LuqmaType.body.copyWith(color: colors.textSecondary),
+                  ),
+                ),
+              ],
+            ),
+          ],
+          if ((order.address?.landmarkName ?? order.address?.landmarkNote) case final landmark?
+              when landmark.isNotEmpty) ...[
+            const SizedBox(height: Space.xs),
+            Row(
+              children: [
+                Text(
+                  'معلم: ',
+                  style: LuqmaType.bodyStrong.copyWith(color: colors.textPrimary),
+                ),
+                Expanded(
+                  child: Text(
+                    landmark,
+                    style: LuqmaType.body.copyWith(color: colors.textSecondary),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ],
       ),
     );
   }
@@ -577,7 +835,6 @@ class _Choice extends StatelessWidget {
     );
   }
 }
-
 
 /// A staff account whose claim names no merchant.
 ///

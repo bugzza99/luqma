@@ -215,4 +215,121 @@ void main() {
       expect(find.textContaining('01000000000'), findsWidgets);
     });
   });
+
+  group('M02 columns restyle', () {
+    testWidgets('columns exist for accepted, preparing, and outForDelivery stages', (tester) async {
+      await pump(tester, seed: [
+        order(id: 'a', status: OrderStatus.accepted),
+        order(id: 'b', number: 102, status: OrderStatus.preparing),
+        order(id: 'c', number: 103, status: OrderStatus.outForDelivery),
+      ]);
+
+      expect(find.byKey(LiveBoardScreen.columnKey(OrderStatus.accepted)), findsOneWidget);
+      expect(find.byKey(LiveBoardScreen.columnKey(OrderStatus.preparing)), findsOneWidget);
+      expect(find.byKey(LiveBoardScreen.columnKey(OrderStatus.outForDelivery)), findsOneWidget);
+
+      expect(
+        find.descendant(
+          of: find.byKey(LiveBoardScreen.columnKey(OrderStatus.accepted)),
+          matching: find.text('مقبولة'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: find.byKey(LiveBoardScreen.columnKey(OrderStatus.preparing)),
+          matching: find.text('قيد التحضير'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: find.byKey(LiveBoardScreen.columnKey(OrderStatus.outForDelivery)),
+          matching: find.text('خرج للتوصيل'),
+        ),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('column headers display correct order counts', (tester) async {
+      await pump(tester, seed: [
+        order(id: 'a1', status: OrderStatus.accepted),
+        order(id: 'a2', number: 102, status: OrderStatus.accepted),
+        order(id: 'b1', number: 103, status: OrderStatus.preparing),
+      ]);
+
+      expect(
+        find.descendant(
+          of: find.byKey(LiveBoardScreen.columnCountKey(OrderStatus.accepted)),
+          matching: find.text('2'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: find.byKey(LiveBoardScreen.columnCountKey(OrderStatus.preparing)),
+          matching: find.text('1'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: find.byKey(LiveBoardScreen.columnCountKey(OrderStatus.outForDelivery)),
+          matching: find.text('0'),
+        ),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('advancing an order updates column counts and moves card', (tester) async {
+      await pump(tester, seed: [order(id: 'o1', status: OrderStatus.accepted)]);
+
+      expect(
+        find.descendant(
+          of: find.byKey(LiveBoardScreen.columnCountKey(OrderStatus.accepted)),
+          matching: find.text('1'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: find.byKey(LiveBoardScreen.columnCountKey(OrderStatus.preparing)),
+          matching: find.text('0'),
+        ),
+        findsOneWidget,
+      );
+
+      await tester.tap(find.byKey(LiveBoardScreen.advanceKey('o1')));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.descendant(
+          of: find.byKey(LiveBoardScreen.columnCountKey(OrderStatus.accepted)),
+          matching: find.text('0'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: find.byKey(LiveBoardScreen.columnCountKey(OrderStatus.preparing)),
+          matching: find.text('1'),
+        ),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('columns render without overflow on a phone view', (tester) async {
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      await pump(tester, seed: [
+        order(id: 'a', status: OrderStatus.accepted),
+        order(id: 'b', number: 102, status: OrderStatus.preparing),
+        order(id: 'c', number: 103, status: OrderStatus.outForDelivery),
+      ]);
+
+      expect(tester.takeException(), isNull);
+    });
+  });
 }

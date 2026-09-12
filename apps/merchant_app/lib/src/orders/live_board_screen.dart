@@ -20,6 +20,9 @@ class LiveBoardScreen extends ConsumerWidget {
   static Key advanceKey(String id) => Key('live.advance.$id');
   static Key stageKey(String id, OrderStatus status) =>
       Key('live.stage.$id.${status.name}');
+  static Key columnKey(OrderStatus status) => Key('live.column.${status.name}');
+  static Key columnCountKey(OrderStatus status) =>
+      Key('live.columnCount.${status.name}');
 
   /// The step a merchant may take from each state, and what to call it.
   ///
@@ -30,11 +33,23 @@ class LiveBoardScreen extends ConsumerWidget {
     OrderStatus.preparing: (OrderStatus.outForDelivery, 'خرج للتوصيل'),
   };
 
+  static const _columnTitles = {
+    OrderStatus.accepted: 'مقبولة',
+    OrderStatus.preparing: 'قيد التحضير',
+    OrderStatus.outForDelivery: 'خرج للتوصيل',
+  };
+
   static const _stageLabels = {
     OrderStatus.accepted: 'مقبول',
     OrderStatus.preparing: 'بيتجهّز',
     OrderStatus.outForDelivery: 'في الطريق',
   };
+
+  static const _columns = [
+    OrderStatus.accepted,
+    OrderStatus.preparing,
+    OrderStatus.outForDelivery,
+  ];
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -50,17 +65,115 @@ class LiveBoardScreen extends ConsumerWidget {
         value: ref.watch(liveOrdersProvider(merchantId)),
         errorKey: LiveBoardScreen.errorKey,
         onRetry: () => ref.invalidate(liveOrdersProvider(merchantId)),
-        empty: LuqmaEmptyView(
-            key: LiveBoardScreen.emptyKey,
-            title: 'مفيش طلبات تحت التحضير دلوقتي.',
-          ),
+        empty: const LuqmaEmptyView(
+          key: LiveBoardScreen.emptyKey,
+          title: 'مفيش طلبات تحت التحضير دلوقتي.',
+        ),
         isEmpty: (value) => value.isEmpty,
-        builder: (context, value) => ListView.separated(
+        builder: (context, value) {
+          final grouped = <OrderStatus, List<Order>>{
+            for (final status in _columns) status: [],
+          };
+          for (final o in value) {
+            if (grouped.containsKey(o.status)) {
+              grouped[o.status]!.add(o);
+            }
+          }
+
+          return SingleChildScrollView(
             padding: const EdgeInsets.all(Space.gutter),
-            itemCount: value.length,
-            separatorBuilder: (_, _) => const SizedBox(height: Space.md),
-            itemBuilder: (context, i) => _Card(order: value[i]),
-          )
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                for (final status in _columns) ...[
+                  _ColumnSection(
+                    status: status,
+                    orders: grouped[status]!,
+                  ),
+                  const SizedBox(height: Space.lg),
+                ],
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _ColumnSection extends StatelessWidget {
+  const _ColumnSection({
+    required this.status,
+    required this.orders,
+  });
+
+  final OrderStatus status;
+  final List<Order> orders;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).luqma;
+
+    final dotColor = switch (status) {
+      OrderStatus.accepted => colors.success,
+      OrderStatus.preparing => colors.accent,
+      OrderStatus.outForDelivery => colors.brand,
+      _ => colors.surface,
+    };
+
+    return Container(
+      key: LiveBoardScreen.columnKey(status),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(
+              bottom: Space.sm,
+              left: Space.xs,
+              right: Space.xs,
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: Space.sm,
+                  height: Space.sm,
+                  decoration: BoxDecoration(
+                    color: dotColor,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+                const SizedBox(width: Space.sm),
+                Text(
+                  LiveBoardScreen._columnTitles[status] ?? '',
+                  style: LuqmaType.cardTitle.copyWith(color: colors.textPrimary),
+                ),
+                const SizedBox(width: Space.sm),
+                Container(
+                  key: LiveBoardScreen.columnCountKey(status),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: Space.sm,
+                    vertical: 2,
+                  ),
+                  decoration: BoxDecoration(
+                    color: colors.surface,
+                    borderRadius: Radii.pillAll,
+                  ),
+                  child: Text(
+                    '${orders.length}',
+                    style: LuqmaType.caption.copyWith(
+                      color: colors.textPrimary,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          for (final order in orders) ...[
+            _Card(order: order),
+            const SizedBox(height: Space.md),
+          ],
+        ],
       ),
     );
   }
