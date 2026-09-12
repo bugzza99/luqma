@@ -28,10 +28,15 @@ void main() {
   Future<void> pump(
     WidgetTester tester, {
     required PickImage picker,
+    MediaKind kind = MediaKind.menuItem,
     String? url,
     Failure? uploadFails,
     void Function(Media)? onUploaded,
   }) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
     media = FakeMediaRepository(failure: uploadFails);
 
     await tester.pumpWidget(
@@ -52,7 +57,7 @@ void main() {
             textDirection: TextDirection.rtl,
             child: Scaffold(
               body: MediaPicker(
-                kind: MediaKind.menuItem,
+                kind: kind,
                 url: url,
                 name: 'سمك مشوي',
                 onUploaded: onUploaded ?? (_) {},
@@ -143,5 +148,58 @@ void main() {
 
     expect(media.uploads, isEmpty, reason: 'nothing was sent');
     expect(find.byKey(MediaPicker.errorKey), findsOneWidget);
+  });
+
+  group('MediaKind aspect ratios and recommended dimensions', () {
+    test('every kind has its documented display aspect ratio', () {
+      expect(MediaKind.merchantCover.aspectRatio, closeTo(16 / 9, 0.001));
+      expect(MediaKind.merchantLogo.aspectRatio, 1.0);
+      expect(MediaKind.menuItem.aspectRatio, 1.0);
+      expect(MediaKind.dailyMeal.aspectRatio, 1.0);
+      expect(MediaKind.promotion.aspectRatio, Sizes.bannerAspect);
+      expect(MediaKind.aboutPhoto.aspectRatio, 1.0);
+      expect(MediaKind.cuisine.aspectRatio, 1.0);
+    });
+
+    test('every kind has its documented recommended dimensions (max edge <= 1600)', () {
+      expect(MediaKind.merchantCover.recommendedDimensions, (width: 1600, height: 900));
+      expect(MediaKind.merchantLogo.recommendedDimensions, (width: 800, height: 800));
+      expect(MediaKind.menuItem.recommendedDimensions, (width: 1200, height: 1200));
+      expect(MediaKind.dailyMeal.recommendedDimensions, (width: 1200, height: 1200));
+      expect(MediaKind.promotion.recommendedDimensions, (width: 1600, height: 533));
+      expect(MediaKind.aboutPhoto.recommendedDimensions, (width: 800, height: 800));
+      expect(MediaKind.cuisine.recommendedDimensions, (width: 800, height: 800));
+    });
+  });
+
+  group('MediaPicker hint and preview layout', () {
+    testWidgets('shows recommended dimensions hint line with Western digits', (tester) async {
+      await pump(tester, picker: () async => null, kind: MediaKind.merchantCover);
+
+      expect(find.text('المقاس المناسب: 1600 × 900'), findsOneWidget);
+      expect(find.byKey(MediaPicker.hintKey), findsOneWidget);
+    });
+
+    testWidgets('logo preview is square and sized like a logo, not stretched to card width', (tester) async {
+      await pump(tester, picker: () async => null, kind: MediaKind.merchantLogo);
+
+      expect(find.text('المقاس المناسب: 800 × 800'), findsOneWidget);
+
+      final imageFinder = find.byType(LuqmaImage);
+      expect(imageFinder, findsOneWidget);
+      final size = tester.getSize(imageFinder);
+      expect(size.width, 96.0);
+      expect(size.height, 96.0);
+      expect(size.width, lessThan(350.0), reason: 'must not stretch full card width');
+    });
+
+    testWidgets('cover preview uses 16:9 aspect ratio across width', (tester) async {
+      await pump(tester, picker: () async => null, kind: MediaKind.merchantCover);
+
+      final imageFinder = find.byType(LuqmaImage);
+      expect(imageFinder, findsOneWidget);
+      final size = tester.getSize(imageFinder);
+      expect(size.width / size.height, closeTo(16 / 9, 0.02));
+    });
   });
 }

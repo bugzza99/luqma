@@ -629,7 +629,6 @@ class _MerchantIdentitySheetState extends ConsumerState<MerchantIdentitySheet> {
                   url: _logoUrl,
                   name: widget.merchant.name,
                   ownerId: widget.merchant.id,
-                  height: 96,
                   onUploaded: (media) => setState(() {
                     _logoId = media.id;
                     _logoUrl = media.url;
@@ -644,7 +643,6 @@ class _MerchantIdentitySheetState extends ConsumerState<MerchantIdentitySheet> {
                   url: _coverUrl,
                   name: widget.merchant.name,
                   ownerId: widget.merchant.id,
-                  height: 120,
                   onUploaded: (media) => setState(() {
                     _coverId = media.id;
                     _coverUrl = media.url;

@@ -383,15 +383,10 @@ class _Cover extends StatelessWidget {
 
   final Merchant merchant;
 
-  /// The artboard's cover height. Not a [Space] step — a picture height measured against
-  /// this screen, held here the way [Sizes] holds the other measured ones.
-  static const _height = 168.0;
-
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      height: _height,
-      width: double.infinity,
+    return AspectRatio(
+      aspectRatio: MediaKind.merchantCover.aspectRatio,
       child: LuqmaImage(
         key: MerchantScreen.coverKey,
         url: merchant.coverUrl,

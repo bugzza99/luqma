@@ -22,6 +22,7 @@ class MerchantPromotionsScreen extends ConsumerWidget {
   static const submitKey = Key('promo.submit');
   static const pushUnavailableKey = Key('promo.pushUnavailable');
   static const modeKey = Key('promo.mode');
+  static const showAllKey = Key('promo.showAll');
 
   static Key cardKey(String id) => Key('promo.card.$id');
   static Key editKey(String id) => Key('promo.edit.$id');
@@ -42,6 +43,35 @@ class MerchantPromotionsScreen extends ConsumerWidget {
     PromotionChannel.boost: 'مطعمك بيطلع فوق في القوايم. مفيش كلام ولا صورة.',
     PromotionChannel.push: 'إشعار بيوصل موبايل العميل حتى لو التطبيق مقفول.',
   };
+
+  /// The campaign list only grows over time, so showing every campaign ever requested
+  /// overwhelms the merchant. Order by relevance so what matters right now comes first:
+  /// 1. Live now: currently in front of customers.
+  /// 2. Upcoming approved: signed off and scheduled to run soon.
+  /// 3. Requested: waiting for admin review.
+  /// 4. Rejected: needs correction or a replacement request.
+  /// 5. Ended: finished history.
+  /// Within the same rank, newer start date first.
+  static int relevanceRank(Promotion p, DateTime now) {
+    if (p.isLiveAt(now)) return 0;
+    if ((p.status == PromotionStatus.approved ||
+            p.status == PromotionStatus.active) &&
+        p.startAt.isAfter(now)) {
+      return 1;
+    }
+    if (p.status == PromotionStatus.requested) return 2;
+    if (p.status == PromotionStatus.rejected) return 3;
+    return 4;
+  }
+
+  static int compareByRelevance(Promotion a, Promotion b, DateTime now) {
+    final rankA = relevanceRank(a, now);
+    final rankB = relevanceRank(b, now);
+    if (rankA != rankB) return rankA.compareTo(rankB);
+    final start = b.startAt.compareTo(a.startAt);
+    if (start != 0) return start;
+    return b.id.compareTo(a.id);
+  }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -65,6 +95,7 @@ class MerchantPromotionsScreen extends ConsumerWidget {
       _ => const <Plan>[],
     };
     final plan = plans.where((p) => p.id == merchant?.planId).firstOrNull;
+    final pushOpen = ref.watch(pushSlotAvailableProvider).value ?? false;
 
     return Scaffold(
       backgroundColor: colors.background,
@@ -90,22 +121,11 @@ class MerchantPromotionsScreen extends ConsumerWidget {
               ),
               const SizedBox(height: Space.section),
               if (value.isNotEmpty) ...[
-                Text(
-                  'طلباتك وحملاتك',
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const SizedBox(height: Space.sm),
-                for (final promo in value) ...[
-                  _Card(promotion: promo),
-                  const SizedBox(height: Space.md),
-                ],
-                const SizedBox(height: Space.sm),
+                _CampaignsSection(promotions: value),
               ],
               _RequestTypes(
                 merchantId: merchantId,
-                pushOpen: false, // Phase 0 containment
+                pushOpen: pushOpen,
               ),
               if (value.isEmpty) ...[
                 const SizedBox(height: Space.md),
@@ -125,6 +145,59 @@ class MerchantPromotionsScreen extends ConsumerWidget {
         icon: const Icon(Icons.campaign_outlined),
         label: const Text('اطلب إعلان'),
       ),
+    );
+  }
+}
+
+class _CampaignsSection extends ConsumerStatefulWidget {
+  const _CampaignsSection({required this.promotions});
+
+  final List<Promotion> promotions;
+
+  @override
+  ConsumerState<_CampaignsSection> createState() => _CampaignsSectionState();
+}
+
+class _CampaignsSectionState extends ConsumerState<_CampaignsSection> {
+  bool _expanded = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final now = ref.watch(clockProvider)();
+
+    final sorted = List<Promotion>.from(widget.promotions)
+      ..sort((a, b) => MerchantPromotionsScreen.compareByRelevance(a, b, now));
+
+    final hasMore = sorted.length > 3;
+    final visible = (_expanded || !hasMore) ? sorted : sorted.take(3).toList();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          'طلباتك وحملاتك',
+          style: theme.textTheme.titleMedium?.copyWith(
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        const SizedBox(height: Space.sm),
+        for (final promo in visible) ...[
+          _Card(promotion: promo),
+          const SizedBox(height: Space.md),
+        ],
+        if (hasMore) ...[
+          Center(
+            child: TextButton(
+              key: MerchantPromotionsScreen.showAllKey,
+              onPressed: () => setState(() => _expanded = !_expanded),
+              child: Text(_expanded ? 'عرض أقل' : 'عرض الكل'),
+            ),
+          ),
+          const SizedBox(height: Space.sm),
+        ] else
+          const SizedBox(height: Space.sm),
+      ],
     );
   }
 }
@@ -440,10 +513,9 @@ Future<void> _ask(
   Promotion? existing,
   PromotionChannel? initialChannel,
 }) async {
-  // Phase 0 containment. Approval currently changes a database status but no delivery
-  // pipeline queues the paid notification, so offering the channel would sell silence.
-  // Kept as a form option, disabled and explained, so re-enabling it later is explicit.
-  const pushOpen = false;
+  // If the availability check is still loading, or if it fails, treat the slot as
+  // unavailable rather than open.
+  final pushOpen = ref.read(pushSlotAvailableProvider).value ?? false;
   if (!context.mounted) return;
 
   final promotion = await showModalBottomSheet<Promotion>(
@@ -795,7 +867,7 @@ class _RequestFormState extends ConsumerState<_RequestForm> {
                             key: MerchantPromotionsScreen.pushUnavailableKey,
                             padding: const EdgeInsets.only(top: Space.xs),
                             child: Text(
-                              'الإرسال متوقف مؤقتًا لحد ما يكتمل نظام التوصيل.',
+                              'اكتمل الحد الأسبوعي للإشعارات في المدينة.',
                               style: LuqmaType.bodySmall.copyWith(
                                 color: colors.textSecondary,
                               ),
@@ -868,7 +940,6 @@ class _RequestFormState extends ConsumerState<_RequestForm> {
                           url: _mediaUrl,
                           name: 'إعلان',
                           ownerId: widget.merchantId,
-                          height: 120,
                           onUploaded: (media) => setState(() {
                             _mediaId = media.id;
                             _mediaUrl = media.url;

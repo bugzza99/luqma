@@ -112,9 +112,15 @@ class _HoursScreenState extends ConsumerState<HoursScreen> {
     final current = _days[weekday]!;
     final minutes = opening ? current.$1 : current.$2;
 
+    // Force the 12-hour clock dial regardless of the device's system-wide 24-hour
+    // setting, matching what the screen shows so picking «2 م» does not open a dial reading 14.
     final picked = await showTimePicker(
       context: context,
       initialTime: TimeOfDay(hour: minutes ~/ 60, minute: minutes % 60),
+      builder: (context, child) => MediaQuery(
+        data: MediaQuery.of(context).copyWith(alwaysUse24HourFormat: false),
+        child: child!,
+      ),
     );
     if (picked == null) return;
 
@@ -209,14 +215,11 @@ class _Day extends StatelessWidget {
   final VoidCallback onOpen;
   final VoidCallback onClose;
 
-  static String _clock(int minutes) =>
-      '${(minutes ~/ 60).toString().padLeft(2, '0')}:'
-      '${(minutes % 60).toString().padLeft(2, '0')}';
-
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colors = theme.luqma;
+    final strings = LuqmaStrings.of(context);
     final open = hours != null;
 
     return Container(
@@ -254,7 +257,7 @@ class _Day extends StatelessWidget {
                   child: OutlinedButton(
                     key: HoursScreen.openKey(weekday),
                     onPressed: onOpen,
-                    child: Text('من ${_clock(h.$1)}'),
+                    child: Text('من ${luqmaClockMinute(h.$1, strings)}'),
                   ),
                 ),
                 const SizedBox(width: Space.sm),
@@ -262,7 +265,7 @@ class _Day extends StatelessWidget {
                   child: OutlinedButton(
                     key: HoursScreen.closeKey(weekday),
                     onPressed: onClose,
-                    child: Text('لـ ${_clock(h.$2)}'),
+                    child: Text('لـ ${luqmaClockMinute(h.$2, strings)}'),
                   ),
                 ),
               ],

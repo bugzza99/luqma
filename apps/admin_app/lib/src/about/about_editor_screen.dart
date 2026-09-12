@@ -136,7 +136,6 @@ class _AboutFormState extends ConsumerState<_AboutForm> {
           kind: MediaKind.aboutPhoto,
           url: _photoUrl,
           name: 'صورة المالك',
-          height: 180,
           onUploaded: (media) => setState(() {
             _photo.text = media.id;
             _photoUrl = media.url;

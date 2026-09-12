@@ -498,7 +498,6 @@ class _MealFormState extends ConsumerState<_MealForm> {
                           kind: MediaKind.dailyMeal,
                           url: _mediaUrl,
                           name: _name.text.trim().isEmpty ? 'وجبة' : _name.text.trim(),
-                          height: 140,
                           onUploaded: (media) => setState(() {
                             _mediaId = media.id;
                             _mediaUrl = media.url;

@@ -345,6 +345,14 @@
   "@clockPm": {
     "description": "Afternoon/evening marker after a 12-hour time, e.g. '8:45 م'."
   },
+  "mediaRecommendedSize": "المقاس المناسب: {width} × {height}",
+  "@mediaRecommendedSize": {
+    "description": "Under an image upload box: the pixel size to make the picture. Strings, not ints: an int placeholder is formatted by the ar locale into Arabic-Indic digits, and prices and sizes here use Western digits.",
+    "placeholders": {
+      "width": {"type": "String"},
+      "height": {"type": "String"}
+    }
+  },
 
   "orderPrepEta": "{minutes, plural, zero{بيتجهّز} one{جاهز خلال دقيقة} two{جاهز خلال دقيقتين} few{جاهز خلال {minutes} دقايق} many{جاهز خلال {minutes} دقيقة} other{جاهز خلال {minutes} دقيقة}}",
   "@orderPrepEta": {

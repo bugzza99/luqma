@@ -158,6 +158,7 @@ void main() {
       await tester.tap(find.byKey(MealsScreen.addKey));
       await tester.pumpAndSettle();
       await fillIn(tester);
+      await tester.ensureVisible(find.byKey(MealsScreen.deliveryCourierKey));
       await tester.tap(find.byKey(MealsScreen.deliveryCourierKey));
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(MealsScreen.saveKey));

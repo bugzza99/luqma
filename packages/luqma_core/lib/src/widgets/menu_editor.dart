@@ -544,7 +544,6 @@ class _ItemSheetState extends State<_ItemSheet> {
                       url: _mediaUrl ?? widget.existing?.imageUrl,
                       name: _name.isEmpty ? (widget.existing?.name ?? '') : _name,
                       ownerId: widget.existing?.id,
-                      height: 120,
                       onUploaded: (media) => setState(() {
                         _mediaId = media.id;
                         _mediaUrl = media.url;

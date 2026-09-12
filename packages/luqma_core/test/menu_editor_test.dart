@@ -87,6 +87,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.enterText(find.byKey(MenuEditor.nameFieldKey), 'كفتة');
     await tester.enterText(find.byKey(MenuEditor.priceFieldKey), '85');
+    await tester.ensureVisible(find.byKey(MenuEditor.saveItemKey));
     await tester.tap(find.byKey(MenuEditor.saveItemKey));
     await tester.pumpAndSettle();
 
@@ -106,6 +107,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.enterText(find.byKey(MenuEditor.nameFieldKey), 'كفتة');
     await tester.enterText(find.byKey(MenuEditor.priceFieldKey), '٨٥');
+    await tester.ensureVisible(find.byKey(MenuEditor.saveItemKey));
     await tester.tap(find.byKey(MenuEditor.saveItemKey));
     await tester.pumpAndSettle();
 
@@ -118,6 +120,7 @@ void main() {
     await tester.tap(find.byKey(MenuEditor.addItemKey('c1')));
     await tester.pumpAndSettle();
     await tester.enterText(find.byKey(MenuEditor.priceFieldKey), '85');
+    await tester.ensureVisible(find.byKey(MenuEditor.saveItemKey));
     await tester.tap(find.byKey(MenuEditor.saveItemKey));
     await tester.pumpAndSettle();
 
@@ -131,6 +134,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.enterText(find.byKey(MenuEditor.nameFieldKey), 'كفتة');
     await tester.enterText(find.byKey(MenuEditor.priceFieldKey), 'حاجة');
+    await tester.ensureVisible(find.byKey(MenuEditor.saveItemKey));
     await tester.tap(find.byKey(MenuEditor.saveItemKey));
     await tester.pumpAndSettle();
 
@@ -143,6 +147,7 @@ void main() {
     await tester.tap(find.text('فراخ مشوية'));
     await tester.pumpAndSettle();
     await tester.enterText(find.byKey(MenuEditor.priceFieldKey), '135');
+    await tester.ensureVisible(find.byKey(MenuEditor.saveItemKey));
     await tester.tap(find.byKey(MenuEditor.saveItemKey));
     await tester.pumpAndSettle();
 
@@ -200,6 +205,7 @@ void main() {
     await tester.tap(find.text('فراخ مشوية'));
     await tester.pumpAndSettle();
 
+    await tester.ensureVisible(find.byKey(MenuEditor.deleteItemKey));
     await tester.tap(find.byKey(MenuEditor.deleteItemKey));
     await tester.pumpAndSettle();
 

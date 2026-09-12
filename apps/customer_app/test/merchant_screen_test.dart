@@ -176,6 +176,18 @@ void main() {
       );
       expect(cover.url, 'https://example.test/cover.jpg');
     });
+
+    testWidgets('shows cover at MediaKind.merchantCover aspect ratio', (tester) async {
+      await pump(tester);
+
+      final aspectRatio = tester.widget<AspectRatio>(
+        find.ancestor(
+          of: find.byKey(MerchantScreen.coverKey),
+          matching: find.byType(AspectRatio),
+        ),
+      );
+      expect(aspectRatio.aspectRatio, MediaKind.merchantCover.aspectRatio);
+    });
   });
 
   group('the أكل بيتي badge', () {
