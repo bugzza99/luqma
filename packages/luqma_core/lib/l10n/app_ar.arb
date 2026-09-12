@@ -374,5 +374,46 @@
   "repeatOrderAction": "اطلب",
   "@repeatOrderAction": {
     "description": "Button on the repeat-order card. Opens the shop again."
+  },
+
+  "minVersionAboveInstalled": "ماتقدرش تطلب نسخة أعلى من نسخة الأدمن الحالية ({version}) — ده هيقفل التطبيق.",
+  "@minVersionAboveInstalled": {
+    "description": "Refusing to save a minimum supported version higher than the admin app's own build version.",
+    "placeholders": { "version": { "type": "String" } }
+  },
+
+  "courierAttachmentsTitle": "ارتباطات الكابتن",
+  "@courierAttachmentsTitle": {
+    "description": "Title for the courier attachments detail view."
+  },
+
+  "courierActiveAttachments": "الارتباطات النشطة",
+  "@courierActiveAttachments": {
+    "description": "Header for active shop and platform attachments of a courier."
+  },
+
+  "courierNoAttachments": "لا توجد ارتباطات نشطة حالياً.",
+  "@courierNoAttachments": {
+    "description": "Empty state when a courier has no active attachments."
+  },
+
+  "courierPlatformRow": "المنصة",
+  "@courierPlatformRow": {
+    "description": "Label for the platform row attachment (null merchant_id)."
+  },
+
+  "courierAttachToPlatform": "ربط بالمنصة",
+  "@courierAttachToPlatform": {
+    "description": "Action button to grant the platform row to a courier."
+  },
+
+  "courierAttachToMerchant": "ربط بالمطعم",
+  "@courierAttachToMerchant": {
+    "description": "Action button to attach a courier to a picked shop."
+  },
+
+  "courierDetachTooltip": "إلغاء الربط",
+  "@courierDetachTooltip": {
+    "description": "Tooltip for the button that detaches a courier from a shop or platform."
   }
 }

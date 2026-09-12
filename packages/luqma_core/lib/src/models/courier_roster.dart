@@ -14,6 +14,7 @@ class CourierRosterItem {
     this.name,
     this.phone,
     this.pausedUntil,
+    this.merchantName,
   });
 
   final String id;
@@ -24,6 +25,7 @@ class CourierRosterItem {
   final String? name;
   final String? phone;
   final DateTime? pausedUntil;
+  final String? merchantName;
 
   /// Derived: null or in the past means available.
   ///
@@ -57,6 +59,7 @@ class CourierRosterItem {
           DateTime d => d,
           _ => null,
         },
+        merchantName: (json['merchantName'] ?? json['merchant_name']) as String?,
       );
 
   factory CourierRosterItem.fromRow(Map<String, dynamic> row) {
@@ -64,6 +67,11 @@ class CourierRosterItem {
         ? row['staff'] as Map<String, dynamic>
         : (row['courier'] is Map<String, dynamic>
             ? row['courier'] as Map<String, dynamic>
+            : null);
+    final merchant = row['merchants'] is Map<String, dynamic>
+        ? row['merchants'] as Map<String, dynamic>
+        : (row['merchant'] is Map<String, dynamic>
+            ? row['merchant'] as Map<String, dynamic>
             : null);
 
     return CourierRosterItem(
@@ -87,6 +95,7 @@ class CourierRosterItem {
         DateTime d => d,
         _ => null,
       },
+      merchantName: (merchant?['name'] ?? row['merchant_name'] ?? row['merchantName']) as String?,
     );
   }
 
@@ -99,5 +108,6 @@ class CourierRosterItem {
         'name': name,
         'phone': phone,
         'pausedUntil': pausedUntil?.toUtc().toIso8601String(),
+        'merchantName': merchantName,
       };
 }

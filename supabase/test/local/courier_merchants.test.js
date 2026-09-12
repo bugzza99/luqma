@@ -325,3 +325,70 @@ describe('a courier who has been detached', () => {
       'the actual order can be picked up using only the platform attachment');
   });
 });
+
+/**
+ * Who attached a rider, and when, is the server's to say.
+ *
+ * The admin screen writes `courier_merchants` directly, and the row had nothing stopping a
+ * phone from writing any uid into `attached_by` or any time into `attached_at`. A record
+ * that can be lied to is not evidence.
+ */
+describe('stamping an attachment', () => {
+  const ADMIN = '00000000-0000-0000-0000-0000000000a9';
+  const RIDER = '00000000-0000-0000-0000-0000000000d9';
+  const SOMEBODY = '00000000-0000-0000-0000-0000000000e9';
+  let db;
+
+  before(async () => {
+    db = await freshDatabase();
+    await db.exec(`
+      insert into auth.users (id) values ('${ADMIN}'), ('${RIDER}'), ('${SOMEBODY}');
+      grant usage on schema auth to authenticated;
+      insert into cities (id,name) values ('edku','إدكو');`);
+    await db.query(
+      `insert into staff (uid,scope,role,is_active) values ($1,'platform','admin',true)`, [ADMIN]);
+    await db.query(
+      `insert into staff (uid,scope,role,is_active) values ($1,'platform','courier',true)`, [RIDER]);
+    await db.exec(`
+      create or replace function auth.uid() returns uuid language sql stable
+        as $fn$ select '${ADMIN}'::uuid $fn$;
+      create or replace function auth.jwt() returns jsonb language sql stable
+        as $fn$ select '${JSON.stringify({ app_metadata: { role: 'admin', scope: 'platform', admin: true } })}'::jsonb $fn$;`);
+  });
+
+  after(async () => { await db?.close(); });
+
+  it('records the caller, whatever the client sent', async () => {
+    // A platform courier's staff row is given its platform attachment on insert, so clear
+    // it: this test is about the direct write the admin screen makes.
+    await db.query('delete from courier_merchants where courier_uid = $1', [RIDER]);
+    await db.exec('set role authenticated');
+    await db.query(
+      `insert into courier_merchants (courier_uid, merchant_id, attached_by, attached_at)
+       values ($1, null, $2, '2020-01-01')`, [RIDER, SOMEBODY]);
+    await db.exec('reset role');
+
+    const r = await db.query(
+      `select attached_by, attached_at > now() - interval '1 minute' as fresh
+         from courier_merchants where courier_uid = $1`, [RIDER]);
+    assert.equal(r.rows[0].attached_by, ADMIN, 'not the uid the phone claimed');
+    assert.equal(r.rows[0].fresh, true, 'not the date the phone claimed');
+  });
+
+  it('and a detach does not rewrite who attached them', async () => {
+    await db.exec(`
+      create or replace function auth.uid() returns uuid language sql stable
+        as $fn$ select '${SOMEBODY}'::uuid $fn$;`);
+    await db.query(
+      `insert into staff (uid,scope,role,is_active) values ($1,'platform','admin',true)`,
+      [SOMEBODY]);
+    await db.exec('set role authenticated');
+    await db.query(
+      'update courier_merchants set is_active = false where courier_uid = $1', [RIDER]);
+    await db.exec('reset role');
+
+    const r = await db.query(
+      'select attached_by from courier_merchants where courier_uid = $1', [RIDER]);
+    assert.equal(r.rows[0].attached_by, ADMIN);
+  });
+});

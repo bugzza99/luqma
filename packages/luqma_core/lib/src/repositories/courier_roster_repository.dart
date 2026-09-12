@@ -34,6 +34,27 @@ abstract interface class CourierRosterRepository {
     required String merchantId,
     required String courierUid,
   });
+
+  /// Watches all active merchant attachments for a specific courier.
+  /// A null merchantId represents the platform row.
+  Stream<List<CourierRosterItem>> watchCourierAttachments(String courierUid);
+
+  /// Fetches all active merchant attachments for a specific courier.
+  Future<Result<List<CourierRosterItem>>> getCourierAttachments(String courierUid);
+
+  /// Attaches a courier to a shop, or to the platform if [merchantId] is null.
+  /// If an inactive attachment already exists, re-activates it rather than duplicating.
+  Future<Result<CourierRosterItem>> attachCourierToMerchant({
+    required String courierUid,
+    String? merchantId,
+  });
+
+  /// Detaches a courier from a shop, or from the platform if [merchantId] is null,
+  /// by setting is_active = false.
+  Future<Result<void>> detachCourierFromMerchant({
+    required String courierUid,
+    String? merchantId,
+  });
 }
 
 class SupabaseCourierRosterRepository implements CourierRosterRepository {
@@ -122,6 +143,115 @@ class SupabaseCourierRosterRepository implements CourierRosterRepository {
       (_) {},
     );
   }
+
+  @override
+  Stream<List<CourierRosterItem>> watchCourierAttachments(String courierUid) {
+    return watchRows(
+      db: _db,
+      table: 'courier_merchants',
+      columns:
+          'id, courier_uid, merchant_id, is_active, attached_at, merchants:merchant_id(name)',
+      map: CourierRosterItem.fromRow,
+      filters: [
+        RowFilter('courier_uid', courierUid),
+        RowFilter('is_active', 'true'),
+      ],
+      orderBy: 'attached_at',
+      ascending: true,
+    );
+  }
+
+  @override
+  Future<Result<List<CourierRosterItem>>> getCourierAttachments(
+    String courierUid,
+  ) {
+    return Result.guard(() async {
+      final rows = await _db
+          .from('courier_merchants')
+          .select(
+            'id, courier_uid, merchant_id, is_active, attached_at, merchants:merchant_id(name)',
+          )
+          .eq('courier_uid', courierUid)
+          .eq('is_active', true)
+          .order('attached_at', ascending: true);
+
+      return [for (final row in rows) CourierRosterItem.fromRow(row)];
+    });
+  }
+
+  @override
+  Future<Result<CourierRosterItem>> attachCourierToMerchant({
+    required String courierUid,
+    String? merchantId,
+  }) {
+    return Result.guard(() async {
+      var query = _db
+          .from('courier_merchants')
+          .select('id, is_active')
+          .eq('courier_uid', courierUid);
+
+      if (merchantId != null) {
+        query = query.eq('merchant_id', merchantId);
+      } else {
+        query = query.filter('merchant_id', 'is', 'null');
+      }
+
+      final existing = await query.maybeSingle();
+
+      final Map<String, dynamic> row;
+      if (existing != null) {
+        row = await _db
+            .from('courier_merchants')
+            // Who and when are stamped by the `courier_merchants_stamp` trigger from
+            // `auth.uid()` and the server's clock. Sending them would be a claim the row
+            // overwrites, and a line of code that looks like it decides something.
+            .update({'is_active': true})
+            .eq('id', existing['id'] as String)
+            .select(
+              'id, courier_uid, merchant_id, is_active, attached_at, merchants:merchant_id(name)',
+            )
+            .single();
+      } else {
+        row = await _db
+            .from('courier_merchants')
+            .insert({
+              'courier_uid': courierUid,
+              'merchant_id': merchantId,
+              'is_active': true,
+            })
+            .select(
+              'id, courier_uid, merchant_id, is_active, attached_at, merchants:merchant_id(name)',
+            )
+            .single();
+      }
+
+      return CourierRosterItem.fromRow(row);
+    });
+  }
+
+  @override
+  Future<Result<void>> detachCourierFromMerchant({
+    required String courierUid,
+    String? merchantId,
+  }) {
+    return Result.guardWrite(
+      () {
+        var query = _db
+            .from('courier_merchants')
+            .update({'is_active': false})
+            .eq('courier_uid', courierUid);
+
+        if (merchantId != null) {
+          query = query.eq('merchant_id', merchantId);
+        } else {
+          query = query.filter('merchant_id', 'is', 'null');
+        }
+
+        return query.select('id');
+      },
+      (_) {},
+    );
+  }
 }
 
 /// In-memory courier roster, for widget tests and screens above it.
@@ -132,6 +262,8 @@ class FakeCourierRosterRepository implements CourierRosterRepository {
     this.failure,
     this.attachFailure,
     this.detachFailure,
+    this.actorRole = 'admin',
+    this.actorMerchantId,
   })  : _items = List.of(seed),
         _staffByPhone = Map.of(staffByPhone ?? const {});
 
@@ -141,6 +273,13 @@ class FakeCourierRosterRepository implements CourierRosterRepository {
   Failure? failure;
   Failure? attachFailure;
   Failure? detachFailure;
+
+  /// Role of the actor calling the repository in tests ('admin', 'owner', etc.).
+  /// Enforces policy boundary: owners cannot manage other shops or the platform row.
+  String? actorRole;
+
+  /// The shop the actor owns, when [actorRole] is 'owner'.
+  String? actorMerchantId;
 
   final _changed = StreamController<void>.broadcast();
 
@@ -171,6 +310,24 @@ class FakeCourierRosterRepository implements CourierRosterRepository {
     if (failure != null) return Result.err(failure!);
     return Result.ok(_items
         .where((item) => item.merchantId == merchantId && item.isActive)
+        .toList());
+  }
+
+  @override
+  Stream<List<CourierRosterItem>> watchCourierAttachments(String courierUid) {
+    if (failure != null) return Stream.error(failure!);
+    return _live(() => _items
+        .where((item) => item.courierUid == courierUid && item.isActive)
+        .toList());
+  }
+
+  @override
+  Future<Result<List<CourierRosterItem>>> getCourierAttachments(
+    String courierUid,
+  ) async {
+    if (failure != null) return Result.err(failure!);
+    return Result.ok(_items
+        .where((item) => item.courierUid == courierUid && item.isActive)
         .toList());
   }
 
@@ -211,6 +368,7 @@ class FakeCourierRosterRepository implements CourierRosterRepository {
         id: _items[index].id,
         courierUid: courierUid,
         merchantId: merchantId,
+        merchantName: _items[index].merchantName,
         isActive: true,
         attachedAt: DateTime.now(),
         name: name,
@@ -237,15 +395,86 @@ class FakeCourierRosterRepository implements CourierRosterRepository {
   }
 
   @override
+  Future<Result<CourierRosterItem>> attachCourierToMerchant({
+    required String courierUid,
+    String? merchantId,
+  }) async {
+    if (failure != null) return Result.err(failure!);
+    if (attachFailure != null) return Result.err(attachFailure!);
+
+    // Policy check: owner cannot attach to another shop or to the platform
+    if (actorRole == 'owner') {
+      if (merchantId == null || merchantId != actorMerchantId) {
+        return const Result.err(PermissionFailure());
+      }
+    } else if (actorRole != null && actorRole != 'admin') {
+      return const Result.err(PermissionFailure());
+    }
+
+    final index = _items.indexWhere(
+      (item) => item.courierUid == courierUid && item.merchantId == merchantId,
+    );
+
+    final CourierRosterItem item;
+    if (index >= 0) {
+      final existing = _items[index];
+      item = CourierRosterItem(
+        id: existing.id,
+        courierUid: courierUid,
+        merchantId: merchantId,
+        merchantName: existing.merchantName,
+        isActive: true,
+        attachedAt: DateTime.now(),
+        name: existing.name,
+        phone: existing.phone,
+        pausedUntil: existing.pausedUntil,
+      );
+      _items[index] = item;
+    } else {
+      item = CourierRosterItem(
+        id: 'cm-${_items.length + 1}',
+        courierUid: courierUid,
+        merchantId: merchantId,
+        isActive: true,
+        attachedAt: DateTime.now(),
+      );
+      _items.add(item);
+    }
+
+    _notify();
+    return Result.ok(item);
+  }
+
+  @override
   Future<Result<void>> detachCourier({
     required String merchantId,
     required String courierUid,
   }) async {
+    return detachCourierFromMerchant(
+      courierUid: courierUid,
+      merchantId: merchantId,
+    );
+  }
+
+  @override
+  Future<Result<void>> detachCourierFromMerchant({
+    required String courierUid,
+    String? merchantId,
+  }) async {
     if (failure != null) return Result.err(failure!);
     if (detachFailure != null) return Result.err(detachFailure!);
 
+    // Policy check: owner cannot detach from another shop or from the platform
+    if (actorRole == 'owner') {
+      if (merchantId == null || merchantId != actorMerchantId) {
+        return const Result.err(PermissionFailure());
+      }
+    } else if (actorRole != null && actorRole != 'admin') {
+      return const Result.err(PermissionFailure());
+    }
+
     final index = _items.indexWhere(
-      (item) => item.merchantId == merchantId && item.courierUid == courierUid,
+      (item) => item.courierUid == courierUid && item.merchantId == merchantId,
     );
     if (index < 0) return const Result.err(NotFoundFailure());
 
@@ -254,6 +483,7 @@ class FakeCourierRosterRepository implements CourierRosterRepository {
       id: existing.id,
       courierUid: existing.courierUid,
       merchantId: existing.merchantId,
+      merchantName: existing.merchantName,
       isActive: false,
       attachedAt: existing.attachedAt,
       name: existing.name,

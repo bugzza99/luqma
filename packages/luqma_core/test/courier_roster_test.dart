@@ -245,5 +245,144 @@ void main() {
         isA<OfflineFailure>(),
       );
     });
+
+    group('courier attachments (admin view)', () {
+      test('watchCourierAttachments and getCourierAttachments return active attachments', () async {
+        final initial = (await repo.getCourierAttachments('c-1')).valueOrNull!;
+        expect(initial.map((i) => i.merchantId), [shopId]);
+
+        final stream = await repo.watchCourierAttachments('c-1').first;
+        expect(stream.map((i) => i.merchantId), [shopId]);
+      });
+
+      test('attachCourierToMerchant attaches to a shop and notifies listeners', () async {
+        final streamFuture = repo.watchCourierAttachments('c-1').take(2).toList();
+
+        final result = await repo.attachCourierToMerchant(
+          courierUid: 'c-1',
+          merchantId: otherShopId,
+        );
+
+        expect(result.isOk, isTrue);
+        expect(result.valueOrNull!.merchantId, otherShopId);
+        expect(result.valueOrNull!.isActive, isTrue);
+
+        final emissions = await streamFuture;
+        expect(emissions.first.map((i) => i.merchantId), [shopId]);
+        expect(emissions.last.map((i) => i.merchantId), [shopId, otherShopId]);
+      });
+
+      test('attachCourierToMerchant attaches to the platform (null merchant_id)', () async {
+        final result = await repo.attachCourierToMerchant(
+          courierUid: 'c-1',
+          merchantId: null,
+        );
+
+        expect(result.isOk, isTrue);
+        expect(result.valueOrNull!.merchantId, isNull);
+        expect(result.valueOrNull!.isActive, isTrue);
+
+        final attachments = (await repo.getCourierAttachments('c-1')).valueOrNull!;
+        expect(attachments.any((a) => a.merchantId == null), isTrue);
+      });
+
+      test('attachCourierToMerchant re-activates an inactive row without duplicating', () async {
+        // c-2 has an inactive attachment to shopId in seed
+        expect(repo.all.where((i) => i.courierUid == 'c-2' && i.merchantId == shopId).length, 1);
+        expect(repo.all.firstWhere((i) => i.courierUid == 'c-2' && i.merchantId == shopId).isActive, isFalse);
+
+        final result = await repo.attachCourierToMerchant(
+          courierUid: 'c-2',
+          merchantId: shopId,
+        );
+
+        expect(result.isOk, isTrue);
+        expect(result.valueOrNull!.id, 'cm-2', reason: 're-uses the existing row');
+        expect(result.valueOrNull!.isActive, isTrue);
+
+        final items = repo.all.where((i) => i.courierUid == 'c-2' && i.merchantId == shopId);
+        expect(items.length, 1, reason: 'never inserts a second row for the same attachment');
+      });
+
+      test('detachCourierFromMerchant deactivates shop attachment without deleting', () async {
+        final result = await repo.detachCourierFromMerchant(
+          courierUid: 'c-1',
+          merchantId: shopId,
+        );
+
+        expect(result.isOk, isTrue);
+        final active = (await repo.getCourierAttachments('c-1')).valueOrNull!;
+        expect(active, isEmpty);
+
+        final c1Row = repo.all.firstWhere((i) => i.courierUid == 'c-1' && i.merchantId == shopId);
+        expect(c1Row.isActive, isFalse);
+      });
+
+      test('detachCourierFromMerchant deactivates platform attachment', () async {
+        // First attach to platform
+        await repo.attachCourierToMerchant(courierUid: 'c-1', merchantId: null);
+
+        final result = await repo.detachCourierFromMerchant(
+          courierUid: 'c-1',
+          merchantId: null,
+        );
+
+        expect(result.isOk, isTrue);
+        final active = (await repo.getCourierAttachments('c-1')).valueOrNull!;
+        expect(active.any((a) => a.merchantId == null), isFalse);
+      });
+
+      test('the fake refuses what the policy refuses: owner writing other shop or platform', () async {
+        // Set actor as an owner of shopId
+        repo.actorRole = 'owner';
+        repo.actorMerchantId = shopId;
+
+        // Owner cannot attach to another shop
+        final otherShopResult = await repo.attachCourierToMerchant(
+          courierUid: 'c-1',
+          merchantId: otherShopId,
+        );
+        expect(otherShopResult.isOk, isFalse);
+        expect(otherShopResult.failureOrNull, isA<PermissionFailure>());
+
+        // Owner cannot attach to the platform
+        final platformResult = await repo.attachCourierToMerchant(
+          courierUid: 'c-1',
+          merchantId: null,
+        );
+        expect(platformResult.isOk, isFalse);
+        expect(platformResult.failureOrNull, isA<PermissionFailure>());
+
+        // Owner cannot detach another shop
+        final detachOtherResult = await repo.detachCourierFromMerchant(
+          courierUid: 'c-3',
+          merchantId: otherShopId,
+        );
+        expect(detachOtherResult.isOk, isFalse);
+        expect(detachOtherResult.failureOrNull, isA<PermissionFailure>());
+
+        // Owner cannot detach the platform
+        final detachPlatformResult = await repo.detachCourierFromMerchant(
+          courierUid: 'c-1',
+          merchantId: null,
+        );
+        expect(detachPlatformResult.isOk, isFalse);
+        expect(detachPlatformResult.failureOrNull, isA<PermissionFailure>());
+
+        // Owner CAN attach and detach for their own shop
+        final ownShopResult = await repo.attachCourierToMerchant(
+          courierUid: 'c-3',
+          merchantId: shopId,
+        );
+        expect(ownShopResult.isOk, isTrue);
+
+        final detachOwnResult = await repo.detachCourierFromMerchant(
+          courierUid: 'c-3',
+          merchantId: shopId,
+        );
+        expect(detachOwnResult.isOk, isTrue);
+      });
+    });
   });
 }
+
