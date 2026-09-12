@@ -238,4 +238,134 @@ void main() {
       expect(find.text('كشري المحطة'), findsNothing);
     });
   });
+
+  group('searching and filtering', () {
+    testWidgets('searching by name filters the merchants on a phone',
+        (tester) async {
+      await pump(tester, size: const Size(400, 900));
+
+      await tester.enterText(find.byKey(MerchantsScreen.searchKey), 'الشاطئ');
+      await tester.pumpAndSettle();
+
+      expect(find.text('مطعم الشاطئ'), findsOneWidget);
+      expect(find.text('كشري المحطة'), findsNothing);
+    });
+
+    testWidgets('searching by phone matches and filters on a phone',
+        (tester) async {
+      await pump(
+        tester,
+        seed: [
+          merchant('a', name: 'مطعم الشاطئ').copyWith(phone: '01011111111'),
+          merchant('b', name: 'كشري المحطة', status: MerchantStatus.pending)
+              .copyWith(phone: '01022222222'),
+        ],
+        size: const Size(400, 900),
+      );
+
+      // Typing Western digits
+      await tester.enterText(find.byKey(MerchantsScreen.searchKey), '0102222');
+      await tester.pumpAndSettle();
+
+      expect(find.text('كشري المحطة'), findsOneWidget);
+      expect(find.text('مطعم الشاطئ'), findsNothing);
+
+      // Typing Arabic-Indic digits normalizes to the same phone
+      await tester.enterText(find.byKey(MerchantsScreen.searchKey), '٠١٠١١١١');
+      await tester.pumpAndSettle();
+
+      expect(find.text('مطعم الشاطئ'), findsOneWidget);
+      expect(find.text('كشري المحطة'), findsNothing);
+    });
+
+    testWidgets('status filter chips narrow down merchants on a phone',
+        (tester) async {
+      await pump(
+        tester,
+        seed: [
+          merchant('a', name: 'مطعم الشاطئ', status: MerchantStatus.approved),
+          merchant('b', name: 'كشري المحطة', status: MerchantStatus.pending),
+          merchant('c', name: 'فرن المدينة', status: MerchantStatus.suspended),
+        ],
+        size: const Size(400, 900),
+      );
+
+      // Initially all 3 are shown
+      expect(find.text('مطعم الشاطئ'), findsOneWidget);
+      expect(find.text('كشري المحطة'), findsOneWidget);
+      expect(find.text('فرن المدينة'), findsOneWidget);
+
+      // Tap pending chip
+      await tester.ensureVisible(find.byKey(MerchantsScreen.filterPendingKey));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(MerchantsScreen.filterPendingKey));
+      await tester.pumpAndSettle();
+
+      expect(find.text('كشري المحطة'), findsOneWidget);
+      expect(find.text('مطعم الشاطئ'), findsNothing);
+      expect(find.text('فرن المدينة'), findsNothing);
+
+      // Tap active/approved chip
+      await tester.ensureVisible(find.byKey(MerchantsScreen.filterActiveKey));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(MerchantsScreen.filterActiveKey));
+      await tester.pumpAndSettle();
+
+      expect(find.text('مطعم الشاطئ'), findsOneWidget);
+      expect(find.text('كشري المحطة'), findsNothing);
+      expect(find.text('فرن المدينة'), findsNothing);
+
+      // Tap suspended chip
+      await tester.ensureVisible(find.byKey(MerchantsScreen.filterSuspendedKey));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(MerchantsScreen.filterSuspendedKey));
+      await tester.pumpAndSettle();
+
+      expect(find.text('فرن المدينة'), findsOneWidget);
+      expect(find.text('مطعم الشاطئ'), findsNothing);
+      expect(find.text('كشري المحطة'), findsNothing);
+
+      // Tap all chip
+      await tester.ensureVisible(find.byKey(MerchantsScreen.filterAllKey));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(MerchantsScreen.filterAllKey));
+      await tester.pumpAndSettle();
+
+      expect(find.text('مطعم الشاطئ'), findsOneWidget);
+      expect(find.text('كشري المحطة'), findsOneWidget);
+      expect(find.text('فرن المدينة'), findsOneWidget);
+    });
+
+    testWidgets('no matching results shows empty search view',
+        (tester) async {
+      await pump(tester, size: const Size(400, 900));
+
+      await tester.enterText(
+        find.byKey(MerchantsScreen.searchKey),
+        'اسم غير موجود',
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('مفيش مطاعم مطابقة للبحث.'), findsOneWidget);
+      expect(find.text('مطعم الشاطئ'), findsNothing);
+    });
+  });
+
+  group('the delegation banner', () {
+    testWidgets('renders delegation banner around menu editor on a phone',
+        (tester) async {
+      await pump(tester, size: const Size(400, 900));
+
+      await tester.tap(find.text('مطعم الشاطئ').first);
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(MerchantsScreen.delegationBannerKey), findsOneWidget);
+      expect(
+        // The banner must not claim edits are logged: nothing audits `menu_items`.
+        find.text('بتعدّل منيو مطعم الشاطئ نيابة عنه — أي تعديل بيظهر للعملاء على طول'),
+        findsOneWidget,
+      );
+      expect(find.byType(MenuEditor), findsOneWidget);
+    });
+  });
 }

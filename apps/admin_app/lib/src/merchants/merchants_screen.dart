@@ -30,6 +30,13 @@ class MerchantsScreen extends ConsumerWidget {
   static const phoneFieldKey = Key('merchants.phone');
   static const saveKey = Key('merchants.save');
 
+  static const searchKey = Key('merchants.search');
+  static const filterAllKey = Key('merchants.filter.all');
+  static const filterActiveKey = Key('merchants.filter.active');
+  static const filterPendingKey = Key('merchants.filter.pending');
+  static const filterSuspendedKey = Key('merchants.filter.suspended');
+  static const delegationBannerKey = Key('merchants.delegationBanner');
+
   static Key pendingBadgeKey(String id) => Key('merchants.pending.$id');
   static Key rowKey(String id) => Key('merchants.row.$id');
 
@@ -38,6 +45,7 @@ class MerchantsScreen extends ConsumerWidget {
     final merchants = ref.watch(allMerchantsProvider);
     final selectedId = ref.watch(selectedMerchantProvider);
     final layout = AdminLayout.of(context);
+    final colors = Theme.of(context).luqma;
 
     final selected = merchants.value?.where((m) => m.id == selectedId).firstOrNull;
 
@@ -58,7 +66,7 @@ class MerchantsScreen extends ConsumerWidget {
           ? Row(
               children: [
                 Expanded(flex: 2, child: list),
-                VerticalDivider(width: 1, color: Theme.of(context).luqma.hairline),
+                VerticalDivider(width: 1, color: colors.hairline),
                 Expanded(
                   flex: 3,
                   child: selected == null
@@ -67,7 +75,7 @@ class MerchantsScreen extends ConsumerWidget {
                 ),
               ],
             )
-          : list,
+          : AdminContent(child: list),
       floatingActionButton: FloatingActionButton.extended(
         key: MerchantsScreen.addKey,
         onPressed: () => _addMerchant(context, ref),
@@ -78,58 +86,194 @@ class MerchantsScreen extends ConsumerWidget {
   }
 }
 
-class _List extends ConsumerWidget {
+enum _MerchantFilter { all, active, pending, suspended }
+
+/// The merchants list from A3_Merchants with live query search and status filtering chips.
+///
+/// Searching matches both store name and phone number (normalized) so the admin on a
+/// support call can find a shop by either identity immediately.
+class _List extends ConsumerStatefulWidget {
   const _List({required this.merchants, required this.selectedId});
 
   final AsyncValue<List<Merchant>> merchants;
   final String? selectedId;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_List> createState() => _ListState();
+}
+
+class _ListState extends ConsumerState<_List> {
+  final _searchController = TextEditingController();
+  var _filter = _MerchantFilter.all;
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final strings = LuqmaStrings.of(context);
+
     return LuqmaAsyncView(
-      value: merchants,
+      value: widget.merchants,
       onRetry: () => ref.invalidate(allMerchantsProvider),
-      empty: Center(
-          key: MerchantsScreen.emptyKey,
-          child: Padding(
-            padding: const EdgeInsets.all(Space.xl),
-            child: Text(
-              'مفيش مطاعم لسه.\nابدأ بإضافة أول مطعم.',
-              textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: Theme.of(context).luqma.textSecondary,
-                  ),
-            ),
-          ),
-        ),
       isEmpty: (value) => value.isEmpty,
-      builder: (context, value) => ListView.separated(
-          padding: const EdgeInsets.all(Space.gutter),
-          itemCount: value.length,
-          separatorBuilder: (_, _) => const SizedBox(height: Space.sm),
-          itemBuilder: (context, i) => _Row(
-            merchant: value[i],
-            selected: value[i].id == selectedId,
-            onTap: () => ref
-                .read(selectedMerchantProvider.notifier)
-                .select(value[i].id),
-          ),
-        )
+      empty: LuqmaEmptyView(
+        key: MerchantsScreen.emptyKey,
+        icon: Icons.storefront_outlined,
+        message: 'مفيش مطاعم لسه.\nابدأ بإضافة أول مطعم.',
+      ),
+      builder: (context, all) {
+        final totalCount = all.length;
+        final activeCount =
+            all.where((m) => m.status == MerchantStatus.approved).length;
+        final pendingCount =
+            all.where((m) => m.status == MerchantStatus.pending).length;
+        final suspendedCount =
+            all.where((m) => m.status == MerchantStatus.suspended).length;
+
+        final query = _searchController.text.trim();
+        final normalizedQuery = Phone.normalize(query);
+
+        final filtered = all.where((m) {
+          // Status filter
+          final matchesStatus = switch (_filter) {
+            _MerchantFilter.all => true,
+            _MerchantFilter.active => m.status == MerchantStatus.approved,
+            _MerchantFilter.pending => m.status == MerchantStatus.pending,
+            _MerchantFilter.suspended => m.status == MerchantStatus.suspended,
+          };
+          if (!matchesStatus) return false;
+
+          // Query filter
+          if (query.isEmpty) return true;
+          final q = query.toLowerCase();
+          final matchesName = m.name.toLowerCase().contains(q);
+          final matchesPhone = m.phone.toLowerCase().contains(q) ||
+              Phone.normalize(m.phone).contains(normalizedQuery);
+          return matchesName || matchesPhone;
+        }).toList();
+
+        return Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(
+                Space.gutter,
+                Space.gutter,
+                Space.gutter,
+                Space.sm,
+              ),
+              child: TextField(
+                key: MerchantsScreen.searchKey,
+                controller: _searchController,
+                decoration: InputDecoration(
+                  hintText: strings.merchantsSearchHint,
+                  prefixIcon: const Icon(Icons.search),
+                  suffixIcon: _searchController.text.isNotEmpty
+                      ? IconButton(
+                          icon: const Icon(Icons.clear),
+                          tooltip: strings.merchantsClearSearchTooltip,
+                          onPressed: () {
+                            _searchController.clear();
+                            setState(() {});
+                          },
+                        )
+                      : null,
+                ),
+                onChanged: (_) => setState(() {}),
+              ),
+            ),
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(
+                horizontal: Space.gutter,
+                vertical: Space.xs,
+              ),
+              child: Row(
+                children: [
+                  LuqmaChip(
+                    key: MerchantsScreen.filterAllKey,
+                    label: '${strings.merchantsFilterAll} ($totalCount)',
+                    selected: _filter == _MerchantFilter.all,
+                    onTap: () => setState(() => _filter = _MerchantFilter.all),
+                  ),
+                  const SizedBox(width: Space.sm),
+                  LuqmaChip(
+                    key: MerchantsScreen.filterActiveKey,
+                    label: '${strings.merchantsFilterActive} ($activeCount)',
+                    selected: _filter == _MerchantFilter.active,
+                    onTap: () => setState(() => _filter = _MerchantFilter.active),
+                  ),
+                  const SizedBox(width: Space.sm),
+                  LuqmaChip(
+                    key: MerchantsScreen.filterPendingKey,
+                    label: '${strings.merchantsFilterPending} ($pendingCount)',
+                    selected: _filter == _MerchantFilter.pending,
+                    onTap: () => setState(() => _filter = _MerchantFilter.pending),
+                  ),
+                  const SizedBox(width: Space.sm),
+                  LuqmaChip(
+                    key: MerchantsScreen.filterSuspendedKey,
+                    label: '${strings.merchantsFilterSuspended} ($suspendedCount)',
+                    selected: _filter == _MerchantFilter.suspended,
+                    onTap: () => setState(() => _filter = _MerchantFilter.suspended),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: Space.xs),
+            Expanded(
+              child: filtered.isEmpty
+                  ? Center(
+                      child: LuqmaEmptyView(
+                        icon: Icons.search_off_outlined,
+                        message: strings.merchantsNoSearchResults,
+                      ),
+                    )
+                  : ListView.separated(
+                      padding: const EdgeInsets.all(Space.gutter),
+                      itemCount: filtered.length,
+                      separatorBuilder: (_, _) => const SizedBox(height: Space.sm),
+                      itemBuilder: (context, i) => _Row(
+                        merchant: filtered[i],
+                        selected: filtered[i].id == widget.selectedId,
+                        onTap: () => ref
+                            .read(selectedMerchantProvider.notifier)
+                            .select(filtered[i].id),
+                      ),
+                    ),
+            ),
+          ],
+        );
+      },
     );
   }
 }
 
-class _Row extends StatelessWidget {
-  const _Row({required this.merchant, required this.selected, required this.onTap});
+class _Row extends ConsumerWidget {
+  const _Row({
+    required this.merchant,
+    required this.selected,
+    required this.onTap,
+  });
 
   final Merchant merchant;
   final bool selected;
   final VoidCallback onTap;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final colors = theme.luqma;
+    final strings = LuqmaStrings.of(context);
+    final orderCount = ref.watch(merchantOrderCountProvider(merchant.id));
+
+    final typeLabel = switch (merchant.type) {
+      MerchantType.homeKitchen => 'أكل بيتي',
+      MerchantType.restaurant => 'مطعم',
+    };
 
     return InkWell(
       key: MerchantsScreen.rowKey(merchant.id),
@@ -145,39 +289,82 @@ class _Row extends StatelessWidget {
             color: selected ? colors.brand : colors.hairline,
             width: selected ? 1.5 : 1,
           ),
+          boxShadow: selected ? Elevations.cardPressed : Elevations.card,
         ),
         child: Row(
           children: [
+            ClipRRect(
+              borderRadius: Radii.cardAll,
+              child: SizedBox(
+                width: 44,
+                height: 44,
+                child: LuqmaImage(
+                  url: merchant.logoUrl,
+                  name: merchant.name,
+                ),
+              ),
+            ),
+            const SizedBox(width: Space.md),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text(merchant.name, style: theme.textTheme.titleMedium),
                   Text(
-                    merchant.type == MerchantType.homeKitchen
-                        ? 'أكل بيتي'
-                        : 'مطعم',
-                    style: theme.textTheme.bodySmall
-                        ?.copyWith(color: colors.textSecondary),
+                    merchant.name,
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    '$typeLabel · ${merchant.phone}',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: colors.textSecondary,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ],
               ),
             ),
-            // Only the states that need a person: approved is the normal case and says
-            // nothing worth taking up room for.
-            if (merchant.status == MerchantStatus.pending)
-              _Badge(
-                key: MerchantsScreen.pendingBadgeKey(merchant.id),
-                label: 'مستني موافقة',
-                background: colors.accent,
-                foreground: colors.onAccent,
-              )
-            else if (merchant.status == MerchantStatus.suspended)
-              _Badge(
-                label: 'موقوف',
-                background: colors.danger,
-                foreground: colors.onBrand,
-              ),
+            const SizedBox(width: Space.sm),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (merchant.status == MerchantStatus.pending)
+                  _Badge(
+                    key: MerchantsScreen.pendingBadgeKey(merchant.id),
+                    label: 'مستني موافقة',
+                    background: colors.accent,
+                    foreground: colors.onAccent,
+                  )
+                else if (merchant.status == MerchantStatus.suspended)
+                  _Badge(
+                    label: 'موقوف',
+                    background: colors.danger,
+                    foreground: colors.onBrand,
+                  )
+                else
+                  _Badge(
+                    label: 'نشط',
+                    background: colors.success.withValues(alpha: 0.15),
+                    foreground: colors.success,
+                  ),
+                if ((orderCount.value ?? 0) > 0) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    strings.merchantsOrderCount(orderCount.value!),
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: colors.textSecondary,
+                    ),
+                  ),
+                ],
+              ],
+            ),
           ],
         ),
       ),
@@ -218,11 +405,177 @@ class _NothingSelected extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    return const Center(
+      child: LuqmaEmptyView(
+        icon: Icons.storefront_outlined,
+        message: 'اختر مطعم من اللستة',
+      ),
+    );
+  }
+}
+
+/// The merchant header from A4_MerchantDetail displaying identity, phone, status, and plan.
+///
+/// Positioned above the menu editor so the admin always knows which shop's catalog is open
+/// without cluttering the repetitive dish entry flow below it.
+class _MerchantHeader extends StatelessWidget {
+  const _MerchantHeader({required this.merchant});
+
+  final Merchant merchant;
+
+  @override
+  Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Center(
-      child: Text(
-        'اختر مطعم من اللستة',
-        style: theme.textTheme.bodyMedium?.copyWith(color: theme.luqma.textSecondary),
+    final colors = theme.luqma;
+
+    final typeLabel = switch (merchant.type) {
+      MerchantType.homeKitchen => 'أكل بيتي',
+      MerchantType.restaurant => 'مطعم',
+    };
+
+    return Container(
+      padding: const EdgeInsets.all(Space.gutter),
+      decoration: BoxDecoration(
+        color: colors.card,
+        border: Border(bottom: BorderSide(color: colors.hairline)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          ClipRRect(
+            borderRadius: Radii.cardAll,
+            child: SizedBox(
+              width: 56,
+              height: 56,
+              child: LuqmaImage(
+                url: merchant.logoUrl,
+                name: merchant.name,
+              ),
+            ),
+          ),
+          const SizedBox(width: Space.md),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  merchant.name,
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 2),
+                Row(
+                  children: [
+                    Icon(
+                      Icons.phone,
+                      size: Sizes.iconSm,
+                      color: colors.textSecondary,
+                    ),
+                    const SizedBox(width: Space.xs),
+                    Text(
+                      merchant.phone,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: colors.textSecondary,
+                      ),
+                    ),
+                    Text(
+                      ' · $typeLabel',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: colors.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: Space.xs),
+                Wrap(
+                  spacing: Space.xs,
+                  runSpacing: Space.xs,
+                  children: [
+                    if (merchant.status == MerchantStatus.pending)
+                      _Badge(
+                        label: 'مستني موافقة',
+                        background: colors.accent,
+                        foreground: colors.onAccent,
+                      )
+                    else if (merchant.status == MerchantStatus.suspended)
+                      _Badge(
+                        label: 'موقوف',
+                        background: colors.danger,
+                        foreground: colors.onBrand,
+                      )
+                    else
+                      _Badge(
+                        label: 'نشط',
+                        background: colors.success.withValues(alpha: 0.15),
+                        foreground: colors.success,
+                      ),
+                    if (merchant.planId != null && merchant.planId!.isNotEmpty)
+                      _Badge(
+                        label: 'خطة ${merchant.planId}',
+                        background: colors.surface,
+                        foreground: colors.textPrimary,
+                      ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// The delegation banner from A5_MenuEntry alerting that edits are made on the merchant's behalf.
+///
+/// Every change made here writes under the admin's session rather than the merchant's,
+/// so the banner acts as a visible reminder that changes are committed directly to production.
+class _DelegationBanner extends StatelessWidget {
+  const _DelegationBanner({required this.merchantName});
+
+  final String merchantName;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = theme.luqma;
+    final strings = LuqmaStrings.of(context);
+
+    return Container(
+      key: MerchantsScreen.delegationBannerKey,
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(
+        horizontal: Space.gutter,
+        vertical: Space.sm + 2,
+      ),
+      decoration: BoxDecoration(
+        color: colors.surface,
+        border: Border(
+          bottom: BorderSide(color: colors.hairline),
+        ),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            Icons.info_outline,
+            size: Sizes.iconSm,
+            color: colors.price,
+          ),
+          const SizedBox(width: Space.sm),
+          Expanded(
+            child: Text(
+              strings.merchantsMenuDelegationBanner(merchantName),
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: colors.price,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -236,8 +589,7 @@ class _Detail extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final theme = Theme.of(context);
-    final colors = theme.luqma;
+    final colors = Theme.of(context).luqma;
     final actions = ref.read(merchantActionsProvider.notifier);
     final orderCount = ref.watch(merchantOrderCountProvider(merchant.id));
 
@@ -303,23 +655,14 @@ class _Detail extends ConsumerWidget {
           ),
         ],
       ),
-      body: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.all(Space.gutter),
-            child: Row(
-              children: [
-                Icon(Icons.phone, size: Sizes.iconSm, color: colors.textSecondary),
-                const SizedBox(width: Space.sm),
-                Text(merchant.phone, style: theme.textTheme.bodyMedium),
-              ],
-            ),
-          ),
-          Divider(height: 1, color: colors.hairline),
-          // The menu is most of what this screen is for, so it gets the rest of the
-          // space rather than sharing it with fields that are set once.
-          Expanded(child: MenuEditor(merchantId: merchant.id)),
-        ],
+      body: AdminContent(
+        child: Column(
+          children: [
+            _MerchantHeader(merchant: merchant),
+            _DelegationBanner(merchantName: merchant.name),
+            Expanded(child: MenuEditor(merchantId: merchant.id)),
+          ],
+        ),
       ),
     );
   }
