@@ -80,18 +80,15 @@ class ShopScreen extends ConsumerWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                if (merchant != null) _Identity(merchant: merchant),
-                const SizedBox(height: Space.lg),
-                if (merchant != null) _Rating(merchant: merchant),
                 if (merchant != null) ...[
-                  const SizedBox(height: Space.lg),
-                  _Billing(merchant: merchant),
+                  const _SectionHeader(title: 'هوية المتجر'),
+                  _Identity(merchant: merchant),
+                  const SizedBox(height: Space.md),
+                  _Rating(merchant: merchant),
+                  const SizedBox(height: Space.section),
                 ],
                 if (staff.merchantId != null) ...[
-                  const SizedBox(height: Space.lg),
-                  // The schedule the whole product derives "can this shop take an order"
-                  // from. It had no editor anywhere, so a merchant whose hours were wrong
-                  // — or empty — was shut with nothing on any screen that changed it.
+                  const _SectionHeader(title: 'التشغيل والتوصيل'),
                   _Tile(
                     tileKey: ShopScreen.hoursKey,
                     icon: Icons.schedule_rounded,
@@ -103,7 +100,7 @@ class ShopScreen extends ConsumerWidget {
                       ),
                     ),
                   ),
-                  const SizedBox(height: Space.lg),
+                  const SizedBox(height: Space.sm),
                   _Tile(
                     tileKey: ShopScreen.addressKey,
                     icon: Icons.storefront_rounded,
@@ -117,7 +114,7 @@ class ShopScreen extends ConsumerWidget {
                       ),
                     ),
                   ),
-                  const SizedBox(height: Space.lg),
+                  const SizedBox(height: Space.sm),
                   _Tile(
                     tileKey: ShopScreen.rosterKey,
                     icon: Icons.delivery_dining_rounded,
@@ -130,24 +127,31 @@ class ShopScreen extends ConsumerWidget {
                       ),
                     ),
                   ),
+                  const SizedBox(height: Space.section),
                 ],
-                const SizedBox(height: Space.lg),
-                _Tile(
-                  tileKey: ShopScreen.promotionsKey,
-                  icon: Icons.campaign_outlined,
-                  title: 'الإعلانات',
-                  subtitle: 'اطلب بانر أو رفع في الترتيب',
-                  onTap: () => Navigator.of(context).push(
-                    MaterialPageRoute<void>(
-                      builder: (_) => const MerchantPromotionsScreen(),
+                if (merchant != null) ...[
+                  const _SectionHeader(title: 'الحسابات والنمو'),
+                  _Billing(merchant: merchant),
+                  const SizedBox(height: Space.sm),
+                  _Tile(
+                    tileKey: ShopScreen.promotionsKey,
+                    icon: Icons.campaign_outlined,
+                    title: 'الخطة والإعلانات',
+                    subtitle: 'اطلب بانر أو رفع في الترتيب',
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => const MerchantPromotionsScreen(),
+                      ),
                     ),
                   ),
-                ),
-                if (staff.merchantId != null) ...[
-                  const SizedBox(height: Space.lg),
-                  _Feedback(merchantId: staff.merchantId!),
+                  const SizedBox(height: Space.section),
                 ],
-                const SizedBox(height: Space.xl),
+                if (staff.merchantId != null) ...[
+                  const _SectionHeader(title: 'آراء العملاء'),
+                  _Feedback(merchantId: staff.merchantId!),
+                  const SizedBox(height: Space.section),
+                ],
+                const SizedBox(height: Space.sm),
                 Text(
                   staff.email ?? '',
                   textAlign: TextAlign.center,
@@ -364,6 +368,7 @@ class _IdentityState extends ConsumerState<_Identity> {
         color: colors.card,
         borderRadius: Radii.cardAll,
         border: Border.all(color: colors.hairline),
+        boxShadow: Elevations.card,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -522,6 +527,7 @@ class _Billing extends ConsumerWidget {
         color: colors.card,
         borderRadius: Radii.cardAll,
         border: Border.all(color: colors.hairline),
+        boxShadow: Elevations.card,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -693,6 +699,7 @@ class _FeedbackRow extends StatelessWidget {
         color: colors.card,
         borderRadius: Radii.cardAll,
         border: Border.all(color: colors.hairline),
+        boxShadow: Elevations.card,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -746,6 +753,7 @@ class _Rating extends ConsumerWidget {
         color: colors.card,
         borderRadius: Radii.cardAll,
         border: Border.all(color: colors.hairline),
+        boxShadow: Elevations.card,
       ),
       child: Row(
         children: [
@@ -817,6 +825,7 @@ class _Tile extends StatelessWidget {
           color: colors.card,
           borderRadius: Radii.cardAll,
           border: Border.all(color: colors.hairline),
+          boxShadow: Elevations.card,
         ),
         child: Row(
           children: [
@@ -842,6 +851,29 @@ class _Tile extends StatelessWidget {
               size: Sizes.iconMd,
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SectionHeader extends StatelessWidget {
+  const _SectionHeader({required this.title});
+
+  final String title;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = theme.luqma;
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: Space.sm),
+      child: Text(
+        title,
+        style: theme.textTheme.titleMedium?.copyWith(
+          color: colors.textPrimary,
+          fontWeight: FontWeight.bold,
         ),
       ),
     );

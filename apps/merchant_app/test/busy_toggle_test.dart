@@ -95,6 +95,21 @@ void main() {
       expect(find.byKey(BusyToggle.sheetKey), findsOneWidget);
     });
 
+    testWidgets('pause sheet presents the design layout with header and cards',
+        (tester) async {
+      await pump(tester, now: DateTime(2026, 9, 22, 14, 0));
+
+      await tester.tap(find.byKey(BusyToggle.pauseKey));
+      await tester.pumpAndSettle();
+
+      // Heading and explanatory note matching M06
+      expect(find.text('إيقاف الطلبات مؤقتاً'), findsOneWidget);
+      expect(
+        find.text('هيتوقف ظهور محلك للعملاء. هيرجع تلقائياً بعد المدة اللي تختارها.'),
+        findsOneWidget,
+      );
+    });
+
     testWidgets('pause options name the exact reopen time, not just the duration',
         (tester) async {
       await pump(tester, now: DateTime(2026, 9, 22, 14, 0));

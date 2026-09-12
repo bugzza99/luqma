@@ -46,35 +46,78 @@ class MerchantPromotionsScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final merchantId = ref.watch(staffIdentityProvider).merchantId;
-    final colors = Theme.of(context).luqma;
+    final theme = Theme.of(context);
+    final colors = theme.luqma;
 
     if (merchantId == null) return const SizedBox.shrink();
 
     final mine = ref.watch(merchantPromotionsProvider(merchantId));
+    final merchant = switch (ref.watch(merchantProvider(merchantId))) {
+      AsyncData(:final value) => value,
+      _ => null,
+    };
+    final subscription =
+        switch (ref.watch(subscriptionProvider(merchantId))) {
+      AsyncData(:final value) => value,
+      _ => null,
+    };
+    final plans = switch (ref.watch(plansProvider)) {
+      AsyncData(:final value) => value,
+      _ => const <Plan>[],
+    };
+    final plan = plans.where((p) => p.id == merchant?.planId).firstOrNull;
 
     return Scaffold(
       backgroundColor: colors.background,
-      appBar: AppBar(title: const Text('الإعلانات')),
+      appBar: AppBar(title: const Text('الخطة والعروض')),
       body: LuqmaAsyncView(
         value: mine,
         errorKey: MerchantPromotionsScreen.errorKey,
         onRetry: () => ref.invalidate(merchantPromotionsProvider(merchantId)),
-        empty: LuqmaEmptyView(
-          key: MerchantPromotionsScreen.emptyKey,
-          icon: Icons.campaign_outlined,
-          title: 'لسه مطلبتش إعلان',
-        ),
-        isEmpty: (value) => value.isEmpty,
-        builder: (context, value) => ListView.separated(
+        builder: (context, value) => SingleChildScrollView(
           padding: const EdgeInsets.fromLTRB(
             Space.gutter,
             Space.gutter,
             Space.gutter,
             Space.xxxl * 2,
           ),
-          itemCount: value.length,
-          separatorBuilder: (_, _) => const SizedBox(height: Space.md),
-          itemBuilder: (context, i) => _Card(promotion: value[i]),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _PlanCard(
+                merchant: merchant,
+                subscription: subscription,
+                plan: plan,
+              ),
+              const SizedBox(height: Space.section),
+              if (value.isNotEmpty) ...[
+                Text(
+                  'طلباتك وحملاتك',
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: Space.sm),
+                for (final promo in value) ...[
+                  _Card(promotion: promo),
+                  const SizedBox(height: Space.md),
+                ],
+                const SizedBox(height: Space.sm),
+              ],
+              _RequestTypes(
+                merchantId: merchantId,
+                pushOpen: false, // Phase 0 containment
+              ),
+              if (value.isEmpty) ...[
+                const SizedBox(height: Space.md),
+                const LuqmaEmptyView(
+                  key: MerchantPromotionsScreen.emptyKey,
+                  icon: Icons.campaign_outlined,
+                  title: 'لسه مطلبتش إعلان',
+                ),
+              ],
+            ],
+          ),
         ),
       ),
       floatingActionButton: FloatingActionButton.extended(
@@ -83,6 +126,290 @@ class MerchantPromotionsScreen extends ConsumerWidget {
         icon: const Icon(Icons.campaign_outlined),
         label: const Text('اطلب إعلان'),
       ),
+    );
+  }
+}
+
+class _PlanCard extends StatelessWidget {
+  const _PlanCard({
+    required this.merchant,
+    required this.subscription,
+    required this.plan,
+  });
+
+  final Merchant? merchant;
+  final Subscription? subscription;
+  final Plan? plan;
+
+  static String _formatDate(DateTime date) =>
+      '${date.day}/${date.month}/${date.year}';
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).luqma;
+    final planName = plan?.name ??
+        (merchant?.revenueModel == RevenueModel.prepaid
+            ? 'رصيد مسبق الدفع'
+            : 'لقمة برو');
+
+    final renewalText = subscription != null
+        ? 'تجدد في ${_formatDate(subscription!.expiresAt)}'
+        : merchant?.revenueModel == RevenueModel.prepaid
+            ? 'رصيد مسبق الدفع للطلبات'
+            : 'تجدد في نهاية الشهر';
+
+    final itemsLimit = plan != null && !plan!.features.hasUnlimitedItems
+        ? '${plan!.features.maxItems} صنف بالصور'
+        : 'أصناف غير محدودة بالصور';
+
+    final commissionRate = merchant != null &&
+            merchant!.revenueModel == RevenueModel.commission
+        ? '${(merchant!.revenueValue / 100).toStringAsFixed(0)}%'
+        : '٨%';
+
+    return Container(
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [LuqmaPalette.burgundy, LuqmaPalette.burgundyDark],
+        ),
+        borderRadius: Radii.cardAll,
+        boxShadow: Elevations.card,
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Stack(
+        children: [
+          Positioned(
+            bottom: -20,
+            left: -20,
+            child: Container(
+              width: 80,
+              height: 80,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: colors.accent.withValues(alpha: 0.20),
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(Space.lg),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'الخطة الحالية',
+                  style: LuqmaType.caption.copyWith(
+                    color: colors.onBrand.withValues(alpha: 0.75),
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: Space.xs),
+                Text(
+                  planName,
+                  style: LuqmaType.sectionTitle.copyWith(
+                    color: colors.onBrand,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: Space.xs),
+                Text(
+                  renewalText,
+                  style: LuqmaType.bodySmall.copyWith(
+                    color: colors.onBrand.withValues(alpha: 0.90),
+                  ),
+                ),
+                const SizedBox(height: Space.md),
+                Wrap(
+                  spacing: Space.md,
+                  runSpacing: Space.xs,
+                  children: [
+                    _FeaturePill(text: '✓ إحصائيات مفصلة', color: colors.onBrand),
+                    _FeaturePill(text: '✓ $itemsLimit', color: colors.onBrand),
+                    _FeaturePill(
+                      text: '✓ نسبة عمولة $commissionRate',
+                      color: colors.onBrand,
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _FeaturePill extends StatelessWidget {
+  const _FeaturePill({required this.text, required this.color});
+
+  final String text;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding:
+          const EdgeInsets.symmetric(horizontal: Space.sm, vertical: Space.xs),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: Radii.pillAll,
+      ),
+      child: Text(
+        text,
+        style: LuqmaType.caption.copyWith(
+          color: color,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+    );
+  }
+}
+
+class _RequestTypes extends ConsumerWidget {
+  const _RequestTypes({
+    required this.merchantId,
+    required this.pushOpen,
+  });
+
+  final String merchantId;
+  final bool pushOpen;
+
+  static const homeBannerCardKey = Key('promo.type.homeBanner');
+  static const boostCardKey = Key('promo.type.boost');
+  static const pushCardKey = Key('promo.type.push');
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
+    final colors = theme.luqma;
+
+    final cards = [
+      (
+        key: homeBannerCardKey,
+        icon: Icons.campaign_rounded,
+        title: 'بانر إعلاني',
+        desc: 'اظهر في الصفحة الرئيسية',
+        price: '150 ج / أسبوع',
+        channel: PromotionChannel.homeBanner,
+        enabled: true,
+      ),
+      (
+        key: boostCardKey,
+        icon: Icons.star_rounded,
+        title: 'رفع الترتيب',
+        desc: 'يظهر محلك في الأول',
+        price: '80 ج / أسبوع',
+        channel: PromotionChannel.boost,
+        enabled: true,
+      ),
+      (
+        key: pushCardKey,
+        icon: Icons.notifications_active_rounded,
+        title: 'إشعار جماعي',
+        desc: 'يوصل لكل عملاء إدكو',
+        price: '250 ج / مرة',
+        channel: PromotionChannel.push,
+        enabled: pushOpen,
+      ),
+    ];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'اطلب عرض ترويجي',
+          style: theme.textTheme.titleMedium?.copyWith(
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        const SizedBox(height: Space.sm),
+        for (final item in cards) ...[
+          Container(
+            padding: const EdgeInsets.all(Space.md),
+            margin: const EdgeInsets.only(bottom: Space.sm),
+            decoration: BoxDecoration(
+              color: colors.card,
+              borderRadius: Radii.cardAll,
+              border: Border.all(color: colors.hairline),
+              boxShadow: Elevations.card,
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: colors.background,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  alignment: Alignment.center,
+                  child: Icon(
+                    item.icon,
+                    size: Sizes.iconMd,
+                    color: colors.brand,
+                  ),
+                ),
+                const SizedBox(width: Space.md),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        item.title,
+                        style: LuqmaType.bodyStrong.copyWith(
+                          color: colors.textPrimary,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        item.desc,
+                        style: LuqmaType.caption.copyWith(
+                          color: colors.textSecondary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: Space.sm),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text(
+                      item.price,
+                      style: LuqmaType.caption.copyWith(
+                        color: colors.price,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: Space.xs),
+                    FilledButton(
+                      key: item.key,
+                      onPressed: item.enabled
+                          ? () => _ask(
+                                context,
+                                ref,
+                                merchantId,
+                                initialChannel: item.channel,
+                              )
+                          : null,
+                      style: FilledButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: Space.md,
+                          vertical: Space.xs,
+                        ),
+                        minimumSize: const Size(0, 32),
+                      ),
+                      child: const Text('اطلب'),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ],
     );
   }
 }
@@ -97,6 +424,7 @@ Future<void> _ask(
   WidgetRef ref,
   String merchantId, {
   Promotion? existing,
+  PromotionChannel? initialChannel,
 }) async {
   // Phase 0 containment. Approval currently changes a database status but no delivery
   // pipeline queues the paid notification, so offering the channel would sell silence.
@@ -109,6 +437,7 @@ Future<void> _ask(
     isScrollControlled: true,
     builder: (_) => _RequestForm(
       existing: existing,
+      initialChannel: initialChannel,
       merchantId: merchantId,
       // The person, not the shop. `requested_by` references `auth.users`, and a
       // merchant id is a row in `merchants` — sending it meant every request a
@@ -177,6 +506,7 @@ class _Card extends ConsumerWidget {
         color: colors.card,
         borderRadius: Radii.cardAll,
         border: Border.all(color: colors.hairline),
+        boxShadow: Elevations.card,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -272,6 +602,7 @@ class _Card extends ConsumerWidget {
 class _RequestForm extends ConsumerStatefulWidget {
   const _RequestForm({
     this.existing,
+    this.initialChannel,
     required this.merchantId,
     required this.requestedBy,
     required this.cityId,
@@ -281,6 +612,9 @@ class _RequestForm extends ConsumerStatefulWidget {
 
   /// The placement being corrected, or null when asking for a new one.
   final Promotion? existing;
+
+  /// The channel pre-selected when opened from a request type card.
+  final PromotionChannel? initialChannel;
 
   final String merchantId;
 
@@ -333,6 +667,8 @@ class _RequestFormState extends ConsumerState<_RequestForm> {
       _mediaUrl = existing.imageUrl;
       _backgroundColor = existing.backgroundColor;
       _picture = existing.renderMode == PromotionRender.image;
+    } else if (widget.initialChannel != null) {
+      _channel = widget.initialChannel;
     }
   }
 

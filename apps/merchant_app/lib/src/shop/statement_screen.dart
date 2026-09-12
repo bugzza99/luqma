@@ -136,7 +136,15 @@ class _Charges extends ConsumerWidget {
         itemBuilder: (context, index) => withSummary && index == 0
             ? _Summary(merchantId: merchantId)
             : index == (withSummary ? 1 : 0)
-                ? const Text('المعروض أحدث 100 شحنة فقط')
+                ? Padding(
+                    padding: const EdgeInsets.only(bottom: Space.xs),
+                    child: Text(
+                      'المعروض أحدث 100 شحنة فقط',
+                      style: LuqmaType.caption.copyWith(
+                        color: Theme.of(context).luqma.textSecondary,
+                      ),
+                    ),
+                  )
                 : _Row(settlement: rows[index - (withSummary ? 2 : 1)]),
       ),
     );
@@ -176,7 +184,15 @@ class _Payments extends ConsumerWidget {
         itemCount: rows.length + 1,
         separatorBuilder: (_, _) => const SizedBox(height: Space.sm),
         itemBuilder: (context, index) => index == 0
-            ? const Text('المعروض أحدث 100 دفعة فقط')
+            ? Padding(
+                padding: const EdgeInsets.only(bottom: Space.xs),
+                child: Text(
+                  'المعروض أحدث 100 دفعة فقط',
+                  style: LuqmaType.caption.copyWith(
+                    color: Theme.of(context).luqma.textSecondary,
+                  ),
+                ),
+              )
             : _PaymentRow(payment: rows[index - 1]),
       ),
     );
@@ -222,9 +238,17 @@ class _Summary extends ConsumerWidget {
         children: [
           Text(
             'إجمالي الحساب من البداية',
-            style: theme.textTheme.titleMedium,
+            style: theme.textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.bold,
+            ),
           ),
-          Text(strings.orderCount(summary.orders)),
+          const SizedBox(height: Space.xs),
+          Text(
+            strings.orderCount(summary.orders),
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: colors.textSecondary,
+            ),
+          ),
           const SizedBox(height: Space.md),
           _Line(
             label: merchant.revenueModel == RevenueModel.prepaid
@@ -351,6 +375,7 @@ class _Row extends StatelessWidget {
         color: colors.card,
         borderRadius: Radii.cardAll,
         border: Border.all(color: colors.hairline),
+        boxShadow: Elevations.card,
       ),
       child: Row(
         children: [
@@ -418,6 +443,7 @@ class _PaymentRow extends StatelessWidget {
         color: colors.card,
         borderRadius: Radii.cardAll,
         border: Border.all(color: colors.hairline),
+        boxShadow: Elevations.card,
       ),
       child: Row(
         children: [

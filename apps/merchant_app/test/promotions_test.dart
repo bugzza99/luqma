@@ -105,6 +105,19 @@ void main() {
       );
     });
 
+    testWidgets('shows the plan card and the three request types', (tester) async {
+      await pump(tester);
+
+      // M08 Plan card
+      expect(find.text('الخطة الحالية'), findsOneWidget);
+
+      // M08 Request types
+      expect(find.text('اطلب عرض ترويجي'), findsOneWidget);
+      expect(find.text('بانر إعلاني'), findsOneWidget);
+      expect(find.text('رفع الترتيب'), findsOneWidget);
+      expect(find.text('إشعار جماعي'), findsOneWidget);
+    });
+
     // The whole point of requiring a reason. A merchant who is told only "rejected"
     // asks again with the same thing.
     testWidgets('a refusal shows why', (tester) async {
