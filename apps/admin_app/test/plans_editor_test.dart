@@ -77,7 +77,11 @@ void main() {
     expect(find.text('مفيش خطط.'), findsOneWidget);
   });
 
-  testWidgets('displays plan features and badges', (tester) async {
+  // The restyle listed a plan's feature flags as benefits. None of them is enforced by the
+  // product, so the card no longer promises them — a list of benefits the app does not
+  // deliver, on the screen the owner reads before selling a plan, is how a merchant gets
+  // promised them.
+  testWidgets('shows a plan without promising benefits the app does not deliver', (tester) async {
     await pump(
       tester,
       seed: [
@@ -97,9 +101,9 @@ void main() {
 
     expect(find.text('مجاني'), findsWidgets);
     expect(find.text('معطلة'), findsWidgets);
-    expect(find.text('حتى 10 صنف'), findsOneWidget);
-    expect(find.text('علامة توثيق للمحل'), findsOneWidget);
-    expect(find.text('إحصائيات كاملة للمبيعات'), findsOneWidget);
+    expect(find.text('حتى 10 صنف'), findsNothing);
+    expect(find.text('علامة توثيق للمحل'), findsNothing);
+    expect(find.text('إحصائيات كاملة للمبيعات'), findsNothing);
   });
 
   testWidgets('renders cleanly on a phone screen without overflow', (tester) async {

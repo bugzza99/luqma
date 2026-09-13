@@ -81,7 +81,7 @@ void main() {
     await pump(tester);
 
     expect(
-      find.textContaining('أي تعديل هنا بيوصل لكل التطبيقات على طول'),
+      find.textContaining('أي تعديل هنا بيوصل للتطبيقات أول ما تتفتح'),
       findsOneWidget,
     );
 

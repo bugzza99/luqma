@@ -294,30 +294,14 @@ class _PlanEditorState extends ConsumerState<_PlanEditor> {
                   ],
                 ),
                 const SizedBox(height: Space.sm),
-                _featureRow(
-                  colors,
-                  widget.plan.features.hasUnlimitedItems
-                      ? strings.plansUnlimitedItems
-                      : strings.plansLimitedItems(widget.plan.features.maxItems),
-                ),
-                if (widget.plan.features.verifiedBadge)
-                  _featureRow(colors, strings.plansFeatureVerified),
-                if (widget.plan.features.analytics)
-                  _featureRow(colors, strings.plansFeatureAnalytics),
-                if (widget.plan.features.boostRank)
-                  _featureRow(colors, strings.plansFeatureBoost),
-                if (widget.plan.features.homeBannerSlots > 0)
-                  _featureRow(
-                    colors,
-                    strings.plansFeatureBanners(
-                        widget.plan.features.homeBannerSlots),
-                  ),
-                if (widget.plan.features.monthlyPromotionCount > 0)
-                  _featureRow(
-                    colors,
-                    strings.plansFeaturePush(
-                        widget.plan.features.monthlyPromotionCount),
-                  ),
+                // The restyle drew the plan's feature flags here as benefits — verified
+                // badge, analytics, ranking priority, banners and pushes per month. The review
+                // pass checked them against the product and **none is enforced**: ranking
+                // comes from boost campaigns, pushes from the city's weekly cap, analytics is
+                // open to every shop, and nothing reads the item limit or the badge. A list of
+                // benefits on the owner's own screen that the app does not deliver is how a
+                // merchant gets promised them. The flags stay in the data; what to build is
+                // the owner's decision.
                 const Divider(height: Space.lg),
                 TextField(
                   key: PlansEditorScreen.priceKey(widget.plan.id),
@@ -368,25 +352,4 @@ class _PlanEditorState extends ConsumerState<_PlanEditor> {
     );
   }
 
-  Widget _featureRow(LuqmaColors colors, String label) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 3),
-      child: Row(
-        children: [
-          Icon(
-            Icons.check_circle_outline_rounded,
-            size: 16,
-            color: colors.success,
-          ),
-          const SizedBox(width: Space.xs),
-          Expanded(
-            child: Text(
-              label,
-              style: LuqmaType.bodySmall.copyWith(color: colors.textPrimary),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 }

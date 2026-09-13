@@ -439,6 +439,66 @@ void main() {
     expect(find.textContaining('#1247'), findsNothing,
         reason: "Ahmed's last order must not be shown while Salma is selected");
   });
+
+  /// Two regressions the review pass reproduced in the restyled customer detail.
+  group('the customer history', () {
+    List<Order> manyOrders(int n) => [
+          for (var i = 0; i < n; i++)
+            ahmedOrder.copyWith(id: 'o$i', orderNumber: 2000 + i),
+        ];
+
+    Future<void> open(WidgetTester tester, List<Order> history) async {
+      await pump(tester);
+      customers = FakeCustomerRepository(seed: [ahmed, salma], histories: {'u1': history});
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            customerRepositoryProvider.overrideWithValue(customers),
+            addressRepositoryProvider.overrideWithValue(addresses),
+            geographyRepositoryProvider.overrideWithValue(geography),
+            externalLinksProvider.overrideWithValue(externalLinks),
+            clockProvider.overrideWithValue(() => fixedClock),
+          ],
+          child: MaterialApp(
+            theme: LuqmaTheme.light,
+            locale: const Locale('ar'),
+            localizationsDelegates: LuqmaStrings.localizationsDelegates,
+            supportedLocales: LuqmaStrings.supportedLocales,
+            home: const Directionality(
+              textDirection: TextDirection.rtl,
+              child: CustomersScreen(),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await search(tester, 'أحمد');
+      await tester.tap(find.text('أحمد محمود'));
+      await tester.pumpAndSettle();
+    }
+
+    // Cut at five with no way to the rest, and the older orders are what a call about a
+    // disputed delivery last month needs.
+    testWidgets('reaches past the first five', (tester) async {
+      await open(tester, manyOrders(6));
+
+      final showAll = find.byKey(CustomerDetailScreen.showAllOrdersKey);
+      await tester.scrollUntilVisible(showAll, 200, scrollable: find.byType(Scrollable).last);
+      await tester.tap(showAll);
+      await tester.pumpAndSettle();
+
+      await tester.scrollUntilVisible(find.textContaining('#2005'), 200,
+          scrollable: find.byType(Scrollable).last);
+      expect(find.textContaining('#2005'), findsWidgets);
+    });
+
+    // The history is the newest fifty. Totals over it are totals over a window, and a
+    // number that silently stops growing at fifty reads as the account.
+    testWidgets('says when its totals are the newest fifty, not the account', (tester) async {
+      await open(tester, manyOrders(50));
+      expect(find.textContaining('آخر 50'), findsWidgets);
+    });
+  });
 }
 
 /// A customer repository whose history answers only when told to, so a test can make one

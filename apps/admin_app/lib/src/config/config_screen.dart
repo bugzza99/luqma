@@ -319,9 +319,11 @@ class _ConfigFormState extends ConsumerState<_ConfigForm> {
                 const SizedBox(width: Space.sm),
                 Expanded(
                   child: Text(
-                    // True as written: `admin_set_config` stamps an `audit_log` row with the actor.
+                    // True as written: `admin_set_config` stamps an `audit_log` row with the actor. And
+                    // not "at once" — the first draft said so, and a phone keeps the old value
+                    // until the app starts or comes back to the foreground.
                     // Said in words rather than by naming the table.
-                    'أي تعديل هنا بيوصل لكل التطبيقات على طول، وبيتسجّل مين عدّله.',
+                    'أي تعديل هنا بيوصل للتطبيقات أول ما تتفتح أو ترجع لها، وبيتسجّل مين عدّله.',
                     style: theme.textTheme.bodySmall?.copyWith(
                       color: colors.danger,
                       fontWeight: FontWeight.w600,

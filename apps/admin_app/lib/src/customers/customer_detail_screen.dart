@@ -25,6 +25,7 @@ class CustomerDetailScreen extends ConsumerStatefulWidget {
   static const backKey = Key('customer_detail.back');
   static const resetBlockKey = Key('customer_detail.reset_block');
   static const verificationFactsKey = Key('customer_detail.verification_facts');
+  static const showAllOrdersKey = Key('customer_detail.show_all_orders');
   static const noVerificationFactsKey = Key('customer_detail.no_verification_facts');
 
   @override
@@ -69,6 +70,8 @@ class _CustomerDetailScreenState extends ConsumerState<CustomerDetailScreen> {
   /// second read cannot pick up a different customer halfway through. And every completion
   /// checks it is still the newest load before it touches state.
   int _loadGeneration = 0;
+
+  bool _showAllOrders = false;
 
   Future<void> _load() async {
     final generation = ++_loadGeneration;
@@ -311,14 +314,21 @@ class _CustomerDetailScreenState extends ConsumerState<CustomerDetailScreen> {
                 children: [
                   Expanded(
                     child: _MiniStat(
-                      label: strings.customerStatOrders,
+                      label: orders.length >= 50
+                          ? '${strings.customerStatOrders} (آخر 50)'
+                          : strings.customerStatOrders,
                       value: '${orders.length}',
                     ),
                   ),
                   const SizedBox(width: Space.xs),
                   Expanded(
                     child: _MiniStat(
-                      label: strings.customerStatTotal,
+                      // The history is the newest fifty orders, so a customer with more has
+                      // totals over that window, not over their account. Said on the label
+                      // rather than implied by a number that silently stops growing.
+                      label: orders.length >= 50
+                          ? '${strings.customerStatTotal} (آخر 50)'
+                          : strings.customerStatTotal,
                       value: strings.price(totalSpent),
                     ),
                   ),
@@ -484,7 +494,10 @@ class _CustomerDetailScreenState extends ConsumerState<CustomerDetailScreen> {
             ),
           )
         else
-          for (final order in orders.take(5)) ...[
+          // Every order fetched, not the first five. The restyle cut the list at five with no
+          // way to see the rest, and the older orders are exactly what a support call about
+          // a disputed delivery from last month needs.
+          for (final order in (_showAllOrders ? orders : orders.take(5))) ...[
             Container(
               margin: const EdgeInsets.only(bottom: Space.xs),
               padding: const EdgeInsets.symmetric(
@@ -530,7 +543,19 @@ class _CustomerDetailScreenState extends ConsumerState<CustomerDetailScreen> {
                       ),
                       const SizedBox(height: Space.xs / 2),
                       Text(
-                        order.status.name,
+                        // Words, not the enum's name: «delivered» is a Dart identifier, and
+                        // the admin reading it is on a telephone call in Arabic. From the
+                        // admin's side — «needsAttention» is the one they act on, so it is
+                        // named for what it is rather than softened as the customer sees it.
+                        switch (order.status) {
+                          OrderStatus.placed => 'مستني رد المطعم',
+                          OrderStatus.accepted => 'المطعم قبل',
+                          OrderStatus.preparing => 'بيتجهّز',
+                          OrderStatus.outForDelivery => 'مع المندوب',
+                          OrderStatus.delivered => 'اتسلّم',
+                          OrderStatus.cancelled => 'اتلغى',
+                          OrderStatus.needsAttention => 'محتاج تدخّل',
+                        },
                         style: theme.textTheme.labelSmall?.copyWith(
                           color: colors.textSecondary,
                         ),
@@ -541,6 +566,13 @@ class _CustomerDetailScreenState extends ConsumerState<CustomerDetailScreen> {
               ),
             ),
           ],
+        // The list shows five until asked; the history fetched is up to fifty.
+        if (orders.length > 5)
+          TextButton(
+            key: CustomerDetailScreen.showAllOrdersKey,
+            onPressed: () => setState(() => _showAllOrders = !_showAllOrders),
+            child: Text(_showAllOrders ? 'عرض أقل' : 'عرض الكل (${orders.length})'),
+          ),
       ],
     );
   }
