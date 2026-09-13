@@ -149,6 +149,10 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                       ),
                     )
                   : CustomerDetailScreen(
+                      // Keyed by the customer, so selecting another row builds a fresh detail
+                      // rather than reusing the previous one's state. The detail guards its own
+                      // late loads as well; this is the second line, not the only one.
+                      key: ValueKey(_selectedCustomer!.id),
                       customer: _selectedCustomer!,
                       onCustomerUpdated: () => _search(_query.text),
                     ),

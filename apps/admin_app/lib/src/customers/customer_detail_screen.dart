@@ -57,16 +57,34 @@ class _CustomerDetailScreenState extends ConsumerState<CustomerDetailScreen> {
     }
   }
 
+  /// Which load is the current one.
+  ///
+  /// On a wide screen this widget stays mounted while the admin selects one customer after
+  /// another, so a load that started for Ahmed can finish after Salma is selected — and it
+  /// used to write Ahmed's last order and address into the reset block under Salma's name,
+  /// with the generate button live and aimed at Salma. The admin asks the caller about one
+  /// account and hands a password to another. Found by the review pass.
+  ///
+  /// Two defences, both needed. The customer is captured before the first `await`, so the
+  /// second read cannot pick up a different customer halfway through. And every completion
+  /// checks it is still the newest load before it touches state.
+  int _loadGeneration = 0;
+
   Future<void> _load() async {
+    final generation = ++_loadGeneration;
+    final uid = _customer.id;
     setState(() {
       _loading = true;
       _failure = null;
+      _orders = null;
+      _addresses = null;
     });
 
-    final historyResult = await ref.read(customerRepositoryProvider).history(_customer.id);
-    final addressesResult = await ref.read(addressRepositoryProvider).addresses(_customer.id);
+    final historyResult = await ref.read(customerRepositoryProvider).history(uid);
+    if (!mounted || generation != _loadGeneration) return;
+    final addressesResult = await ref.read(addressRepositoryProvider).addresses(uid);
 
-    if (!mounted) return;
+    if (!mounted || generation != _loadGeneration) return;
 
     if (historyResult is Err) {
       setState(() {

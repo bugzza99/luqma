@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:admin_app/src/customers/customer_detail_screen.dart';
 import 'package:admin_app/src/customers/customers_screen.dart';
 import 'package:flutter/material.dart';
@@ -379,4 +381,89 @@ void main() {
       expect(find.text('01012345678'), findsWidgets);
     });
   });
+
+  /// One customer's facts under another customer's name.
+  ///
+  /// On a wide screen the detail sits beside the list and is the same widget whichever
+  /// row is selected. Its load read `_customer.id` after an `await`, and a load that
+  /// finished late wrote its answer into state regardless of who was selected by then.
+  /// So: select Ahmed, then Salma before Ahmed's orders arrive — and Ahmed's last order
+  /// is on the screen under Salma's name, the generate button is live, and it resets
+  /// **Salma**. The admin asks the caller about one account and hands a password to another.
+  ///
+  /// Found by the review pass, reproduced in its own translation of the state logic, and
+  /// reproduced here in the widget itself.
+  testWidgets('a slow load for one customer never lands under the next one', (tester) async {
+    await pump(tester, size: wideSize);
+
+    final slow = _SlowCustomers({'u1': [ahmedOrder], 'u2': []}, [ahmed, salma]);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          customerRepositoryProvider.overrideWithValue(slow),
+          addressRepositoryProvider.overrideWithValue(addresses),
+          geographyRepositoryProvider.overrideWithValue(geography),
+          externalLinksProvider.overrideWithValue(externalLinks),
+          clockProvider.overrideWithValue(() => fixedClock),
+        ],
+        child: MaterialApp(
+          theme: LuqmaTheme.light,
+          locale: const Locale('ar'),
+          localizationsDelegates: LuqmaStrings.localizationsDelegates,
+          supportedLocales: LuqmaStrings.supportedLocales,
+          home: const Directionality(
+            textDirection: TextDirection.rtl,
+            child: CustomersScreen(),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    // The list is empty until somebody searches; an empty query returns everybody.
+    await tester.enterText(find.byKey(CustomersScreen.searchKey), 'ا');
+    await tester.testTextInput.receiveAction(TextInputAction.search);
+    await tester.pumpAndSettle();
+
+    // Ahmed selected; his history is held.
+    await tester.tap(find.text('أحمد محمود').first);
+    await tester.pump();
+    // Salma selected before it arrives.
+    await tester.tap(find.text('سلمى علي').first);
+    await tester.pump();
+    // Salma's (empty) history arrives first, then Ahmed's late one.
+    slow.release('u2');
+    await tester.pump();
+    slow.release('u1');
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('#1247'), findsNothing,
+        reason: "Ahmed's last order must not be shown while Salma is selected");
+  });
+}
+
+/// A customer repository whose history answers only when told to, so a test can make one
+/// customer's load finish after another's has started.
+class _SlowCustomers implements CustomerRepository {
+  _SlowCustomers(this._histories, this._seed);
+
+  final Map<String, List<Order>> _histories;
+  final List<CustomerSummary> _seed;
+  final Map<String, Completer<Result<List<Order>>>> _pending = {};
+
+  void release(String uid) =>
+      _pending[uid]?.complete(Result.ok(_histories[uid] ?? const []));
+
+  @override
+  Future<Result<List<CustomerSummary>>> search(String query) async => Result.ok(_seed);
+
+  @override
+  Future<Result<List<Order>>> history(String uid) =>
+      (_pending[uid] = Completer<Result<List<Order>>>()).future;
+
+  @override
+  Future<Result<void>> setBlocked(String uid, {required bool blocked}) async =>
+      const Result.ok(null);
+
+  @override
+  Future<Result<String>> resetPassword(String uid) async => Result.ok('pw-$uid');
 }
