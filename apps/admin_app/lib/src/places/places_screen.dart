@@ -56,14 +56,17 @@ class _PlacesScreenState extends ConsumerState<PlacesScreen> {
                 value: state,
                 onRetry: () => ref.invalidate(placesControllerProvider),
                 builder: (context, value) => switch (_tab) {
-                    _Tab.zones => _Zones(zones: value.zones),
+                    _Tab.zones => _Zones(
+                        zones: value.zones,
+                        landmarks: value.landmarks,
+                      ),
                     _Tab.landmarks =>
                       _Landmarks(zones: value.zones, landmarks: value.landmarks),
                     _Tab.suggestions => _Suggestions(
                         suggestions: value.suggestions,
                         zones: value.zones,
                       ),
-                  }
+                  },
               ),
             ),
           ],
@@ -107,32 +110,29 @@ class _Tabs extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = Theme.of(context).luqma;
-
     return Padding(
       padding: const EdgeInsets.all(Space.gutter),
       child: Row(
         children: [
-          _TabButton(
-            tabKey: PlacesScreen.zonesTabKey,
+          LuqmaChip(
+            key: PlacesScreen.zonesTabKey,
             label: 'المناطق',
             selected: current == _Tab.zones,
             onTap: () => onChanged(_Tab.zones),
           ),
           const SizedBox(width: Space.sm),
-          _TabButton(
-            tabKey: PlacesScreen.landmarksTabKey,
+          LuqmaChip(
+            key: PlacesScreen.landmarksTabKey,
             label: 'العلامات',
             selected: current == _Tab.landmarks,
             onTap: () => onChanged(_Tab.landmarks),
           ),
           const SizedBox(width: Space.sm),
-          _TabButton(
-            tabKey: PlacesScreen.suggestionsTabKey,
+          LuqmaChip(
+            key: PlacesScreen.suggestionsTabKey,
             // The count carries the whole message: there is work waiting, and how much.
             label: suggestionCount > 0 ? 'مقترحة ($suggestionCount)' : 'مقترحة',
             selected: current == _Tab.suggestions,
-            highlight: suggestionCount > 0 ? colors.accent : null,
             onTap: () => onChanged(_Tab.suggestions),
           ),
         ],
@@ -141,44 +141,16 @@ class _Tabs extends StatelessWidget {
   }
 }
 
-class _TabButton extends StatelessWidget {
-  const _TabButton({
-    required this.tabKey,
-    required this.label,
-    required this.selected,
-    required this.onTap,
-    this.highlight,
-  });
-
-  final Key tabKey;
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
-  final Color? highlight;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = Theme.of(context).luqma;
-    return ChoiceChip(
-      key: tabKey,
-      label: Text(label),
-      selected: selected,
-      // The accent marks unreviewed work, which is exactly the "offers and things needing
-      // attention" role it is reserved for.
-      side: highlight != null && !selected ? BorderSide(color: highlight!, width: 1.5) : null,
-      onSelected: (_) => onTap(),
-      backgroundColor: colors.card,
-    );
-  }
-}
-
 class _Zones extends ConsumerWidget {
-  const _Zones({required this.zones});
+  const _Zones({required this.zones, required this.landmarks});
 
   final List<Zone> zones;
+  final List<Landmark> landmarks;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
+    final colors = theme.luqma;
     final strings = LuqmaStrings.of(context);
 
     return ListView.separated(
@@ -187,16 +159,92 @@ class _Zones extends ConsumerWidget {
       separatorBuilder: (_, _) => const SizedBox(height: Space.sm),
       itemBuilder: (context, i) {
         final zone = zones[i];
-        return _Row(
-          title: zone.name,
-          trailing: Text(
-            strings.price(zone.defaultDeliveryFee),
-            style: TextStyle(
-              color: Theme.of(context).luqma.price,
-              fontWeight: FontWeight.w700,
-            ),
+        final zoneLandmarks =
+            landmarks.where((l) => l.zoneId == zone.id).toList();
+
+        return Container(
+          decoration: BoxDecoration(
+            color: colors.card,
+            borderRadius: Radii.cardAll,
+            border: Border.all(color: colors.hairline),
+            boxShadow: Elevations.card,
           ),
-          onTap: () => _editZone(context, ref, zone),
+          padding: const EdgeInsets.all(Space.md),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              InkWell(
+                onTap: () => _editZone(context, ref, zone),
+                borderRadius: Radii.cardAll,
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            zone.name,
+                            style: theme.textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          const SizedBox(height: Space.xs),
+                          Text(
+                            'إدكو',
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: colors.textSecondary,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Text(
+                      strings.price(zone.defaultDeliveryFee),
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        color: colors.price,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: Space.sm),
+              Divider(height: 1, color: colors.hairline),
+              const SizedBox(height: Space.sm),
+              Text(
+                strings.placesLandmarksHeader,
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: colors.textSecondary,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: Space.xs),
+              Wrap(
+                spacing: Space.xs,
+                runSpacing: Space.xs,
+                children: [
+                  for (final landmark in zoneLandmarks)
+                    LuqmaChip(
+                      label: '📍 ${landmark.name}',
+                      selected: false,
+                      onTap: () => _editLandmark(context, ref, landmark, zones),
+                    ),
+                  LuqmaChip(
+                    label: strings.placesAddLandmarkChip,
+                    selected: false,
+                    dashed: true,
+                    onTap: () => _editLandmark(
+                      context,
+                      ref,
+                      null,
+                      zones,
+                      initialZoneId: zone.id,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
         );
       },
     );
@@ -217,7 +265,12 @@ class _Landmarks extends ConsumerWidget {
         for (final zone in zones) ...[
           Padding(
             padding: const EdgeInsets.symmetric(vertical: Space.sm),
-            child: Text(zone.name, style: Theme.of(context).textTheme.titleMedium),
+            child: Text(
+              zone.name,
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+            ),
           ),
           for (final landmark in landmarks.where((l) => l.zoneId == zone.id))
             Padding(
@@ -241,20 +294,11 @@ class _Suggestions extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final theme = Theme.of(context);
-    final colors = theme.luqma;
-
     if (suggestions.isEmpty) {
-      return Center(
+      return const LuqmaEmptyView(
         key: PlacesScreen.noSuggestionsKey,
-        child: Padding(
-          padding: const EdgeInsets.all(Space.xl),
-          child: Text(
+        message:
             'مفيش أماكن جديدة دلوقتي.\nلما عميل يكتب علامة مش في اللستة، هتلاقيها هنا.',
-            textAlign: TextAlign.center,
-            style: theme.textTheme.bodyMedium?.copyWith(color: colors.textSecondary),
-          ),
-        ),
       );
     }
 
@@ -307,6 +351,7 @@ class _Row extends StatelessWidget {
           color: colors.card,
           borderRadius: Radii.cardAll,
           border: Border.all(color: colors.hairline),
+          boxShadow: Elevations.card,
         ),
         child: Row(
           children: [
@@ -314,13 +359,20 @@ class _Row extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(title, style: theme.textTheme.titleMedium),
-                  if (subtitle != null)
+                  Text(
+                    title,
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  if (subtitle != null) ...[
+                    const SizedBox(height: Space.xs),
                     Text(
                       subtitle!,
                       style: theme.textTheme.bodySmall
                           ?.copyWith(color: colors.textSecondary),
                     ),
+                  ],
                 ],
               ),
             ),
@@ -355,15 +407,16 @@ Future<void> _editLandmark(
   BuildContext context,
   WidgetRef ref,
   Landmark? existing,
-  List<Zone> zones,
-) {
+  List<Zone> zones, {
+  String? initialZoneId,
+}) {
   return showDialog<void>(
     context: context,
     builder: (dialogContext) => _EditDialog(
       title: existing == null ? 'علامة جديدة' : 'تعديل العلامة',
       initialName: existing?.name,
       zones: zones,
-      initialZoneId: existing?.zoneId ?? zones.firstOrNull?.id,
+      initialZoneId: existing?.zoneId ?? initialZoneId ?? zones.firstOrNull?.id,
       onDelete: existing == null
           ? null
           : () async {

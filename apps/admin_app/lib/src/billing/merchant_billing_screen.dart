@@ -192,12 +192,15 @@ class _ModelState extends ConsumerState<_Model> {
                           vertical: 2,
                         ),
                         decoration: BoxDecoration(
-                          color: colors.success,
+                          color: colors.brand,
                           borderRadius: Radii.pillAll,
                         ),
                         child: Text(
                           'الحالي',
-                          style: LuqmaType.caption.copyWith(color: colors.onBrand),
+                          style: LuqmaType.caption.copyWith(
+                            color: colors.onBrand,
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
                       ),
                   ],
@@ -626,18 +629,21 @@ class _Settlements extends ConsumerWidget {
                 ),
               )
             else ...[
-              _Figure(label: strings.orderCount(s.orders), value: strings.price(s.taken)),
+              LuqmaBillLine(
+                label: strings.orderCount(s.orders),
+                value: strings.price(s.taken),
+              ),
               if (s.platformOwes > 0) ...[
                 const SizedBox(height: Space.sm),
-                _Figure(
-                  figureKey: MerchantBillingScreen.platformOwesKey,
+                LuqmaBillLine(
+                  key: MerchantBillingScreen.platformOwesKey,
                   // Netted against the commission by a person, not by this screen: what
                   // the platform owes for its own discounts is a different conversation
                   // from what the merchant owes, and collapsing them into one number is
                   // how a merchant stops being able to check either.
                   label: 'لقمة عليها للمطعم',
                   value: strings.price(s.platformOwes),
-                  emphasis: colors.success,
+                  emphasis: true,
                 ),
               ],
             ],
@@ -649,8 +655,8 @@ class _Settlements extends ConsumerWidget {
             if (merchant.revenueModel == RevenueModel.commission ||
                   merchant.commissionOwed != 0) ...[
               const SizedBox(height: Space.sm),
-              _Figure(
-                figureKey: merchant.commissionOwed < 0
+              LuqmaBillLine(
+                key: merchant.commissionOwed < 0
                     ? MerchantBillingScreen.creditKey
                     : MerchantBillingScreen.owedKey,
                 // Negative means the merchant handed over more than they owed — an
@@ -662,7 +668,7 @@ class _Settlements extends ConsumerWidget {
                     ? 'رصيد للمطعم عندنا'
                     : 'المستحق على المطعم',
                 value: strings.price(merchant.commissionOwed.abs()),
-                emphasis: merchant.commissionOwed < 0 ? colors.success : colors.price,
+                emphasis: merchant.commissionOwed < 0,
               ),
             ],
             // Only where there is something to take. A merchant who owes nothing and a
@@ -762,43 +768,6 @@ class _Settlements extends ConsumerWidget {
   }
 }
 
-class _Figure extends StatelessWidget {
-  const _Figure({
-    required this.label,
-    required this.value,
-    this.emphasis,
-    this.figureKey,
-  });
-
-  final String label;
-  final String value;
-  final Color? emphasis;
-  final Key? figureKey;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colors = theme.luqma;
-
-    return Row(
-      key: figureKey,
-      children: [
-        Expanded(
-          child: Text(
-            label,
-            style: theme.textTheme.bodyMedium
-                ?.copyWith(color: colors.textSecondary),
-          ),
-        ),
-        Text(
-          value,
-          style: LuqmaType.priceSmall.copyWith(color: emphasis ?? colors.textPrimary),
-        ),
-      ],
-    );
-  }
-}
-
 class _Card extends StatelessWidget {
   const _Card({required this.title, required this.child, this.cardKey});
 
@@ -824,11 +793,17 @@ class _Card extends StatelessWidget {
         decoration: BoxDecoration(
           borderRadius: Radii.cardAll,
           border: Border.all(color: colors.hairline),
+          boxShadow: Elevations.card,
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text(title, style: theme.textTheme.titleLarge),
+            Text(
+              title,
+              style: theme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w700,
+              ),
+            ),
             const SizedBox(height: Space.md),
             child,
           ],

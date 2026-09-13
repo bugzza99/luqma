@@ -886,5 +886,15 @@
         "type": "int"
       }
     }
+  },
+
+  "placesLandmarksHeader": "معالم للكابتن",
+  "@placesLandmarksHeader": {
+    "description": "Section header for courier landmarks inside a zone card."
+  },
+
+  "placesAddLandmarkChip": "+ علامة",
+  "@placesAddLandmarkChip": {
+    "description": "Dashed pill button to add a landmark directly to a zone."
   }
 }
