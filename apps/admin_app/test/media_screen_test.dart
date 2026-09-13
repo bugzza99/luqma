@@ -116,4 +116,22 @@ void main() {
     final stored = (await repository.get('m1')).valueOrNull!;
     expect(stored.status, MediaStatus.rejected);
   });
+
+  testWidgets('shows waiting count in header banner', (tester) async {
+    await pump(tester, seed: [media('m1'), media('m2')]);
+
+    expect(find.text('صورتان في انتظار المراجعة'), findsOneWidget);
+  });
+
+  testWidgets('renders cleanly without overflow on a phone screen', (tester) async {
+    tester.view.physicalSize = const Size(360, 640);
+    tester.view.devicePixelRatio = 1.0;
+
+    await pump(tester, seed: [media('m1')]);
+
+    expect(find.byKey(MediaScreen.cardKey('m1')), findsOneWidget);
+    expect(find.byKey(MediaScreen.approveKey('m1')), findsOneWidget);
+    expect(find.byKey(MediaScreen.rejectKey('m1')), findsOneWidget);
+  });
 }
+

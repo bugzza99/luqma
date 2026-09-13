@@ -187,4 +187,32 @@ void main() {
       expect(slots[0].key, isNot(slots[1].key));
     });
   });
+
+  group('layout and banners', () {
+    testWidgets('shows the dynamic control explanation banner', (tester) async {
+      await pump(tester);
+
+      expect(
+        find.text('يتحكم بشكل الرئيسية عند العميل — التعديل يظهر خلال دقيقة'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('renders cleanly on a phone screen without overflow', (tester) async {
+      tester.view.physicalSize = const Size(360, 640);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      await pump(tester, seed: [
+        section(key: 'list', type: 'merchantList', isVisible: false),
+        section(key: 'oops', type: 'unknownType'),
+      ]);
+
+      expect(find.byKey(HomeBuilderScreen.rowKey('list')), findsOneWidget);
+      expect(find.byKey(HomeBuilderScreen.hiddenKey('list')), findsOneWidget);
+      expect(find.byKey(HomeBuilderScreen.rowKey('oops')), findsOneWidget);
+      expect(find.byKey(HomeBuilderScreen.unknownKey('oops')), findsOneWidget);
+    });
+  });
 }
+

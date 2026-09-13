@@ -781,5 +781,110 @@
   "merchantsClearSearchTooltip": "مسح البحث",
   "@merchantsClearSearchTooltip": {
     "description": "Tooltip for clear search button."
+  },
+
+  "mediaQueueTitle": "مراجعة الصور",
+  "@mediaQueueTitle": {
+    "description": "App bar title for the media moderation queue."
+  },
+
+  "mediaQueueWaitingCount": "{count, plural, =1{صورة واحدة في انتظار المراجعة} =2{صورتان في انتظار المراجعة} few{{count} صور في انتظار المراجعة} many{{count} صورة في انتظار المراجعة} other{{count} صورة في انتظار المراجعة}}",
+  "@mediaQueueWaitingCount": {
+    "description": "Sub-bar count of images waiting for moderation review.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+
+  "mediaQueueApprove": "اعتماد",
+  "@mediaQueueApprove": {
+    "description": "Button label to approve an uploaded photo."
+  },
+
+  "mediaQueueReject": "رفض",
+  "@mediaQueueReject": {
+    "description": "Button label to reject an uploaded photo."
+  },
+
+  "homeBuilderBanner": "يتحكم بشكل الرئيسية عند العميل — التعديل يظهر خلال دقيقة",
+  "@homeBuilderBanner": {
+    "description": "Notice banner explaining home sections reflect on customer app within a minute."
+  },
+
+  "homeBuilderAddTitle": "ضيف بلوك للرئيسية",
+  "@homeBuilderAddTitle": {
+    "description": "Bottom sheet header for adding a home section."
+  },
+
+  "homeBuilderAddSubtitle": "اختار نوع من الأنواع المسجلة في التطبيق",
+  "@homeBuilderAddSubtitle": {
+    "description": "Bottom sheet subtitle clarifying dynamic blocks come from registered types only."
+  },
+
+  "plansSubtitle": "الخطط اللي بيشوفها التاجر. عدّل السعر أو الميزات.",
+  "@plansSubtitle": {
+    "description": "Sub-bar description on the plans and pricing editor screen."
+  },
+
+  "plansFreeBadge": "مجاني",
+  "@plansFreeBadge": {
+    "description": "Badge for free tier plan."
+  },
+
+  "plansInactiveBadge": "معطلة",
+  "@plansInactiveBadge": {
+    "description": "Badge indicating a plan is inactive/withdrawn."
+  },
+
+  "plansUnlimitedItems": "أصناف بلا حدود",
+  "@plansUnlimitedItems": {
+    "description": "Feature item for unlimited menu items."
+  },
+
+  "plansLimitedItems": "حتى {count} صنف",
+  "@plansLimitedItems": {
+    "description": "Feature item for limited menu items.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+
+  "plansFeatureVerified": "علامة توثيق للمحل",
+  "@plansFeatureVerified": {
+    "description": "Feature item for verified merchant badge."
+  },
+
+  "plansFeatureAnalytics": "إحصائيات كاملة للمبيعات",
+  "@plansFeatureAnalytics": {
+    "description": "Feature item for full analytics."
+  },
+
+  "plansFeatureBoost": "أولوية في ترتيب المطاعم",
+  "@plansFeatureBoost": {
+    "description": "Feature item for boost ranking."
+  },
+
+  "plansFeatureBanners": "{count, plural, =1{بانر إعلاني واحد} =2{بانران إعلانيان} few{{count} بانرات إعلانية} many{{count} بانر إعلاني} other{{count} بانر إعلاني}}",
+  "@plansFeatureBanners": {
+    "description": "Feature item for home banner slots.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+
+  "plansFeaturePush": "{count, plural, =1{إشعار ترويجي شهري واحد} =2{إشعاران ترويجيان شهريان} few{{count} إشعارات ترويجية شهرية} many{{count} إشعارًا ترويجيًا شهريًا} other{{count} إشعار ترويجي شهري}}",
+  "@plansFeaturePush": {
+    "description": "Feature item for monthly promotion push allowance.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
   }
 }

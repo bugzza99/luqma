@@ -20,30 +20,66 @@ class PlansEditorScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
+    final colors = theme.luqma;
+    final strings = LuqmaStrings.of(context);
     final plans = ref.watch(allPlansProvider);
 
     return Scaffold(
+      backgroundColor: colors.background,
       appBar: AppBar(title: const Text('الخطط والأسعار')),
       body: AdminContent(
         child: LuqmaAsyncView(
           value: plans,
           onRetry: () => ref.invalidate(allPlansProvider),
-          empty: Center(
-              key: PlansEditorScreen.emptyKey,
-              child: Text(
-                'مفيش خطط.',
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: Theme.of(context).luqma.textSecondary,
-                    ),
-              ),
-            ),
+          empty: LuqmaEmptyView(
+            key: PlansEditorScreen.emptyKey,
+            message: 'مفيش خطط.',
+          ),
           isEmpty: (value) => value.isEmpty,
-          builder: (context, value) => ListView.separated(
-              padding: const EdgeInsets.all(Space.gutter),
-              itemCount: value.length,
-              separatorBuilder: (_, _) => const SizedBox(height: Space.md),
-              itemBuilder: (context, i) => _PlanEditor(plan: value[i]),
-            )
+          builder: (context, value) => Column(
+            children: [
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: Space.gutter,
+                  vertical: Space.sm + 2,
+                ),
+                decoration: BoxDecoration(
+                  color: colors.surface,
+                  border: Border(
+                    bottom: BorderSide(color: colors.hairline),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.info_outline,
+                      size: Sizes.iconSm,
+                      color: colors.textSecondary,
+                    ),
+                    const SizedBox(width: Space.sm),
+                    Expanded(
+                      child: Text(
+                        strings.plansSubtitle,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: colors.textSecondary,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: ListView.separated(
+                  padding: const EdgeInsets.all(Space.gutter),
+                  itemCount: value.length,
+                  separatorBuilder: (_, _) => const SizedBox(height: Space.md),
+                  itemBuilder: (context, i) => _PlanEditor(plan: value[i]),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -123,57 +159,231 @@ class _PlanEditorState extends ConsumerState<_PlanEditor> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colors = theme.luqma;
+    final strings = LuqmaStrings.of(context);
+
+    final isBrandHeader = widget.plan.priceMonthly > 0;
+    final headerBg = isBrandHeader ? colors.brand : colors.surface;
+    final headerFg = isBrandHeader ? colors.background : colors.textPrimary;
 
     return Container(
-      padding: const EdgeInsets.all(Space.md),
+      clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
         color: colors.card,
         borderRadius: Radii.cardAll,
-        border: Border.all(color: colors.hairline),
+        border: Border.all(
+          color: widget.plan.id == 'pro' ? colors.brand : colors.hairline,
+          width: widget.plan.id == 'pro' ? 1.5 : 1.0,
+        ),
+        boxShadow: Elevations.card,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  widget.plan.name,
-                  style: theme.textTheme.titleLarge,
+          Container(
+            padding: const EdgeInsets.symmetric(
+              horizontal: Space.md,
+              vertical: Space.sm,
+            ),
+            color: headerBg,
+            child: Row(
+              children: [
+                Expanded(
+                  child: Row(
+                    children: [
+                      Text(
+                        widget.plan.name,
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          color: headerFg,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      if (widget.plan.isFree) ...[
+                        const SizedBox(width: Space.sm),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: Space.sm,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: colors.textPrimary.withValues(alpha: 0.1),
+                            borderRadius: Radii.pillAll,
+                          ),
+                          child: Text(
+                            strings.plansFreeBadge,
+                            style: LuqmaType.caption.copyWith(
+                              color: headerFg,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ] else if (!_isActive) ...[
+                        const SizedBox(width: Space.sm),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: Space.sm,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: colors.danger,
+                            borderRadius: Radii.pillAll,
+                          ),
+                          child: Text(
+                            strings.plansInactiveBadge,
+                            style: LuqmaType.caption.copyWith(
+                              color: colors.background,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
                 ),
-              ),
-              Switch(
-                value: _isActive,
-                onChanged: (v) => setState(() => _isActive = v),
-              ),
-            ],
-          ),
-          const SizedBox(height: Space.md),
-          TextField(
-            key: PlansEditorScreen.priceKey(widget.plan.id),
-            controller: _price,
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            decoration: const InputDecoration(
-              labelText: 'السعر الشهري (جنيه)',
-              suffixText: 'ج',
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      _isActive ? 'مفعلة' : 'معطلة',
+                      style: LuqmaType.caption.copyWith(
+                        color: headerFg.withValues(alpha: 0.8),
+                      ),
+                    ),
+                    const SizedBox(width: Space.xs),
+                    Switch(
+                      value: _isActive,
+                      onChanged: (v) => setState(() => _isActive = v),
+                      activeThumbColor:
+                          isBrandHeader ? colors.background : colors.brand,
+                      activeTrackColor: isBrandHeader
+                          ? colors.background.withValues(alpha: 0.4)
+                          : null,
+                    ),
+                  ],
+                ),
+              ],
             ),
           ),
-          const SizedBox(height: Space.md),
-          TextField(
-            controller: _maxItems,
-            keyboardType: TextInputType.number,
-            decoration: const InputDecoration(
-              labelText: 'عدد الأصناف (0 = غير محدود)',
+          Padding(
+            padding: const EdgeInsets.all(Space.md),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.baseline,
+                  textBaseline: TextBaseline.alphabetic,
+                  children: [
+                    Text(
+                      widget.plan.isFree
+                          ? 'مجاني'
+                          : Money.format(widget.plan.priceMonthly),
+                      style: LuqmaType.price.copyWith(
+                        fontSize: 24,
+                        fontWeight: FontWeight.bold,
+                        color: colors.textPrimary,
+                      ),
+                    ),
+                    if (!widget.plan.isFree) ...[
+                      const SizedBox(width: Space.xs),
+                      Text(
+                        'ج / شهر',
+                        style: LuqmaType.bodySmall.copyWith(
+                          color: colors.textSecondary,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+                const SizedBox(height: Space.sm),
+                _featureRow(
+                  colors,
+                  widget.plan.features.hasUnlimitedItems
+                      ? strings.plansUnlimitedItems
+                      : strings.plansLimitedItems(widget.plan.features.maxItems),
+                ),
+                if (widget.plan.features.verifiedBadge)
+                  _featureRow(colors, strings.plansFeatureVerified),
+                if (widget.plan.features.analytics)
+                  _featureRow(colors, strings.plansFeatureAnalytics),
+                if (widget.plan.features.boostRank)
+                  _featureRow(colors, strings.plansFeatureBoost),
+                if (widget.plan.features.homeBannerSlots > 0)
+                  _featureRow(
+                    colors,
+                    strings.plansFeatureBanners(
+                        widget.plan.features.homeBannerSlots),
+                  ),
+                if (widget.plan.features.monthlyPromotionCount > 0)
+                  _featureRow(
+                    colors,
+                    strings.plansFeaturePush(
+                        widget.plan.features.monthlyPromotionCount),
+                  ),
+                const Divider(height: Space.lg),
+                TextField(
+                  key: PlansEditorScreen.priceKey(widget.plan.id),
+                  controller: _price,
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
+                  decoration: const InputDecoration(
+                    labelText: 'السعر الشهري (جنيه)',
+                    suffixText: 'ج',
+                    border: OutlineInputBorder(
+                      borderRadius: Radii.fieldAll,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: Space.md),
+                TextField(
+                  controller: _maxItems,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                    labelText: 'عدد الأصناف (0 = غير محدود)',
+                    border: OutlineInputBorder(
+                      borderRadius: Radii.fieldAll,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: Space.md),
+                FilledButton(
+                  key: PlansEditorScreen.saveKey(widget.plan.id),
+                  onPressed: _busy ? null : _save,
+                  style: FilledButton.styleFrom(
+                    minimumSize: const Size.fromHeight(Sizes.minTarget),
+                    backgroundColor: colors.brand,
+                    foregroundColor: colors.background,
+                    shape: const RoundedRectangleBorder(
+                      borderRadius: Radii.fieldAll,
+                    ),
+                  ),
+                  child: Text(
+                    _busy ? 'جاري…' : 'احفظ الخطة',
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                ),
+              ],
             ),
           ),
-          const SizedBox(height: Space.md),
-          FilledButton(
-            key: PlansEditorScreen.saveKey(widget.plan.id),
-            onPressed: _busy ? null : _save,
-            style: FilledButton.styleFrom(
-              minimumSize: const Size.fromHeight(Sizes.minTarget),
+        ],
+      ),
+    );
+  }
+
+  Widget _featureRow(LuqmaColors colors, String label) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 3),
+      child: Row(
+        children: [
+          Icon(
+            Icons.check_circle_outline_rounded,
+            size: 16,
+            color: colors.success,
+          ),
+          const SizedBox(width: Space.xs),
+          Expanded(
+            child: Text(
+              label,
+              style: LuqmaType.bodySmall.copyWith(color: colors.textPrimary),
             ),
-            child: Text(_busy ? 'جاري…' : 'احفظ الخطة'),
           ),
         ],
       ),

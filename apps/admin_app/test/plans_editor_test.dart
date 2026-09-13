@@ -68,4 +68,49 @@ void main() {
     final saved = (await billing.plans(includeInactive: true)).valueOrNull!.single;
     expect(saved.priceMonthly, 25000, reason: 'nothing was written');
   });
+
+  testWidgets('an empty list of plans says so rather than showing nothing',
+      (tester) async {
+    await pump(tester, seed: []);
+
+    expect(find.byKey(PlansEditorScreen.emptyKey), findsOneWidget);
+    expect(find.text('مفيش خطط.'), findsOneWidget);
+  });
+
+  testWidgets('displays plan features and badges', (tester) async {
+    await pump(
+      tester,
+      seed: [
+        Plan(
+          id: 'free',
+          name: 'مجانية',
+          priceMonthly: 0,
+          features: const PlanFeatures(
+            maxItems: 10,
+            verifiedBadge: true,
+            analytics: true,
+          ),
+          isActive: false,
+        ),
+      ],
+    );
+
+    expect(find.text('مجاني'), findsWidgets);
+    expect(find.text('معطلة'), findsWidgets);
+    expect(find.text('حتى 10 صنف'), findsOneWidget);
+    expect(find.text('علامة توثيق للمحل'), findsOneWidget);
+    expect(find.text('إحصائيات كاملة للمبيعات'), findsOneWidget);
+  });
+
+  testWidgets('renders cleanly on a phone screen without overflow', (tester) async {
+    tester.view.physicalSize = const Size(360, 640);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    await pump(tester, seed: [plan(priceMonthly: 25000)]);
+
+    expect(find.byKey(PlansEditorScreen.priceKey('basic')), findsOneWidget);
+    expect(find.byKey(PlansEditorScreen.saveKey('basic')), findsOneWidget);
+  });
 }
+
