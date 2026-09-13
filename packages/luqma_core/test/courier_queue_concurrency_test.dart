@@ -48,7 +48,17 @@ class _Slow implements CourierOrderRepository {
   Stream<List<Order>> watchForPlatform(String cityId) => const Stream.empty();
 
   @override
+  Stream<List<Order>> watchCarried() => const Stream.empty();
+
+  @override
+  Stream<List<String?>> watchCarriedMerchants() => const Stream.empty();
+
+  @override
   Stream<Order> watchOrder(String orderId) => const Stream.empty();
+
+  @override
+  Future<Result<CourierDaySummary>> daySummary({DateTime? day}) async =>
+      const Result.ok(CourierDaySummary.empty);
 }
 
 /// Refuses everything as a dead connection, so writes queue rather than send.
@@ -72,7 +82,17 @@ class _Dead implements CourierOrderRepository {
   Stream<List<Order>> watchForPlatform(String cityId) => const Stream.empty();
 
   @override
+  Stream<List<Order>> watchCarried() => const Stream.empty();
+
+  @override
+  Stream<List<String?>> watchCarriedMerchants() => const Stream.empty();
+
+  @override
   Stream<Order> watchOrder(String orderId) => const Stream.empty();
+
+  @override
+  Future<Result<CourierDaySummary>> daySummary({DateTime? day}) async =>
+      const Result.err(OfflineFailure());
 }
 
 void main() {

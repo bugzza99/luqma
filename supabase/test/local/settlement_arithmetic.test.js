@@ -109,3 +109,79 @@ describe('what the platform takes from one order', () => {
     });
   });
 });
+
+describe('the whole settlement account', () => {
+  let db, merchant;
+  before(async () => {
+    db = await freshDatabase();
+    await db.exec("insert into cities (id,name) values ('summary','Summary')");
+    const zone = (await db.query("insert into zones (city_id,name,default_delivery_fee) values ('summary','Zone',0) returning id")).rows[0].id;
+    merchant = (await db.query("insert into merchants (city_id,type,name,zone_id,phone,status) values ('summary','restaurant','Shop',$1,'0100','approved') returning id", [zone])).rows[0].id;
+    // 101 standing charges plus one reversal. The oldest charge falls off the page.
+    await db.query(`with inserted as (
+      insert into orders (city_id,customer_uid,customer_name,customer_phone,
+        merchant_id,merchant_name,zone_id,type,items,pricing)
+      select 'summary',auth.uid(),'Customer','0100',$1,'Shop',$2,'instant','[]','{}'
+      from generate_series(1,102) returning id
+    ) insert into order_settlements
+      (order_id,merchant_id,model,basis,amount,platform_owes,settled_at,reversed_at)
+      select id,$1,'commission',10000,200,300,
+        '2026-01-01'::timestamptz + row_number() over () * interval '1 day',
+        case when row_number() over () = 102 then now() end from inserted`, [merchant,zone]);
+    await db.query(`insert into commission_payments (merchant_id,amount,recorded_by)
+      select $1,100,auth.uid() from generate_series(1,101)`, [merchant]);
+  });
+  after(async () => { await db.close(); });
+  const summary = async () => (await db.query(
+    'select public.settlement_summary($1) as s', [merchant])).rows[0].s;
+
+  it('totals all 101 standing charges, not the latest hundred rows', async () => {
+    const page = (await db.query(`select * from order_settlements
+      where merchant_id=$1 order by settled_at desc limit 100`, [merchant])).rows;
+    assert.equal(page.length,100);
+    assert.equal(page.filter(r => r.reversed_at === null).length,99);
+    assert.deepEqual(await summary(), {orders:101,taken:20200,platform_owes:30300,paid:10100});
+  });
+  it('an active owner reads their account but no other merchant account', async () => {
+    await db.exec('begin');
+    try {
+      const otherMerchant = (await db.query(`insert into merchants
+        (city_id,type,name,zone_id,phone,status)
+        select city_id,type,'Other shop',zone_id,phone,status from merchants
+        where id=$1 returning id`, [merchant])).rows[0].id;
+      const owners = (await db.query(`insert into auth.users (id)
+        values (gen_random_uuid()),(gen_random_uuid()) returning id`)).rows;
+      await db.query(`insert into staff (uid,scope,role,merchant_id)
+        values ($1,'merchant','owner',$2),($3,'merchant','owner',$4)`,
+        [owners[0].id,merchant,owners[1].id,otherMerchant]);
+      // Run as the harness superuser so RLS cannot mask a missing identity guard.
+      // Only the auth stubs change; the real active-staff and ownership helpers run.
+      await db.query(`create or replace function auth.uid() returns uuid
+        language sql stable as $uid$ select '${owners[0].id}'::uuid $uid$`);
+      await db.query(`create or replace function auth.jwt() returns jsonb
+        language sql stable as $jwt$ select '${JSON.stringify({app_metadata:{role:'owner',merchant_id:merchant}})}'::jsonb $jwt$`);
+      assert.deepEqual(await summary(), {orders:101,taken:20200,platform_owes:30300,paid:10100});
+      await db.query(`create or replace function auth.uid() returns uuid
+        language sql stable as $uid$ select '${owners[1].id}'::uuid $uid$`);
+      await db.query(`create or replace function auth.jwt() returns jsonb
+        language sql stable as $jwt$ select '${JSON.stringify({app_metadata:{role:'owner',merchant_id:otherMerchant}})}'::jsonb $jwt$`);
+      assert.equal(await summary(), null);
+    } finally { await db.exec('rollback'); }
+  });
+
+  it('the service role can read totals and anonymous callers cannot execute', async () => {
+    const privileges = (await db.query(`select
+      has_function_privilege('anon', 'public.settlement_summary(uuid)', 'execute') as anon,
+      has_function_privilege('authenticated', 'public.settlement_summary(uuid)', 'execute') as authenticated,
+      exists (select 1 from pg_proc, lateral aclexplode(proacl)
+        where oid = 'public.settlement_summary(uuid)'::regprocedure
+        and grantee = 0 and privilege_type = 'EXECUTE') as public`)).rows[0];
+    assert.deepEqual(privileges, {anon:false,authenticated:true,public:false});
+    await db.exec('begin');
+    try {
+      // Supabase's real service_role has BYPASSRLS; the local harness only creates it.
+      await db.exec('grant usage on schema auth to service_role; alter role service_role bypassrls; set local role service_role');
+      assert.deepEqual(await summary(), {orders:101,taken:20200,platform_owes:30300,paid:10100});
+    } finally { await db.exec('rollback'); }
+  });
+});

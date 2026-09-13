@@ -201,6 +201,13 @@ void main() {
 
   group('recording a payment', () {
     Future<void> record(WidgetTester tester, {String months = '1'}) async {
+      // Scrolled to rather than tapped where it happened to be. The screen body is a
+      // `ListView` and this button sits below the fold on a 360x780 phone — it only used
+      // to be reachable because the secondary text under every card was 13sp. Raising
+      // that token to the 15 `docs/14` has always asked for pushed it eleven points past
+      // the bottom, and the tap landed outside the render tree.
+      await tester.ensureVisible(find.byKey(MerchantBillingScreen.recordKey));
+      await tester.pumpAndSettle();
       await tester.tap(find.byKey(MerchantBillingScreen.recordKey));
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(MerchantBillingScreen.planChoiceKey('basic')));
@@ -361,6 +368,21 @@ void main() {
           settledAt: DateTime(2026, 8, 24),
           reversedAt: reversedAt,
         );
+
+
+    testWidgets('billing reads the whole account beyond a hundred settlements', (tester) async {
+      await pump(tester,
+        seed: merchant(model: RevenueModel.commission, value: 1000),
+        settlements: [
+          for (var i = 0; i < 101; i++)
+            settlement(orderId: 'o$i', amount: 200, platformOwes: 300),
+          settlement(orderId: 'reversed', amount: 90000, platformOwes: 90000,
+            reversedAt: DateTime(2026, 8, 25)),
+        ]);
+      expect(find.text('303 ج', skipOffstage: false), findsOneWidget);
+      expect(find.text('202 ج', skipOffstage: false), findsOneWidget);
+      expect(find.text('إجمالي الحساب من البداية', skipOffstage: false), findsOneWidget);
+    });
 
     testWidgets('a commission merchant shows what is outstanding', (tester) async {
       await pump(

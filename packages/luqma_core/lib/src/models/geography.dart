@@ -116,6 +116,17 @@ abstract final class Delivery {
     final override = merchant.deliveryFeeOverride;
     if (override == null) return zone.defaultDeliveryFee;
 
+    return quotedOverride(override, config);
+  }
+
+  /// A merchant's own fee, clamped to what the admin allows.
+  ///
+  /// Split out of [feeFor] because the screens that *quote* a fee — a shop's page, a card
+  /// on the home — know the merchant but not the customer's zone, so they cannot call
+  /// [feeFor] and were reading `deliveryFeeOverride` raw instead. That is the one thing
+  /// the comment above says must never happen: raise the configured minimum and a
+  /// customer is quoted 5 and charged 10, with nothing on the screen explaining it.
+  static int quotedOverride(int override, LuqmaConfig config) {
     // Zero is a deliberate offer, not a value out of range.
     if (override == 0) return 0;
     return override.clamp(config.deliveryFeeMin, config.deliveryFeeMax);

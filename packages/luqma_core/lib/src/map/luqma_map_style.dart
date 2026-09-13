@@ -33,11 +33,24 @@ String luqmaMapStyle({
   // the street — so these are pulled a step apart from the card palette.
   final ground = hex(colors.background.toARGB32());
   final land = hex(colors.surface.toARGB32());
-  final built = hex(colors.hairline.toARGB32());
+  final built = hex(colors.surface.toARGB32());
   final line = hex(colors.border.toARGB32());
-  final road = dark
-      ? hex(LuqmaPalette.darkSurfaceHigh.toARGB32())
-      : hex(LuqmaPalette.white.toARGB32());
+
+  // Roads and outlines are [LuqmaColors.border] — `edge` in light, `darkEdge` in dark —
+  // and that is the whole of this decision.
+  //
+  // They used to be white on cream and `darkSurfaceHigh` on near-black: **1.17:1 and
+  // 1.26:1**. The archive was never the problem; a tile over the middle of Edku carries
+  // 87 roads and 77 buildings. Every one of them was painted within a hair of the ground
+  // it sat on, so the map read as an empty beige rectangle on a real phone, and the
+  // buildings were drawn in `hairline` — which the palette file two directories away
+  // labels decorative-only, at 1.5:1, under a sentence saying a meaningful boundary needs
+  // 3:1. The rule was written down and the map next door broke it.
+  //
+  // The hierarchy between a lane and the coast road is carried by **width**, which the
+  // interpolations below already do, rather than by three tones that each have to clear
+  // the floor separately.
+  final road = line;
 
   // Named in [LuqmaPalette] rather than written here. Two hex literals sat at this line
   // with a comment explaining why water needs its own colour — which was true, and was
@@ -103,8 +116,29 @@ String luqmaMapStyle({
       fill('landuse', 'landuse', land, opacity: dark ? .5 : .7),
       fill('water', 'water', water),
       // Buildings arrive late. Before z14 they are a grey wash that hides the streets;
-      // after it they are what tells somebody which block they are on.
+      // after it they are what tells somebody which block they are on. (This archive
+      // carries none below z15 over Edku — OSM has them mapped only that far in — so the
+      // floor here is a cap on how early they *may* draw, not a promise that they will.)
+      //
+      // A fill and an outline, because a subtle wash cannot carry a block on its own and
+      // a fill dark enough to do it would bury the streets underneath. The outline is the
+      // part that has to be visible, and it is held to the same 3:1 as every other line.
       fill('buildings', 'buildings', built, opacity: dark ? .55 : .8, minZoom: 14),
+      {
+        'id': 'buildings-outline',
+        'type': 'line',
+        'source': 'protomaps',
+        'source-layer': 'buildings',
+        'minzoom': 14,
+        'paint': {
+          'line-color': line,
+          'line-width': <Object>[
+            'interpolate', <Object>['linear'], <Object>['zoom'],
+            14, 0.3, 17, 0.8, 19, 1.6,
+          ],
+          'line-opacity': 0.9,
+        },
+      },
       // Three weights, because a courier is looking for the turn rather than the map.
       // The interpolations are on zoom so a road keeps its relative weight while somebody
       // pinches in, instead of every line thickening at once into a solid mass.
@@ -119,7 +153,7 @@ String luqmaMapStyle({
       roadLine('roads-major', ['major_road', 'highway'], <Object>[
         'interpolate', <Object>['linear'], <Object>['zoom'],
         8, 1, 16, 7, 19, 24,
-      ], colour: dark ? hex(LuqmaPalette.darkEdge.toARGB32()) : land),
+      ]),
       {
         'id': 'boundaries',
         'type': 'line',

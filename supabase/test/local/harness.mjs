@@ -15,7 +15,7 @@ import { PGlite } from '@electric-sql/pglite';
  * apply unchanged, and no more. Anything that depends on what a token actually says is a
  * question about the boundary, and belongs in `test/stack/`, against the real thing.
  */
-export async function freshDatabase() {
+export async function freshDatabase({ realtime = false } = {}) {
   const db = await new PGlite();
 
   await db.exec(`
@@ -78,6 +78,8 @@ export async function freshDatabase() {
     -- migrations to apply unchanged.
     create role supabase_auth_admin;
   `);
+
+  if (realtime) await db.exec('create publication supabase_realtime');
 
   // Every migration, in order — the same thing `supabase db reset` does, so one added
   // later is picked up here without anybody remembering to.

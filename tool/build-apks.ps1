@@ -81,8 +81,23 @@ $defines = @(
 $outDir = Join-Path $root 'apks'
 New-Item -ItemType Directory -Force -Path $outDir | Out-Null
 
-# arm64 only, split per ABI. A universal APK is three times the size for two
-# architectures no phone in Edku runs.
+# arm64 only, and NOT split per ABI.
+#
+# `--split-per-abi` exists so several architectures of one release can sit side by side on
+# Play, and it does that by adding 1000 x the architecture's index to the version code:
+# arm64 is index 2, so build 9 shipped as **2009**. That is what حسابي has been showing
+# people on support calls, and it reads as a year rather than as a build.
+#
+# We ship one architecture, so the offset buys nothing and costs a number nobody can
+# interpret. Without the flag the output is a single `app-release.apk` whose version code
+# is the build number in `pubspec.yaml`, which is what the screen is trying to say.
+#
+# A universal APK is still the wrong answer: three times the size for architectures no
+# phone in Edku runs — and `--target-platform` alone does **not** prevent one. It limits
+# Flutter's engine and compiled Dart and says nothing about the plugins, so the first
+# build without the split flag came out at 53.5 MB carrying x86_64 and armeabi-v7a copies
+# of libmaplibre.so. What keeps it to one architecture is `ndk { abiFilters }` in each
+# app's `build.gradle.kts`.
 foreach ($app in @('customer_app', 'merchant_app', 'admin_app')) {
   Write-Host "`n=== $app ===" -ForegroundColor Cyan
   Push-Location (Join-Path $root "apps\$app")
@@ -99,10 +114,10 @@ foreach ($app in @('customer_app', 'merchant_app', 'admin_app')) {
     # something other than the code in front of you, and because a build that produces
     # the same bytes every time is the one you can reason about when it goes wrong again.
     & flutter clean | Out-Null
-    & flutter build apk --release --split-per-abi --target-platform android-arm64 @defines
+    & flutter build apk --release --target-platform android-arm64 @defines
     if ($LASTEXITCODE -ne 0) { throw "$app failed to build" }
 
-    $built = Join-Path (Get-Location) 'build\app\outputs\flutter-apk\app-arm64-v8a-release.apk'
+    $built = Join-Path (Get-Location) 'build\app\outputs\flutter-apk\app-release.apk'
 
     # Nothing ships without being read first.
     #

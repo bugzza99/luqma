@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../data/column_names.dart';
@@ -130,18 +132,38 @@ class FakeMenuRepository implements MenuRepository {
   final List<MenuItem> _items;
   final Failure? failure;
 
+  final _changed = StreamController<void>.broadcast();
+
+  List<MenuCategory> get categories => List.unmodifiable(_categories);
+  List<MenuItem> get items => List.unmodifiable(_items);
+
   /// Every item written through this repository, in order. Lets a test assert on what the
   /// editor produced rather than on what it displayed.
   final List<MenuItem> saved = [];
 
+  /// Every item deleted through this repository, in order.
+  final List<String> deleted = [];
+
+  Stream<T> _live<T>(T Function() read) => Stream.multi((listener) {
+        listener.add(read());
+        final sub = _changed.stream.listen((_) => listener.add(read()));
+        listener.onCancel = sub.cancel;
+      });
+
+  void _notify() {
+    if (!_changed.isClosed) _changed.add(null);
+  }
+
+  void dispose() => _changed.close();
+
   @override
   Stream<List<MenuCategory>> watchCategories(String merchantId) =>
-      failure != null ? Stream.error(failure!) : Stream.value(List.of(_categories));
+      failure != null ? Stream.error(failure!) : _live(() => List.of(_categories));
 
   @override
   Stream<List<MenuItem>> watchItems(String merchantId) => failure != null
       ? Stream.error(failure!)
-      : Stream.value(_items.where((i) => i.merchantId == merchantId).toList());
+      : _live(() => _items.where((i) => i.merchantId == merchantId).toList());
 
   @override
   Future<Result<MenuItem>> saveItem(MenuItem item) async {
@@ -156,6 +178,7 @@ class FakeMenuRepository implements MenuRepository {
     _items
       ..removeWhere((i) => i.id == stored.id)
       ..add(stored);
+    _notify();
     return Result.ok(stored);
   }
 
@@ -165,7 +188,9 @@ class FakeMenuRepository implements MenuRepository {
     if (!_items.any((item) => item.id == itemId)) {
       return const Result.err(NotFoundFailure());
     }
+    deleted.add(itemId);
     _items.removeWhere((i) => i.id == itemId);
+    _notify();
     return const Result.ok(null);
   }
 
@@ -175,6 +200,7 @@ class FakeMenuRepository implements MenuRepository {
     _categories
       ..clear()
       ..addAll(categories);
+    _notify();
     return const Result.ok(null);
   }
 }

@@ -1,11 +1,13 @@
-﻿import 'dart:async';
+import 'dart:async';
 
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../data/column_names.dart';
 import '../data/live_query.dart';
+import '../models/courier_summary.dart';
 import '../models/order.dart';
 import '../result.dart';
+import '../util/cairo_day.dart';
 
 /// Orders as the person carrying them sees them.
 ///
@@ -20,6 +22,13 @@ abstract interface class CourierOrderRepository {
   /// For Luqma's own courier: home kitchens, and merchants that do not deliver. Live.
   Stream<List<Order>> watchForPlatform(String cityId);
 
+  /// Everything this courier carries: all shops they are attached to, plus the
+  /// platform when they hold the platform row. Live.
+  Stream<List<Order>> watchCarried();
+
+  /// Which shops this rider carries for: merchant IDs, with null meaning the platform. Live.
+  Stream<List<String?>> watchCarriedMerchants();
+
   Stream<Order> watchOrder(String orderId);
 
   /// Takes the order out, and puts this courier's name on it.
@@ -30,6 +39,10 @@ abstract interface class CourierOrderRepository {
   /// Nobody at the door, wrong address, order refused. Needs a reason: it is what the
   /// admin reads, and what eventually blocks a customer who does this repeatedly.
   Future<Result<void>> markFailed(String orderId, {required String reason});
+
+  /// What this courier did today (or on [day]): delivered count, returned count,
+  /// cash in hand, and the per-shop breakdown.
+  Future<Result<CourierDaySummary>> daySummary({DateTime? day});
 }
 
 /// What a courier has on their hands: ready to collect, or already out.
@@ -84,6 +97,28 @@ class SupabaseCourierOrderRepository implements CourierOrderRepository {
       ins: [RowIn('status', [for (final s in _onTheRun) s.name])],
     ).map(
       (orders) => orders..sort((a, b) => a.orderNumber.compareTo(b.orderNumber)),
+    );
+  }
+
+  @override
+  Stream<List<Order>> watchCarried() {
+    return watchRows(
+      db: _db,
+      table: 'orders',
+      map: _toOrder,
+      ins: [RowIn('status', [for (final s in _onTheRun) s.name])],
+    ).map(
+      (orders) => orders..sort((a, b) => a.orderNumber.compareTo(b.orderNumber)),
+    );
+  }
+
+  @override
+  Stream<List<String?>> watchCarriedMerchants() {
+    return watchRows(
+      db: _db,
+      table: 'courier_merchants',
+      map: (row) => row['merchant_id'] as String?,
+      filters: [RowFilter('is_active', 'true')],
     );
   }
 
@@ -162,15 +197,73 @@ class SupabaseCourierOrderRepository implements CourierOrderRepository {
       }).eq('id', orderId).select('id');
     }, (_) {});
   }
+
+  @override
+  Future<Result<CourierDaySummary>> daySummary({DateTime? day}) {
+    return Result.guard(() async {
+      final data = await _db.rpc(
+        'courier_day_summary',
+        params: {
+          if (day != null)
+            'p_day':
+                '${day.year.toString().padLeft(4, '0')}-${day.month.toString().padLeft(2, '0')}-${day.day.toString().padLeft(2, '0')}',
+        },
+      );
+      if (data == null) return CourierDaySummary.empty;
+      return CourierDaySummary.fromJson(Map<String, dynamic>.from(data as Map));
+    });
+  }
 }
 
 /// In-memory deliveries, for tests and for building the courier screens without a
 /// backend. Re-applies the same transition rules as the real one.
 class FakeCourierOrderRepository implements CourierOrderRepository {
-  FakeCourierOrderRepository({List<Order> seed = const [], this.failure})
-      : _orders = {for (final o in seed) o.id: o};
+  FakeCourierOrderRepository({
+    List<Order> seed = const [],
+    this.failure,
+    Iterable<String?>? carriedMerchants,
+    this.courierUid,
+    DateTime Function()? now,
+    Map<String, DateTime> updatedAt = const {},
+  })  : _orders = {for (final o in seed) o.id: o},
+        _carried = carriedMerchants != null
+            ? Set<String?>.of(carriedMerchants)
+            : <String?>{},
+        _now = now ?? DateTime.now {
+    for (final order in seed) {
+      _updatedAt[order.id] = updatedAt[order.id] ?? _now();
+    }
+  }
 
   final Map<String, Order> _orders;
+
+  /// The courier this repository acts as. Only this courier's work is counted
+  /// in shift summaries.
+  String? courierUid;
+
+  final DateTime Function() _now;
+  // Seeded rows default to their insertion time, just as orders.updated_at does.
+  final Map<String, DateTime> _updatedAt = {};
+
+  /// The shops this courier carries for, modeling the `courier_merchants` join table.
+  /// Null is the platform row: home kitchens, and merchants that do not deliver for
+  /// themselves.
+  final Set<String?> _carried;
+
+  /// Attaches this courier to [merchantId] (null means the platform).
+  void attach(String? merchantId) {
+    _carried.add(merchantId);
+    _notify();
+  }
+
+  /// Detaches this courier from [merchantId] (null means the platform).
+  void detach(String? merchantId) {
+    _carried.remove(merchantId);
+    _notify();
+  }
+
+  /// Whether this courier carries for [merchantId] (null means platform).
+  bool carries(String? merchantId) => _carried.contains(merchantId);
 
   /// Mutable on purpose: a test takes the repository offline and back online, which is
   /// the exact transition the courier write queue exists to survive.
@@ -222,6 +315,35 @@ class FakeCourierOrderRepository implements CourierOrderRepository {
   }
 
   @override
+  Stream<List<Order>> watchCarried() {
+    if (failure != null) return Stream.error(failure!);
+    return _live(
+      () => _orders.values
+          .where((o) {
+            if (!_onTheRun.contains(o.status)) return false;
+            // The read policy on `orders`:
+            // 1. Merchant order from a shop this courier carries:
+            if (_carried.contains(o.merchantId)) {
+              return true;
+            }
+            // 2. Platform delivery when holding the platform row (null):
+            if (o.deliveryBy == DeliveryBy.platform && _carried.contains(null)) {
+              return true;
+            }
+            return false;
+          })
+          .toList()
+        ..sort((a, b) => a.orderNumber.compareTo(b.orderNumber)),
+    );
+  }
+
+  @override
+  Stream<List<String?>> watchCarriedMerchants() {
+    if (failure != null) return Stream.error(failure!);
+    return _live(() => List<String?>.unmodifiable(_carried));
+  }
+
+  @override
   Stream<Order> watchOrder(String orderId) {
     if (failure != null) return Stream.error(failure!);
     if (!_orders.containsKey(orderId)) {
@@ -239,7 +361,7 @@ class FakeCourierOrderRepository implements CourierOrderRepository {
   Future<Result<void>> markDelivered(String orderId) => _move(
         orderId,
         OrderStatus.delivered,
-        (o) => o.copyWith(deliveredAt: DateTime.now()),
+        (o) => o.copyWith(deliveredAt: _now()),
       );
 
   @override
@@ -269,7 +391,29 @@ class FakeCourierOrderRepository implements CourierOrderRepository {
     }
 
     _orders[orderId] = apply(order).copyWith(status: to);
+    _updatedAt[orderId] = _now();
     _notify();
     return const Result.ok(null);
+  }
+
+  @override
+  Future<Result<CourierDaySummary>> daySummary({DateTime? day}) async {
+    if (failure != null) return Result.err(failure!);
+
+    final target = day == null ? cairoDay(_now()) : DateTime.utc(day.year, day.month, day.day);
+
+    final matching = _orders.values.where((o) {
+      if (courierUid == null || o.courierUid != courierUid) return false;
+
+      final happenedAt = o.deliveredAt ?? _updatedAt[o.id];
+      if (happenedAt == null || cairoDay(happenedAt) != target) return false;
+
+      final isDelivered = o.status == OrderStatus.delivered;
+      final isReturned = o.status == OrderStatus.cancelled &&
+          o.cancelledBy == OrderActor.courier;
+      return isDelivered || isReturned;
+    });
+
+    return Result.ok(CourierDaySummary.of(matching));
   }
 }

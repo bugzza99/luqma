@@ -133,7 +133,7 @@ void main() {
       expect(savedHours().map((w) => w.weekday), [DateTime.tuesday]);
     });
 
-    testWidgets('existing hours are shown as they are', (tester) async {
+    testWidgets('existing hours are shown in 12-hour clock (AM/PM)', (tester) async {
       await pump(tester, hours: const [
         OpeningWindow(weekday: DateTime.friday, openMinute: 600, closeMinute: 1380),
       ]);
@@ -141,8 +141,39 @@ void main() {
       final friday =
           tester.widget<Switch>(find.byKey(HoursScreen.dayKey(DateTime.friday)));
       expect(friday.value, isTrue);
-      expect(find.textContaining('10:00'), findsWidgets);
-      expect(find.textContaining('23:00'), findsWidgets);
+      expect(find.textContaining('10 ص'), findsWidgets);
+      expect(find.textContaining('11 م'), findsWidgets);
+      expect(find.textContaining('10:00'), findsNothing);
+      expect(find.textContaining('23:00'), findsNothing);
+    });
+
+    testWidgets('hours with minutes show minutes in 12-hour format', (tester) async {
+      await pump(tester, hours: const [
+        OpeningWindow(weekday: DateTime.friday, openMinute: 630, closeMinute: 1415),
+      ]);
+
+      expect(find.textContaining('10:30 ص'), findsWidgets);
+      expect(find.textContaining('11:35 م'), findsWidgets);
+    });
+
+    testWidgets('picking a time forces a 12-hour picker even on a 24-hour device', (tester) async {
+      tester.platformDispatcher.alwaysUse24HourFormatTestValue = true;
+      addTearDown(() => tester.platformDispatcher.alwaysUse24HourFormatTestValue = false);
+
+      await pump(tester, hours: const [
+        OpeningWindow(weekday: DateTime.saturday, openMinute: 600, closeMinute: 1380),
+      ]);
+
+      await tester.tap(find.byKey(HoursScreen.openKey(DateTime.saturday)));
+      await tester.pumpAndSettle();
+
+      final pickerMediaQuery = tester.widget<MediaQuery>(
+        find.descendant(
+          of: find.byType(TimePickerDialog),
+          matching: find.byType(MediaQuery),
+        ).first,
+      );
+      expect(pickerMediaQuery.data.alwaysUse24HourFormat, isFalse);
     });
   });
 

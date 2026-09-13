@@ -6,12 +6,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:luqma_core/luqma_core.dart';
 
-/// Pressing a cuisine circle narrows the list of merchants.
+/// Pressing a cuisine chip narrows the list of merchants.
 ///
-/// The two halves of this live in different sections — the circles are `categoryChips`,
-/// the list is `merchantList` — and the home builds each from a registry, independently,
-/// in whatever order the admin arranged them. Neither can reach the other, so the filter
-/// is a provider they both read.
+/// The two halves of this live in different sections — the chips are `categoryChips`, the
+/// list is `merchantList` — and the home builds each from a registry, independently, in
+/// whatever order the admin arranged them. Neither can reach the other, so the filter is
+/// a provider they both read.
 ///
 /// This test is the reason that provider exists rather than a field smuggled into one of
 /// the two sections: it renders both, the way the home does, and presses one.
@@ -51,7 +51,7 @@ void main() {
     cityId: 'edku',
   );
 
-  Future<void> pump(WidgetTester tester) async {
+  Future<void> pump(WidgetTester tester, {bool reducedMotion = false}) async {
     tester.view.physicalSize = const Size(400, 1600);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
@@ -81,16 +81,19 @@ void main() {
           locale: const Locale('ar'),
           localizationsDelegates: LuqmaStrings.localizationsDelegates,
           supportedLocales: LuqmaStrings.supportedLocales,
-          home: const Directionality(
-            textDirection: TextDirection.rtl,
-            child: Scaffold(
-              body: Column(
-                children: [
-                  CategoryChipsSection(section: chips),
-                  Expanded(child: SingleChildScrollView(
-                    child: MerchantListSection(section: section),
-                  )),
-                ],
+          home: MediaQuery(
+            data: MediaQueryData(disableAnimations: reducedMotion),
+            child: const Directionality(
+              textDirection: TextDirection.rtl,
+              child: Scaffold(
+                body: Column(
+                  children: [
+                    CategoryChipsSection(section: chips),
+                    Expanded(child: SingleChildScrollView(
+                      child: MerchantListSection(section: section),
+                    )),
+                  ],
+                ),
               ),
             ),
           ),
@@ -100,15 +103,17 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  testWidgets('the circles are the cuisines, not four compiled-in words',
+  testWidgets('the chips are the cuisines, not four compiled-in words',
       (tester) async {
     await pump(tester);
 
     expect(find.text('مشويات'), findsOneWidget);
     expect(find.text('أسماك'), findsOneWidget);
+    // And an "الكل" chip that stands for no filter at all.
+    expect(find.byKey(CategoryChipsSection.allChipKey), findsOneWidget);
   });
 
-  testWidgets('everything shows until a circle is pressed', (tester) async {
+  testWidgets('everything shows until a chip is pressed', (tester) async {
     await pump(tester);
 
     expect(find.byType(MerchantTile), findsNWidgets(2));
@@ -135,6 +140,38 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(MerchantTile), findsNWidgets(2));
+  });
+
+  // The "الكل" chip is the other way out: press it and every merchant is back, whichever
+  // cuisine had been pressed.
+  testWidgets('pressing الكل clears a pressed chip', (tester) async {
+    await pump(tester);
+
+    await tester.tap(find.text('مشويات'));
+    await tester.pumpAndSettle();
+    expect(find.byType(MerchantTile), findsOneWidget);
+
+    await tester.tap(find.byKey(CategoryChipsSection.allChipKey));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(MerchantTile), findsNWidgets(2));
+  });
+
+  // Selecting a chip animates its fill over `Motion.quick` — unless the OS asked for
+  // less motion, when the container's duration collapses to zero and the chip just
+  // switches.
+  testWidgets('the fill does not animate under reduced motion', (tester) async {
+    await pump(tester, reducedMotion: true);
+
+    final container = tester.widget<AnimatedContainer>(
+      find
+          .descendant(
+            of: find.byKey(CategoryChipsSection.allChipKey),
+            matching: find.byType(AnimatedContainer),
+          )
+          .first,
+    );
+    expect(container.duration, Duration.zero);
   });
 
   // Empty and "no filter" are different answers. Collapsing them would show the whole

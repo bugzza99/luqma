@@ -31,7 +31,15 @@ jobs:
       - uses: actions/setup-java@v5
         with:
           distribution: temurin
-          java-version: '17'
+          # 21, because `maplibre_gl` compiles itself at source level 21 and a JDK 17
+          # runner fails it with `invalid source release: 21` — after eight minutes, deep
+          # in `assembleRelease`, long past anything the earlier steps would have caught.
+          #
+          # It built on the developer's machine because Flutter uses the JDK bundled with
+          # Android Studio (21) rather than whatever `java` is on PATH, which there is
+          # also 17. So the runner and the desk disagreed about a version neither of them
+          # printed, and only the runner said so.
+          java-version: '21'
           cache: gradle
       - uses: actions/setup-node@v6
         with:

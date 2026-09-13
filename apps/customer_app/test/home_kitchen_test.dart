@@ -127,6 +127,22 @@ void main() {
       expect(find.byKey(MealCard.windowKey('d1')), findsOneWidget);
     });
 
+    // Launch day has no photographs. The image slot has to look deliberate with none —
+    // `LuqmaImage` draws the tinted monogram rather than leaving the grey box that used
+    // to sit here.
+    testWidgets('a card with no photo still fills its image slot', (tester) async {
+      await pump(tester, const HomeScreen(), sections: section, meals: [meal()]);
+
+      final image = tester.widget<LuqmaImage>(
+        find.descendant(
+          of: find.byKey(MealCard.cardKey('d1')),
+          matching: find.byType(LuqmaImage),
+        ),
+      );
+      expect(image.url, isNull);
+      expect(image.name, 'محشي كرنب');
+    });
+
     // "خلص" is information: it is what teaches somebody to order earlier tomorrow.
     // Dropping the card would make the whole section look like it was never there.
     testWidgets('a sold-out meal stays, marked', (tester) async {

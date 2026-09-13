@@ -21,6 +21,7 @@ abstract final class Routes {
   static const customers = '/customers';
   static const issues = '/issues';
   static const staff = '/staff';
+  static const applications = '/applications';
   static const statistics = '/statistics';
   static const zones = '/zones';
   static const media = '/media';

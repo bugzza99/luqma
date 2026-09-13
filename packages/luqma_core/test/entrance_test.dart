@@ -69,6 +69,20 @@ void main() {
       expect(opacityOf(tester, 'صف $i'), 1.0, reason: 'row $i');
     }
   });
+
+  testWidgets('enabling reduced motion settles an entrance already running',
+      (tester) async {
+    await tester.pumpWidget(harness(count: 3));
+    await tester.pump(Motion.stagger);
+    expect(opacityOf(tester, 'صف 0'), lessThan(1));
+    final before = tester.state(find.byType(LuqmaEntrance).first);
+    await tester.pumpWidget(harness(count: 3, reducedMotion: true));
+    expect(tester.state(find.byType(LuqmaEntrance).first), same(before));
+    for (var i = 0; i < 3; i++) {
+      expect(opacityOf(tester, 'صف $i'), 1);
+    }
+    expect(tester.hasRunningAnimations, isFalse);
+  });
 }
 
 /// The opacity actually being painted for the row carrying [text].

@@ -153,7 +153,13 @@ class _Delivery extends ConsumerWidget {
     final theme = Theme.of(context);
     final colors = theme.luqma;
     final strings = LuqmaStrings.of(context);
-    final fee = merchant.deliveryFeeOverride;
+    // Clamped, not raw. The server applies the admin's range and so does
+    // `Delivery.feeFor`; quoting the unclamped number here is how a customer is shown 5
+    // and charged 10.
+    final raw = merchant.deliveryFeeOverride;
+    final fee = raw == null
+        ? null
+        : Delivery.quotedOverride(raw, ref.watch(appConfigProvider));
 
     if (fee == 0) {
       return Text(

@@ -96,7 +96,67 @@ void main() {
     await tester.pump(const Duration(milliseconds: 50));
   }
 
+  testWidgets('chosen extras qualify their dish, before the next dish', (tester) async {
+    final incoming = order().copyWith(items: [
+      OrderLine.fromJson({
+        ...line.toJson(),
+        'optionIds': ['large', 'cheese'],
+        'optionsTotal': 750,
+        'options': [
+          {'id': 'large', 'name': 'حجم كبير', 'price': 500},
+          {'id': 'cheese', 'name': 'جبنة زيادة', 'price': 250},
+        ],
+      }),
+      const OrderLine(itemId: 'i2', name: 'سلطة', unitPrice: 1000, quantity: 1),
+    ]);
+    await pump(tester, seed: [incoming]);
+    final extras = find.text('حجم كبير، جبنة زيادة');
+    expect(extras, findsOneWidget);
+    expect(tester.getTopLeft(extras).dy,
+        greaterThanOrEqualTo(tester.getBottomLeft(find.text('فراخ مشوية')).dy));
+    expect(tester.getBottomLeft(extras).dy,
+        lessThanOrEqualTo(tester.getTopLeft(find.text('سلطة')).dy));
+    expect(find.text(''), findsNothing);
+  });
+
+  testWidgets('no chosen extras draws no extra text or space', (tester) async {
+    // Old rows have ids but no frozen names. They must still open without inventing
+    // names from a menu that may have changed since the order was placed.
+    for (final snapshot in [<String, dynamic>{}, <String, dynamic>{'options': []}]) {
+      final incoming = order().copyWith(items: [
+        OrderLine.fromJson({
+          ...(line.toJson()..remove('options')),
+          'optionIds': ['old'],
+          ...snapshot,
+        }),
+      ]);
+      await pump(tester, seed: [incoming]);
+      expect(find.text(''), findsNothing);
+      expect(find.text('حجم كبير، جبنة زيادة'), findsNothing);
+      final dish = find.text('فراخ مشوية');
+      final row = find.ancestor(of: dish, matching: find.byType(Row)).first;
+      expect(tester.getSize(row).height, tester.getSize(dish).height);
+    }
+  });
+
   group('what an order card says', () {
+    testWidgets('the checkout instruction is visible before accepting', (tester) async {
+      // Decode the row shape, rather than requiring a new constructor argument: the
+      // original defect must fail as missing text, not as a test that cannot compile.
+      final incoming = Order.fromJson({
+        ...order().toJson(),
+        'note': 'من غير شطة\nالدور التالت، الجرس مكسور',
+      });
+      await pump(tester, seed: [incoming]);
+      expect(find.text('من غير شطة\nالدور التالت، الجرس مكسور'), findsOneWidget);
+      expect(find.text('ملاحظة العميل'), findsOneWidget);
+    });
+
+    testWidgets('no checkout instruction draws no note section', (tester) async {
+      await pump(tester, seed: [order()]);
+      expect(find.text('ملاحظة العميل'), findsNothing);
+    });
+
     testWidgets('the number, what was ordered, and what to collect',
         (tester) async {
       await pump(tester, seed: [order()]);
@@ -290,6 +350,271 @@ void main() {
 
       expect(find.byKey(InboxScreen.errorKey), findsOneWidget);
       expect(find.byKey(InboxScreen.emptyKey), findsNothing);
+    });
+
+    testWidgets('the number, what was ordered, and what to collect',
+        (tester) async {
+      await pump(tester, seed: [order()]);
+
+      expect(find.textContaining('101'), findsWidgets);
+      expect(find.textContaining('فراخ مشوية'), findsWidgets);
+      // Cash: this is the money a courier will physically collect.
+      expect(find.textContaining('250 ج'), findsWidgets);
+    });
+
+    testWidgets('how many of each, not just the dish', (tester) async {
+      await pump(tester, seed: [order()]);
+      expect(find.textContaining('2'), findsWidgets);
+    });
+
+    // A customer with no delivered order is the fake-order risk the whole cash model
+    // carries. The merchant phones before cooking.
+    testWidgets('a first-time customer is flagged', (tester) async {
+      await pump(tester, seed: [order(isNewCustomer: true)]);
+      expect(find.byKey(InboxScreen.newCustomerKey('o1')), findsOneWidget);
+    });
+
+    testWidgets('a returning customer is not', (tester) async {
+      await pump(tester, seed: [order()]);
+      expect(find.byKey(InboxScreen.newCustomerKey('o1')), findsNothing);
+    });
+  });
+
+  group('the countdown', () {
+    testWidgets('an instant order shows how long is left', (tester) async {
+      await pump(
+        tester,
+        seed: [
+          order(deadline: DateTime.now().add(const Duration(minutes: 4))),
+        ],
+      );
+
+      expect(find.byKey(InboxScreen.countdownKey('o1')), findsOneWidget);
+    });
+
+    // A pre-order was accepted the moment the seller published the meal. A timer on it
+    // would count down to a deadline that does not exist.
+    testWidgets('a pre-order shows none', (tester) async {
+      await pump(
+        tester,
+        seed: [order(type: OrderType.preorder, deadline: null)],
+      );
+
+      expect(find.byKey(InboxScreen.countdownKey('o1')), findsNothing);
+    });
+
+    // The deadline passing does not remove the order — somebody is still waiting for
+    // food — but a timer reading "-2:14" is worse than no timer.
+    testWidgets('a deadline already gone reads as late, not as a negative number',
+        (tester) async {
+      await pump(
+        tester,
+        seed: [
+          order(
+            status: OrderStatus.needsAttention,
+            deadline: DateTime.now().subtract(const Duration(minutes: 2)),
+          ),
+        ],
+      );
+
+      expect(find.byKey(InboxScreen.lateKey('o1')), findsOneWidget);
+      expect(find.textContaining('-'), findsNothing);
+    });
+  });
+
+  group('accepting', () {
+    testWidgets('asks how long it will take', (tester) async {
+      await pump(tester, seed: [order()]);
+
+      await tester.tap(find.byKey(InboxScreen.acceptKey('o1')));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(InboxScreen.prepSheetKey), findsOneWidget);
+    });
+
+    testWidgets('a chosen time reaches the order', (tester) async {
+      await pump(tester, seed: [order()]);
+
+      await tester.tap(find.byKey(InboxScreen.acceptKey('o1')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(InboxScreen.prepChoiceKey(30)));
+      await tester.pumpAndSettle();
+
+      expect(orders['o1']!.status, OrderStatus.accepted);
+      expect(orders['o1']!.prepMinutes, 30);
+    });
+
+    testWidgets('the order leaves the inbox once answered', (tester) async {
+      await pump(tester, seed: [order()]);
+
+      await tester.tap(find.byKey(InboxScreen.acceptKey('o1')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(InboxScreen.prepChoiceKey(30)));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(InboxScreen.acceptKey('o1')), findsNothing);
+    });
+  });
+
+  group('rejecting', () {
+    testWidgets('asks why', (tester) async {
+      await pump(tester, seed: [order()]);
+
+      await tester.tap(find.byKey(InboxScreen.rejectKey('o1')));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(InboxScreen.reasonSheetKey), findsOneWidget);
+    });
+
+    // Typing a reason with one hand while holding a pan is not going to happen, so the
+    // common ones are one tap.
+    testWidgets('a reason can be picked rather than typed', (tester) async {
+      await pump(tester, seed: [order()]);
+
+      await tester.tap(find.byKey(InboxScreen.rejectKey('o1')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(InboxScreen.reasonChoiceKey(0)));
+      await tester.pumpAndSettle();
+
+      expect(orders['o1']!.status, OrderStatus.cancelled);
+      expect(orders['o1']!.cancelReason, isNotEmpty);
+      expect(orders['o1']!.cancelledBy, OrderActor.merchant);
+    });
+
+    testWidgets('backing out of the sheet rejects nothing', (tester) async {
+      await pump(tester, seed: [order()]);
+
+      await tester.tap(find.byKey(InboxScreen.rejectKey('o1')));
+      await tester.pumpAndSettle();
+      await tester.tapAt(const Offset(10, 10));
+      await tester.pumpAndSettle();
+
+      expect(orders['o1']!.status, OrderStatus.placed);
+    });
+  });
+
+  group('the sound', () {
+    testWidgets('an order waiting sets it off', (tester) async {
+      await pump(tester, seed: [order()]);
+      expect(alarm.isPlaying, isTrue);
+    });
+
+    // The sound has done its job the moment a person is looking. Making them find the
+    // accept button first is what gets an app muted.
+    testWidgets('a way to silence it is on screen while it rings', (tester) async {
+      await pump(tester, seed: [order()]);
+
+      expect(find.byKey(InboxScreen.silenceKey), findsOneWidget);
+
+      await tester.tap(find.byKey(InboxScreen.silenceKey));
+      await tester.pump();
+
+      expect(alarm.isPlaying, isFalse);
+    });
+
+    testWidgets('nothing waiting means no banner and no sound', (tester) async {
+      await pump(tester);
+
+      expect(find.byKey(InboxScreen.silenceKey), findsNothing);
+      expect(alarm.isPlaying, isFalse);
+    });
+
+    // Answering is a stronger acknowledgement than tapping "I have it".
+    testWidgets('accepting an order silences it', (tester) async {
+      await pump(tester, seed: [order()]);
+
+      await tester.tap(find.byKey(InboxScreen.acceptKey('o1')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(InboxScreen.prepChoiceKey(30)));
+      await tester.pumpAndSettle();
+
+      expect(alarm.isPlaying, isFalse);
+    });
+  });
+
+  group('a quiet evening', () {
+    testWidgets('says so, rather than showing an empty screen', (tester) async {
+      await pump(tester);
+      expect(find.byKey(InboxScreen.emptyKey), findsOneWidget);
+    });
+
+    // The difference matters more here than anywhere else in the product: a merchant
+    // who reads a failed connection as "no orders" stops checking.
+    testWidgets('a failed read never looks like a quiet evening', (tester) async {
+      await pump(tester, failure: const OfflineFailure());
+
+      expect(find.byKey(InboxScreen.errorKey), findsOneWidget);
+      expect(find.byKey(InboxScreen.emptyKey), findsNothing);
+    });
+  });
+
+  group('M01 design restyle', () {
+    testWidgets('full-bleed order screen sizes to phone without overflow when long names collide', (tester) async {
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      final collisionOrder = order(
+        customerName: 'عبد الرحمن بن محمد آل عثمان الشبراويشي',
+      ).copyWith(
+        items: [
+          const OrderLine(
+            itemId: 'long1',
+            name: 'وجبة كوشري إسكندراني مشكل مخصوص مع تقلية وصلصة حارة زيادة وإكسترا ليمون ودقة',
+            unitPrice: 15000,
+            quantity: 3,
+            note: 'يرجى فصل الشطة والصلصة والتقلية في أكياس منفصلة وعدم وضع ملح زيادة',
+          ),
+        ],
+        note: 'العنوان بالتفصيل: شارع الجيش بجوار صيدلية العزبي عمارة الأمل الدور الرابع شقة 12',
+      );
+
+      await pump(tester, seed: [collisionOrder]);
+
+      expect(find.byKey(InboxScreen.cardKey('o1')), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('ring countdown is shown for instant order with deadline', (tester) async {
+      final deadline = DateTime.now().add(const Duration(minutes: 2));
+      await pump(tester, seed: [order(deadline: deadline)]);
+
+      expect(find.byKey(InboxScreen.ringKey('o1')), findsOneWidget);
+      expect(find.byKey(InboxScreen.countdownKey('o1')), findsOneWidget);
+    });
+
+    testWidgets('pre-order does not show countdown ring', (tester) async {
+      await pump(tester, seed: [order(type: OrderType.preorder, deadline: null)]);
+
+      expect(find.byKey(InboxScreen.ringKey('o1')), findsNothing);
+      expect(find.byKey(InboxScreen.countdownKey('o1')), findsNothing);
+    });
+
+    testWidgets('action buttons meet the 56dp touch target height', (tester) async {
+      await pump(tester, seed: [order()]);
+
+      final acceptSize = tester.getSize(find.byKey(InboxScreen.acceptKey('o1')));
+      final rejectSize = tester.getSize(find.byKey(InboxScreen.rejectKey('o1')));
+
+      expect(acceptSize.height, greaterThanOrEqualTo(56));
+      expect(rejectSize.height, greaterThanOrEqualTo(56));
+    });
+
+    testWidgets('multiple incoming orders can be viewed across pages', (tester) async {
+      final o1 = order(id: 'o1', number: 101);
+      final o2 = order(id: 'o2', number: 102);
+
+      await pump(tester, seed: [o1, o2]);
+
+      expect(find.byKey(InboxScreen.cardKey('o1')), findsOneWidget);
+      expect(find.textContaining('101'), findsWidgets);
+
+      // Swipe to next order page (RTL positive drag)
+      await tester.drag(find.byKey(InboxScreen.cardKey('o1')), const Offset(400, 0));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(InboxScreen.cardKey('o2')), findsOneWidget);
+      expect(find.textContaining('102'), findsWidgets);
     });
   });
 }

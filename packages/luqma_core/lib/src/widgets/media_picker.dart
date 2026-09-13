@@ -29,7 +29,6 @@ class MediaPicker extends ConsumerStatefulWidget {
     required this.name,
     required this.onUploaded,
     this.ownerId,
-    this.height = 160,
   });
 
   /// What the picture is of. Decides the path in the bucket and the moderation lane.
@@ -48,11 +47,13 @@ class MediaPicker extends ConsumerStatefulWidget {
   /// editing — this widget never writes to another table.
   final ValueChanged<Media> onUploaded;
 
-  final double height;
-
   static const pickKey = Key('mediaPicker.pick');
   static const errorKey = Key('mediaPicker.error');
   static const pendingKey = Key('mediaPicker.pending');
+  static const hintKey = Key('mediaPicker.hint');
+
+  /// Logo badges are drawn square at 2x minTarget rather than stretched across the card.
+  static const logoPreviewSize = 96.0;
 
   @override
   ConsumerState<MediaPicker> createState() => _MediaPickerState();
@@ -123,15 +124,42 @@ class _MediaPickerState extends ConsumerState<MediaPicker> {
     final colors = theme.luqma;
     final strings = LuqmaStrings.of(context);
 
+    final previewImage = LuqmaImage(url: widget.url, name: widget.name);
+    final Widget preview;
+    if (widget.kind == MediaKind.merchantLogo) {
+      preview = Align(
+        alignment: AlignmentDirectional.centerStart,
+        child: ClipRRect(
+          borderRadius: Radii.cardAll,
+          child: SizedBox.square(
+            dimension: MediaPicker.logoPreviewSize,
+            child: previewImage,
+          ),
+        ),
+      );
+    } else {
+      preview = ClipRRect(
+        borderRadius: Radii.cardAll,
+        child: AspectRatio(
+          aspectRatio: widget.kind.aspectRatio,
+          child: previewImage,
+        ),
+      );
+    }
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        ClipRRect(
-          borderRadius: Radii.cardAll,
-          child: SizedBox(
-            height: widget.height,
-            child: LuqmaImage(url: widget.url, name: widget.name),
-          ),
+        preview,
+        const SizedBox(height: Space.xs),
+        Text(
+          // A sentence, so it lives in the ARB file rather than on the enum: the model says
+          // what size, the l10n says how to say it, and English stays a file.
+          LuqmaStrings.of(context).mediaRecommendedSize(
+              '${widget.kind.recommendedWidth}', '${widget.kind.recommendedHeight}'),
+          key: MediaPicker.hintKey,
+          style:
+              theme.textTheme.bodySmall?.copyWith(color: colors.textSecondary),
         ),
         const SizedBox(height: Space.sm),
         OutlinedButton.icon(

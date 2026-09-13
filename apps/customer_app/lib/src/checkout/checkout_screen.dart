@@ -40,6 +40,9 @@ class CheckoutScreen extends ConsumerStatefulWidget {
   static const billDiscountKey = Key('checkout.bill.discount');
   static const outOfRangeKey = Key('checkout.outOfRange');
   static const changeAddressKey = Key('checkout.changeAddress');
+  static const couponRemoveKey = Key('checkout.coupon.remove');
+  static const couponCardKey = Key('checkout.coupon.card');
+  static const linesKey = Key('checkout.lines');
 
   @override
   ConsumerState<CheckoutScreen> createState() => _CheckoutScreenState();
@@ -120,6 +123,19 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
       _couponJudgedAgainstFee = deliveryFee;
       _appliedCouponCode =
           evaluation is CouponAccepted ? code.toUpperCase() : null;
+    });
+  }
+
+  /// The screen renders from `_couponEvaluation` and `_place` sends `_appliedCouponCode`,
+  /// so clearing one and not the other is a discount the customer can see and will not be
+  /// given, or one they are given and cannot see. The courier collects cash at a door
+  /// against the number on this screen; the two must not be able to disagree.
+  void _removeCoupon() {
+    setState(() {
+      _couponEvaluation = null;
+      _appliedCouponCode = null;
+      _couponJudgedAgainstFee = null;
+      _coupon.clear();
     });
   }
 
@@ -245,8 +261,14 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
         cart.isNotEmpty &&
         !_sending;
 
-    // A Google account usually carries no phone. The courier needs one to call, so it is
-    // asked here — once — and written to the user's row before the order goes out.
+    // Not dead code, though the reason it was written for is. It used to say a Google
+    // account carries no phone; Google sign-in left in Phase 3 and every customer now
+    // signs up *with* a number, so `identity.phone` is set for all of them. What is left
+    // is staff — an owner or a courier ordering their own dinner signs in with a real
+    // address and carries no phone here. The courier still needs a number to call, so it
+    // is asked once and written to the user's row before the order goes out.
+    // A comment justifying a branch by a feature that no longer exists is how the branch
+    // gets deleted by the next person to read it.
     final needsPhone = identity != null && (identity.phone?.trim().isEmpty ?? true);
 
     return Scaffold(
@@ -265,123 +287,35 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
           : ListView(
               padding: const EdgeInsets.fromLTRB(
                 Space.gutter,
-                Space.lg,
+                Space.md,
                 Space.gutter,
                 Space.xxxl,
               ),
               children: [
-                if (_failure != null) ...[
-                  LuqmaNotice(
-                    key: CheckoutScreen.errorKey,
-                    icon: Icons.error_outline_rounded,
-                    tone: NoticeTone.problem,
-                    text: switch (_failure!) {
-                      OfflineFailure() =>
-                        'مفيش نت دلوقتي. سلتك زي ما هي — جرّب تاني.',
-                      ConflictFailure() =>
-                        'حصل تغيير في الطلب. راجع السلة وجرّب تاني.',
-                      PermissionFailure() => 'لازم تسجّل دخول عشان تبعت الطلب.',
-                      _ => 'مقدرناش نبعت الطلب. سلتك زي ما هي — جرّب تاني.',
-                    },
+                for (final (index, section) in _sections(
+                  cart: cart,
+                  address: address,
+                  zone: zone,
+                  merchant: merchant,
+                  pricing: pricing,
+                  inRange: inRange,
+                  needsPhone: needsPhone,
+                  acceptedCoupon: acceptedCoupon,
+                ).indexed)
+                  Padding(
+                    // A failure inserts a notice and the coupon swaps a card for a field,
+                    // so this list changes length under Flutter — which matches children
+                    // by position and would carry one section's entrance onto its
+                    // neighbour, the way the address screen lost a typed street.
+                    //
+                    // Prefixed rather than reusing `section.key` directly: putting the
+                    // child's own key on its wrapper puts that key on two widgets, and
+                    // every `findsOneWidget` on a notice then finds two.
+                    key: ValueKey('slot:${section.key ?? section.runtimeType}'),
+                    padding: const EdgeInsets.only(bottom: Space.md),
+                    child: Motion.of(context, Motion.quick) == Duration.zero
+                        ? section : LuqmaEntrance(index: index, child: section),
                   ),
-                  const SizedBox(height: Space.lg),
-                ],
-                _AddressCard(address: address, zoneName: zone?.name),
-                if (address == null) ...[
-                  const SizedBox(height: Space.md),
-                  LuqmaNotice(
-                    key: CheckoutScreen.needsAddressKey,
-                    icon: Icons.location_off_outlined,
-                    tone: NoticeTone.problem,
-                    text: 'محتاجين عنوان عشان الأوردر يوصل.',
-                  ),
-                ] else if (!inRange) ...[
-                  const SizedBox(height: Space.md),
-                  LuqmaNotice(
-                    key: CheckoutScreen.outOfRangeKey,
-                    icon: Icons.wrong_location_outlined,
-                    tone: NoticeTone.problem,
-                    // Found out here, not from a rejection an hour later.
-                    text: '${merchant?.name ?? "المطعم"} مبيوصلش '
-                        '${zone?.name ?? "المنطقة دي"}. غيّر العنوان أو اختار مطعم تاني.',
-                  ),
-                ],
-                if (needsPhone) ...[
-                  const SizedBox(height: Space.xl),
-                  TextField(
-                    key: CheckoutScreen.phoneKey,
-                    controller: _phone,
-                    keyboardType: TextInputType.phone,
-                    textDirection: TextDirection.ltr,
-                    // The error lives under the field, where the correction is typed.
-                    onChanged: (_) {
-                      if (_phoneError != null) setState(() => _phoneError = null);
-                    },
-                    decoration: InputDecoration(
-                      labelText: 'رقم الموبايل',
-                      hintText: '01012345678',
-                      errorText: _phoneError,
-                    ),
-                  ),
-                ],
-                const SizedBox(height: Space.xl),
-                _Lines(cart: cart),
-                const SizedBox(height: Space.xl),
-                _Bill(pricing: pricing, hasAddress: address != null),
-                const SizedBox(height: Space.md),
-                Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        key: CheckoutScreen.couponInputKey,
-                        controller: _coupon,
-                        textCapitalization: TextCapitalization.characters,
-                        decoration: const InputDecoration(
-                          labelText: 'كود خصم (إن وجد)',
-                          hintText: 'مثلاً LAUNCH',
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: Space.sm),
-                    FilledButton.tonal(
-                      key: CheckoutScreen.couponApplyKey,
-                      onPressed:
-                          cart.isNotEmpty && !_checkingCoupon
-                              ? () => _applyCoupon(cart, deliveryFee)
-                              : null,
-                      child: Text(_checkingCoupon ? 'جاري الفحص…' : 'طبّق'),
-                    ),
-                  ],
-                ),
-                if (_couponEvaluation != null) ...[
-                  const SizedBox(height: Space.sm),
-                  Text(
-                    switch (_couponEvaluation!) {
-                      CouponAccepted(:final total) =>
-                        'تم تطبيق الخصم: وفرت ${LuqmaStrings.of(context).price(total)}.',
-                      CouponRejected(:final reason) => _couponSentence(reason),
-                    },
-                    key: CheckoutScreen.couponFeedbackKey,
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: _couponEvaluation is CouponAccepted
-                              ? colors.brand
-                              : colors.danger,
-                        ),
-                  ),
-                ],
-                const SizedBox(height: Space.xl),
-                _CashNote(),
-                const SizedBox(height: Space.xl),
-                TextField(
-                  key: CheckoutScreen.noteKey,
-                  controller: _note,
-                  maxLines: 2,
-                  maxLength: 200,
-                  decoration: const InputDecoration(
-                    labelText: 'ملاحظة للمطعم أو الدليفري',
-                    hintText: 'الشقة فوق الصيدلية، مثلاً',
-                  ),
-                ),
               ],
             ),
       bottomNavigationBar: identity == null
@@ -394,13 +328,97 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
             ),
     );
   }
+
+  /// The screen's sections, in order, so the entrance stagger indexes them without each
+  /// one having to know its own position — and so a section that is not shown does not
+  /// leave a gap in the sequence.
+  List<Widget> _sections({
+    required Cart cart,
+    required Address? address,
+    required Zone? zone,
+    required Merchant? merchant,
+    required OrderPricing pricing,
+    required bool inRange,
+    required bool needsPhone,
+    required CouponAccepted? acceptedCoupon,
+  }) {
+    return [
+      if (_failure != null)
+        LuqmaNotice(
+          key: CheckoutScreen.errorKey,
+          icon: Icons.error_outline_rounded,
+          tone: NoticeTone.problem,
+          text: switch (_failure!) {
+            OfflineFailure() => 'مفيش نت دلوقتي. سلتك زي ما هي — جرّب تاني.',
+            ConflictFailure() => 'حصل تغيير في الطلب. راجع السلة وجرّب تاني.',
+            PermissionFailure() => 'لازم تسجّل دخول عشان تبعت الطلب.',
+            _ => 'مقدرناش نبعت الطلب. سلتك زي ما هي — جرّب تاني.',
+          },
+        ),
+      _AddressCard(
+        address: address,
+        zoneName: zone?.name,
+        merchantId: cart.merchantId,
+      ),
+      if (address == null)
+        LuqmaNotice(
+          key: CheckoutScreen.needsAddressKey,
+          icon: Icons.location_off_outlined,
+          tone: NoticeTone.problem,
+          text: 'محتاجين عنوان عشان الأوردر يوصل.',
+        )
+      else if (!inRange)
+        LuqmaNotice(
+          key: CheckoutScreen.outOfRangeKey,
+          icon: Icons.wrong_location_outlined,
+          tone: NoticeTone.problem,
+          // Found out here, not from a rejection an hour later.
+          text: '${merchant?.name ?? "المطعم"} مبيوصلش '
+              '${zone?.name ?? "المنطقة دي"}. غيّر العنوان أو اختار مطعم تاني.',
+        ),
+      if (needsPhone) _PhoneField(controller: _phone, error: _phoneError,
+          onChanged: () {
+            if (_phoneError != null) setState(() => _phoneError = null);
+          }),
+      // The applied code and the box to type one are the same slot, never both: a field
+      // still offering «طبّق» under a code that is already on reads as a second discount
+      // waiting to be claimed.
+      _CouponSlot(
+        child: acceptedCoupon != null
+            ? _CouponCard(
+                code: _appliedCouponCode ?? '',
+                saved: acceptedCoupon.total,
+                onRemove: _removeCoupon,
+              )
+            : _CouponField(
+                controller: _coupon,
+                checking: _checkingCoupon,
+                rejection: _couponEvaluation is CouponRejected
+                    ? _couponSentence((_couponEvaluation! as CouponRejected).reason)
+                    : null,
+                onApply: cart.isNotEmpty && !_checkingCoupon
+                    ? () => _applyCoupon(cart, pricing.deliveryFee)
+                    : null,
+              ),
+      ),
+      _Lines(cart: cart),
+      _Bill(
+        pricing: pricing,
+        hasAddress: address != null,
+        zoneName: zone?.name,
+      ),
+      const _CashNote(),
+      _NoteField(controller: _note),
+    ];
+  }
 }
 
-class _AddressCard extends StatelessWidget {
-  const _AddressCard({required this.address, required this.zoneName});
+/// A card in this screen's language: white, hairlined, and lifted only where a shadow
+/// can actually be seen. Every panel below is one, so the shape is stated once.
+class _Card extends StatelessWidget {
+  const _Card({super.key, required this.child});
 
-  final Address? address;
-  final String? zoneName;
+  final Widget child;
 
   @override
   Widget build(BuildContext context) {
@@ -413,40 +431,321 @@ class _AddressCard extends StatelessWidget {
         color: colors.card,
         borderRadius: Radii.cardAll,
         border: Border.all(color: colors.hairline),
+        // A dark page has nothing for a shadow to fall on, and drawing one there only
+        // muddies the edge the border is already carrying.
+        boxShadow:
+            theme.brightness == Brightness.light ? Elevations.card : Elevations.none,
       ),
+      child: child,
+    );
+  }
+}
+
+/// The artboard draws these as bare coloured words, which at that size is a target a
+/// finger misses. The word keeps its size; what grows is the box around it.
+class _InlineAction extends StatelessWidget {
+  const _InlineAction({
+    super.key,
+    required this.label,
+    required this.onTap,
+    required this.colour,
+  });
+
+  final String label;
+  final VoidCallback? onTap;
+  final Color colour;
+
+  @override
+  Widget build(BuildContext context) {
+    final child = ConstrainedBox(
+        constraints: const BoxConstraints(
+          minWidth: Sizes.minTarget,
+          minHeight: Sizes.minTarget,
+        ),
+        child: Center(
+          widthFactor: 1,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: Space.sm),
+            child: Text(
+              label,
+              style: LuqmaType.bodyStrong.copyWith(color: colour),
+            ),
+          ),
+        ),
+      );
+    if (onTap == null) {
+      return Semantics(button: true, enabled: false, child: child);
+    }
+    return LuqmaPressable(onTap: onTap!, child: child);
+  }
+}
+
+class _AddressCard extends StatelessWidget {
+  const _AddressCard({
+    required this.address,
+    required this.zoneName,
+    required this.merchantId,
+  });
+
+  final String? merchantId;
+  final Address? address;
+  final String? zoneName;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = theme.luqma;
+
+    final landmark = address?.landmarkName ?? address?.landmarkNote;
+    final heading = [
+      if (zoneName != null && zoneName!.isNotEmpty) zoneName!,
+      if (landmark != null && landmark.isNotEmpty) 'جنب $landmark',
+    ].join(' · ');
+    final detail = address?.copyWith(landmarkName: null, landmarkNote: null)
+        .format(zoneName: '').split(' · ').where((part) => part.isNotEmpty)
+        .join(' · ');
+
+    return _Card(
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(Icons.place_outlined, color: colors.brand, size: Sizes.iconMd),
+          Padding(
+            padding: const EdgeInsets.only(top: Space.xs),
+            child:
+                Icon(Icons.place_outlined, color: colors.brand, size: Sizes.iconMd),
+          ),
           const SizedBox(width: Space.md),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  address?.label ?? 'التوصيل إلى',
-                  style: theme.textTheme.titleMedium,
+                  heading.isEmpty ? address?.label ?? 'التوصيل إلى' : heading,
+                  style: LuqmaType.bodyStrong,
                 ),
+                const SizedBox(height: Space.xs),
                 Text(
-                  address?.format(zoneName: zoneName ?? '') ??
-                      'لسه مفيش عنوان محفوظ',
+                  detail ?? 'لسه مفيش عنوان محفوظ',
                   style: theme.textTheme.bodySmall
                       ?.copyWith(color: colors.textSecondary),
                 ),
               ],
             ),
           ),
-          TextButton(
+          const SizedBox(width: Space.sm),
+          _InlineAction(
             key: CheckoutScreen.changeAddressKey,
-            onPressed: () => Navigator.of(context).push(
+            label: address == null ? 'ضيف' : 'تغيير',
+            colour: colors.price,
+            onTap: () => Navigator.of(context).push(
               MaterialPageRoute<void>(
                 builder: (_) => address == null
-                    ? const AddressEditorScreen()
-                    : const AddressListScreen(),
+                    ? AddressEditorScreen(merchantId: merchantId)
+                    : AddressListScreen(merchantId: merchantId),
               ),
             ),
-            child: Text(address == null ? 'ضيف' : 'غيّر'),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _CouponSlot extends StatelessWidget {
+  const _CouponSlot({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    if (Motion.of(context, Motion.quick) == Duration.zero) return child;
+    return AnimatedSwitcher(
+      duration: Motion.of(context, Motion.quick),
+      switchInCurve: Motion.enter,
+      switchOutCurve: Motion.exit,
+      // Retain departing space, never a stale saving or a second actionable control.
+      layoutBuilder: (current, previous) => Stack(
+        alignment: Alignment.topCenter,
+        children: [
+          for (final child in previous)
+            IgnorePointer(child: ExcludeSemantics(
+              child: Opacity(opacity: 0, child: child),
+            )),
+          ?current,
+        ],
+      ),
+      transitionBuilder: (child, animation) => SizeTransition(
+        sizeFactor: animation, alignment: Alignment.topCenter, child: child,
+      ),
+      child: KeyedSubtree(key: ValueKey(child.runtimeType), child: child),
+    );
+  }
+}
+
+class _CouponCard extends StatelessWidget {
+  const _CouponCard({
+    required this.code,
+    required this.saved,
+    required this.onRemove,
+  });
+
+  final String code;
+  final int saved;
+  final VoidCallback onRemove;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = theme.luqma;
+    final strings = LuqmaStrings.of(context);
+
+    return _Card(
+      key: CheckoutScreen.couponCardKey,
+      child: Row(
+        children: [
+          Icon(Icons.confirmation_number_outlined,
+              color: colors.price, size: Sizes.iconMd),
+          const SizedBox(width: Space.md),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'كود $code اتطبق',
+                  style: LuqmaType.bodyStrong.copyWith(color: colors.success),
+                ),
+                const SizedBox(height: Space.xs),
+                // What it is worth on *this* basket, in money. The artboard says «خصم
+                // 15٪», but a percentage is a rule and the customer is deciding about a
+                // number — and a fixed-amount or free-delivery code has no percentage to
+                // print at all.
+                Text(
+                  'وفّرت ${strings.price(saved)}',
+                  style: theme.textTheme.bodySmall
+                      ?.copyWith(color: colors.textSecondary),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: Space.sm),
+          _InlineAction(
+            key: CheckoutScreen.couponRemoveKey,
+            label: 'شيل',
+            colour: colors.danger,
+            onTap: onRemove,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CouponField extends StatelessWidget {
+  const _CouponField({
+    required this.controller,
+    required this.checking,
+    required this.rejection,
+    required this.onApply,
+  });
+
+  final TextEditingController controller;
+  final bool checking;
+  final String? rejection;
+  final VoidCallback? onApply;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = theme.luqma;
+
+    return _Card(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  key: CheckoutScreen.couponInputKey,
+                  controller: controller,
+                  textCapitalization: TextCapitalization.characters,
+                  decoration: const InputDecoration(
+                    labelText: 'كود خصم (إن وجد)',
+                    hintText: 'مثلاً LAUNCH',
+                  ),
+                ),
+              ),
+              const SizedBox(width: Space.sm),
+              _InlineAction(
+                key: CheckoutScreen.couponApplyKey,
+                label: checking ? 'بنشوف…' : 'طبّق',
+                colour: onApply == null ? colors.textSecondary : colors.brand,
+                onTap: onApply,
+              ),
+            ],
+          ),
+          if (rejection != null) ...[
+            const SizedBox(height: Space.sm),
+            Text(
+              rejection!,
+              key: CheckoutScreen.couponFeedbackKey,
+              style: theme.textTheme.bodySmall?.copyWith(color: colors.danger),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _PhoneField extends StatelessWidget {
+  const _PhoneField({
+    required this.controller,
+    required this.error,
+    required this.onChanged,
+  });
+
+  final TextEditingController controller;
+  final String? error;
+  final VoidCallback onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return _Card(
+      child: TextField(
+        key: CheckoutScreen.phoneKey,
+        controller: controller,
+        keyboardType: TextInputType.phone,
+        textDirection: TextDirection.ltr,
+        // The error lives under the field, where the correction is typed.
+        onChanged: (_) => onChanged(),
+        decoration: InputDecoration(
+          labelText: 'رقم الموبايل',
+          hintText: '01012345678',
+          errorText: error,
+        ),
+      ),
+    );
+  }
+}
+
+class _NoteField extends StatelessWidget {
+  const _NoteField({required this.controller});
+
+  final TextEditingController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    return _Card(
+      child: TextField(
+        key: CheckoutScreen.noteKey,
+        controller: controller,
+        maxLines: 2,
+        maxLength: 200,
+        decoration: const InputDecoration(
+          labelText: 'ملاحظة للمطعم أو الدليفري',
+          hintText: 'الشقة فوق الصيدلية، مثلاً',
+        ),
       ),
     );
   }
@@ -463,41 +762,51 @@ class _Lines extends StatelessWidget {
     final colors = theme.luqma;
     final strings = LuqmaStrings.of(context);
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text('الطلب', style: theme.textTheme.titleLarge),
-        const SizedBox(height: Space.sm),
-        for (final line in cart.lines)
-          Padding(
-            padding: const EdgeInsets.only(bottom: Space.sm),
-            child: Row(
-              children: [
-                Text(
-                  '${line.quantity}×',
-                  style: LuqmaType.bodyStrong.copyWith(color: colors.textSecondary),
-                ),
-                const SizedBox(width: Space.sm),
-                Expanded(
-                  child: Text(line.name, style: theme.textTheme.bodyMedium),
-                ),
-                Text(
-                  strings.price(line.lineTotal),
-                  style: LuqmaType.priceSmall.copyWith(color: colors.textPrimary),
-                ),
-              ],
+    return _Card(
+      key: CheckoutScreen.linesKey,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('الطلب', style: LuqmaType.bodyStrong),
+          const SizedBox(height: Space.sm),
+          for (final line in cart.lines)
+            Padding(
+              padding: const EdgeInsets.only(top: Space.sm),
+              child: Row(
+                children: [
+                  Text(
+                    '${line.quantity}×',
+                    style: LuqmaType.bodyStrong
+                        .copyWith(color: colors.textSecondary),
+                  ),
+                  const SizedBox(width: Space.sm),
+                  Expanded(
+                    child: Text(line.name, style: theme.textTheme.bodyMedium),
+                  ),
+                  Text(
+                    strings.price(line.lineTotal),
+                    style:
+                        LuqmaType.priceSmall.copyWith(color: colors.textPrimary),
+                  ),
+                ],
+              ),
             ),
-          ),
-      ],
+        ],
+      ),
     );
   }
 }
 
 class _Bill extends StatelessWidget {
-  const _Bill({required this.pricing, required this.hasAddress});
+  const _Bill({
+    required this.pricing,
+    required this.hasAddress,
+    required this.zoneName,
+  });
 
   final OrderPricing pricing;
   final bool hasAddress;
+  final String? zoneName;
 
   @override
   Widget build(BuildContext context) {
@@ -505,40 +814,38 @@ class _Bill extends StatelessWidget {
     final colors = theme.luqma;
     final strings = LuqmaStrings.of(context);
 
-    return Container(
-      padding: const EdgeInsets.all(Space.md),
-      decoration: BoxDecoration(
-        color: colors.card,
-        borderRadius: Radii.cardAll,
-        border: Border.all(color: colors.hairline),
-      ),
+    return _Card(
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _Line(label: 'الأكل', value: strings.price(pricing.subtotal)),
+          LuqmaBillLine(label: 'الأصناف', value: strings.price(pricing.subtotal)),
+          if (pricing.subtotalDiscount > 0) ...[
+            const SizedBox(height: Space.sm),
+            LuqmaBillLine(
+              key: CheckoutScreen.billDiscountKey,
+              label: 'خصم الكود',
+              value: '− ${strings.price(pricing.subtotalDiscount)}',
+              emphasis: true,
+            ),
+          ],
+          // Two discounts, not one. The artboard drew a single line because its example
+          // had a single code, but a free-delivery coupon lands on the other one and both
+          // can be non-zero at once — folding them together hides which one moved.
+          if (pricing.deliveryDiscount > 0) ...[
+            const SizedBox(height: Space.sm),
+            LuqmaBillLine(
+              label: 'خصم التوصيل',
+              value: '− ${strings.price(pricing.deliveryDiscount)}',
+              emphasis: true,
+            ),
+          ],
           const SizedBox(height: Space.sm),
-          _Line(
-            label: 'التوصيل',
+          LuqmaBillLine(
+            label: zoneName == null ? 'التوصيل' : 'التوصيل — $zoneName',
             // Never a zero that looks like free delivery when the truth is that no
             // address has been chosen yet.
             value: hasAddress ? strings.price(pricing.deliveryFee) : '—',
           ),
-          if (pricing.subtotalDiscount > 0) ...[
-            const SizedBox(height: Space.sm),
-            _Line(
-              key: CheckoutScreen.billDiscountKey,
-              label: 'خصم الكود',
-              value: '-${strings.price(pricing.subtotalDiscount)}',
-              emphasis: true,
-            ),
-          ],
-          if (pricing.deliveryDiscount > 0) ...[
-            const SizedBox(height: Space.sm),
-            _Line(
-              label: 'خصم التوصيل',
-              value: '-${strings.price(pricing.deliveryDiscount)}',
-              emphasis: true,
-            ),
-          ],
           const Padding(
             padding: EdgeInsets.symmetric(vertical: Space.md),
             child: Divider(height: 1),
@@ -546,11 +853,15 @@ class _Bill extends StatelessWidget {
           Row(
             key: CheckoutScreen.totalKey,
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              Text('الإجمالي', style: theme.textTheme.titleMedium),
+              Expanded(
+                child:
+                    Text('المطلوب دفعه كاش', style: theme.textTheme.titleMedium),
+              ),
               Text(
                 strings.price(pricing.total),
-                style: LuqmaType.price.copyWith(color: colors.price),
+                style: LuqmaType.display.copyWith(color: colors.price),
               ),
             ],
           ),
@@ -560,66 +871,33 @@ class _Bill extends StatelessWidget {
   }
 }
 
-class _Line extends StatelessWidget {
-  const _Line({
-    super.key,
-    required this.label,
-    required this.value,
-    this.emphasis = false,
-  });
 
-  final String label;
-  final String value;
-  final bool emphasis;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Text(
-          label,
-          style: theme.textTheme.bodyMedium?.copyWith(
-            color: emphasis ? theme.luqma.brand : theme.luqma.textSecondary,
-          ),
-        ),
-        Text(
-          value,
-          style: LuqmaType.priceSmall.copyWith(
-            color: emphasis ? theme.luqma.brand : theme.luqma.textPrimary,
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-/// Cash is stated, never chosen.
-///
-/// A payment step with exactly one option is a screen that exists to be tapped through.
 class _CashNote extends StatelessWidget {
+  const _CashNote();
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colors = theme.luqma;
-    final strings = LuqmaStrings.of(context);
 
     return Container(
       key: CheckoutScreen.cashKey,
       padding: const EdgeInsets.all(Space.md),
       decoration: BoxDecoration(
         color: colors.surface,
-        borderRadius: Radii.cardAll,
+        borderRadius: Radii.fieldAll,
       ),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(Icons.payments_outlined, color: colors.textPrimary, size: Sizes.iconMd),
-          const SizedBox(width: Space.md),
+          Icon(Icons.info_outline_rounded,
+              color: colors.textSecondary, size: Sizes.iconSm),
+          const SizedBox(width: Space.sm),
           Expanded(
             child: Text(
-              strings.cashOnDelivery,
-              style: theme.textTheme.bodyMedium,
+              'جهّز المبلغ كاش للمندوب. المطعم بيأكد الطلب خلال 5 دقايق.',
+              style: theme.textTheme.bodySmall
+                  ?.copyWith(color: colors.textSecondary),
             ),
           ),
         ],
@@ -628,7 +906,6 @@ class _CashNote extends StatelessWidget {
   }
 }
 
-
 class _Footer extends StatelessWidget {
   const _Footer({
     required this.total,
@@ -636,15 +913,22 @@ class _Footer extends StatelessWidget {
     required this.onPlace,
   });
 
+  static const buttonHeight = 50.0;
+
+  static const pulseFrom = 0.92;
+
   final int total;
   final bool sending;
   final VoidCallback? onPlace;
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colors = theme.luqma;
+    final colors = Theme.of(context).luqma;
     final strings = LuqmaStrings.of(context);
+
+    final label = Text(
+      sending ? 'بنبعت الطلب…' : 'اطلب دلوقتي · ${strings.price(total)}',
+    );
 
     return Container(
       decoration: BoxDecoration(
@@ -654,28 +938,26 @@ class _Footer extends StatelessWidget {
       child: SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(Space.gutter),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              // Repeated under the thumb, because the bill above may be scrolled away
-              // at the moment the button is pressed.
-              Text(
-                '${strings.collectFromCustomer}: ${strings.price(total)}',
-                textAlign: TextAlign.center,
-                style: theme.textTheme.bodySmall
-                    ?.copyWith(color: colors.textSecondary),
-              ),
-              const SizedBox(height: Space.sm),
-              FilledButton(
-                key: CheckoutScreen.placeKey,
-                onPressed: onPlace,
-                style: FilledButton.styleFrom(
-                  minimumSize: const Size.fromHeight(50),
-                ),
-                child: Text(sending ? 'بنبعت الطلب…' : strings.placeOrder),
-              ),
-            ],
+          child: FilledButton(
+            key: CheckoutScreen.placeKey,
+            onPressed: onPlace,
+            style: FilledButton.styleFrom(
+              minimumSize: const Size.fromHeight(buttonHeight),
+            ),
+            // The amount grows into place rather than being swapped. A cross-fade would
+            // put two totals on the button at once, and this is the number somebody is
+            // about to count out in cash — the basket's subtotal settled the same rule.
+            child: Motion.of(context, Motion.quick) == Duration.zero
+                ? label
+                : TweenAnimationBuilder<double>(
+                    key: ValueKey(total),
+                    tween: Tween(begin: pulseFrom, end: 1),
+                    duration: Motion.of(context, Motion.quick),
+                    curve: Motion.enter,
+                    builder: (context, scale, child) =>
+                        Transform.scale(scale: scale, child: child),
+                    child: label,
+                  ),
           ),
         ),
       ),

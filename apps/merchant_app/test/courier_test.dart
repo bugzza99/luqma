@@ -65,9 +65,39 @@ void main() {
         courierUid: courierUid,
       );
 
+  Merchant merchant({
+    String id = 'm1',
+    String name = 'مطعم الشاطئ',
+    String zoneId = 'z1',
+    String phone = '01111111111',
+    MerchantType type = MerchantType.restaurant,
+    String? landmarkId,
+    String? landmarkName,
+    String? street,
+    double? lat,
+    double? lng,
+  }) =>
+      Merchant(
+        id: id,
+        cityId: 'edku',
+        type: type,
+        name: name,
+        zoneId: zoneId,
+        phone: phone,
+        status: MerchantStatus.approved,
+        landmarkId: landmarkId,
+        landmarkName: landmarkName,
+        street: street,
+        lat: lat,
+        lng: lng,
+      );
+
   late FakeCourierOrderRepository deliveries;
   late FakeNavigator navigator;
   late FakeExternalLinks links;
+  late FakeMerchantRepository merchantRepo;
+  late FakeStaffRepository staffRepo;
+  late DateTime clockTime;
 
   Future<void> pump(
     WidgetTester tester, {
@@ -79,10 +109,54 @@ void main() {
       'merchantId': 'm1',
     },
     bool phoneCanDial = true,
+    Iterable<String?>? carriedMerchants,
+    List<Merchant>? merchants,
+    Failure? merchantFailure,
+    DateTime? pausedUntil,
+    DateTime? now,
   }) async {
-    deliveries = FakeCourierOrderRepository(seed: seed, failure: failure);
+    tester.view.physicalSize = const Size(1080, 2340);
+    tester.view.devicePixelRatio = 3;
+    addTearDown(tester.view.reset);
+
+    clockTime = now ?? DateTime(2026, 9, 22, 14, 0);
+    final courierStaff = StaffMember(
+      uid: 'c1',
+      scope: claims['scope'] as String? ?? 'merchant',
+      role: 'courier',
+      merchantId: claims['merchantId'] as String?,
+      name: 'كابتن محمود',
+      phone: '01011111111',
+      isActive: true,
+      pausedUntil: pausedUntil,
+    );
+    staffRepo = FakeStaffRepository(seed: [courierStaff]);
+
+    final carried = carriedMerchants ??
+        (claims['scope'] == 'platform'
+            ? const {null}
+            : {
+                for (final o in seed)
+                  if (o.deliveryBy == DeliveryBy.platform) null else o.merchantId,
+                if (claims['merchantId'] != null) claims['merchantId'] as String,
+              });
+    deliveries = FakeCourierOrderRepository(
+      seed: seed,
+      failure: failure,
+      carriedMerchants: carried,
+      courierUid: courierStaff.uid,
+      now: () => clockTime,
+    );
     navigator = FakeNavigator();
     links = FakeExternalLinks(answer: phoneCanDial);
+    merchantRepo = FakeMerchantRepository(
+      seed: merchants ?? [
+        merchant(),
+        merchant(id: 'm2', name: 'بيتزا روما', phone: '01222222222'),
+        merchant(id: 'm3', name: 'حلويات الشرق', phone: '01333333333'),
+      ],
+      failure: merchantFailure,
+    );
 
     await tester.pumpWidget(
       ProviderScope(
@@ -93,8 +167,11 @@ void main() {
             ),
           ),
           courierOrderRepositoryProvider.overrideWithValue(deliveries),
+          merchantRepositoryProvider.overrideWithValue(merchantRepo),
           geographyRepositoryProvider
               .overrideWithValue(FakeGeographyRepository(zones: zones)),
+          staffRepositoryProvider.overrideWithValue(staffRepo),
+          clockProvider.overrideWithValue(() => clockTime),
           mapNavigatorProvider.overrideWithValue(navigator),
           externalLinksProvider.overrideWithValue(links),
           remoteConfigServiceProvider
@@ -141,6 +218,42 @@ void main() {
 
       expect(find.textContaining('المعمورة'), findsWidgets);
       expect(find.textContaining('صيدلية النور'), findsWidgets);
+    });
+
+    testWidgets('shows the shop address when the merchant has one', (tester) async {
+      await pump(
+        tester,
+        seed: [order()],
+        merchants: [
+          merchant(
+            id: 'm1',
+            zoneId: 'z1',
+            landmarkName: 'الميدان الرئيسي',
+            street: 'شارع الجيش',
+          ),
+        ],
+      );
+
+      expect(find.byKey(CourierScreen.shopAddressKey('o1')), findsOneWidget);
+      expect(find.textContaining('الميدان الرئيسي'), findsWidgets);
+      expect(find.textContaining('شارع الجيش'), findsWidgets);
+    });
+
+    testWidgets('draws nothing for the shop address when the merchant has none',
+        (tester) async {
+      await pump(
+        tester,
+        seed: [order()],
+        merchants: [
+          merchant(
+            id: 'm1',
+            landmarkName: null,
+            street: null,
+          ),
+        ],
+      );
+
+      expect(find.byKey(CourierScreen.shopAddressKey('o1')), findsNothing);
     });
 
     // The single number that has to be right. Cash: this is what a person hands over.
@@ -195,6 +308,22 @@ void main() {
 
       expect(find.textContaining('01000000000'), findsWidgets);
     });
+
+    // A rider carrying for several shops needs to know which kitchen to go to;
+    // the shop name is the decision and carries the weight.
+    testWidgets('the shop name has prominence on the card', (tester) async {
+      await pump(tester, seed: [order()]);
+
+      final card = find.byKey(CourierScreen.cardKey('o1'));
+      expect(
+        find.descendant(of: card, matching: find.text('مطعم الشاطئ')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: card, matching: find.text('طلب رقم 101')),
+        findsOneWidget,
+      );
+    });
   });
 
   group('navigating', () {
@@ -210,10 +339,183 @@ void main() {
       expect(navigator.lastQuery, contains('صيدلية النور'));
     });
 
+    // Google does not know «جنب صيدلية النور»: the names here are local knowledge, and a
+    // search for one lands the courier in the middle of the governorate or nowhere. When
+    // the order carries a coordinate, that is what the maps app is given — the words stay
+    // above the button, because the pin is the landmark and the door is still a floor and
+    // a flat number.
+    testWidgets('drives to the pin when the order has one', (tester) async {
+      await pump(
+        tester,
+        seed: [
+          order().copyWith(
+            address: address.copyWith(lat: 31.3084, lng: 30.2939),
+          ),
+        ],
+      );
+
+      await tester.tap(find.byKey(CourierScreen.navigateKey('o1')));
+      await tester.pumpAndSettle();
+
+      expect(navigator.lastLat, 31.3084);
+      expect(navigator.lastLng, 30.2939);
+      expect(navigator.lastQuery, contains('صيدلية النور'),
+          reason: 'the words still ride along, for a maps app that cannot use a pin');
+    });
+
+    // Most of Edku's landmarks have no coordinate yet, and words are the primary address
+    // here by design. Nothing about that path may change.
+    testWidgets('and by the words when it has none', (tester) async {
+      await pump(tester, seed: [order()]);
+
+      await tester.tap(find.byKey(CourierScreen.navigateKey('o1')));
+      await tester.pumpAndSettle();
+
+      expect(navigator.lastLat, isNull);
+      expect(navigator.lastQuery, contains('المعمورة'));
+    });
+
+    // What the maps app is actually handed. A pin is `query=lat,lng`, which Google Maps
+    // centres on exactly; the words are a search, which is a guess it makes for us.
+    test('the url carries the pin rather than the name', () {
+      final pinned = ExternalMapNavigator.googleMapsUriFor('جنب صيدلية النور',
+          lat: 31.3084, lng: 30.2939);
+      expect(pinned.queryParameters['query'], '31.3084,30.2939');
+
+      final worded = ExternalMapNavigator.googleMapsUriFor('جنب صيدلية النور');
+      expect(worded.queryParameters['query'], 'جنب صيدلية النور');
+    });
+
+    testWidgets('hands the address to Waze', (tester) async {
+      await pump(tester, seed: [order()]);
+
+      await tester.tap(find.byKey(CourierScreen.navigateWazeKey('o1')));
+      await tester.pumpAndSettle();
+
+      expect(navigator.lastApp, MapApp.waze);
+      expect(navigator.lastQuery, contains('المعمورة'));
+      expect(navigator.lastQuery, contains('صيدلية النور'));
+    });
+
+    testWidgets('drives Waze to the pin when the order has one', (tester) async {
+      await pump(
+        tester,
+        seed: [
+          order().copyWith(
+            address: address.copyWith(lat: 31.3084, lng: 30.2939),
+          ),
+        ],
+      );
+
+      await tester.tap(find.byKey(CourierScreen.navigateWazeKey('o1')));
+      await tester.pumpAndSettle();
+
+      expect(navigator.lastApp, MapApp.waze);
+      expect(navigator.lastLat, 31.3084);
+      expect(navigator.lastLng, 30.2939);
+      expect(navigator.lastQuery, contains('صيدلية النور'));
+    });
+
+    test('waze url carries the pin rather than the name', () {
+      final pinned = ExternalMapNavigator.wazeUriFor('جنب صيدلية النور',
+          lat: 31.3084, lng: 30.2939);
+      expect(pinned.queryParameters['ll'], '31.3084,30.2939');
+      expect(pinned.queryParameters['navigate'], 'yes');
+
+      final worded = ExternalMapNavigator.wazeUriFor('جنب صيدلية النور');
+      expect(worded.queryParameters['q'], 'جنب صيدلية النور');
+      expect(worded.queryParameters['navigate'], 'yes');
+    });
+
+    test('ExternalMapNavigator hands off through ExternalLinks for both apps',
+        () async {
+      final fakeLinks = FakeExternalLinks();
+      final nav = ExternalMapNavigator(links: fakeLinks);
+
+      await nav.navigateTo('المعمورة', app: MapApp.googleMaps);
+      expect(fakeLinks.opened.first.host, 'www.google.com');
+
+      await nav.navigateTo('المعمورة', app: MapApp.waze);
+      expect(fakeLinks.opened.last.host, 'waze.com');
+      expect(fakeLinks.opened.last.queryParameters['q'], 'المعمورة');
+    });
+
     testWidgets('offers nothing to navigate to when there is no address',
         (tester) async {
       await pump(tester, seed: [order(at: null)]);
       expect(find.byKey(CourierScreen.navigateKey('o1')), findsNothing);
+      expect(find.byKey(CourierScreen.navigateWazeKey('o1')), findsNothing);
+    });
+  });
+
+  group('who to call at the kitchen', () {
+    // The shop's telephone and the customer's are two different numbers on one card, and
+    // a rider at a door ringing the wrong one is the failure this has to prevent.
+    //
+    // There is no shop *address* here and deliberately so: `merchants` carries a zone and
+    // a phone and nothing else — no street, no landmark, no coordinate. Drawing the zone
+    // would put «إدكو» under a shop and call it where to collect.
+    testWidgets('a call button for the shop, distinct from the one for the customer',
+        (tester) async {
+      await pump(tester, seed: [order()]);
+
+      expect(find.byKey(CourierScreen.callMerchantKey('o1')), findsOneWidget);
+      expect(find.byKey(CourierScreen.callKey('o1')), findsOneWidget);
+    });
+
+    testWidgets('tapping the merchant call button dials the merchant phone',
+        (tester) async {
+      await pump(tester, seed: [order()]);
+
+      await tester.tap(find.byKey(CourierScreen.callMerchantKey('o1')));
+      await tester.pumpAndSettle();
+
+      expect(links.opened.single.scheme, 'tel');
+      expect(links.opened.single.path, '01111111111');
+    });
+
+    testWidgets('a handset that refuses tel: on merchant call reads the number out',
+        (tester) async {
+      await pump(tester, seed: [order()], phoneCanDial: false);
+
+      await tester.tap(find.byKey(CourierScreen.callMerchantKey('o1')));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('01111111111'), findsWidgets);
+    });
+
+    testWidgets('if the merchant cannot be read, the card still draws everything else',
+        (tester) async {
+      await pump(tester,
+          seed: [order()], merchantFailure: const OfflineFailure());
+
+      expect(find.byKey(CourierScreen.cardKey('o1')), findsOneWidget);
+      expect(find.byKey(CourierScreen.cashKey('o1')), findsOneWidget);
+      expect(find.byKey(CourierScreen.callKey('o1')), findsOneWidget);
+      expect(find.byKey(CourierScreen.callMerchantKey('o1')), findsNothing);
+      expect(find.textContaining('أحمد محمود'), findsWidgets);
+    });
+  });
+
+  group('the platform badge', () {
+    testWidgets('shows a «منصة» badge on platform orders', (tester) async {
+      await pump(
+        tester,
+        seed: [order().copyWith(deliveryBy: DeliveryBy.platform)],
+      );
+
+      expect(find.byKey(CourierScreen.platformBadgeKey('o1')), findsOneWidget);
+      expect(find.text('منصة'), findsOneWidget);
+    });
+
+    testWidgets('does not show the badge on ordinary shop orders', (tester) async {
+      await pump(
+        tester,
+        seed: [order().copyWith(deliveryBy: DeliveryBy.merchant)],
+      );
+
+      expect(find.byKey(CourierScreen.platformBadgeKey('o1')), findsNothing);
+      expect(find.text('منصة'), findsNothing);
     });
   });
 
@@ -267,8 +569,86 @@ void main() {
     });
   });
 
+  group('a courier saying "not now"', () {
+    testWidgets(
+        'when available, offers pause button opening sheet with 4 return times',
+        (tester) async {
+      await pump(tester, now: DateTime(2026, 9, 22, 14, 0));
+
+      expect(find.byKey(CourierScreen.pauseKey), findsOneWidget);
+      await tester.tap(find.byKey(CourierScreen.pauseKey));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(CourierScreen.pauseSheetKey), findsOneWidget);
+      for (final choice in CourierScreen.pauseChoices) {
+        expect(find.byKey(CourierScreen.choiceKey(choice)), findsOneWidget);
+      }
+
+      // At 14:00 (2:00 م):
+      // 30 min -> 2:30 م
+      // 60 min -> 3:00 م
+      // 120 min -> 4:00 م
+      // 240 min -> 6:00 م
+      expect(find.textContaining('2:30'), findsWidgets);
+      expect(find.textContaining('3:00'), findsWidgets);
+      expect(find.textContaining('4:00'), findsWidgets);
+      expect(find.textContaining('6:00'), findsWidgets);
+    });
+
+    testWidgets('choosing a pause duration sets pausedUntil in repository',
+        (tester) async {
+      final now = DateTime(2026, 9, 22, 14, 0);
+      await pump(tester, now: now);
+
+      await tester.tap(find.byKey(CourierScreen.pauseKey));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(CourierScreen.choiceKey(60)));
+      await tester.pumpAndSettle();
+
+      final member = staffRepo.all.firstWhere((s) => s.uid == 'c1');
+      expect(member.pausedUntil, now.add(const Duration(minutes: 60)));
+    });
+
+    testWidgets('when paused, screen displays paused banner and offers resume',
+        (tester) async {
+      final now = DateTime(2026, 9, 22, 14, 0);
+      final until = now.add(const Duration(minutes: 45));
+      await pump(tester, now: now, pausedUntil: until);
+
+      expect(find.byKey(CourierScreen.pausedKey), findsOneWidget);
+      expect(find.byKey(CourierScreen.resumeKey), findsOneWidget);
+
+      await tester.tap(find.byKey(CourierScreen.resumeKey));
+      await tester.pumpAndSettle();
+
+      final member = staffRepo.all.firstWhere((s) => s.uid == 'c1');
+      expect(member.pausedUntil, isNull);
+    });
+  });
+
+  group('which shops this rider carries for', () {
+    testWidgets('displays compact reference of carried shops and platform',
+        (tester) async {
+      await pump(
+        tester,
+        carriedMerchants: {'m1', 'm2', null},
+      );
+
+      expect(find.byKey(CourierScreen.carriedShopsKey), findsOneWidget);
+      expect(find.byKey(CourierScreen.carriedShopKey('m1')), findsOneWidget);
+      expect(find.byKey(CourierScreen.carriedShopKey('m2')), findsOneWidget);
+      expect(find.byKey(CourierScreen.carriedShopKey(null)), findsOneWidget);
+
+      expect(find.text('مطعم الشاطئ'), findsWidgets);
+      expect(find.text('بيتزا روما'), findsWidgets);
+      expect(find.text('المنصة'), findsWidgets);
+    });
+  });
+
   group('a door nobody answers', () {
-    testWidgets('can be reported, with a reason', (tester) async {
+    testWidgets('can be reported, with 6 reasons and next-action guidance',
+        (tester) async {
       await pump(
         tester,
         seed: [order(status: OrderStatus.outForDelivery, courierUid: 'c1')],
@@ -276,12 +656,113 @@ void main() {
 
       await tester.tap(find.byKey(CourierScreen.failedKey('o1')));
       await tester.pumpAndSettle();
+
+      for (var i = 0; i < 6; i++) {
+        expect(find.byKey(CourierScreen.reasonKey(i)), findsOneWidget);
+      }
+
+      // Guidance lines
+      expect(find.text('الإدارة هتكلمه'), findsOneWidget);
+      expect(find.text('الطلب يرجع للمطعم ويتلغي'), findsOneWidget);
+      expect(find.text('الإدارة هتساعدك توصله'), findsOneWidget);
+      expect(find.text('ارجع بالطلب وكلّم الإدارة'), findsOneWidget);
+      expect(find.text('صوّره قبل ما تسيب العميل'), findsOneWidget);
+      expect(find.text('اكتب اللي حصل'), findsOneWidget);
+
+      // Tapping reason 0 marks failed with reason title
       await tester.tap(find.byKey(CourierScreen.reasonKey(0)));
       await tester.pumpAndSettle();
 
       expect(deliveries['o1']!.status, OrderStatus.cancelled);
-      expect(deliveries['o1']!.cancelReason, isNotEmpty);
+      expect(deliveries['o1']!.cancelReason, 'العميل مش راضي يرد');
       expect(deliveries['o1']!.cancelledBy, OrderActor.courier);
+    });
+
+    testWidgets(
+        'reason 6 takes free text and stores rider input into cancelReason',
+        (tester) async {
+      await pump(
+        tester,
+        seed: [order(status: OrderStatus.outForDelivery, courierUid: 'c1')],
+      );
+
+      await tester.tap(find.byKey(CourierScreen.failedKey('o1')));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(CourierScreen.reasonKey(5)));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(CourierScreen.customReasonInputKey), findsOneWidget);
+      expect(find.byKey(CourierScreen.customReasonSubmitKey), findsOneWidget);
+
+      await tester.enterText(
+        find.byKey(CourierScreen.customReasonInputKey),
+        'الشارع مقفول بالكامل وفيه حفر وتصليحات',
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(CourierScreen.customReasonSubmitKey));
+      await tester.pumpAndSettle();
+
+      expect(deliveries['o1']!.status, OrderStatus.cancelled);
+      expect(
+        deliveries['o1']!.cancelReason,
+        'الشارع مقفول بالكامل وفيه حفر وتصليحات',
+      );
+      expect(deliveries['o1']!.cancelledBy, OrderActor.courier);
+    });
+  });
+
+  group('filter queue by shop', () {
+    testWidgets('filters queue with chip row derived from on-screen orders',
+        (tester) async {
+      await pump(
+        tester,
+        seed: [
+          order(id: 'o1', number: 101).copyWith(
+            merchantId: 'm1',
+            merchantName: 'مطعم الشاطئ',
+          ),
+          order(id: 'o2', number: 102).copyWith(
+            merchantId: 'm2',
+            merchantName: 'بيتزا روما',
+            deliveryBy: DeliveryBy.platform,
+          ),
+        ],
+        carriedMerchants: {'m1', 'm2', null},
+      );
+
+      expect(find.byKey(CourierScreen.filterAllKey), findsOneWidget);
+      expect(find.byKey(CourierScreen.filterPlatformKey), findsOneWidget);
+      expect(find.byKey(CourierScreen.filterMerchantKey('m1')), findsOneWidget);
+
+      // Initially both are visible
+      expect(find.byKey(CourierScreen.cardKey('o1')), findsOneWidget);
+      expect(find.byKey(CourierScreen.cardKey('o2')), findsOneWidget);
+
+      // Filter by m1 (shop only, non-platform)
+      await tester.ensureVisible(find.byKey(CourierScreen.filterMerchantKey('m1')));
+      await tester.tap(find.byKey(CourierScreen.filterMerchantKey('m1')));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(CourierScreen.cardKey('o1')), findsOneWidget);
+      expect(find.byKey(CourierScreen.cardKey('o2')), findsNothing);
+
+      // Filter by platform
+      await tester.ensureVisible(find.byKey(CourierScreen.filterPlatformKey));
+      await tester.tap(find.byKey(CourierScreen.filterPlatformKey));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(CourierScreen.cardKey('o2')), findsOneWidget);
+      expect(find.byKey(CourierScreen.cardKey('o1')), findsNothing);
+
+      // Back to all
+      await tester.ensureVisible(find.byKey(CourierScreen.filterAllKey));
+      await tester.tap(find.byKey(CourierScreen.filterAllKey));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(CourierScreen.cardKey('o1')), findsOneWidget);
+      expect(find.byKey(CourierScreen.cardKey('o2')), findsOneWidget);
     });
   });
 
@@ -299,6 +780,35 @@ void main() {
 
       expect(find.byKey(CourierScreen.cardKey('ours')), findsOneWidget);
       expect(find.byKey(CourierScreen.cardKey('theirs')), findsNothing);
+    });
+  });
+
+  group('carrying for several shops', () {
+    testWidgets('shows orders from every attached shop in one queue',
+        (tester) async {
+      await pump(
+        tester,
+        seed: [
+          order(id: 'o1', number: 101).copyWith(
+            merchantId: 'm1',
+            merchantName: 'مطعم الشاطئ',
+          ),
+          order(id: 'o2', number: 102).copyWith(
+            merchantId: 'm2',
+            merchantName: 'بيتزا روما',
+          ),
+          order(id: 'o3', number: 103).copyWith(
+            merchantId: 'm3',
+            merchantName: 'حلويات الشرق',
+          ),
+        ],
+        carriedMerchants: {'m1', 'm2'},
+      );
+
+      // The courier carries m1 and m2, but not m3.
+      expect(find.byKey(CourierScreen.cardKey('o1')), findsOneWidget);
+      expect(find.byKey(CourierScreen.cardKey('o2')), findsOneWidget);
+      expect(find.byKey(CourierScreen.cardKey('o3')), findsNothing);
     });
   });
 
@@ -329,6 +839,46 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(deliveries['o1']!.status, OrderStatus.delivered);
+      expect(find.byKey(CourierScreen.pendingKey), findsNothing);
+    });
+
+    // A delivery that can be *started* offline and not *finished* offline is the worse
+    // half missing: the cash changes hands at the door, and the tap that records it is
+    // the one the card refuses to offer. The card read `order.status` alone, so after a
+    // queued «بدأت التوصيل» the server still said `preparing` and the button on offer
+    // was «بدأت التوصيل» again.
+    testWidgets('a run started with no signal can still be finished with no signal',
+        (tester) async {
+      await pump(tester, seed: [order(status: OrderStatus.preparing)]);
+      deliveries.failure = const OfflineFailure();
+
+      await tester.tap(find.byKey(CourierScreen.outKey('o1')));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(CourierScreen.pendingKey), findsOneWidget);
+      // The card moves with the courier, and says plainly that the server has not heard
+      // it yet — that sentence is what stops the marking from being a lie.
+      expect(find.byKey(CourierScreen.unsentKey('o1')), findsOneWidget);
+      expect(find.byKey(CourierScreen.deliveredKey('o1')), findsOneWidget,
+          reason: 'the next tap of the delivery has to be reachable');
+
+      await tester.ensureVisible(find.byKey(CourierScreen.deliveredKey('o1')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(CourierScreen.deliveredKey('o1')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('اه، تم'));
+      await tester.pumpAndSettle();
+
+      // Both taps are held, in the order they were made.
+      expect(find.byKey(CourierScreen.deliveredKey('o1')), findsNothing,
+          reason: 'there is nothing left to tap, so nothing is offered twice');
+
+      deliveries.failure = null;
+      await tester.tap(find.byKey(CourierScreen.retryKey));
+      await tester.pumpAndSettle();
+
+      expect(deliveries['o1']!.status, OrderStatus.delivered);
+      expect(deliveries['o1']!.courierUid, 'c1');
       expect(find.byKey(CourierScreen.pendingKey), findsNothing);
     });
 
@@ -430,6 +980,112 @@ void main() {
         await prefs.getString('courier_write_queue.account.c1.v1'),
         isNotNull,
       );
+    });
+  });
+
+  group('shift summary', () {
+    testWidgets('a rider who has done nothing is told nothing, not an error or empty box', (tester) async {
+      await pump(tester, seed: const []);
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(CourierScreen.summaryKey), findsNothing);
+      expect(find.text('شغل النهاردة'), findsNothing);
+      expect(find.byKey(CourierScreen.errorKey), findsNothing);
+    });
+
+    testWidgets('shows three totals and per-shop split above the queue', (tester) async {
+      final now = DateTime(2026, 9, 22, 14, 0);
+      await pump(
+        tester,
+        now: now,
+        seed: [
+          // Delivered order from shop 1 (m1 - 'مطعم الشاطئ')
+          order(id: 'o_deliv_1', courierUid: 'c1', status: OrderStatus.delivered)
+              .copyWith(
+            merchantId: 'm1',
+            merchantName: 'مطعم الشاطئ',
+            deliveredAt: now,
+            pricing: const OrderPricing(subtotal: 12000, deliveryFee: 1000, total: 13000),
+          ),
+          // Second delivered order from shop 1 (m1 - 'مطعم الشاطئ')
+          order(id: 'o_deliv_2', courierUid: 'c1', status: OrderStatus.delivered)
+              .copyWith(
+            merchantId: 'm1',
+            merchantName: 'مطعم الشاطئ',
+            deliveredAt: now,
+            pricing: const OrderPricing(subtotal: 7000, deliveryFee: 0, total: 7000),
+          ),
+          // Return from shop 1 (m1 - 'مطعم الشاطئ'): trip made, 0 cash
+          order(id: 'o_ret_1', courierUid: 'c1', status: OrderStatus.cancelled)
+              .copyWith(
+            merchantId: 'm1',
+            merchantName: 'مطعم الشاطئ',
+            cancelledBy: OrderActor.courier,
+            deliveredAt: now,
+            pricing: const OrderPricing(subtotal: 9000, deliveryFee: 1000, total: 10000),
+          ),
+          // Delivered order from shop 2 (m2 - 'بيتزا روما')
+          order(id: 'o_deliv_3', courierUid: 'c1', status: OrderStatus.delivered)
+              .copyWith(
+            merchantId: 'm2',
+            merchantName: 'بيتزا روما',
+            deliveredAt: now,
+            pricing: const OrderPricing(subtotal: 5000, deliveryFee: 0, total: 5000),
+          ),
+          // One active order in queue
+          order(id: 'o_active', courierUid: 'c1', status: OrderStatus.preparing)
+              .copyWith(merchantId: 'm1', merchantName: 'مطعم الشاطئ'),
+        ],
+        carriedMerchants: const {'m1', 'm2'},
+      );
+      await tester.pumpAndSettle();
+
+      // Summary card is present
+      expect(find.byKey(CourierScreen.summaryKey), findsOneWidget);
+      expect(find.text('شغل النهاردة'), findsOneWidget);
+
+      // Three totals:
+      // 1. Deliveries: 3
+      expect(find.byKey(CourierScreen.summaryDeliveredKey), findsOneWidget);
+      expect(find.descendant(of: find.byKey(CourierScreen.summaryDeliveredKey), matching: find.text('3 طلبات')), findsOneWidget);
+
+      // 2. Returns: 1
+      expect(find.byKey(CourierScreen.summaryReturnedKey), findsOneWidget);
+      expect(find.descendant(of: find.byKey(CourierScreen.summaryReturnedKey), matching: find.text('طلب واحد')), findsOneWidget);
+
+      // 3. Cash in hand: 13000 + 7000 + 5000 = 25000 piastres = 250 ج
+      expect(find.byKey(CourierScreen.summaryCashKey), findsOneWidget);
+      expect(find.descendant(of: find.byKey(CourierScreen.summaryCashKey), matching: find.text('250 ج')), findsOneWidget);
+
+      // Per-shop split:
+      // m1 (مطعم الشاطئ): 200 ج (20000 piastres)
+      expect(find.byKey(CourierScreen.summaryShopKey('m1')), findsOneWidget);
+      expect(find.descendant(of: find.byKey(CourierScreen.summaryShopKey('m1')), matching: find.text('200 ج')), findsOneWidget);
+
+      // m2 (بيتزا روما): 50 ج (5000 piastres)
+      expect(find.byKey(CourierScreen.summaryShopKey('m2')), findsOneWidget);
+      expect(find.descendant(of: find.byKey(CourierScreen.summaryShopKey('m2')), matching: find.text('50 ج')), findsOneWidget);
+
+      // Must not mention wages, earnings, share, or debt
+      expect(find.textContaining('أرباح'), findsNothing);
+      expect(find.textContaining('أجر'), findsNothing);
+      expect(find.textContaining('نسبة'), findsNothing);
+      expect(find.textContaining('مستحق'), findsNothing);
+
+      // Queue is also visible below summary
+      expect(find.byKey(CourierScreen.cardKey('o_active')), findsOneWidget);
+    });
+
+    testWidgets('summary error does not break the screen or show error card', (tester) async {
+      await pump(
+        tester,
+        failure: const OfflineFailure(),
+        seed: const [],
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(CourierScreen.summaryKey), findsNothing);
+      expect(find.text('شغل النهاردة'), findsNothing);
     });
   });
 }

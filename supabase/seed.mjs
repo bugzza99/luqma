@@ -84,13 +84,22 @@ export async function seed(db, { log = () => {}, data = edkuData() } = {}) {
       'select id from landmarks where zone_id = $1 and name = $2',
       [zoneId, landmark.name],
     );
+    // Coordinates carried through, and they are the point rather than a detail: the
+    // customer's address screen draws its map only from landmarks that have both, so a
+    // seed that dropped them left every zone map an absent section — which is what the
+    // product did until the real Edku places arrived with lat/lng on them.
     if (existing.rows.length > 0) {
-      await db.query('update landmarks set icon = $2 where id = $1',
-                     [existing.rows[0].id, landmark.icon ?? null]);
+      await db.query(
+        'update landmarks set icon = $2, lat = $3, lng = $4 where id = $1',
+        [existing.rows[0].id, landmark.icon ?? null,
+         landmark.lat ?? null, landmark.lng ?? null],
+      );
     } else {
       await db.query(
-        'insert into landmarks (city_id, zone_id, name, icon) values ($1, $2, $3, $4)',
-        [data.city.id, zoneId, landmark.name, landmark.icon ?? null],
+        `insert into landmarks (city_id, zone_id, name, icon, lat, lng)
+         values ($1, $2, $3, $4, $5, $6)`,
+        [data.city.id, zoneId, landmark.name, landmark.icon ?? null,
+         landmark.lat ?? null, landmark.lng ?? null],
       );
     }
     landmarks++;

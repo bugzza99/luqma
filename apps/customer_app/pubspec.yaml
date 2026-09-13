@@ -17,7 +17,13 @@ resolution: workspace # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 1.0.0+1
+# Pre-launch. `1.0.0` is reserved for the first build anybody can download from Play;
+# until then the version says so, rather than claiming a release that has not happened.
+#
+# The build number never repeats and only ever rises. It starts at 10 because 1 and 9
+# have both been installed on a handset already, and Android refuses a version code it
+# has seen a higher one than.
+version: 0.9.0+10
 
 environment:
   sdk: ^3.12.2
@@ -52,6 +58,13 @@ dev_dependencies:
     sdk: flutter
   build_runner: ^2.4.0
   riverpod_generator: ^3.0.0
+
+  # Only the address screens' test stub needs this: a widget test has no native view, so
+  # a screen containing `LuqmaMap` cannot be built without substituting the platform.
+  # Declared rather than borrowed — the test used to reach across into `luqma_core`'s own
+  # test folder by relative path, which resolved only because this is one workspace and
+  # left the app using a package it had never asked for.
+  maplibre_gl: ^0.27.0
 
   # The "flutter_lints" package below contains a set of recommended lints to
   # encourage good coding practices. The lint set provided by the package is

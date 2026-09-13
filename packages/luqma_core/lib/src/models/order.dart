@@ -4,6 +4,7 @@ import 'converters.dart';
 import 'coupon.dart';
 import 'geography.dart';
 import 'merchant.dart';
+import 'menu_item.dart';
 
 part 'order.freezed.dart';
 part 'order.g.dart';
@@ -113,6 +114,11 @@ abstract class OrderLine with _$OrderLine {
     /// request could ask for every extra on the menu and claim they were free, and the
     /// merchant would hand over the food and collect the base price in cash.
     @Default(<String>[]) List<String> optionIds,
+
+    /// Copied by the server at placement, so renamed or deleted extras still tell
+    /// the kitchen what was ordered. Older lines have no names to recover safely.
+    /// These unit prices describe the snapshot; [optionsTotal] still decides money.
+    @Default(<MenuOption>[]) List<MenuOption> options,
     String? note,
   }) = _OrderLine;
 
@@ -236,6 +242,12 @@ abstract class Order with _$Order {
     required OrderType type,
     required List<OrderLine> items,
     required OrderPricing pricing,
+    /// The customer's instruction for the whole order, frozen at placement.
+    ///
+    /// Dish notes stay on their lines. This one must travel with the order from the
+    /// acceptance screen to the kitchen, or storing it merely moves the point at
+    /// which the customer's request disappears. Older orders have none.
+    String? note,
     @Default(OrderStatus.placed) OrderStatus status,
 
     /// Set on a customer with no delivered order yet, so the merchant can confirm by

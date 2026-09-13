@@ -98,4 +98,22 @@ void main() {
     );
     expect(button.onPressed, isNotNull);
   });
+
+  testWidgets('displays the A01 header', (tester) async {
+    await pump(tester);
+
+    expect(find.text('لوحة إدارة لقمة'), findsOneWidget);
+    expect(find.text('للفريق الإداري فقط'), findsOneWidget);
+  });
+
+  // The sign-in screen is the one anybody holding the APK can open without an account.
+  // It named a table and a column, and promised every change was audited when most are
+  // not. Neither may come back.
+  testWidgets('names no table and promises no audit it does not keep', (tester) async {
+    await pump(tester);
+
+    expect(find.textContaining('staff.scope'), findsNothing);
+    expect(find.textContaining('auditLog'), findsNothing);
+    expect(find.textContaining('يُسجّل'), findsNothing);
+  });
 }

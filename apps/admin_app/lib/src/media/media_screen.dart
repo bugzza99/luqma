@@ -30,36 +30,75 @@ class MediaScreen extends ConsumerWidget {
     // first decision of a session would be recorded with nobody attached to it.
     ref.watch(mediaActionsProvider);
 
+    final colors = Theme.of(context).luqma;
+    final strings = LuqmaStrings.of(context);
+
     return Scaffold(
-      appBar: AppBar(title: const Text('الصور')),
+      backgroundColor: colors.background,
+      appBar: AppBar(title: Text(strings.mediaQueueTitle)),
       body: AdminContent(
         child: LuqmaAsyncView(
           value: pending,
           onRetry: () => ref.invalidate(pendingMediaProvider),
           empty: LuqmaEmptyView(
-              key: MediaScreen.emptyKey,
-              message: 'مفيش صور مستنية مراجعة.',
-            ),
+            key: MediaScreen.emptyKey,
+            message: 'مفيش صور مستنية مراجعة.',
+          ),
           isEmpty: (value) => value.isEmpty,
-          builder: (context, value) => GridView.builder(
-              padding: const EdgeInsets.all(Space.gutter),
-              gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-                // Wide enough that a photo can actually be judged. A grid of thumbnails
-                // is a grid nobody can review honestly.
-                maxCrossAxisExtent: 340,
-                mainAxisSpacing: Space.md,
-                crossAxisSpacing: Space.md,
-                childAspectRatio: 0.78,
+          builder: (context, value) => Column(
+            children: [
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: Space.gutter,
+                  vertical: Space.sm + 2,
+                ),
+                decoration: BoxDecoration(
+                  color: colors.surface,
+                  border: Border(
+                    bottom: BorderSide(color: colors.hairline),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.photo_library_outlined,
+                      size: Sizes.iconSm,
+                      color: colors.textSecondary,
+                    ),
+                    const SizedBox(width: Space.sm),
+                    Text(
+                      strings.mediaQueueWaitingCount(value.length),
+                      style: LuqmaType.bodySmall.copyWith(
+                        color: colors.textPrimary,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
               ),
-              itemCount: value.length,
-              itemBuilder: (context, i) => _Card(media: value[i]),
-            )
+              Expanded(
+                child: GridView.builder(
+                  padding: const EdgeInsets.all(Space.gutter),
+                  gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                    // Wide enough that a photo can actually be judged. A grid of thumbnails
+                    // is a grid nobody can review honestly.
+                    maxCrossAxisExtent: 360,
+                    mainAxisSpacing: Space.md,
+                    crossAxisSpacing: Space.md,
+                    childAspectRatio: 0.82,
+                  ),
+                  itemCount: value.length,
+                  itemBuilder: (context, i) => _Card(media: value[i]),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
 }
-
 
 class _Card extends ConsumerWidget {
   const _Card({required this.media});
@@ -77,6 +116,7 @@ class _Card extends ConsumerWidget {
         color: colors.card,
         borderRadius: Radii.cardAll,
         border: Border.all(color: colors.hairline),
+        boxShadow: Elevations.card,
       ),
       clipBehavior: Clip.antiAlias,
       child: Column(
@@ -95,7 +135,21 @@ class _Card extends ConsumerWidget {
                 // A photo that will not load is itself a reason to refuse it, so the
                 // failure is shown rather than hidden behind a blank box.
                 errorBuilder: (context, _, _) => Center(
-                  child: Icon(Icons.broken_image, color: colors.textSecondary),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.broken_image_outlined,
+                        color: colors.danger,
+                        size: 36,
+                      ),
+                      const SizedBox(height: Space.xs),
+                      Text(
+                        'الصورة مش بتفتح',
+                        style: LuqmaType.caption.copyWith(color: colors.textSecondary),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -105,33 +159,71 @@ class _Card extends ConsumerWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(_label(media.kind), style: theme.textTheme.bodySmall),
-                Text(
-                  '${media.width}×${media.height}',
-                  style: theme.textTheme.labelSmall
-                      ?.copyWith(color: colors.textSecondary),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Expanded(
+                      child: Text(
+                        _label(media.kind),
+                        style: theme.textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.bold,
+                          color: colors.textPrimary,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    Text(
+                      '${media.width}×${media.height}',
+                      style: LuqmaType.caption.copyWith(
+                        color: colors.textSecondary,
+                      ),
+                    ),
+                  ],
                 ),
                 const SizedBox(height: Space.sm),
                 Row(
                   children: [
                     Expanded(
+                      flex: 2,
                       child: FilledButton(
                         key: MediaScreen.approveKey(media.id),
                         onPressed: () => ref
                             .read(mediaActionsProvider.notifier)
                             .approve(media.id),
-                        child: const Text('اعتماد'),
+                        style: FilledButton.styleFrom(
+                          backgroundColor: colors.success,
+                          foregroundColor: colors.background,
+                          shape: const RoundedRectangleBorder(
+                            borderRadius: Radii.fieldAll,
+                          ),
+                          minimumSize: const Size.fromHeight(40),
+                        ),
+                        child: const Text(
+                          'اعتماد',
+                          style: TextStyle(fontWeight: FontWeight.bold),
+                        ),
                       ),
                     ),
                     const SizedBox(width: Space.sm),
-                    OutlinedButton(
-                      key: MediaScreen.rejectKey(media.id),
-                      onPressed: () => _reject(context, ref, media.id),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: colors.danger,
-                        side: BorderSide(color: colors.danger),
+                    Expanded(
+                      flex: 1,
+                      child: OutlinedButton(
+                        key: MediaScreen.rejectKey(media.id),
+                        onPressed: () => _reject(context, ref, media.id),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: colors.danger,
+                          side: BorderSide(color: colors.danger, width: 1.5),
+                          shape: const RoundedRectangleBorder(
+                            borderRadius: Radii.fieldAll,
+                          ),
+                          minimumSize: const Size.fromHeight(40),
+                        ),
+                        child: const Text(
+                          'رفض',
+                          style: TextStyle(fontWeight: FontWeight.bold),
+                        ),
                       ),
-                      child: const Text('رفض'),
                     ),
                   ],
                 ),
@@ -180,20 +272,36 @@ class _RejectDialogState extends State<_RejectDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).luqma;
+
     return AlertDialog(
+      backgroundColor: colors.card,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.all(Radii.sheet),
+      ),
       title: const Text('سبب الرفض'),
       content: TextField(
         key: MediaScreen.reasonFieldKey,
         autofocus: true,
         maxLines: 2,
-        decoration: const InputDecoration(
+        decoration: InputDecoration(
           hintText: 'الصورة مش واضحة، الإضاءة وحشة…',
+          hintStyle: TextStyle(color: colors.textSecondary),
+          border: OutlineInputBorder(
+            borderRadius: Radii.fieldAll,
+            borderSide: BorderSide(color: colors.hairline),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: Radii.fieldAll,
+            borderSide: BorderSide(color: colors.border),
+          ),
         ),
         onChanged: (v) => _reason = v,
       ),
       actions: [
         TextButton(
           onPressed: () => Navigator.of(context).pop(),
+          style: TextButton.styleFrom(foregroundColor: colors.textSecondary),
           child: const Text('إلغاء'),
         ),
         // Not required. A reason is worth asking for — a merchant told nothing simply
@@ -202,6 +310,11 @@ class _RejectDialogState extends State<_RejectDialog> {
         FilledButton(
           key: MediaScreen.confirmRejectKey,
           onPressed: () => widget.onConfirm(_reason),
+          style: FilledButton.styleFrom(
+            backgroundColor: colors.danger,
+            foregroundColor: colors.background,
+            shape: const RoundedRectangleBorder(borderRadius: Radii.fieldAll),
+          ),
           child: const Text('ارفض'),
         ),
       ],

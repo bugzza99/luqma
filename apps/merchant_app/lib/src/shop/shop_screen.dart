@@ -4,7 +4,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:luqma_core/luqma_core.dart';
 
+import 'analytics_screen.dart';
+import 'courier_roster_screen.dart';
 import 'hours_screen.dart';
+import 'merchant_address_screen.dart';
 import 'statement_screen.dart';
 
 
@@ -24,9 +27,13 @@ class ShopScreen extends ConsumerWidget {
   static const feedbackKey = Key('shop.feedback');
   static const billingKey = Key('shop.billing');
   static const statementKey = Key('shop.statement');
+  static const analyticsKey = Key('shop.analytics');
+  static const salesKey = analyticsKey;
   static const walletKey = Key('shop.wallet');
   static const promotionsKey = Key('shop.promotions');
   static const hoursKey = Key('shop.hours');
+  static const addressKey = Key('shop.address');
+  static const rosterKey = Key('shop.roster');
   static const noFeedbackKey = Key('shop.noFeedback');
 
   @override
@@ -73,18 +80,15 @@ class ShopScreen extends ConsumerWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                if (merchant != null) _Identity(merchant: merchant),
-                const SizedBox(height: Space.lg),
-                if (merchant != null) _Rating(merchant: merchant),
                 if (merchant != null) ...[
-                  const SizedBox(height: Space.lg),
-                  _Billing(merchant: merchant),
+                  const _SectionHeader(title: 'هوية المتجر'),
+                  _Identity(merchant: merchant),
+                  const SizedBox(height: Space.md),
+                  _Rating(merchant: merchant),
+                  const SizedBox(height: Space.section),
                 ],
                 if (staff.merchantId != null) ...[
-                  const SizedBox(height: Space.lg),
-                  // The schedule the whole product derives "can this shop take an order"
-                  // from. It had no editor anywhere, so a merchant whose hours were wrong
-                  // — or empty — was shut with nothing on any screen that changed it.
+                  const _SectionHeader(title: 'التشغيل والتوصيل'),
                   _Tile(
                     tileKey: ShopScreen.hoursKey,
                     icon: Icons.schedule_rounded,
@@ -96,24 +100,58 @@ class ShopScreen extends ConsumerWidget {
                       ),
                     ),
                   ),
-                ],
-                const SizedBox(height: Space.lg),
-                _Tile(
-                  tileKey: ShopScreen.promotionsKey,
-                  icon: Icons.campaign_outlined,
-                  title: 'الإعلانات',
-                  subtitle: 'اطلب بانر أو رفع في الترتيب',
-                  onTap: () => Navigator.of(context).push(
-                    MaterialPageRoute<void>(
-                      builder: (_) => const MerchantPromotionsScreen(),
+                  const SizedBox(height: Space.sm),
+                  _Tile(
+                    tileKey: ShopScreen.addressKey,
+                    icon: Icons.storefront_rounded,
+                    title: 'عنوان المطعم',
+                    subtitle: merchant?.formatAddress() ??
+                        'مكان المحل عشان الطيارين يوصلوا له',
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) =>
+                            MerchantAddressScreen(merchantId: staff.merchantId!),
+                      ),
                     ),
                   ),
-                ),
-                if (staff.merchantId != null) ...[
-                  const SizedBox(height: Space.lg),
-                  _Feedback(merchantId: staff.merchantId!),
+                  const SizedBox(height: Space.sm),
+                  _Tile(
+                    tileKey: ShopScreen.rosterKey,
+                    icon: Icons.delivery_dining_rounded,
+                    title: 'كباتن المطعم',
+                    subtitle: 'الطيارين اللي بيشيلوا للمحل',
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) =>
+                            CourierRosterScreen(merchantId: staff.merchantId!),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: Space.section),
                 ],
-                const SizedBox(height: Space.xl),
+                if (merchant != null) ...[
+                  const _SectionHeader(title: 'الحسابات والنمو'),
+                  _Billing(merchant: merchant),
+                  const SizedBox(height: Space.sm),
+                  _Tile(
+                    tileKey: ShopScreen.promotionsKey,
+                    icon: Icons.campaign_outlined,
+                    title: 'الخطة والإعلانات',
+                    subtitle: 'اطلب بانر أو رفع في الترتيب',
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => const MerchantPromotionsScreen(),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: Space.section),
+                ],
+                if (staff.merchantId != null) ...[
+                  const _SectionHeader(title: 'آراء العملاء'),
+                  _Feedback(merchantId: staff.merchantId!),
+                  const SizedBox(height: Space.section),
+                ],
+                const SizedBox(height: Space.sm),
                 Text(
                   staff.email ?? '',
                   textAlign: TextAlign.center,
@@ -330,6 +368,7 @@ class _IdentityState extends ConsumerState<_Identity> {
         color: colors.card,
         borderRadius: Radii.cardAll,
         border: Border.all(color: colors.hairline),
+        boxShadow: Elevations.card,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -376,7 +415,6 @@ class _IdentityState extends ConsumerState<_Identity> {
             url: _coverUrl,
             name: merchant.name,
             ownerId: merchant.id,
-            height: 120,
             onUploaded: (media) => _attach(media, isLogo: false),
           ),
           const SizedBox(height: Space.lg),
@@ -395,7 +433,6 @@ class _IdentityState extends ConsumerState<_Identity> {
             url: _logoUrl,
             name: merchant.name,
             ownerId: merchant.id,
-            height: 96,
             onUploaded: (media) => _attach(media, isLogo: true),
           ),
           const SizedBox(height: Space.md),
@@ -488,6 +525,7 @@ class _Billing extends ConsumerWidget {
         color: colors.card,
         borderRadius: Radii.cardAll,
         border: Border.all(color: colors.hairline),
+        boxShadow: Elevations.card,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -551,25 +589,38 @@ class _Billing extends ConsumerWidget {
               ),
             ),
           ],
-          // Only where something is actually taken per order. Under a subscription the
-          // statement is a page of zeroes, and a screen that says nothing every time is
-          // one somebody stops believing when it finally has something to say.
-          if (merchant.revenueModel != RevenueModel.subscription) ...[
-            const SizedBox(height: Space.sm),
-            Align(
-              alignment: AlignmentDirectional.centerStart,
-              child: TextButton.icon(
-                key: ShopScreen.statementKey,
+          const SizedBox(height: Space.sm),
+          Wrap(
+            spacing: Space.sm,
+            runSpacing: Space.sm,
+            children: [
+              // Only where something is actually taken per order. Under a subscription the
+              // statement is a page of zeroes, and a screen that says nothing every time is
+              // one somebody stops believing when it finally has something to say.
+              if (merchant.revenueModel != RevenueModel.subscription)
+                TextButton.icon(
+                  key: ShopScreen.statementKey,
+                  onPressed: () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => StatementScreen(merchantId: merchant.id),
+                    ),
+                  ),
+                  icon: const Icon(Icons.list_alt_rounded, size: Sizes.iconSm),
+                  label: const Text('كشف الحساب'),
+                ),
+              // Ungated: a shop's own numbers are never hidden behind a plan.
+              TextButton.icon(
+                key: ShopScreen.analyticsKey,
                 onPressed: () => Navigator.of(context).push(
                   MaterialPageRoute<void>(
-                    builder: (_) => StatementScreen(merchantId: merchant.id),
+                    builder: (_) => AnalyticsScreen(merchantId: merchant.id),
                   ),
                 ),
-                icon: const Icon(Icons.list_alt_rounded, size: Sizes.iconSm),
-                label: const Text('كشف الحساب'),
+                icon: const Icon(Icons.bar_chart_rounded, size: Sizes.iconSm),
+                label: const Text('الإحصائيات'),
               ),
-            ),
-          ],
+            ],
+          ),
         ],
       ),
     );
@@ -646,6 +697,7 @@ class _FeedbackRow extends StatelessWidget {
         color: colors.card,
         borderRadius: Radii.cardAll,
         border: Border.all(color: colors.hairline),
+        boxShadow: Elevations.card,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -699,6 +751,7 @@ class _Rating extends ConsumerWidget {
         color: colors.card,
         borderRadius: Radii.cardAll,
         border: Border.all(color: colors.hairline),
+        boxShadow: Elevations.card,
       ),
       child: Row(
         children: [
@@ -770,6 +823,7 @@ class _Tile extends StatelessWidget {
           color: colors.card,
           borderRadius: Radii.cardAll,
           border: Border.all(color: colors.hairline),
+          boxShadow: Elevations.card,
         ),
         child: Row(
           children: [
@@ -795,6 +849,29 @@ class _Tile extends StatelessWidget {
               size: Sizes.iconMd,
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SectionHeader extends StatelessWidget {
+  const _SectionHeader({required this.title});
+
+  final String title;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = theme.luqma;
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: Space.sm),
+      child: Text(
+        title,
+        style: theme.textTheme.titleMedium?.copyWith(
+          color: colors.textPrimary,
+          fontWeight: FontWeight.bold,
         ),
       ),
     );

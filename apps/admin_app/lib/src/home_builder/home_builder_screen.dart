@@ -45,7 +45,7 @@ class HomeBuilderScreen extends ConsumerWidget {
   ];
 
   static const typeNames = {
-    'categoryChips': 'شريط الأقسام',
+    'categoryChips': 'شرائح الفئات',
     'adSlot': 'مكان إعلان',
     'homeKitchenToday': 'أكل بيتي النهارده',
     'merchantList': 'قائمة المطاعم',
@@ -55,40 +55,83 @@ class HomeBuilderScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final colors = Theme.of(context).luqma;
+    final theme = Theme.of(context);
+    final colors = theme.luqma;
+    final strings = LuqmaStrings.of(context);
     final sections = ref.watch(homeSectionsProvider);
 
     return Scaffold(
       backgroundColor: colors.background,
       appBar: AppBar(title: const Text('ترتيب الرئيسية')),
       body: AdminContent(
-        child: LuqmaAsyncView(
-          value: sections,
-          errorKey: HomeBuilderScreen.errorKey,
-          onRetry: () => ref.invalidate(homeSectionsProvider),
-          empty: LuqmaEmptyView(
-              key: HomeBuilderScreen.emptyKey,
-              title: 'الرئيسية فاضية',
-              message: 'ضيف بلوك واحد على الأقل، وإلا العميل هيفتح على شاشة فاضية.',
-            ),
-          isEmpty: (value) => value.isEmpty,
-          builder: (context, value) => ListView.separated(
-              padding: const EdgeInsets.all(Space.gutter),
-              itemCount: value.length,
-              separatorBuilder: (_, _) => const SizedBox(height: Space.sm),
-              itemBuilder: (context, i) => _Row(
-                section: value[i],
-                order: value.map((s) => s.key).toList(),
-                index: i,
+        child: Column(
+          children: [
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(
+                horizontal: Space.gutter,
+                vertical: Space.sm + 2,
               ),
-            )
+              decoration: BoxDecoration(
+                color: colors.surface,
+                border: Border(
+                  bottom: BorderSide(color: colors.hairline),
+                ),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.bolt_rounded,
+                    size: Sizes.iconSm,
+                    color: colors.price,
+                  ),
+                  const SizedBox(width: Space.sm),
+                  Expanded(
+                    child: Text(
+                      strings.homeBuilderBanner,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: colors.price,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Expanded(
+              child: LuqmaAsyncView(
+                value: sections,
+                errorKey: HomeBuilderScreen.errorKey,
+                onRetry: () => ref.invalidate(homeSectionsProvider),
+                empty: LuqmaEmptyView(
+                  key: HomeBuilderScreen.emptyKey,
+                  title: 'الرئيسية فاضية',
+                  message:
+                      'ضيف بلوك واحد على الأقل، وإلا العميل هيفتح على شاشة فاضية.',
+                ),
+                isEmpty: (value) => value.isEmpty,
+                builder: (context, value) => ListView.separated(
+                  padding: const EdgeInsets.all(Space.gutter),
+                  itemCount: value.length,
+                  separatorBuilder: (_, _) => const SizedBox(height: Space.sm),
+                  itemBuilder: (context, i) => _Row(
+                    section: value[i],
+                    order: value.map((s) => s.key).toList(),
+                    index: i,
+                  ),
+                ),
+              ),
+            ),
+          ],
         ),
       ),
       floatingActionButton: FloatingActionButton.extended(
         key: addKey,
         onPressed: () => _add(context, ref, sections.value ?? const []),
         icon: const Icon(Icons.add_rounded),
-        label: const Text('ضيف بلوك'),
+        label: const Text('ضيف بلوك', style: TextStyle(fontWeight: FontWeight.bold)),
+        backgroundColor: colors.brand,
+        foregroundColor: colors.background,
       ),
     );
   }
@@ -98,9 +141,14 @@ class HomeBuilderScreen extends ConsumerWidget {
     WidgetRef ref,
     List<HomeSection> existing,
   ) async {
+    final colors = Theme.of(context).luqma;
+    final strings = LuqmaStrings.of(context);
+
     final type = await showModalBottomSheet<String>(
       context: context,
       isScrollControlled: true,
+      backgroundColor: colors.card,
+      shape: const RoundedRectangleBorder(borderRadius: Radii.sheetTop),
       builder: (sheetContext) => SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(Space.gutter),
@@ -108,9 +156,29 @@ class HomeBuilderScreen extends ConsumerWidget {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  margin: const EdgeInsets.only(bottom: Space.md),
+                  decoration: BoxDecoration(
+                    color: colors.hairline,
+                    borderRadius: Radii.pillAll,
+                  ),
+                ),
+              ),
               Text(
-                'ضيف بلوك للرئيسية',
-                style: Theme.of(sheetContext).textTheme.titleLarge,
+                strings.homeBuilderAddTitle,
+                style: Theme.of(sheetContext).textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+              ),
+              const SizedBox(height: Space.xs),
+              Text(
+                strings.homeBuilderAddSubtitle,
+                style: LuqmaType.bodySmall.copyWith(
+                  color: colors.textSecondary,
+                ),
               ),
               const SizedBox(height: Space.md),
               Flexible(
@@ -123,11 +191,52 @@ class HomeBuilderScreen extends ConsumerWidget {
                           padding: const EdgeInsets.only(bottom: Sizes.targetGap),
                           child: OutlinedButton(
                             key: typeKey(type),
-                            onPressed: () => Navigator.of(sheetContext).pop(type),
+                            onPressed: () =>
+                                Navigator.of(sheetContext).pop(type),
                             style: OutlinedButton.styleFrom(
-                              minimumSize: const Size.fromHeight(52),
+                              minimumSize: const Size.fromHeight(56),
+                              side: BorderSide(color: colors.hairline),
+                              shape: const RoundedRectangleBorder(
+                                borderRadius: Radii.cardAll,
+                              ),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: Space.md,
+                                vertical: Space.sm,
+                              ),
                             ),
-                            child: Text(typeNames[type] ?? type),
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        typeNames[type] ?? type,
+                                        style: Theme.of(sheetContext)
+                                            .textTheme
+                                            .titleMedium
+                                            ?.copyWith(
+                                              fontWeight: FontWeight.w600,
+                                              color: colors.textPrimary,
+                                            ),
+                                      ),
+                                      Text(
+                                        type,
+                                        style: LuqmaType.caption.copyWith(
+                                          color: colors.textSecondary,
+                                          fontFamily: 'monospace',
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                Icon(
+                                  Icons.add_circle_outline_rounded,
+                                  color: colors.brand,
+                                  size: Sizes.iconMd,
+                                ),
+                              ],
+                            ),
                           ),
                         ),
                     ],
@@ -181,81 +290,131 @@ class _Row extends ConsumerWidget {
     final colors = theme.luqma;
     final known = HomeBuilderScreen.knownTypes.contains(section.type);
 
-    return Container(
-      key: HomeBuilderScreen.rowKey(section.key),
-      padding: const EdgeInsets.all(Space.md),
-      decoration: BoxDecoration(
-        color: colors.card,
-        borderRadius: Radii.cardAll,
-        border: Border.all(color: colors.hairline),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  HomeBuilderScreen.typeNames[section.type] ?? section.type,
-                  style: theme.textTheme.titleMedium,
-                ),
-                Text(
-                  section.key,
-                  style: LuqmaType.caption.copyWith(color: colors.textSecondary),
-                ),
-                if (!section.isVisible)
-                  Padding(
-                    key: HomeBuilderScreen.hiddenKey(section.key),
-                    padding: const EdgeInsets.only(top: Space.xs),
-                    child: Text(
-                      // Hidden is not deleted. Hiding the home-kitchen band on a day
-                      // nobody is cooking and putting it back tomorrow keeps its
-                      // settings.
-                      'مخفي عن العملاء',
-                      style: LuqmaType.bodySmall.copyWith(color: colors.textSecondary),
+    return Opacity(
+      opacity: section.isVisible ? 1.0 : 0.6,
+      child: Container(
+        key: HomeBuilderScreen.rowKey(section.key),
+        padding: const EdgeInsets.all(Space.md),
+        decoration: BoxDecoration(
+          color: colors.card,
+          borderRadius: Radii.cardAll,
+          border: Border.all(color: colors.hairline),
+          boxShadow: Elevations.card,
+        ),
+        child: Row(
+          children: [
+            Icon(
+              Icons.drag_handle_rounded,
+              color: colors.textSecondary,
+              size: 20,
+            ),
+            const SizedBox(width: Space.sm),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    HomeBuilderScreen.typeNames[section.type] ?? section.type,
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.bold,
+                      color: colors.textPrimary,
                     ),
                   ),
-                if (!known)
-                  Padding(
-                    key: HomeBuilderScreen.unknownKey(section.key),
-                    padding: const EdgeInsets.only(top: Space.xs),
-                    child: Text(
-                      // It renders as nothing on the customer's phone. An admin who
-                      // cannot see it here cannot fix it anywhere.
-                      'النوع ده التطبيق مش عارفه — مش هيظهر لحد',
-                      style: LuqmaType.bodySmall.copyWith(color: colors.danger),
+                  const SizedBox(height: 2),
+                  Text(
+                    section.key == section.type
+                        ? section.type
+                        : '${section.type} • ${section.key}',
+                    style: LuqmaType.caption.copyWith(
+                      color: colors.textSecondary,
+                      fontFamily: 'monospace',
                     ),
                   ),
-              ],
+                  if (!section.isVisible)
+                    Padding(
+                      key: HomeBuilderScreen.hiddenKey(section.key),
+                      padding: const EdgeInsets.only(top: Space.xs),
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.visibility_off_outlined,
+                            size: 14,
+                            color: colors.textSecondary,
+                          ),
+                          const SizedBox(width: 4),
+                          Expanded(
+                            child: Text(
+                              // Hidden is not deleted. Hiding the home-kitchen band on a day
+                              // nobody is cooking and putting it back tomorrow keeps its
+                              // settings.
+                              'مخفي عن العملاء',
+                              style: LuqmaType.bodySmall.copyWith(
+                                color: colors.textSecondary,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  if (!known)
+                    Padding(
+                      key: HomeBuilderScreen.unknownKey(section.key),
+                      padding: const EdgeInsets.only(top: Space.xs),
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.warning_amber_rounded,
+                            size: 14,
+                            color: colors.danger,
+                          ),
+                          const SizedBox(width: 4),
+                          Expanded(
+                            child: Text(
+                              // It renders as nothing on the customer's phone. An admin who
+                              // cannot see it here cannot fix it anywhere.
+                              'النوع ده التطبيق مش عارفه — مش هيظهر لحد',
+                              style: LuqmaType.bodySmall.copyWith(
+                                color: colors.danger,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                ],
+              ),
             ),
-          ),
-          IconButton(
-            key: HomeBuilderScreen.visibilityKey(section.key),
-            tooltip: section.isVisible ? 'اخفي' : 'اظهر',
-            icon: Icon(
-              section.isVisible
-                  ? Icons.visibility_outlined
-                  : Icons.visibility_off_outlined,
-              color: section.isVisible ? colors.textPrimary : colors.textSecondary,
+            IconButton(
+              key: HomeBuilderScreen.visibilityKey(section.key),
+              tooltip: section.isVisible ? 'اخفي' : 'اظهر',
+              icon: Icon(
+                section.isVisible
+                    ? Icons.visibility_outlined
+                    : Icons.visibility_off_outlined,
+                color: section.isVisible
+                    ? colors.success
+                    : colors.textSecondary,
+              ),
+              onPressed: () => ref
+                  .read(homeSectionRepositoryProvider)
+                  .setVisible(section.key, !section.isVisible,
+                      cityId: ref.read(currentCityProvider)),
             ),
-            onPressed: () => ref
-                .read(homeSectionRepositoryProvider)
-                .setVisible(section.key, !section.isVisible,
-                    cityId: ref.read(currentCityProvider)),
-          ),
-          IconButton(
-            key: HomeBuilderScreen.upKey(section.key),
-            tooltip: 'اطلع فوق',
-            icon: const Icon(Icons.arrow_upward_rounded),
-            onPressed: index == 0 ? null : () => _move(ref, index - 1),
-          ),
-          IconButton(
-            key: HomeBuilderScreen.downKey(section.key),
-            tooltip: 'انزل تحت',
-            icon: const Icon(Icons.arrow_downward_rounded),
-            onPressed: index == order.length - 1 ? null : () => _move(ref, index + 1),
-          ),
-        ],
+            IconButton(
+              key: HomeBuilderScreen.upKey(section.key),
+              tooltip: 'اطلع فوق',
+              icon: const Icon(Icons.arrow_upward_rounded),
+              onPressed: index == 0 ? null : () => _move(ref, index - 1),
+            ),
+            IconButton(
+              key: HomeBuilderScreen.downKey(section.key),
+              tooltip: 'انزل تحت',
+              icon: const Icon(Icons.arrow_downward_rounded),
+              onPressed:
+                  index == order.length - 1 ? null : () => _move(ref, index + 1),
+            ),
+          ],
+        ),
       ),
     );
   }

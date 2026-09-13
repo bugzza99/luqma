@@ -106,4 +106,46 @@ void main() {
       );
     });
   });
+  // A merchant cover and a menu thumbnail are the same widget at very different sizes,
+  // and the letter used to be one fixed style in both: right in a 78 square, a speck
+  // adrift in a 168-tall cover the width of the phone. That cover is the first thing
+  // anybody sees on a shop that has not been photographed yet.
+  testWidgets('the monogram is sized from its box, not from a constant',
+      (tester) async {
+    Future<double> letterIn(double width, double height) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: LuqmaTheme.light,
+          home: Directionality(
+            textDirection: TextDirection.rtl,
+            child: Center(
+              child: SizedBox(
+                width: width,
+                height: height,
+                child: const LuqmaImage(url: null, name: 'مطعم البحر'),
+              ),
+            ),
+          ),
+        ),
+      );
+      return tester
+          .widget<Text>(find.descendant(
+            of: find.byType(LuqmaImage),
+            matching: find.byType(Text),
+          ))
+          .style!
+          .fontSize!;
+    }
+
+    final thumbnail = await letterIn(78, 78);
+    final cover = await letterIn(390, 168);
+
+    expect(cover, greaterThan(thumbnail),
+        reason: 'a cover is more than twice the height of a thumbnail; its letter '
+            'cannot be the same size');
+    // And neither runs away with the box: a letter filling a wide cover edge to edge
+    // reads as a glyph that escaped rather than as a stand-in for a photograph.
+    expect(thumbnail, greaterThanOrEqualTo(20));
+    expect(cover, lessThanOrEqualTo(96));
+  });
 }

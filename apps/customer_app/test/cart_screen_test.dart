@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:customer_app/src/cart/cart.dart';
 import 'package:customer_app/src/cart/cart_controller.dart';
 import 'package:customer_app/src/cart/cart_screen.dart';
@@ -56,21 +58,38 @@ void main() {
   Future<void> pump(
     WidgetTester tester, {
     Cart cart = full,
-    Merchant merchant = shore,
+    Merchant? merchant = shore,
+    bool reduced = false,
+    Size size = const Size(390, 844),
+    double textScale = 1,
+    Completer<Merchant>? merchantInFlight,
   }) async {
+    tester.view.physicalSize = size;
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
     checkedOut = false;
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
           merchantRepositoryProvider
-              .overrideWithValue(FakeMerchantRepository(seed: [merchant])),
+              .overrideWithValue(FakeMerchantRepository(seed: [?merchant])),
           remoteConfigServiceProvider
               .overrideWithValue(RemoteConfigService(FakeConfigFetcher({}))),
           if (cart.isNotEmpty)
             cartProvider.overrideWith(() => CartController.seeded(cart)),
+          // Holds `merchantProvider` in `AsyncLoading` for as long as the test wants.
+          // Last, so it replaces the repository-backed answer above.
+          if (merchantInFlight != null)
+            merchantProvider('m1').overrideWith((ref) => merchantInFlight.future),
         ],
         child: MaterialApp(
           theme: LuqmaTheme.light,
+          builder: (context, child) => MediaQuery(
+            data: MediaQuery.of(context).copyWith(
+              disableAnimations: reduced, textScaler: TextScaler.linear(textScale)),
+            child: child!,
+          ),
           locale: const Locale('ar'),
           localizationsDelegates: LuqmaStrings.localizationsDelegates,
           supportedLocales: LuqmaStrings.supportedLocales,
@@ -97,7 +116,9 @@ void main() {
       expect(find.text('فراخ مشوية'), findsOneWidget);
       // Two loaves at 5 each. Showing 5 next to a line of two would be a wrong number
       // sitting right above a correct sum.
-      expect(find.text('10 ج'), findsOneWidget);
+      final card = find.byKey(CartScreen.lineKey('l2'));
+      expect(find.descendant(of: card, matching: find.text('10 ج')), findsOneWidget);
+      expect(find.descendant(of: card, matching: find.text('5 ج')), findsNothing);
     });
 
     testWidgets('the food subtotal is the sum of the lines', (tester) async {
@@ -130,6 +151,9 @@ void main() {
     testWidgets('fewer removes the line when it reaches zero', (tester) async {
       await pump(tester);
 
+      final less = tester.widget<IconButton>(find.byKey(CartScreen.lessKey('l1')));
+      expect(less.tooltip, 'شيل الصنف');
+      expect((less.icon as Icon).icon, Icons.delete_outline_rounded);
       await tester.tap(find.byKey(CartScreen.lessKey('l1')));
       await tester.pumpAndSettle();
 
@@ -145,6 +169,148 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byKey(CartScreen.emptyKey), findsOneWidget);
+    });
+  });
+
+  group('the finished basket', () {
+    for (final cart in [Cart.empty, full,
+      const Cart(merchantId: 'm1', lines: [bread]),
+      Cart(merchantId: 'm1', lines: [chicken.copyWith(quantity: 99)])]) {
+      testWidgets('only known money for ${cart.subtotal} piastres', (tester) async {
+        await pump(tester, cart: cart, merchant: shore.copyWith(deliveryFeeOverride: 3700));
+        expect(find.text('الإجمالي'), findsNothing);
+        expect(find.textContaining('المعمورة'), findsNothing);
+        expect(find.text('37 ج'), findsNothing);
+        if (cart.isNotEmpty) {
+          final summary = find.byKey(CartScreen.summaryKey);
+          final texts = tester.widgetList<Text>(find.descendant(of: summary,
+              matching: find.byType(Text))).map((t) => t.data).toList();
+          final strings = LuqmaStrings.of(tester.element(summary));
+          expect(texts, ['الأصناف', strings.price(cart.subtotal),
+            'التوصيل بيتحسب بعد ما تختار العنوان']);
+          expect(find.descendant(of: summary, matching: find.byType(Divider)), findsOneWidget);
+        }
+      });
+    }
+
+    testWidgets('snapshot monograms, extras, cash and address copy', (tester) async {
+      const extra = MenuOption(id: 't', name: 'طحينة زيادة', price: 500);
+      final cart = Cart.empty.add(const MenuItem(id: 'i', merchantId: 'm1',
+        categoryId: 'c', name: 'فراخ', price: 12000), options: [extra], note: 'من غير شطة');
+      await pump(tester, cart: cart);
+      final image = tester.widget<LuqmaImage>(find.byKey(CartScreen.imageKey(cart.lines.single.id)));
+      expect(image.url, isNull);
+      expect(image.name, 'فراخ');
+      expect(tester.getSize(find.byType(LuqmaImage)), const Size(56, 56));
+      expect(find.text('+ طحينة زيادة'), findsOneWidget);
+      expect(find.text('من غير شطة'), findsOneWidget);
+      expect(find.text('من مطعم الشاطئ'), findsOneWidget);
+      expect(find.text('الدفع كاش عند الاستلام'), findsOneWidget);
+      expect(find.text('اختار العنوان'), findsOneWidget);
+    });
+
+    testWidgets('two taps before a frame both count and controls remain 48', (tester) async {
+      await pump(tester);
+      final more = find.byKey(CartScreen.moreKey('l2'));
+      final less = find.byKey(CartScreen.lessKey('l2'));
+      for (final target in [more, less]) {
+        expect(tester.getSize(target).width, greaterThanOrEqualTo(Sizes.minTarget));
+        expect(tester.getSize(target).height, greaterThanOrEqualTo(Sizes.minTarget));
+      }
+      expect(tester.widget<IconButton>(less).tooltip, 'واحد أقل');
+      await tester.tap(more);
+      await tester.tap(more);
+      await tester.pumpAndSettle();
+      expect(container.read(cartProvider).lines.last.quantity, 4);
+    });
+
+    for (final reduced in [false, true]) {
+      testWidgets('removal closes the gap, reduced=$reduced', (tester) async {
+        await pump(tester, reduced: reduced);
+        final survivor = find.byKey(CartScreen.lineKey('l2'));
+        final before = tester.getTopLeft(survivor).dy;
+        await tester.tap(find.byKey(CartScreen.lessKey('l1')));
+        await tester.pump();
+        expect(container.read(cartProvider).lines.length, 1);
+        final departing = find.byKey(CartScreen.lineKey('l1'));
+        if (reduced) {
+          expect(departing, findsNothing);
+          final after = tester.getTopLeft(survivor).dy;
+          expect(after, lessThan(before));
+          await tester.pump(const Duration(milliseconds: 80));
+          expect(tester.getTopLeft(survivor).dy, after);
+        } else {
+          expect(departing, findsOneWidget);
+          await tester.pump(const Duration(milliseconds: 80));
+          final middle = tester.getTopLeft(survivor).dy;
+          expect(middle, lessThan(before));
+          expect(tester.widget<SizeTransition>(find.byKey(CartScreen.exitKey('l1')))
+              .sizeFactor.value, inExclusiveRange(0, 1));
+          await tester.pumpAndSettle();
+          expect(departing, findsNothing);
+          expect(tester.getTopLeft(survivor).dy, lessThan(middle));
+        }
+      });
+    }
+
+    testWidgets('subtotal pulses with exactly one current number per frame', (tester) async {
+      await pump(tester);
+      await tester.tap(find.byKey(CartScreen.moreKey('l1')));
+      await tester.pump();
+      final summary = find.byKey(CartScreen.subtotalKey);
+      double scale() => tester.widget<Transform>(find.byKey(CartScreen.subtotalMotionKey))
+          .transform.storage.first;
+      final firstScale = scale();
+      expect(firstScale, lessThan(1));
+      for (var frame = 0; frame < 12; frame++) {
+        expect(find.descendant(of: summary, matching: find.text('130 ج')), findsNothing);
+        expect(find.descendant(of: summary, matching: find.text('250 ج')), findsOneWidget);
+        await tester.pump(const Duration(milliseconds: 16));
+      }
+      expect(scale(), 1);
+    });
+
+    testWidgets('reduced motion has no subtotal pulse or entrance', (tester) async {
+      await pump(tester, reduced: true);
+      await tester.tap(find.byKey(CartScreen.moreKey('l1')));
+      await tester.pump();
+      expect(find.byKey(CartScreen.subtotalMotionKey), findsNothing);
+      expect(find.byType(LuqmaEntrance), findsNothing);
+      expect(find.text('250 ج'), findsOneWidget);
+    });
+
+    testWidgets('a missing merchant explains the blocked button above it', (tester) async {
+      await pump(tester, merchant: null);
+      expect(find.text('المطعم مش متاح دلوقتي — سلتك محفوظة.'), findsOneWidget);
+      expect(tester.widget<FilledButton>(find.byKey(CartScreen.checkoutKey)).onPressed, isNull);
+      expect(tester.getBottomLeft(find.byKey(CartScreen.missingKey)).dy,
+          lessThan(tester.getTopLeft(find.byKey(CartScreen.checkoutKey)).dy));
+    });
+
+    // `merchantProvider` is a FutureProvider, so its first state is `AsyncLoading`, where
+    // `.value` is null — indistinguishable from a shop that is genuinely gone unless the
+    // screen reads the `AsyncValue` itself. It did not, so the ordinary path into this
+    // screen — the shell's basket badge, where nothing else holds the provider alive —
+    // drew «المطعم مش متاح» in the alarming tone for the length of a round trip, about a
+    // shop that was simply still loading.
+    //
+    // Nothing in the suite could see it: `FakeMerchantRepository` resolves in the same
+    // microtask and every other test ends in `pumpAndSettle`, so the loading frame never
+    // existed. This one holds the provider in flight and never settles.
+    testWidgets('a merchant still loading is not accused of being gone',
+        (tester) async {
+      final never = Completer<Merchant>();
+      addTearDown(() => never.complete(shore));
+
+      await pump(tester, merchantInFlight: never);
+      await tester.pump();
+
+      expect(find.byKey(CartScreen.missingKey), findsNothing,
+          reason: 'loading is not the same answer as gone');
+      // Still refused, because nothing is known yet — it is only the sentence that was
+      // wrong, never the disabled button.
+      expect(tester.widget<FilledButton>(find.byKey(CartScreen.checkoutKey)).onPressed,
+          isNull);
     });
   });
 

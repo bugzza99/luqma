@@ -38,12 +38,19 @@ void main() {
     WidgetTester tester, {
     List<Promotion> seed = const [],
     Map<String, Object> config = const {},
+    RevenueModel revenueModel = RevenueModel.subscription,
+    int revenueValue = 0,
+    Failure? failure,
   }) async {
     // The same fixed hour the fixtures are built around. Without it the fake answers the
     // push cap against the wall clock while every campaign here is dated relative to
     // `now`, so the seven-day window drifts off the fixtures and the test starts failing
     // on a particular day of a particular week.
-    promotions = FakePromotionRepository(seed: seed, clock: () => now);
+    promotions = FakePromotionRepository(
+      seed: seed,
+      clock: () => now,
+      failure: failure,
+    );
 
     // The service starts on the compiled-in defaults and only takes fetched values after
     // a refresh — which is the whole point of it, so a test that wants a different cap
@@ -68,6 +75,23 @@ void main() {
             ),
           ),
           promotionRepositoryProvider.overrideWithValue(promotions),
+          merchantRepositoryProvider.overrideWithValue(
+            FakeMerchantRepository(
+              seed: [
+                Merchant(
+                  id: 'm1',
+                  cityId: 'edku',
+                  type: MerchantType.restaurant,
+                  name: 'Shop',
+                  zoneId: 'z1',
+                  phone: '01000000000',
+                  revenueModel: revenueModel,
+                  revenueValue: revenueValue,
+                ),
+              ],
+            ),
+          ),
+          billingRepositoryProvider.overrideWithValue(FakeBillingRepository()),
           remoteConfigServiceProvider.overrideWithValue(remoteConfig),
         ],
         child: MaterialApp(
@@ -86,6 +110,33 @@ void main() {
   }
 
   group('what a merchant sees of their own', () {
+    for (final model in [RevenueModel.subscription, RevenueModel.prepaid]) {
+      testWidgets('$model does not advertise a commission', (tester) async {
+        await pump(tester, revenueModel: model);
+        expect(find.textContaining('نسبة عمولة'), findsNothing);
+      });
+    }
+
+    testWidgets('commission preserves the configured basis points', (
+      tester,
+    ) async {
+      await pump(
+        tester,
+        revenueModel: RevenueModel.commission,
+        revenueValue: 825,
+      );
+      expect(find.textContaining('نسبة عمولة 8.25%'), findsOneWidget);
+    });
+
+    testWidgets('missing plan and term do not invent paid entitlements', (
+      tester,
+    ) async {
+      await pump(tester);
+      expect(find.text('لقمة برو'), findsNothing);
+      expect(find.text('تجدد في نهاية الشهر'), findsNothing);
+      expect(find.textContaining('أصناف غير محدودة'), findsNothing);
+    });
+
     testWidgets('every campaign, whatever became of it', (tester) async {
       await pump(
         tester,
@@ -104,6 +155,128 @@ void main() {
         findsOneWidget,
       );
     });
+
+    testWidgets('shows only the 3 most relevant campaigns initially', (tester) async {
+      await pump(
+        tester,
+        seed: [
+          // Live now (rank 0)
+          promotion(id: 'c_live', status: PromotionStatus.approved, startAt: DateTime(2026, 8, 20), endAt: DateTime(2026, 8, 30)),
+          // Upcoming approved (rank 1)
+          promotion(id: 'c_upcoming', status: PromotionStatus.approved, startAt: DateTime(2026, 8, 26), endAt: DateTime(2026, 9, 2)),
+          // Under review (rank 2)
+          promotion(id: 'c_requested', status: PromotionStatus.requested, startAt: DateTime(2026, 8, 25)),
+          // Rejected (rank 3)
+          promotion(id: 'c_rejected', status: PromotionStatus.rejected, startAt: DateTime(2026, 8, 22)),
+          // Ended (rank 4)
+          promotion(id: 'c_ended', status: PromotionStatus.ended, startAt: DateTime(2026, 8, 1), endAt: DateTime(2026, 8, 10)),
+        ],
+      );
+
+      // Top 3 most relevant are visible
+      expect(find.byKey(MerchantPromotionsScreen.cardKey('c_live')), findsOneWidget);
+      expect(find.byKey(MerchantPromotionsScreen.cardKey('c_upcoming')), findsOneWidget);
+      expect(find.byKey(MerchantPromotionsScreen.cardKey('c_requested')), findsOneWidget);
+
+      // Less relevant are hidden behind show-all
+      expect(find.byKey(MerchantPromotionsScreen.cardKey('c_rejected')), findsNothing);
+      expect(find.byKey(MerchantPromotionsScreen.cardKey('c_ended')), findsNothing);
+
+      // Show-all toggle button is present
+      expect(find.byKey(MerchantPromotionsScreen.showAllKey), findsOneWidget);
+      expect(find.text('عرض الكل'), findsOneWidget);
+    });
+
+    testWidgets('tapping «عرض الكل» reveals all campaigns and toggles back', (tester) async {
+      await pump(
+        tester,
+        seed: [
+          promotion(id: 'c_live', status: PromotionStatus.approved, startAt: DateTime(2026, 8, 20), endAt: DateTime(2026, 8, 30)),
+          promotion(id: 'c_upcoming', status: PromotionStatus.approved, startAt: DateTime(2026, 8, 26), endAt: DateTime(2026, 9, 2)),
+          promotion(id: 'c_requested', status: PromotionStatus.requested, startAt: DateTime(2026, 8, 25)),
+          promotion(id: 'c_rejected', status: PromotionStatus.rejected, startAt: DateTime(2026, 8, 22)),
+          promotion(id: 'c_ended', status: PromotionStatus.ended, startAt: DateTime(2026, 8, 1), endAt: DateTime(2026, 8, 10)),
+        ],
+      );
+
+      // Tap show-all
+      await tester.ensureVisible(find.byKey(MerchantPromotionsScreen.showAllKey));
+      await tester.tap(find.byKey(MerchantPromotionsScreen.showAllKey));
+      await tester.pumpAndSettle();
+
+      // All 5 are now visible
+      expect(find.byKey(MerchantPromotionsScreen.cardKey('c_live')), findsOneWidget);
+      expect(find.byKey(MerchantPromotionsScreen.cardKey('c_upcoming')), findsOneWidget);
+      expect(find.byKey(MerchantPromotionsScreen.cardKey('c_requested')), findsOneWidget);
+      expect(find.byKey(MerchantPromotionsScreen.cardKey('c_rejected')), findsOneWidget);
+      expect(find.byKey(MerchantPromotionsScreen.cardKey('c_ended')), findsOneWidget);
+      expect(find.text('عرض أقل'), findsOneWidget);
+
+      // Tap again to collapse back
+      await tester.ensureVisible(find.byKey(MerchantPromotionsScreen.showAllKey));
+      await tester.tap(find.byKey(MerchantPromotionsScreen.showAllKey));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(MerchantPromotionsScreen.cardKey('c_rejected')), findsNothing);
+      expect(find.byKey(MerchantPromotionsScreen.cardKey('c_ended')), findsNothing);
+      expect(find.text('عرض الكل'), findsOneWidget);
+    });
+
+    testWidgets('three or fewer campaigns do not show the toggle', (tester) async {
+      await pump(
+        tester,
+        seed: [
+          promotion(id: 'c1'),
+          promotion(id: 'c2'),
+          promotion(id: 'c3'),
+        ],
+      );
+
+      expect(find.byKey(MerchantPromotionsScreen.cardKey('c1')), findsOneWidget);
+      expect(find.byKey(MerchantPromotionsScreen.cardKey('c2')), findsOneWidget);
+      expect(find.byKey(MerchantPromotionsScreen.cardKey('c3')), findsOneWidget);
+      expect(find.byKey(MerchantPromotionsScreen.showAllKey), findsNothing);
+    });
+
+    testWidgets('shows the plan card and the three request types', (
+      tester,
+    ) async {
+      await pump(tester);
+
+      // M08 Plan card
+      expect(find.text('الخطة الحالية'), findsOneWidget);
+
+      // M08 Request types
+      expect(find.text('اطلب عرض ترويجي'), findsOneWidget);
+      expect(find.text('بانر إعلاني'), findsOneWidget);
+      expect(find.text('رفع الترتيب'), findsOneWidget);
+      expect(find.text('إشعار جماعي'), findsOneWidget);
+    });
+
+    testWidgets(
+      'request descriptions are body text and small prices have contrast',
+      (tester) async {
+        await pump(tester);
+        for (final description in [
+          'اظهر في الصفحة الرئيسية',
+          'يظهر محلك في الأول',
+          'يوصل لكل عملاء إدكو',
+        ]) {
+          final text = tester.widget<Text>(find.text(description));
+          expect(text.style!.fontSize, greaterThanOrEqualTo(15));
+        }
+        for (final price in ['150 ج / أسبوع', '80 ج / أسبوع', '250 ج / مرة']) {
+          final text = tester.widget<Text>(find.text(price));
+          final ink = text.style!.color!;
+          final ground = LuqmaTheme.light.luqma.card;
+          final a = ink.computeLuminance();
+          final b = ground.computeLuminance();
+          final contrast =
+              (a > b ? a + 0.05 : b + 0.05) / (a > b ? b + 0.05 : a + 0.05);
+          expect(contrast, greaterThanOrEqualTo(4.5));
+        }
+      },
+    );
 
     // The whole point of requiring a reason. A merchant who is told only "rejected"
     // asks again with the same thing.
@@ -264,30 +437,29 @@ void main() {
   });
 
   group('the weekly push cap', () {
-    // Unmoderated, uncapped push is the fastest way to make customers disable
-    // notifications — and every operational alert goes with them.
-    testWidgets(
-      'push stays disabled while its delivery pipeline is incomplete',
-      (tester) async {
-        await pump(tester, config: {'marketing_push_per_week': 3});
+    // A marketing push reaches customers even when the app is shut, so slots are rationed
+    // across the whole city to protect notification permission.
+    testWidgets('push is available when a weekly slot remains in the city', (
+      tester,
+    ) async {
+      await pump(tester, config: {'marketing_push_per_week': 3});
 
-        await tester.tap(find.byKey(MerchantPromotionsScreen.askKey));
-        await tester.pumpAndSettle();
+      await tester.tap(find.byKey(MerchantPromotionsScreen.askKey));
+      await tester.pumpAndSettle();
 
-        final button = tester.widget<OutlinedButton>(
-          find.byKey(
-            MerchantPromotionsScreen.channelKey(PromotionChannel.push),
-          ),
-        );
-        expect(button.onPressed, isNull);
-        expect(
-          find.byKey(MerchantPromotionsScreen.pushUnavailableKey),
-          findsOneWidget,
-        );
-      },
-    );
+      final button = tester.widget<OutlinedButton>(
+        find.byKey(
+          MerchantPromotionsScreen.channelKey(PromotionChannel.push),
+        ),
+      );
+      expect(button.onPressed, isNotNull);
+      expect(
+        find.byKey(MerchantPromotionsScreen.pushUnavailableKey),
+        findsNothing,
+      );
+    });
 
-    testWidgets('a previous push does not bypass launch containment', (
+    testWidgets('push is disabled when the city cap has been reached', (
       tester,
     ) async {
       await pump(
@@ -315,6 +487,30 @@ void main() {
         find.byKey(MerchantPromotionsScreen.channelKey(PromotionChannel.push)),
       );
       expect(button.onPressed, isNull);
+    });
+
+    testWidgets('a failed push availability check treats the slot as unavailable', (
+      tester,
+    ) async {
+      await pump(
+        tester,
+        config: {'marketing_push_per_week': 3},
+        failure: const OfflineFailure(),
+      );
+
+      await tester.tap(find.byKey(MerchantPromotionsScreen.askKey));
+      await tester.pumpAndSettle();
+
+      final button = tester.widget<OutlinedButton>(
+        find.byKey(
+          MerchantPromotionsScreen.channelKey(PromotionChannel.push),
+        ),
+      );
+      expect(button.onPressed, isNull);
+      expect(
+        find.byKey(MerchantPromotionsScreen.pushUnavailableKey),
+        findsOneWidget,
+      );
     });
 
     // The cap is on the week, not for ever. A merchant told "no" with no horizon

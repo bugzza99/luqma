@@ -1,4 +1,5 @@
-﻿import 'package:flutter/foundation.dart';
+import 'package:flutter/foundation.dart';
+import 'dart:async';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 import '../auth/auth_service.dart';
@@ -12,8 +13,11 @@ import '../models/home_section.dart';
 import '../models/menu_item.dart';
 import '../models/merchant.dart';
 import '../models/billing.dart';
+import '../models/courier_roster.dart';
+import '../models/courier_summary.dart';
 import '../models/daily_meal.dart';
 import '../models/order.dart';
+import '../models/merchant_sales.dart';
 import '../models/promotion.dart';
 import '../models/settlement.dart';
 import '../repositories/address_repository.dart';
@@ -21,6 +25,8 @@ import '../repositories/admin_repository.dart';
 import '../repositories/billing_repository.dart';
 import '../repositories/config_repository.dart';
 import '../repositories/courier_order_repository.dart';
+import '../repositories/courier_roster_repository.dart';
+import '../repositories/courier_queue_drain.dart';
 import '../repositories/courier_write_queue.dart';
 import '../repositories/cuisine_repository.dart';
 import '../repositories/customer_repository.dart';
@@ -36,11 +42,14 @@ import '../repositories/merchant_order_repository.dart';
 import '../repositories/merchant_repository.dart';
 import '../repositories/order_repository.dart';
 import '../repositories/popular_items_repository.dart';
+import '../repositories/merchant_sales_repository.dart';
 import '../repositories/profile_repository.dart';
 import '../repositories/promotion_repository.dart';
 import '../repositories/push_token_repository.dart';
 import '../repositories/search_repository.dart';
 import '../repositories/settlement_repository.dart';
+import '../models/staff_application.dart';
+import '../repositories/staff_application_repository.dart';
 import '../repositories/staff_repository.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -76,6 +85,15 @@ CuisineRepository cuisineRepository(Ref ref) =>
 SettlementRepository settlementRepository(Ref ref) =>
     SupabaseSettlementRepository(ref.watch(supabaseProvider));
 
+@Riverpod(keepAlive: true)
+CourierRosterRepository courierRosterRepository(Ref ref) =>
+    SupabaseCourierRosterRepository(ref.watch(supabaseProvider));
+
+/// The active couriers carrying for this shop. Live.
+@riverpod
+Stream<List<CourierRosterItem>> courierRoster(Ref ref, String merchantId) =>
+    ref.watch(courierRosterRepositoryProvider).watchRoster(merchantId);
+
 /// One merchant's statement, newest first.
 ///
 /// Not kept alive: this is a page somebody opens to check a figure, and holding a
@@ -94,13 +112,38 @@ Future<List<CommissionPayment>> commissionPayments(Ref ref, String merchantId) a
   return result.valueOrThrow;
 }
 
-/// What the statement adds up to.
+/// The complete account, aggregated by the server.
 ///
-/// Derived from the same fetch rather than asked separately, so the total on the screen
-/// and the rows under it can never be answers to two different questions.
+/// A total and its evidence must state the same scope. The screens name this as the
+/// account from the beginning and name the rows as the newest page; they no longer
+/// imply that the bounded rows add up to this figure. Separate reads are snapshots,
+/// not a promise that the page and account were fetched in one transaction.
 @riverpod
-Future<SettlementSummary> settlementSummary(Ref ref, String merchantId) async =>
-    SettlementSummary.of(await ref.watch(merchantSettlementsProvider(merchantId).future));
+Future<SettlementSummary> settlementSummary(Ref ref, String merchantId) async {
+  final result =
+      await ref.watch(settlementRepositoryProvider).summaryFor(merchantId);
+  return result.valueOrThrow;
+}
+
+@Riverpod(keepAlive: true)
+MerchantSalesRepository merchantSalesRepository(Ref ref) =>
+    SupabaseMerchantSalesRepository(ref.watch(supabaseProvider));
+
+/// Sales figures for [merchantId] over [days].
+///
+/// Auto-disposed: sales figures are a snapshot over a chosen window, re-read on demand
+/// or when switching range chips.
+@riverpod
+Future<MerchantSales> merchantSales(
+  Ref ref,
+  String merchantId, {
+  int days = 7,
+}) async {
+  final result = await ref
+      .watch(merchantSalesRepositoryProvider)
+      .getSales(merchantId, days: days);
+  return result.valueOrThrow;
+}
 
 @Riverpod(keepAlive: true)
 PopularItemsRepository popularItemsRepository(Ref ref) =>
@@ -196,6 +239,15 @@ IssueRepository issueRepository(Ref ref) =>
 @Riverpod(keepAlive: true)
 StaffRepository staffRepository(Ref ref) =>
     SupabaseStaffRepository(ref.watch(supabaseProvider));
+
+@Riverpod(keepAlive: true)
+StaffApplicationRepository staffApplicationRepository(Ref ref) =>
+    SupabaseStaffApplicationRepository(ref.watch(supabaseProvider));
+
+/// The open applications waiting for a phone call, newest first. Live.
+@riverpod
+Stream<List<StaffApplication>> pendingStaffApplications(Ref ref) =>
+    ref.watch(staffApplicationRepositoryProvider).watchPending();
 
 @Riverpod(keepAlive: true)
 ConfigRepository configRepository(Ref ref) =>
@@ -401,6 +453,20 @@ CourierWriteQueue courierWriteQueue(Ref ref) {
     store: ref.watch(courierWriteStoreProvider),
   );
   ref.onDispose(queue.dispose);
+
+  // And something that actually sends it. The queue was written to be driven — its own
+  // `flush` says so — and for as long as it has existed the only caller was a retry
+  // button on one screen. A courier could take cash at a door, tap delivered with no
+  // signal, walk back into coverage, and leave the order unsettled until somebody
+  // happened to press that button, under a banner promising «هيتبعت أول ما النت يرجع».
+  //
+  // Scoped here so the drain lives and dies with the queue it drains, and is therefore
+  // account-scoped for the same reason: a shared shop handset changing couriers must not
+  // have one rider's taps replayed under the next one's name.
+  final drain = CourierQueueDrain(queue);
+  unawaited(drain.start());
+  ref.onDispose(drain.dispose);
+
   return queue;
 }
 
@@ -437,6 +503,30 @@ Stream<List<Order>> merchantDeliveries(Ref ref, String merchantId) =>
 @riverpod
 Stream<List<Order>> platformDeliveries(Ref ref, String cityId) =>
     ref.watch(courierOrderRepositoryProvider).watchForPlatform(cityId);
+
+/// Everything this courier carries: all shops they are attached to, plus the
+/// platform when they hold the platform row. Live.
+@riverpod
+Stream<List<Order>> carriedDeliveries(Ref ref) =>
+    ref.watch(courierOrderRepositoryProvider).watchCarried();
+
+/// Which shops this rider carries for: merchant IDs, with null meaning the platform. Live.
+@riverpod
+Stream<List<String?>> carriedMerchants(Ref ref) =>
+    ref.watch(courierOrderRepositoryProvider).watchCarriedMerchants();
+
+/// Summary of what this courier did today: completed deliveries, returns,
+/// cash in hand, and the per-shop breakdown.
+@riverpod
+Future<CourierDaySummary> courierDaySummary(Ref ref) async {
+  final result = await ref.watch(courierOrderRepositoryProvider).daySummary();
+  return result.valueOrThrow;
+}
+
+/// One staff member row, watched live.
+@riverpod
+Stream<StaffMember?> staffMember(Ref ref, String uid) =>
+    ref.watch(staffRepositoryProvider).watchStaffMember(uid);
 
 @Riverpod(keepAlive: true)
 DailyMealRepository dailyMealRepository(Ref ref) =>
@@ -617,6 +707,14 @@ Stream<List<Order>> ordersFor(Ref ref, String uid) =>
 @riverpod
 Stream<Order> order(Ref ref, String orderId) =>
     ref.watch(orderRepositoryProvider).watchOrder(orderId);
+
+/// Whether this order has already been rated.
+///
+/// Live rather than fetched once, so the card answers a rating written from another
+/// device — or a moment ago on this one — without the screen being reopened.
+@riverpod
+Stream<bool> hasRated(Ref ref, String orderId) =>
+    ref.watch(orderRepositoryProvider).watchHasRated(orderId);
 
 // ------------------------------------------------------------------ config
 

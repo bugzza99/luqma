@@ -229,7 +229,6 @@ class _CuisineSheetState extends ConsumerState<_CuisineSheet> {
                 url: _mediaUrl,
                 name: _name.isEmpty ? 'قسم' : _name,
                 ownerId: widget.existing?.id,
-                height: 140,
                 onUploaded: (media) => setState(() {
                   _mediaId = media.id;
                   _mediaUrl = media.url;

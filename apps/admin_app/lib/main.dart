@@ -26,6 +26,9 @@ void main() => luqmaBootstrap(() async {
       authServiceProvider.overrideWithValue(SupabaseAuthService(supabase)),
       // The only place this app names the gallery; see src/app/gallery.dart.
       pickImageProvider.overrideWithValue(pickImageFromGallery),
+      // The same shape the customer app shows on حسابي. Read here by the config screen,
+      // which must not let a minimum version be set above the newest one that exists.
+      appVersionProvider.overrideWithValue('${info.version} (${info.buildNumber})'),
     ],
   );
 
