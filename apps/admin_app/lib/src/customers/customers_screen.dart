@@ -106,6 +106,7 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                     controller: _query,
                     textInputAction: TextInputAction.search,
                     decoration: const InputDecoration(
+                      prefixIcon: Icon(Icons.search),
                       labelText: 'ابحث بالاسم أو الرقم',
                       hintText: '01012345678',
                     ),
@@ -113,9 +114,13 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                   ),
                 ),
                 const SizedBox(width: Space.sm),
-                FilledButton(
+                FilledButton.icon(
                   onPressed: _loading ? null : () => _search(_query.text),
-                  child: Text(_loading ? 'جاري…' : 'ابحث'),
+                  icon: const Icon(Icons.search, size: Sizes.iconSm),
+                  label: Text(_loading ? 'جاري…' : 'ابحث'),
+                  style: FilledButton.styleFrom(
+                    minimumSize: const Size(Sizes.minTarget, Sizes.minTarget),
+                  ),
                 ),
               ],
             ),
@@ -169,19 +174,15 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
 
     final results = _results;
     if (results == null) {
-      return Center(
-        child: Text(
-          'دور على عميل بالاسم أو رقم الموبايل.',
-          style: theme.textTheme.bodyMedium?.copyWith(color: colors.textSecondary),
-        ),
+      return const LuqmaEmptyView(
+        icon: Icons.search,
+        message: 'دور على عميل بالاسم أو رقم الموبايل.',
       );
     }
     if (results.isEmpty) {
-      return Center(
-        child: Text(
-          'مفيش نتايج.',
-          style: theme.textTheme.bodyMedium?.copyWith(color: colors.textSecondary),
-        ),
+      return const LuqmaEmptyView(
+        icon: Icons.person_off_outlined,
+        message: 'مفيش نتايج.',
       );
     }
 
@@ -222,52 +223,130 @@ class _CustomerRow extends StatelessWidget {
     final theme = Theme.of(context);
     final colors = theme.luqma;
 
-    return InkWell(
-      onTap: onTap,
+    final initialLetter =
+        customer.name.trim().isNotEmpty ? customer.name.trim()[0] : 'ع';
+
+    final content = Material(
+      color: colors.card,
       borderRadius: Radii.cardAll,
-      child: Container(
-        padding: const EdgeInsets.all(Space.md),
-        constraints: const BoxConstraints(minHeight: Sizes.minTarget),
-        decoration: BoxDecoration(
-          color: colors.card,
-          borderRadius: Radii.cardAll,
-          border: Border.all(color: colors.hairline),
-        ),
-        child: Row(
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    customer.name.isEmpty ? 'عميل' : customer.name,
-                    style: theme.textTheme.titleMedium,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: Radii.cardAll,
+        child: Container(
+          padding: const EdgeInsets.all(Space.md),
+          constraints: const BoxConstraints(minHeight: Sizes.minTarget),
+          decoration: BoxDecoration(
+            borderRadius: Radii.cardAll,
+            border: Border.all(color: colors.hairline),
+          ),
+          child: Row(
+            children: [
+              // A12 avatar: role/status coloured avatar with applicant/customer initial
+              CircleAvatar(
+                radius: 20,
+                backgroundColor:
+                    customer.isBlocked ? colors.danger : colors.brand,
+                child: Text(
+                  initialLetter,
+                  style: TextStyle(
+                    color: colors.onBrand,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 15,
                   ),
-                  Text(
-                    customer.phone.isEmpty ? 'من غير رقم' : customer.phone,
-                    style: theme.textTheme.bodySmall?.copyWith(color: colors.textSecondary),
-                  ),
-                ],
+                ),
               ),
-            ),
-            IconButton(
-              key: CustomersScreen.resetKey,
-              tooltip: 'تفاصيل وإعادة تعيين كلمة السر',
-              icon: Icon(Icons.key_outlined, color: colors.textSecondary),
-              onPressed: onResetPassword,
-            ),
-            IconButton(
-              key: CustomersScreen.blockKey,
-              tooltip: customer.isBlocked ? 'فك الحظر' : 'حظر',
-              icon: Icon(
-                customer.isBlocked ? Icons.lock_open_rounded : Icons.block,
-                color: customer.isBlocked ? colors.brand : colors.danger,
+              const SizedBox(width: Space.md),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            customer.name.isEmpty ? 'عميل' : customer.name,
+                            style: theme.textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.w700,
+                              color: colors.textPrimary,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        if (customer.isBlocked) ...[
+                          const SizedBox(width: Space.sm),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: Space.xs,
+                              vertical: 2,
+                            ),
+                            decoration: BoxDecoration(
+                              color: colors.danger.withValues(alpha: 0.12),
+                              borderRadius: Radii.pillAll,
+                              border: Border.all(
+                                color: colors.danger.withValues(alpha: 0.3),
+                              ),
+                            ),
+                            child: Text(
+                              'محظور',
+                              style: theme.textTheme.labelSmall?.copyWith(
+                                color: colors.danger,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                    const SizedBox(height: Space.xs),
+                    Wrap(
+                      spacing: Space.xs,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        Text(
+                          customer.phone.isEmpty ? 'من غير رقم' : customer.phone,
+                          textDirection: TextDirection.ltr,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: colors.textSecondary,
+                          ),
+                        ),
+                        if (customer.rejectedOrdersCount > 0)
+                          Text(
+                            '· ${customer.rejectedOrdersCount} رفض',
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: colors.danger,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
-              onPressed: onToggleBlock,
-            ),
-          ],
+              IconButton(
+                key: CustomersScreen.resetKey,
+                tooltip: 'تفاصيل وإعادة تعيين كلمة السر',
+                icon: Icon(Icons.key_outlined, color: colors.textSecondary),
+                onPressed: onResetPassword,
+              ),
+              IconButton(
+                key: CustomersScreen.blockKey,
+                tooltip: customer.isBlocked ? 'فك الحظر' : 'حظر',
+                icon: Icon(
+                  customer.isBlocked ? Icons.lock_open_rounded : Icons.block,
+                  color: customer.isBlocked ? colors.brand : colors.danger,
+                ),
+                onPressed: onToggleBlock,
+              ),
+            ],
+          ),
         ),
       ),
     );
+
+    // Blocked accounts are visually dimmed per A12 mock (opacity 0.55)
+    if (customer.isBlocked) {
+      return Opacity(opacity: 0.55, child: content);
+    }
+    return content;
   }
 }

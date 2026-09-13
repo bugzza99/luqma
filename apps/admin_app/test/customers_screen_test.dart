@@ -73,6 +73,7 @@ void main() {
     Failure? failure,
     Size size = phoneSize,
     bool linkAnswer = true,
+    List<CustomerSummary>? seed,
   }) async {
     tester.view.physicalSize = size;
     tester.view.devicePixelRatio = 1.0;
@@ -82,7 +83,7 @@ void main() {
     });
 
     customers = FakeCustomerRepository(
-      seed: [ahmed, salma],
+      seed: seed ?? [ahmed, salma],
       histories: {'u1': [ahmedOrder], 'u2': []},
       failure: failure,
     );
@@ -157,6 +158,24 @@ void main() {
     expect(find.text('120 ج'), findsWidgets);
     expect(find.text('رفض'), findsOneWidget);
     expect(find.text('0'), findsOneWidget);
+  });
+
+  testWidgets('renders avatar with initial letter and blocked badge when customer is blocked', (tester) async {
+    final blockedCustomer = CustomerSummary(
+      id: 'u3',
+      name: 'محمود حامد',
+      phone: '01011112222',
+      isBlocked: true,
+      rejectedOrdersCount: 2,
+      createdAt: DateTime(2026, 8, 1),
+    );
+    await pump(tester, seed: [blockedCustomer]);
+    await search(tester, 'محمود');
+
+    expect(find.text('محمود حامد'), findsOneWidget);
+    expect(find.text('م'), findsOneWidget);
+    expect(find.text('محظور'), findsOneWidget);
+    expect(find.textContaining('2 رفض'), findsOneWidget);
   });
 
   group('reset block verification facts', () {

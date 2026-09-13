@@ -75,6 +75,25 @@ void main() {
     expect(find.textContaining('غير متاح في الإصدار الحالي'), findsWidgets);
   });
 
+  testWidgets('feature-flag keys are shown in monospace face LTR with warning banner', (
+    tester,
+  ) async {
+    await pump(tester);
+
+    expect(
+      find.textContaining('أي تعديل هنا بيوصل لكل التطبيقات على طول'),
+      findsOneWidget,
+    );
+
+    final otpKeyText = tester.widget<Text>(find.text('otp_enabled'));
+    expect(otpKeyText.textDirection, TextDirection.ltr);
+    expect(otpKeyText.style?.fontFamily, 'monospace');
+
+    final admobKeyText = tester.widget<Text>(find.text('admob_enabled'));
+    expect(admobKeyText.textDirection, TextDirection.ltr);
+    expect(admobKeyText.style?.fontFamily, 'monospace');
+  });
+
   testWidgets('shows all per-app version and update URL fields', (
     tester,
   ) async {

@@ -29,13 +29,11 @@ class ApplicationsScreen extends ConsumerWidget {
         title: const Text('طلبات الانضمام'),
       ),
       body: AdminContent(
-        child: stream.when(
-          data: (applications) => _QueueList(applications: applications),
-          loading: () => const Center(child: CircularProgressIndicator()),
-          error: (error, _) => LuqmaErrorView(
-            failure: error,
-            onRetry: () => ref.invalidate(pendingStaffApplicationsProvider),
-          ),
+        child: LuqmaAsyncView<List<StaffApplication>>(
+          value: stream,
+          onRetry: () => ref.invalidate(pendingStaffApplicationsProvider),
+          builder: (context, applications) =>
+              _QueueList(applications: applications),
         ),
       ),
     );
@@ -58,7 +56,10 @@ class _QueueList extends StatelessWidget {
         // Plainly explain what approval does: it marks the application decided, and
         // does NOT create the account.
         Container(
-          padding: const EdgeInsets.all(Space.md),
+          padding: const EdgeInsets.symmetric(
+            horizontal: Space.md,
+            vertical: Space.sm,
+          ),
           decoration: BoxDecoration(
             color: colors.card,
             borderRadius: Radii.cardAll,
@@ -67,32 +68,29 @@ class _QueueList extends StatelessWidget {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Icon(Icons.info_outline, size: 20, color: colors.brand),
+              Icon(Icons.info_outline, size: Sizes.iconSm, color: colors.brand),
               const SizedBox(width: Space.sm),
               Expanded(
                 child: Text(
                   'قبول الطلب هنا يسجل قرار المراجعة فقط. إنشاء حساب المستخدم الفعلي وصلاحياته يتم من شاشة الفريق.',
-                  style: theme.textTheme.bodySmall?.copyWith(color: colors.textSecondary),
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: colors.textSecondary,
+                  ),
                 ),
               ),
             ],
           ),
         ),
-        const SizedBox(height: Space.lg),
+        const SizedBox(height: Space.md),
         if (applications.isEmpty)
-          Padding(
-            padding: const EdgeInsets.all(Space.xxl),
-            child: Center(
-              child: Text(
-                'مفيش طلبات في الانتظار',
-                style: theme.textTheme.bodyMedium?.copyWith(color: colors.textSecondary),
-              ),
-            ),
+          const LuqmaEmptyView(
+            icon: Icons.inbox_outlined,
+            message: 'مفيش طلبات في الانتظار',
           )
         else
           for (final app in applications) ...[
             _ApplicationCard(application: app),
-            const SizedBox(height: Space.md),
+            const SizedBox(height: Space.sm),
           ],
       ],
     );
@@ -198,19 +196,33 @@ class _ApplicationCard extends ConsumerWidget {
     final theme = Theme.of(context);
     final colors = theme.luqma;
 
-    final kindLabel = switch (application.kind) {
-      StaffApplicationKind.courier => 'مندوب توصيل',
-      StaffApplicationKind.restaurant => 'مطعم',
-      StaffApplicationKind.homeKitchen => 'أكل بيتي',
+    final (kindLabel, badgeColor, badgeBg) = switch (application.kind) {
+      StaffApplicationKind.courier => (
+        'مندوب توصيل',
+        colors.brand,
+        colors.brand.withValues(alpha: 0.12),
+      ),
+      StaffApplicationKind.restaurant => (
+        'مطعم',
+        colors.price,
+        colors.accent.withValues(alpha: 0.18),
+      ),
+      StaffApplicationKind.homeKitchen => (
+        'أكل بيتي',
+        colors.success,
+        colors.success.withValues(alpha: 0.14),
+      ),
     };
 
     final note = application.note;
+    final initialLetter =
+        application.name.trim().isNotEmpty ? application.name.trim()[0] : 'ع';
 
     return Material(
       color: colors.card,
       borderRadius: Radii.cardAll,
       child: Container(
-        padding: const EdgeInsets.all(Space.lg),
+        padding: const EdgeInsets.all(Space.md),
         decoration: BoxDecoration(
           borderRadius: Radii.cardAll,
           border: Border.all(color: colors.hairline),
@@ -219,21 +231,36 @@ class _ApplicationCard extends ConsumerWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
+                CircleAvatar(
+                  radius: 18,
+                  backgroundColor: badgeColor,
+                  child: Text(
+                    initialLetter,
+                    style: TextStyle(
+                      color: colors.onBrand,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 14,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: Space.sm),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
                         application.name,
-                        style: theme.textTheme.titleMedium,
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w700,
+                          color: colors.textPrimary,
+                        ),
                       ),
-                      const SizedBox(height: Space.xs),
                       Text(
                         application.phone,
                         textDirection: TextDirection.ltr,
-                        style: theme.textTheme.bodyMedium?.copyWith(
+                        style: theme.textTheme.bodySmall?.copyWith(
                           color: colors.textSecondary,
                         ),
                       ),
@@ -246,14 +273,14 @@ class _ApplicationCard extends ConsumerWidget {
                     vertical: Space.xs,
                   ),
                   decoration: BoxDecoration(
-                    color: colors.background,
-                    borderRadius: Radii.imageAll,
-                    border: Border.all(color: colors.hairline),
+                    color: badgeBg,
+                    borderRadius: Radii.pillAll,
+                    border: Border.all(color: badgeColor.withValues(alpha: 0.3)),
                   ),
                   child: Text(
                     kindLabel,
                     style: theme.textTheme.bodySmall?.copyWith(
-                      color: colors.brand,
+                      color: badgeColor,
                       fontWeight: FontWeight.bold,
                     ),
                   ),
@@ -261,21 +288,24 @@ class _ApplicationCard extends ConsumerWidget {
               ],
             ),
             if (note != null && note.isNotEmpty) ...[
-              const SizedBox(height: Space.md),
+              const SizedBox(height: Space.sm),
               Container(
                 width: double.infinity,
-                padding: const EdgeInsets.all(Space.md),
+                padding: const EdgeInsets.all(Space.sm),
                 decoration: BoxDecoration(
                   color: colors.background,
                   borderRadius: Radii.cardAll,
+                  border: Border.all(color: colors.hairline),
                 ),
                 child: Text(
                   note,
-                  style: theme.textTheme.bodyMedium,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: colors.textPrimary,
+                  ),
                 ),
               ),
             ],
-            const SizedBox(height: Space.lg),
+            const SizedBox(height: Space.md),
             Row(
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
@@ -288,10 +318,13 @@ class _ApplicationCard extends ConsumerWidget {
                   ),
                   style: OutlinedButton.styleFrom(
                     foregroundColor: colors.danger,
+                    side: BorderSide(
+                      color: colors.danger.withValues(alpha: 0.5),
+                    ),
                   ),
                   child: const Text('رفض'),
                 ),
-                const SizedBox(width: Space.md),
+                const SizedBox(width: Space.sm),
                 FilledButton(
                   key: ApplicationsScreen.approveKey(application.id),
                   onPressed: () => _decide(
