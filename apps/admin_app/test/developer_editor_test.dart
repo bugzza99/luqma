@@ -1,10 +1,10 @@
-import 'package:admin_app/src/about/about_editor_screen.dart';
+import 'package:admin_app/src/developer/developer_editor_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:luqma_core/luqma_core.dart';
 
-/// The "حول لقمة" editor.
+/// The «عن المطور» editor — the person, apart from the product.
 void main() {
   late FakeConfigRepository config;
 
@@ -32,7 +32,7 @@ void main() {
           supportedLocales: LuqmaStrings.supportedLocales,
           home: const Directionality(
             textDirection: TextDirection.rtl,
-            child: AboutEditorScreen(),
+            child: DeveloperEditorScreen(),
           ),
         ),
       ),
@@ -42,45 +42,30 @@ void main() {
 
   /// Taps save. Pinned below the scrolling form, so it is always reachable.
   Future<void> save(WidgetTester tester) async {
-    await tester.tap(find.byKey(AboutEditorScreen.saveKey));
+    await tester.tap(find.byKey(DeveloperEditorScreen.saveKey));
     await tester.pumpAndSettle();
   }
 
-  testWidgets('shows the current description', (tester) async {
-    await pump(tester, seed: {'about_description': 'تطبيق أكل من إدكو.'});
+  testWidgets('shows what is already set, including what was carried over', (tester) async {
+    await pump(tester, seed: {
+      'developer_name': 'محمد',
+      'developer_facebook': 'https://facebook.com/me',
+    });
 
-    expect(find.text('تطبيق أكل من إدكو.'), findsOneWidget);
+    expect(find.text('محمد'), findsOneWidget);
+    expect(find.text('https://facebook.com/me'), findsOneWidget);
   });
 
-  // The product's page only. The photo and personal links moved to «عن المطور».
-  testWidgets('offers no photo and no personal links', (tester) async {
-    await pump(tester, seed: {'about_facebook': 'https://facebook.com/owner'});
-
-    expect(find.byType(MediaPicker), findsNothing);
-    expect(find.text('https://facebook.com/owner'), findsNothing);
-  });
-
-  testWidgets('saving writes the description and nothing of the developer', (tester) async {
+  testWidgets('saving writes the developer keys, and never the product description',
+      (tester) async {
     await pump(tester);
-    await tester.enterText(find.byKey(AboutEditorScreen.descriptionKey), 'وصف');
+    await tester.enterText(find.byKey(DeveloperEditorScreen.nameKey), 'محمد رمضان');
+    await tester.enterText(find.byKey(DeveloperEditorScreen.bioKey), 'من إدكو.');
     await save(tester);
 
-    expect(config.setCalls.single.keys, ['about_description']);
-  });
-
-  testWidgets('saving writes the about fields through the repository', (tester) async {
-    await pump(tester);
-
-    await tester.enterText(
-      find.byKey(AboutEditorScreen.descriptionKey),
-      'أكل بيتي على أصوله في إدكو.',
-    );
-    await save(tester);
-
-    expect(config.setCalls, hasLength(1));
-    expect(
-      config.setCalls.first['about_description'],
-      'أكل بيتي على أصوله في إدكو.',
-    );
+    final written = config.setCalls.single;
+    expect(written['developer_name'], 'محمد رمضان');
+    expect(written['developer_bio'], 'من إدكو.');
+    expect(written.keys.where((k) => k.startsWith('about_')), isEmpty);
   });
 }

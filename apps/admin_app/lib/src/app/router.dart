@@ -7,6 +7,7 @@ import '../auth/admin_access.dart';
 import '../auth/gate_screens.dart';
 import '../auth/identity_provider.dart';
 import '../about/about_editor_screen.dart';
+import '../developer/developer_editor_screen.dart';
 import '../applications/applications_screen.dart';
 import '../config/config_screen.dart';
 import '../cuisines/cuisines_screen.dart';
@@ -151,6 +152,10 @@ GoRouter router(Ref ref) {
           GoRoute(path: Routes.plans, builder: (_, _) => const PlansEditorScreen()),
           GoRoute(path: Routes.cuisines, builder: (_, _) => const CuisinesScreen()),
           GoRoute(path: Routes.about, builder: (_, _) => const AboutEditorScreen()),
+          GoRoute(
+            path: Routes.developer,
+            builder: (_, _) => const DeveloperEditorScreen(),
+          ),
         ],
       ),
     ],

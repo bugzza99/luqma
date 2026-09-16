@@ -31,6 +31,7 @@ abstract final class Routes {
   static const config = '/config';
   static const plans = '/plans';
   static const about = '/about';
+  static const developer = '/developer';
 
   /// The kinds of food the customer's home is arranged by.
   static const cuisines = '/cuisines';

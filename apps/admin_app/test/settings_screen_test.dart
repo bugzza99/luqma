@@ -3,6 +3,7 @@ import 'package:admin_app/src/app/router.dart';
 import 'package:admin_app/src/auth/admin_access.dart';
 import 'package:admin_app/src/auth/identity_provider.dart';
 import 'package:admin_app/src/config/config_screen.dart';
+import 'package:admin_app/src/developer/developer_editor_screen.dart';
 import 'package:admin_app/src/plans/plans_editor_screen.dart';
 import 'package:admin_app/src/settings/settings_screen.dart';
 import 'package:flutter/material.dart';
@@ -61,6 +62,7 @@ void main() {
     expect(find.byKey(SettingsScreen.configKey), findsOneWidget);
     expect(find.byKey(SettingsScreen.plansKey), findsOneWidget);
     expect(find.byKey(SettingsScreen.aboutKey), findsOneWidget);
+    expect(find.byKey(SettingsScreen.developerKey), findsOneWidget);
   });
 
   testWidgets('each tile says what is behind it, not just its name', (tester) async {
@@ -70,7 +72,8 @@ void main() {
     // wanted. The subtitles are what stop that.
     expect(find.text('الميزات والحدود والتحديثات'), findsOneWidget);
     expect(find.text('أسعار الاشتراك وحدود الميزات'), findsOneWidget);
-    expect(find.text('صورة المالك والروابط والوصف'), findsOneWidget);
+    expect(find.text('وصف التطبيق'), findsOneWidget);
+    expect(find.text('صورتك واسمك ونبذة عنك والروابط'), findsOneWidget);
   });
 
   testWidgets('the config tile lands on the config screen', (tester) async {
@@ -98,5 +101,16 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(AboutEditorScreen), findsOneWidget);
+  });
+
+  // Reached from here and not from the rail. The rail was at its limit: one more module
+  // pushed «الإعدادات» off the bottom of a 1000px-tall window, which is a laptop screen.
+  testWidgets('the developer tile lands on the developer editor', (tester) async {
+    await pumpSettings(tester);
+
+    await tester.tap(find.byKey(SettingsScreen.developerKey));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(DeveloperEditorScreen), findsOneWidget);
   });
 }

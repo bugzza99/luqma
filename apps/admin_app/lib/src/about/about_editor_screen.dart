@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:luqma_core/luqma_core.dart';
@@ -7,18 +5,16 @@ import 'package:luqma_core/luqma_core.dart';
 import '../config/config_controller.dart';
 import '../shell/layout.dart';
 
-/// Edits what the customer's "حول لقمة" screen shows.
+/// Edits what the customer's «حول لقمة» screen says — the product, and only the product.
 ///
-/// Everything is stored on the config table — nothing is compiled in, and the owner
-/// fills it in after the screen exists. The photo is the id of an already-approved
-/// `media` row: there is no second path for images, so a photo that has not passed the
-/// moderation queue is not shown, exactly like every other image.
+/// It carried the owner's photo and personal links too until 2026-09-16; those are
+/// «عن المطور» now, a page and an editor of their own. What is left is the description.
+/// The WhatsApp button on that page is `support_whatsapp`, edited in الإعدادات.
 class AboutEditorScreen extends ConsumerWidget {
   const AboutEditorScreen({super.key});
 
   static const saveKey = Key('about.save');
   static const descriptionKey = Key('about.description');
-  static const photoKey = Key('about.photo');
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -47,35 +43,9 @@ class _AboutForm extends ConsumerStatefulWidget {
 }
 
 class _AboutFormState extends ConsumerState<_AboutForm> {
-  late final _photo = _field('about_photo_media_id');
-  late final _facebook = _field('about_facebook');
-  late final _whatsapp = _field('about_whatsapp');
-  late final _instagram = _field('about_instagram');
   late final _description = _field('about_description');
 
   bool _busy = false;
-
-  /// The picture as it stands, so the picker shows it rather than a monogram.
-  ///
-  /// Loaded from the id the config carries, and replaced the moment a new one is
-  /// uploaded — an admin's upload is approved as it arrives, so what they see here is
-  /// what the customer sees.
-  String? _photoUrl;
-
-  @override
-  void initState() {
-    super.initState();
-    unawaited(_loadPhoto());
-  }
-
-  Future<void> _loadPhoto() async {
-    final id = _photo.text.trim();
-    if (id.isEmpty) return;
-
-    final result = await ref.read(mediaRepositoryProvider).get(id);
-    if (!mounted) return;
-    setState(() => _photoUrl = result.valueOrNull?.url);
-  }
 
   TextEditingController _field(String key) => TextEditingController(
         text: widget.initial[key] is String ? widget.initial[key] as String : '',
@@ -83,19 +53,13 @@ class _AboutFormState extends ConsumerState<_AboutForm> {
 
   @override
   void dispose() {
-    for (final c in [_photo, _facebook, _whatsapp, _instagram, _description]) {
-      c.dispose();
-    }
+    _description.dispose();
     super.dispose();
   }
 
   Future<void> _save() async {
     setState(() => _busy = true);
     final result = await ref.read(configActionsProvider.notifier).save({
-      'about_photo_media_id': _photo.text.trim(),
-      'about_facebook': _facebook.text.trim(),
-      'about_whatsapp': _whatsapp.text.trim(),
-      'about_instagram': _instagram.text.trim(),
       'about_description': _description.text.trim(),
     });
     if (!mounted) return;
@@ -123,43 +87,10 @@ class _AboutFormState extends ConsumerState<_AboutForm> {
             padding: const EdgeInsets.all(Space.gutter),
             children: [
         Text(
-          'الصورة والروابط اللي هتظهر للعميل في شاشة "حول لقمة".',
+          'الكلام اللي هيظهر للعميل في «حول لقمة» — عن التطبيق نفسه. صورتك ونبذتك في «عن المطور».',
           style: theme.textTheme.bodyMedium?.copyWith(color: colors.textSecondary),
         ),
         const SizedBox(height: Space.lg),
-        Text('صورتك', style: theme.textTheme.titleMedium),
-        const SizedBox(height: Space.sm),
-        // Was a text field asking for the uuid of an already-approved image — a workflow
-        // that could not be completed, because nothing in the product could upload one.
-        MediaPicker(
-          key: AboutEditorScreen.photoKey,
-          kind: MediaKind.aboutPhoto,
-          url: _photoUrl,
-          name: 'صورة المالك',
-          onUploaded: (media) => setState(() {
-            _photo.text = media.id;
-            _photoUrl = media.url;
-          }),
-        ),
-        const SizedBox(height: Space.md),
-        TextField(
-          controller: _facebook,
-          decoration: const InputDecoration(
-            labelText: 'رابط فيسبوك',
-            hintText: 'https://facebook.com/…',
-          ),
-        ),
-        const SizedBox(height: Space.md),
-        TextField(
-          controller: _whatsapp,
-          decoration: const InputDecoration(labelText: 'رابط واتساب'),
-        ),
-        const SizedBox(height: Space.md),
-        TextField(
-          controller: _instagram,
-          decoration: const InputDecoration(labelText: 'رابط انستجرام'),
-        ),
-        const SizedBox(height: Space.md),
         TextField(
           key: AboutEditorScreen.descriptionKey,
           controller: _description,

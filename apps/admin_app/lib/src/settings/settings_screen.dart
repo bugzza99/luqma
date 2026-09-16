@@ -16,6 +16,7 @@ class SettingsScreen extends StatelessWidget {
   static const configKey = Key('settings.config');
   static const plansKey = Key('settings.plans');
   static const aboutKey = Key('settings.about');
+  static const developerKey = Key('settings.developer');
 
   @override
   Widget build(BuildContext context) {
@@ -45,8 +46,16 @@ class SettingsScreen extends StatelessWidget {
               key: aboutKey,
               icon: Icons.info_outline,
               title: 'حول لقمة',
-              subtitle: 'صورة المالك والروابط والوصف',
+              subtitle: 'وصف التطبيق',
               onTap: () => context.push(Routes.about),
+            ),
+            const SizedBox(height: Space.sm),
+            _Tile(
+              key: developerKey,
+              icon: Icons.person_outline,
+              title: 'عن المطور',
+              subtitle: 'صورتك واسمك ونبذة عنك والروابط',
+              onTap: () => context.push(Routes.developer),
             ),
           ],
         ),

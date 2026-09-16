@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:luqma_core/luqma_core.dart';
 
 import '../about/about_screen.dart';
+import '../developer/developer_screen.dart';
 import '../address/address_editor_screen.dart';
 
 /// حسابي — who the customer is, where they live, what reaches them, and the way out.
@@ -48,6 +49,7 @@ class AccountScreen extends ConsumerWidget {
   static const addressesKey = Key('account.addresses');
   static const contactKey = Key('account.contact');
   static const aboutKey = Key('account.about');
+  static const developerKey = Key('account.developer');
   static const nameKey = Key('account.name');
   static const phoneKey = Key('account.phone');
   static const passwordKey = Key('account.password');
@@ -809,6 +811,16 @@ class _SupportGroup extends ConsumerWidget {
               label: 'عن لقمة',
               onTap: () => Navigator.of(context).push(
                 MaterialPageRoute<void>(builder: (_) => const AboutScreen()),
+              ),
+            ),
+            // Its own row, not a section inside «عن لقمة»: the product and the person who
+            // made it are two pages, at the owner's request.
+            _NavRow(
+              rowKey: AccountScreen.developerKey,
+              icon: Icons.person_outline_rounded,
+              label: 'عن المطور',
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(builder: (_) => const DeveloperScreen()),
               ),
             ),
             if (identity != null)

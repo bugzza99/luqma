@@ -42,32 +42,6 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  testWidgets('an icon with no link set is not drawn', (tester) async {
-    await pump(
-      tester,
-      await service({'about_facebook': 'https://facebook.com/luqma'}),
-    );
-
-    expect(find.byKey(AboutScreen.facebookKey), findsOneWidget);
-    expect(find.byKey(AboutScreen.whatsappKey), findsNothing);
-    expect(find.byKey(AboutScreen.instagramKey), findsNothing);
-  });
-
-  testWidgets('every link that is set is drawn', (tester) async {
-    await pump(
-      tester,
-      await service({
-        'about_facebook': 'https://facebook.com/luqma',
-        'about_whatsapp': 'https://wa.me/20100000000',
-        'about_instagram': 'https://instagram.com/luqma',
-      }),
-    );
-
-    expect(find.byKey(AboutScreen.facebookKey), findsOneWidget);
-    expect(find.byKey(AboutScreen.whatsappKey), findsOneWidget);
-    expect(find.byKey(AboutScreen.instagramKey), findsOneWidget);
-  });
-
   testWidgets('the description is shown', (tester) async {
     await pump(
       tester,
@@ -77,9 +51,6 @@ void main() {
     expect(find.text('أكل بيتي على أصوله.'), findsOneWidget);
   });
 
-  // This screen is the owner's, and only the owner's. The build number was sitting
-  // directly under their photo and description with nothing between them — technical
-  // detail presented as though it were part of who they are. It lives on حسابي now.
   testWidgets('and the build number is not on it', (tester) async {
     await pump(
       tester,
@@ -89,32 +60,31 @@ void main() {
     expect(find.textContaining('نسخة'), findsNothing);
   });
 
-  // `launchUrl` fails two ways and this screen ignored both: it returns `false` when
-  // nothing on the device handled the URL, and it *throws* when no activity is
-  // registered for the scheme at all. A tap that does neither of two things and says
-  // nothing reads as a broken button, and the person's next move is to tap it again.
-  testWidgets('an icon opens the link the owner set', (tester) async {
+  // The split the owner asked for. The page used to carry their photo in place of the
+  // logo and their personal links under the description — «حول لقمة» read as a biography.
+  // Even with the old keys still set in config, none of it may come back here.
+  testWidgets('is about the product, and carries nothing of the developer', (tester) async {
     await pump(
       tester,
-      await service({'about_facebook': 'https://facebook.com/luqma'}),
+      await service({
+        'about_description': 'أكل بيتي على أصوله.',
+        'about_facebook': 'https://facebook.com/owner',
+        'developer_name': 'محمد',
+        'developer_facebook': 'https://facebook.com/owner',
+      }),
     );
 
-    await tester.tap(find.byKey(AboutScreen.facebookKey));
-    await tester.pumpAndSettle();
-
-    expect(links.opened.single, Uri.parse('https://facebook.com/luqma'));
+    expect(find.byType(LuqmaLockup), findsOneWidget);
+    expect(find.text('محمد'), findsNothing);
+    expect(find.byTooltip('فيسبوك'), findsNothing);
   });
 
-  testWidgets('a phone that cannot open it says so', (tester) async {
-    await pump(
-      tester,
-      await service({'about_facebook': 'https://facebook.com/luqma'}),
-      phoneCanOpenLinks: false,
-    );
+  testWidgets('offers the support number when there is one, and nothing when there is not',
+      (tester) async {
+    await pump(tester, await service({'support_whatsapp': '01000000000'}));
+    expect(find.byKey(AboutScreen.contactKey), findsOneWidget);
 
-    await tester.tap(find.byKey(AboutScreen.facebookKey));
-    await tester.pumpAndSettle();
-
-    expect(find.textContaining('فيسبوك'), findsOneWidget);
+    await pump(tester, await service({}));
+    expect(find.byKey(AboutScreen.contactKey), findsNothing);
   });
 }

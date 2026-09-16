@@ -637,6 +637,15 @@ void main() {
     testWidgets('is a footer on حسابي', (tester) async {
       await pump(tester);
 
+      // A footer is at the bottom, and «عن المطور» added one more row above it — so on a
+      // signed-in account it sits below the fold and a lazy list has not built it yet.
+      // Scrolled to, not asserted on sight: the body scrolls, which is what makes this a
+      // test about the footer rather than about the height of the test window.
+      await tester.scrollUntilVisible(
+        find.byKey(AccountScreen.versionKey),
+        300,
+        scrollable: find.byType(Scrollable).first,
+      );
       expect(find.byKey(AccountScreen.versionKey), findsOneWidget);
       expect(find.textContaining('نسخة'), findsOneWidget);
     });
