@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The order alarm is referenced only by name, as android.resource://…/raw/new_order in
+  MainActivity's channel. Nothing the resource shrinker can see points at it, so release
+  builds deleted it and the orders_critical channel rang with a sound that did not exist:
+  silence. This keeps it.
+-->
+<resources xmlns:tools="http://schemas.android.com/tools"
+    tools:keep="@raw/new_order" />

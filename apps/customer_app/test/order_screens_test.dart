@@ -179,6 +179,25 @@ void main() {
   }
 
   group('following one order', () {
+    // The permission was asked for only on طلباتي. A customer goes from checkout straight
+    // to this screen, may never open that tab, and so was never asked — and Android then
+    // drops every status notification silently.
+    testWidgets('asks for notifications where the order is being followed',
+        (tester) async {
+      await pump(
+        tester,
+        const OrderScreen(orderId: 'o1'),
+        seed: [order()],
+      );
+
+      // `skipOffstage: false`: with notifications unavailable (as in a test) the banner is
+      // zero-sized, and a zero-extent list child counts as offstage.
+      expect(
+        find.byType(LuqmaNotificationBanner, skipOffstage: false),
+        findsOneWidget,
+      );
+    });
+
     testWidgets('the number is shown — it is what a phone call starts with',
         (tester) async {
       await pump(

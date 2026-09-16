@@ -14,9 +14,10 @@ import 'push.dart';
 /// phone that never rang and an app that never mentioned it. A quiet evening and a
 /// broken alarm looked exactly the same.
 ///
-/// Three states, three different things to say, and the third is the one that matters:
-/// once refused, **asking again does nothing**, so offering a button that asks is
-/// offering a dead end. That state gets the route through Settings instead.
+/// Once refused, **asking again does nothing**, so a button that asks is a dead end. But
+/// Android cannot say whether it was refused or never asked — both read `denied` — so the
+/// button comes first, and only a press that leaves notifications off turns it into the
+/// route through Settings.
 ///
 /// [read] and [request] are injected so this is testable without Firebase, which a
 /// `flutter test` process does not have. Both default to [LuqmaPush].
@@ -53,6 +54,14 @@ class _LuqmaNotificationBannerState extends State<LuqmaNotificationBanner>
     with WidgetsBindingObserver {
   LuqmaPushPermission? _permission;
 
+  /// Whether the button has been pressed and permission is still not held.
+  ///
+  /// Not [_permission] alone: on Android firebase_messaging reads «never asked» and
+  /// «refused» both as `denied`, since all it checks is whether the permission is held. So
+  /// `denied` on its own cannot mean refused — a fresh install reads the same — and a
+  /// banner that showed only the Settings sentence for it never showed anybody the dialog.
+  bool _askedAndStillOff = false;
+
   @override
   void initState() {
     super.initState();
@@ -81,7 +90,11 @@ class _LuqmaNotificationBannerState extends State<LuqmaNotificationBanner>
 
   Future<void> _enable() async {
     final permission = await widget.request();
-    if (mounted) setState(() => _permission = permission);
+    if (!mounted) return;
+    setState(() {
+      _permission = permission;
+      _askedAndStillOff = permission == LuqmaPushPermission.denied;
+    });
   }
 
   @override
@@ -97,7 +110,7 @@ class _LuqmaNotificationBannerState extends State<LuqmaNotificationBanner>
     }
 
     final colors = Theme.of(context).luqma;
-    final refused = permission == LuqmaPushPermission.denied;
+    final refused = _askedAndStillOff;
 
     return Card(
       key: LuqmaNotificationBanner.bannerKey,

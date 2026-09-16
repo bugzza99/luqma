@@ -120,6 +120,12 @@ class _Loaded extends ConsumerWidget {
         Space.xxxl,
       ),
       children: [
+        // Here as well as on طلباتي: checkout lands on this screen, and a customer who never
+        // opens that tab was never asked — so Android dropped every status notification.
+        const LuqmaNotificationBanner(
+          reason: 'من غيرها مش هنعرف نقولك إن المطعم قبل طلبك، ولا لما الأوردر '
+              'يخرج ويبقى في الطريق لك.',
+        ),
         for (final (index, section) in sections.indexed)
           Padding(
             // The rating card appears when the food lands and the cancel button leaves

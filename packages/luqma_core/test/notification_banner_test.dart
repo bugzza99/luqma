@@ -67,12 +67,28 @@ void main() {
     expect(find.byKey(LuqmaNotificationBanner.bannerKey), findsNothing);
   });
 
-  // The state that has to be a sentence rather than a button: Android shows its dialog
-  // once, so asking again does nothing at all and a button offering to is a dead end.
-  testWidgets('tells somebody who refused where the switch actually is', (tester) async {
+  // On Android, firebase_messaging reads «never asked» and «refused» as the same `denied`
+  // — it only checks whether POST_NOTIFICATIONS is held. Treating `denied` as a refusal
+  // meant a fresh install was shown only the Settings sentence and never the dialog, so
+  // customers and admins on Android 13+ were never asked and every alert was dropped.
+  testWidgets('a denied reading still offers the button, since it may never have asked',
+      (tester) async {
     await pump(tester, LuqmaPushPermission.denied);
 
     expect(find.byKey(LuqmaNotificationBanner.bannerKey), findsOneWidget);
+    expect(find.byKey(LuqmaNotificationBanner.enableKey), findsOneWidget);
+    expect(find.byKey(LuqmaNotificationBanner.settingsPathKey), findsNothing);
+  });
+
+  // And once asking has visibly not worked, the button would be a dead end: Android will
+  // not show its dialog again after a refusal. The sentence says where the switch is.
+  testWidgets('a button that could not turn them on becomes the Settings sentence',
+      (tester) async {
+    await pump(tester, LuqmaPushPermission.denied);
+
+    await tester.tap(find.byKey(LuqmaNotificationBanner.enableKey));
+    await tester.pumpAndSettle();
+
     expect(find.byKey(LuqmaNotificationBanner.enableKey), findsNothing);
     expect(find.byKey(LuqmaNotificationBanner.settingsPathKey), findsOneWidget);
   });
