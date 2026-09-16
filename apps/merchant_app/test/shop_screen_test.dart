@@ -143,5 +143,7 @@ void main() {
     expect(find.text('التشغيل والتوصيل'), findsOneWidget);
     expect(find.text('الحسابات والنمو'), findsOneWidget);
     expect(find.text('آراء العملاء'), findsOneWidget);
+    // The section header already says it; a second heading under it said it again.
+    expect(find.text('اللي العملاء قالوه'), findsNothing);
   });
 }

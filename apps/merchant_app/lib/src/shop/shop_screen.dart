@@ -504,6 +504,14 @@ class _Billing extends ConsumerWidget {
     RevenueModel.prepaid: 'رصيد مدفوع مقدماً',
   };
 
+  /// Basis points as a percentage, without a trailing `.0`: 750 → `7.5`, 1000 → `10`.
+  static String _percent(int basisPoints) {
+    final whole = basisPoints ~/ 100;
+    final rest = basisPoints % 100;
+    if (rest == 0) return '$whole';
+    return '$whole.${rest.toString().padLeft(2, '0').replaceFirst(RegExp(r'0$'), '')}';
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
@@ -545,6 +553,20 @@ class _Billing extends ConsumerWidget {
                 ),
               ),
             ],
+          ),
+          const SizedBox(height: Space.xs),
+          // The terms in one line. Without it the card was a plan name over a lone link,
+          // and said nothing about what the shop actually pays.
+          Text(
+            switch (merchant.revenueModel) {
+              RevenueModel.subscription =>
+                'مبلغ ثابت كل شهر، ومفيش عمولة على الطلبات.',
+              RevenueModel.commission =>
+                '${_percent(merchant.revenueValue)}% على الأكل بس. التوصيل مش بناخد منه حاجة.',
+              RevenueModel.prepaid =>
+                'بيتخصم ${strings.price(merchant.revenueValue)} من الرصيد مع كل طلب يتوصّل، ومش أكتر من تمن الأكل.',
+            },
+            style: LuqmaType.bodySmall.copyWith(color: colors.textSecondary),
           ),
           if (merchant.revenueModel == RevenueModel.prepaid) ...[
             const SizedBox(height: Space.sm),
@@ -645,8 +667,6 @@ class _Feedback extends ConsumerWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text('اللي العملاء قالوه', style: theme.textTheme.titleLarge),
-        const SizedBox(height: Space.sm),
         // Left hand-written: this is a section inside a page that is otherwise fine, so
         // a failure is one quiet sentence rather than the full error block with a retry
         // that `LuqmaAsyncView` draws. Losing the ratings must not take over the screen.
