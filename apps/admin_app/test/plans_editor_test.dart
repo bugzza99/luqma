@@ -116,5 +116,28 @@ void main() {
     expect(find.byKey(PlansEditorScreen.priceKey('basic')), findsOneWidget);
     expect(find.byKey(PlansEditorScreen.saveKey('basic')), findsOneWidget);
   });
-}
 
+  // 2026-09-17: the plan's benefits are enforced now, so the owner sets them here.
+  testWidgets('sets what a plan gives: showing first, the badge, and the monthly counts',
+      (tester) async {
+    await pump(tester, seed: [
+      const Plan(id: 'premium', name: 'مميزة', priceMonthly: 150000),
+    ]);
+
+    await tester.ensureVisible(find.byKey(PlansEditorScreen.boostKey('premium')));
+    await tester.tap(find.byKey(PlansEditorScreen.boostKey('premium')));
+    await tester.tap(find.byKey(PlansEditorScreen.verifiedKey('premium')));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(PlansEditorScreen.bannersKey('premium')), '2');
+    await tester.enterText(find.byKey(PlansEditorScreen.pushesKey('premium')), '1');
+    await tester.ensureVisible(find.byKey(PlansEditorScreen.saveKey('premium')));
+    await tester.tap(find.byKey(PlansEditorScreen.saveKey('premium')));
+    await tester.pumpAndSettle();
+
+    final saved = (await billing.plans(includeInactive: true)).valueOrNull!.single;
+    expect(saved.features.boostRank, isTrue);
+    expect(saved.features.verifiedBadge, isTrue);
+    expect(saved.features.homeBannerSlots, 2);
+    expect(saved.features.monthlyPromotionCount, 1);
+  });
+}

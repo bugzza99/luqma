@@ -42,6 +42,7 @@ export 'src/providers/providers.dart';
 export 'src/repositories/address_repository.dart';
 export 'src/repositories/admin_repository.dart';
 export 'src/repositories/billing_repository.dart';
+export 'src/repositories/plan_perks_repository.dart';
 export 'src/repositories/subscription_request_repository.dart';
 export 'src/repositories/config_repository.dart';
 export 'src/repositories/coupon_repository.dart';

@@ -1,4 +1,5 @@
 import 'package:customer_app/src/home/sections/merchant_card.dart';
+import 'package:customer_app/src/merchant/verified_badge.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -48,12 +49,15 @@ void main() {
     Merchant merchant, {
     Map<String, Object> config = const {},
     DateTime? now,
+    List<MerchantPerk> perks = const [],
   }) async {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
           remoteConfigServiceProvider
               .overrideWithValue(RemoteConfigService(FakeConfigFetcher(config))),
+          planPerksRepositoryProvider
+              .overrideWithValue(FakePlanPerksRepository(perkList: perks)),
           // Never DateTime.now(): whether a shop is open depends on the hour, and a test
           // that cannot move the clock can only be written by waiting for the evening.
           clockProvider.overrideWithValue(
@@ -80,6 +84,15 @@ void main() {
 
     expect(find.text('مطعم البحر'), findsOneWidget);
     expect(find.byType(LuqmaImage), findsOneWidget);
+  });
+
+  // 2026-09-17: a plan can include the badge; a shop without it wears nothing.
+  testWidgets('wears «موثّق» only when its plan includes it', (tester) async {
+    await pump(tester, shop());
+    expect(find.byKey(VerifiedBadge.badgeKey), findsNothing);
+
+    await pump(tester, shop(), perks: const [MerchantPerk(merchantId: 'm1', verified: true)]);
+    expect(find.text('موثّق'), findsOneWidget);
   });
 
   testWidgets('says how long the kitchen takes', (tester) async {

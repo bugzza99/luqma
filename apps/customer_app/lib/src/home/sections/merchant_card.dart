@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:luqma_core/luqma_core.dart';
 
 import '../../merchant/open_merchant.dart';
+import '../../merchant/verified_badge.dart';
 
 /// One merchant, as the customer meets it.
 ///
@@ -103,7 +104,14 @@ class MerchantCard extends ConsumerWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(merchant.name, style: theme.textTheme.titleMedium),
+                  Row(
+                    children: [
+                      Flexible(
+                        child: Text(merchant.name, style: theme.textTheme.titleMedium),
+                      ),
+                      VerifiedBadge(merchantId: merchant.id),
+                    ],
+                  ),
                   const SizedBox(height: Space.xs),
                   Row(
                     children: [

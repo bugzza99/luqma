@@ -26,6 +26,7 @@ import '../repositories/billing_repository.dart';
 import '../repositories/config_repository.dart';
 import '../repositories/coupon_repository.dart';
 import '../repositories/subscription_request_repository.dart';
+import '../repositories/plan_perks_repository.dart';
 import '../repositories/courier_order_repository.dart';
 import '../repositories/courier_roster_repository.dart';
 import '../repositories/courier_queue_drain.dart';
@@ -341,6 +342,25 @@ SubscriptionRequestRepository subscriptionRequestRepository(Ref ref) =>
     SupabaseSubscriptionRequestRepository(ref.watch(supabaseProvider));
 
 @Riverpod(keepAlive: true)
+PlanPerksRepository planPerksRepository(Ref ref) =>
+    SupabasePlanPerksRepository(ref.watch(supabaseProvider));
+
+/// Shops whose active plan lifts or badges them, by id. A failed read is no perks rather
+/// than an error: the list still works, only in plain order and without badges.
+@riverpod
+Future<Map<String, MerchantPerk>> merchantPerks(Ref ref) async {
+  final result = await ref.watch(planPerksRepositoryProvider).perks();
+  return {for (final perk in result.valueOrNull ?? const <MerchantPerk>[]) perk.merchantId: perk};
+}
+
+/// One shop's free placements this month.
+@riverpod
+Future<PlanAllowance> planAllowance(Ref ref, String merchantId) async {
+  final result = await ref.watch(planPerksRepositoryProvider).allowance(merchantId);
+  return result.valueOrThrow;
+}
+
+@Riverpod(keepAlive: true)
 PromotionRepository promotionRepository(Ref ref) =>
     SupabasePromotionRepository(ref.watch(supabaseProvider));
 
@@ -359,9 +379,13 @@ Stream<List<Promotion>> livePromotions(Ref ref) =>
 @riverpod
 Set<String> boostedMerchants(Ref ref) {
   final live = ref.watch(livePromotionsProvider).value ?? const <Promotion>[];
+  // A boost campaign, or a plan that includes showing first (2026-09-17).
+  final perks = ref.watch(merchantPerksProvider).value ?? const <String, MerchantPerk>{};
   return {
     for (final promotion in live)
       if (promotion.channel == PromotionChannel.boost) promotion.merchantId,
+    for (final perk in perks.values)
+      if (perk.boost) perk.merchantId,
   };
 }
 

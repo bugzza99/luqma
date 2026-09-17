@@ -114,6 +114,11 @@ abstract class Promotion with _$Promotion {
 
     /// Piastres agreed for this placement.
     @Default(0) int price,
+
+    /// One of the free placements the shop's plan gives it this month. Decided by the
+    /// server when the request is written — a shop cannot claim it — and read by the admin
+    /// as "no price to agree".
+    @Default(false) bool includedInPlan,
     required String requestedBy,
     String? approvedBy,
     String? rejectionReason,

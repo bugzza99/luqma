@@ -23,7 +23,7 @@ resolution: workspace # Remove this line if you wish to publish to pub.dev
 # The build number never repeats and only ever rises. It starts at 10 because 1 and 9
 # have both been installed on a handset already, and Android refuses a version code it
 # has seen a higher one than.
-version: 0.9.0+14
+version: 0.9.0+15
 
 environment:
   sdk: ^3.12.2

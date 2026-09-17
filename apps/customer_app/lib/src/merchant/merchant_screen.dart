@@ -8,6 +8,7 @@ import '../cart/open_cart.dart';
 import 'item_sheet.dart';
 import 'menu_filter.dart';
 import 'merchant_hours.dart';
+import 'verified_badge.dart';
 
 /// One merchant: who they are, what they cook, and what is in the basket so far.
 class MerchantScreen extends ConsumerWidget {
@@ -481,6 +482,7 @@ class _Summary extends ConsumerWidget {
                 // verified concept in this product. This says the true thing instead:
                 // that the customer is looking at a home kitchen, which is the whole
                 // point of the marketplace. Dark ink on the orange, never white.
+                VerifiedBadge(merchantId: merchant.id),
                 if (merchant.type == MerchantType.homeKitchen) ...[
                   const SizedBox(width: Space.sm),
                   const _Badge(),

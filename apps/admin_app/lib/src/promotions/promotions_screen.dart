@@ -298,7 +298,12 @@ class _Request extends ConsumerWidget {
               const SizedBox(width: Space.xs),
               Text(
                 'من ${_day(promotion.startAt)} لـ ${_day(promotion.endAt)}'
-                '${promotion.price > 0 ? ' · ${strings.price(promotion.price)}' : ''}',
+                // Whether there is a price to agree at all: a placement inside the shop's
+                // plan is already paid for by the subscription (2026-09-17).
+                // «مفيش سعر مسجّل» rather than "agree a price": a placement the admin put
+                // up themselves also carries zero, and calling that one unpaid would be
+                // wrong (found in review).
+                '${promotion.includedInPlan ? ' · ضمن الباقة' : promotion.price > 0 ? ' · ${strings.price(promotion.price)}' : ' · مفيش سعر مسجّل'}',
                 style: LuqmaType.bodySmall.copyWith(
                   color: colors.price,
                   fontWeight: FontWeight.w700,

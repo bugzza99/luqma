@@ -120,6 +120,8 @@ class MerchantPromotionsScreen extends ConsumerWidget {
                 plan: plan,
                 now: ref.watch(clockProvider)(),
               ),
+              const SizedBox(height: Space.md),
+              _Allowance(merchantId: merchantId),
               const SizedBox(height: Space.section),
               if (value.isNotEmpty) ...[
                 _CampaignsSection(promotions: value),
@@ -545,6 +547,10 @@ Future<void> _ask(
       ? await repository.request(promotion)
       : await repository.editRequest(promotion);
   if (!context.mounted) return;
+
+  // What the plan still covers has just changed — the server decides it at the insert, so
+  // the card must ask again rather than keep promising the slot it has already spent.
+  ref.invalidate(planAllowanceProvider(merchantId));
 
   ScaffoldMessenger.of(context).showSnackBar(
     SnackBar(
@@ -978,6 +984,61 @@ class _RequestFormState extends ConsumerState<_RequestForm> {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// What this month's plan still covers.
+///
+/// A plan can include a number of banners and marketing notifications a month (2026-09-17).
+/// The server decides whether a request lands inside that number — this says what is left so
+/// the shop knows before it asks whether it is about to agree a price.
+class _Allowance extends ConsumerWidget {
+  const _Allowance({required this.merchantId});
+
+  final String merchantId;
+
+  static const allowanceKey = Key('promo.allowance');
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
+    final colors = theme.luqma;
+    final allowance = ref.watch(planAllowanceProvider(merchantId)).value;
+    if (allowance == null || !allowance.planActive) return const SizedBox.shrink();
+    if (allowance.bannersIncluded == 0 && allowance.pushesIncluded == 0) {
+      return const SizedBox.shrink();
+    }
+
+    return Container(
+      key: allowanceKey,
+      padding: const EdgeInsets.all(Space.md),
+      decoration: BoxDecoration(
+        color: colors.card,
+        borderRadius: Radii.cardAll,
+        border: Border.all(color: colors.hairline),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('باقتك الشهر ده', style: theme.textTheme.titleSmall),
+          const SizedBox(height: Space.xs),
+          Text(
+            [
+              if (allowance.bannersIncluded > 0)
+                'بانرات: ${allowance.bannersLeft} من ${allowance.bannersIncluded}',
+              if (allowance.pushesIncluded > 0)
+                'إشعارات: ${allowance.pushesLeft} من ${allowance.pushesIncluded}',
+            ].join(' · '),
+            style: theme.textTheme.bodyMedium,
+          ),
+          const SizedBox(height: Space.xs),
+          Text(
+            'اللي زيادة عن كده بتتفق عليه مع الإدارة.',
+            style: theme.textTheme.bodySmall?.copyWith(color: colors.textSecondary),
+          ),
+        ],
       ),
     );
   }
