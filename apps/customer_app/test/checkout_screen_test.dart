@@ -1,4 +1,6 @@
 import 'package:customer_app/src/cart/cart.dart';
+import 'package:customer_app/src/address/address_editor_screen.dart';
+import 'package:customer_app/src/address/address_list_screen.dart';
 import 'package:customer_app/src/cart/cart_controller.dart';
 import 'package:customer_app/src/checkout/checkout_screen.dart';
 import 'package:flutter/material.dart';
@@ -63,18 +65,22 @@ void main() {
   late FakeOrderRepository orders;
   late FakeProfileRepository profiles;
   late String? placedOrderId;
+  late ValueNotifier<bool> reducedMotion;
 
   Future<void> pump(
     WidgetTester tester, {
     Merchant merchant = shore,
     List<Address> addresses = const [home],
     Failure? placementFails,
+    bool reduced = false,
     LuqmaIdentity? signedInAs =
         const LuqmaIdentity(uid: 'u1', name: 'أحمد', phone: '01012345678'),
   }) async {
     orders = FakeOrderRepository(failure: placementFails);
     profiles = FakeProfileRepository();
     placedOrderId = null;
+    reducedMotion = ValueNotifier(reduced);
+    addTearDown(reducedMotion.dispose);
 
     await tester.pumpWidget(
       ProviderScope(
@@ -97,6 +103,13 @@ void main() {
           cartProvider.overrideWith(() => CartController.seeded(cart)),
         ],
         child: MaterialApp(
+          builder: (context, child) => ValueListenableBuilder<bool>(
+            valueListenable: reducedMotion,
+            builder: (context, reduced, _) => MediaQuery(
+              data: MediaQuery.of(context).copyWith(disableAnimations: reduced),
+              child: child!,
+            ),
+          ),
           theme: LuqmaTheme.light,
           locale: const Locale('ar'),
           localizationsDelegates: LuqmaStrings.localizationsDelegates,
@@ -118,7 +131,36 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  for (final hasAddress in [false, true]) {
+    testWidgets('checkout carries its merchant ${hasAddress ? 'through the list' : 'to the editor'}',
+        (tester) async {
+      await pump(tester, addresses: hasAddress ? const [home] : const []);
+      await tester.ensureVisible(find.byKey(CheckoutScreen.changeAddressKey));
+      await tester.tap(find.byKey(CheckoutScreen.changeAddressKey));
+      await tester.pumpAndSettle();
+      if (hasAddress) {
+        expect(tester.widget<AddressListScreen>(find.byType(AddressListScreen)).merchantId, 'm1');
+        await tester.tap(find.byKey(AddressListScreen.addKey));
+        await tester.pumpAndSettle();
+      }
+      expect(tester.widget<AddressEditorScreen>(find.byType(AddressEditorScreen)).merchantId, 'm1');
+      await tester.tap(find.text('المعمورة'));
+      await tester.pumpAndSettle();
+      expect(find.text('التوصيل للمنطقة دي: 10 ج'), findsOneWidget);
+    });
+  }
+
   group('the bill', () {
+    testWidgets('the address separates the landmark from the street details',
+        (tester) async {
+      await pump(tester, addresses: [home.copyWith(
+        landmarkName: 'الصيدلية', street: 'شارع البحر', building: '2',
+        floor: '3', apartment: '4',
+      )]);
+      expect(find.text('المعمورة · جنب الصيدلية'), findsOneWidget);
+      expect(find.text('شارع البحر · عمارة 2 · الدور 3 · شقة 4'), findsOneWidget);
+    });
+
     testWidgets('shows the food, the delivery and the total separately',
         (tester) async {
       await pump(tester);
@@ -141,6 +183,7 @@ void main() {
       await pump(tester, addresses: const [beach, home]);
 
       expect(find.text('15 ج'), findsWidgets);
+      expect(find.text('التوصيل — الشط'), findsOneWidget);
       expect(
         find.descendant(
           of: find.byKey(CheckoutScreen.totalKey),
@@ -163,6 +206,8 @@ void main() {
       await pump(tester, addresses: const []);
 
       expect(find.byKey(CheckoutScreen.needsAddressKey), findsOneWidget);
+      expect(find.text('التوصيل'), findsOneWidget);
+      expect(find.text('—'), findsOneWidget);
       expect(
         tester
             .widget<FilledButton>(find.byKey(CheckoutScreen.placeKey))
@@ -318,8 +363,167 @@ void main() {
     });
   });
 
+  Future<void> applyCoupon(WidgetTester tester, {int deliveryDiscount = 0}) async {
+    orders.couponEvaluation = CouponAccepted(
+      subtotalDiscount: 2000,
+      deliveryDiscount: deliveryDiscount,
+      platformOwesMerchant: 0,
+    );
+    await tester.ensureVisible(find.byKey(CheckoutScreen.couponApplyKey));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(CheckoutScreen.couponInputKey), 'SAVE20');
+    await tester.tap(find.byKey(CheckoutScreen.couponApplyKey));
+    await tester.pump();
+  }
+
+  void expectTotals(String amount) {
+    expect(find.descendant(
+      of: find.byKey(CheckoutScreen.totalKey), matching: find.text(amount),
+    ), findsOneWidget);
+    expect(find.descendant(
+      of: find.byKey(CheckoutScreen.placeKey),
+      matching: find.text('اطلب دلوقتي · $amount'),
+    ), findsOneWidget);
+  }
+
   group('the coupon', () {
-    testWidgets('an accepted code discounts the bill and says so', (tester) async {
+    testWidgets('both discounts keep their own row and the footer follows the bill',
+        (tester) async {
+      await pump(tester);
+      expectTotals('130 ج');
+      await applyCoupon(tester, deliveryDiscount: 500);
+      await tester.pumpAndSettle();
+      expect(find.descendant(
+        of: find.byKey(CheckoutScreen.billDiscountKey),
+        matching: find.text('− 20 ج'),
+      ), findsOneWidget);
+      final deliveryRow = find.ancestor(
+        of: find.text('خصم التوصيل'), matching: find.byType(Row),
+      ).first;
+      expect(find.descendant(of: deliveryRow, matching: find.text('− 5 ج')),
+          findsOneWidget);
+      expectTotals('105 ج');
+      await tester.tap(find.byKey(CheckoutScreen.couponRemoveKey));
+      await tester.pumpAndSettle();
+      expectTotals('130 ج');
+    });
+
+    testWidgets('a changed delivery fee drops the card and the code on the draft',
+        (tester) async {
+      await pump(tester, addresses: const [home, beach]);
+      await applyCoupon(tester);
+      await tester.pumpAndSettle();
+      expectTotals('110 ج');
+      await container.read(addressRepositoryProvider).setDefaultAddress('u1', 'a2');
+      container.invalidate(chosenAddressProvider);
+      await tester.pumpAndSettle();
+      expect(find.byKey(CheckoutScreen.couponCardKey), findsNothing);
+      expect(find.byKey(CheckoutScreen.couponInputKey), findsOneWidget);
+      expectTotals('135 ج');
+      await tester.tap(find.byKey(CheckoutScreen.placeKey));
+      await tester.pumpAndSettle();
+      expect(orders.drafts.single.couponCode, isNull);
+      expect(orders.drafts.single.addressId, 'a2');
+    });
+
+    testWidgets('an unavailable apply action is disabled rather than a no-op button',
+        (tester) async {
+      await pump(tester);
+      container.read(cartProvider.notifier).clear();
+      await tester.pumpAndSettle();
+      final action = find.byKey(CheckoutScreen.couponApplyKey);
+      expect(find.descendant(of: action, matching: find.byType(InkWell)), findsNothing);
+      final semantics = tester.widget<Semantics>(find.descendant(
+        of: action, matching: find.byType(Semantics),
+      ).first);
+      expect(semantics.properties.enabled, isFalse);
+    });
+
+    testWidgets('coupon actions keep 48 targets and an eight pixel input gap',
+        (tester) async {
+      await pump(tester);
+      void target(Key key) {
+        final size = tester.getSize(find.byKey(key));
+        expect(size.width, greaterThanOrEqualTo(48));
+        expect(size.height, greaterThanOrEqualTo(48));
+      }
+      target(CheckoutScreen.changeAddressKey);
+      target(CheckoutScreen.couponApplyKey);
+      expect(tester.getTopLeft(find.byKey(CheckoutScreen.couponInputKey)).dx -
+          tester.getTopRight(find.byKey(CheckoutScreen.couponApplyKey)).dx,
+          greaterThanOrEqualTo(8));
+      await applyCoupon(tester);
+      await tester.pumpAndSettle();
+      target(CheckoutScreen.couponRemoveKey);
+    });
+
+    testWidgets('coupon replacement changes size while the footer has one tappable total',
+        (tester) async {
+      await pump(tester);
+      await applyCoupon(tester);
+      final card = find.byKey(CheckoutScreen.couponCardKey);
+      final transition = find.ancestor(of: card, matching: find.byType(SizeTransition));
+      expect(transition, findsOneWidget);
+      expect(tester.widget<SizeTransition>(transition).sizeFactor.value, lessThan(1));
+      final footer = find.byKey(CheckoutScreen.placeKey);
+      final pulse = find.descendant(of: footer,
+          matching: find.byType(TweenAnimationBuilder<double>));
+      double scale() => tester.widget<Transform>(find.descendant(
+        of: pulse, matching: find.byType(Transform),
+      ).first).transform.storage.first;
+      expect(scale(), lessThan(1));
+      for (var frame = 0; frame < 12; frame++) {
+        expect(find.descendant(of: footer,
+            matching: find.text('اطلب دلوقتي · 130 ج')), findsNothing);
+        expect(find.descendant(of: footer,
+            matching: find.text('اطلب دلوقتي · 110 ج')), findsOneWidget);
+        expect(tester.widget<FilledButton>(footer).onPressed, isNotNull);
+        expect(footer.hitTestable(), findsOneWidget);
+        await tester.pump(const Duration(milliseconds: 16));
+      }
+      expect(scale(), 1);
+      await tester.tap(find.byKey(CheckoutScreen.couponRemoveKey));
+      await tester.pump();
+      final fieldTransition = find.ancestor(
+        of: find.byKey(CheckoutScreen.couponInputKey),
+        matching: find.byType(SizeTransition),
+      );
+      expect(tester.widget<SizeTransition>(fieldTransition).sizeFactor.value,
+          lessThan(1));
+      expect(find.descendant(of: footer,
+          matching: find.text('اطلب دلوقتي · 110 ج')), findsNothing);
+      expect(find.descendant(of: footer,
+          matching: find.text('اطلب دلوقتي · 130 ج')), findsOneWidget);
+      await tester.tap(footer);
+      await tester.pumpAndSettle();
+      expect(orders.drafts.single.couponCode, isNull);
+    });
+
+    for (final reducedAtStart in [false, true]) {
+      testWidgets('reduced motion ${reducedAtStart ? 'from entry' : 'during a pulse'} keeps actions usable',
+          (tester) async {
+        await pump(tester, reduced: reducedAtStart);
+        await applyCoupon(tester);
+        reducedMotion.value = true;
+        await tester.pump();
+        expect(find.byType(TweenAnimationBuilder<double>), findsNothing);
+        expect(find.byType(LuqmaEntrance), findsNothing);
+        expect(find.ancestor(of: find.byKey(CheckoutScreen.couponCardKey),
+            matching: find.byType(SizeTransition)), findsNothing);
+        expectTotals('110 ج');
+        await tester.tap(find.byKey(CheckoutScreen.couponRemoveKey));
+        await tester.pump();
+        expect(find.byKey(CheckoutScreen.couponCardKey), findsNothing);
+        expect(find.byKey(CheckoutScreen.couponInputKey).hitTestable(), findsOneWidget);
+        expectTotals('130 ج');
+        await tester.tap(find.byKey(CheckoutScreen.placeKey));
+        await tester.pumpAndSettle();
+        expect(orders.drafts.single.couponCode, isNull);
+      });
+    }
+
+    testWidgets('an accepted code becomes a card, and discounts the bill',
+        (tester) async {
       await pump(tester);
       orders.couponEvaluation = const CouponAccepted(
         subtotalDiscount: 2000,
@@ -333,10 +537,18 @@ void main() {
       await tester.tap(find.byKey(CheckoutScreen.couponApplyKey));
       await tester.pumpAndSettle();
 
-      expect(find.textContaining('وفرت'), findsOneWidget);
-      expect(find.byKey(CheckoutScreen.couponFeedbackKey), findsOneWidget);
+      // The field and the card are one slot: a box still offering «طبّق» under a code
+      // that is already on reads as a second discount waiting to be claimed.
+      expect(find.byKey(CheckoutScreen.couponCardKey), findsOneWidget);
+      expect(find.byKey(CheckoutScreen.couponInputKey), findsNothing);
+      expect(find.text('كود SAVE20 اتطبق'), findsOneWidget);
+      expect(find.descendant(
+        of: find.byKey(CheckoutScreen.couponCardKey),
+        matching: find.text('وفّرت 20 ج'),
+      ), findsOneWidget);
+
       // The discount line, then the new total: 130 - 20 = 110.
-      expect(find.text('-20 ج'), findsOneWidget);
+      expect(find.text('− 20 ج'), findsOneWidget);
       expect(
         find.descendant(
           of: find.byKey(CheckoutScreen.totalKey),
@@ -344,6 +556,53 @@ void main() {
         ),
         findsOneWidget,
       );
+    });
+
+    // The screen renders from `_couponEvaluation` and `_place` sends
+    // `_appliedCouponCode`. Removing has to clear both, or the customer is shown a total
+    // the courier will not collect — which is the whole reason this control exists rather
+    // than making somebody restart the order to drop a code.
+    testWidgets('and «شيل» takes it back off, in full', (tester) async {
+      await pump(tester);
+      orders.couponEvaluation = const CouponAccepted(
+        subtotalDiscount: 2000,
+        deliveryDiscount: 0,
+        platformOwesMerchant: 0,
+      );
+
+      await tester.ensureVisible(find.byKey(CheckoutScreen.couponApplyKey));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(CheckoutScreen.couponInputKey), 'SAVE20');
+      await tester.tap(find.byKey(CheckoutScreen.couponApplyKey));
+      await tester.pumpAndSettle();
+
+      await tester.ensureVisible(find.byKey(CheckoutScreen.couponRemoveKey));
+      await tester.tap(find.byKey(CheckoutScreen.couponRemoveKey));
+      await tester.pumpAndSettle();
+
+      // Off the screen: the card is gone, the box is back, and it is empty rather than
+      // still holding the code that was just dropped.
+      expect(find.byKey(CheckoutScreen.couponCardKey), findsNothing);
+      expect(find.byKey(CheckoutScreen.couponInputKey), findsOneWidget);
+      expect(find.text('SAVE20'), findsNothing);
+      expect(tester.widget<TextField>(find.byKey(CheckoutScreen.couponInputKey))
+          .controller!.text, isEmpty);
+      expect(find.byKey(CheckoutScreen.billDiscountKey), findsNothing);
+      expect(
+        find.descendant(
+          of: find.byKey(CheckoutScreen.totalKey),
+          matching: find.text('130 ج'),
+        ),
+        findsOneWidget,
+      );
+
+      // And off the order. This is the half a screen cannot show: placing now must not
+      // carry the code the customer just removed.
+      await tester.ensureVisible(find.byKey(CheckoutScreen.placeKey));
+      await tester.tap(find.byKey(CheckoutScreen.placeKey));
+      await tester.pumpAndSettle();
+
+      expect(orders.drafts.single.couponCode, isNull);
     });
 
     testWidgets('a rejected code says why and leaves the bill alone',
@@ -359,6 +618,9 @@ void main() {
 
       expect(find.text('صلاحية الكود خلصت.'), findsOneWidget);
       expect(find.byKey(CheckoutScreen.couponFeedbackKey), findsOneWidget);
+      expect(find.byKey(CheckoutScreen.couponCardKey), findsNothing);
+      expect(find.byKey(CheckoutScreen.couponRemoveKey), findsNothing);
+      expect(find.byKey(CheckoutScreen.couponInputKey), findsOneWidget);
       expect(
         find.descendant(
           of: find.byKey(CheckoutScreen.totalKey),

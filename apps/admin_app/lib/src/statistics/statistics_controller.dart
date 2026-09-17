@@ -9,3 +9,10 @@ Future<AdminStatistics> adminStatistics(Ref ref) async {
   final result = await ref.watch(adminRepositoryProvider).statistics();
   return result.valueOrThrow;
 }
+
+/// How many devices and accounts opened each app today, this week and this month.
+@riverpod
+Future<ActiveUsers> adminActiveUsers(Ref ref) async {
+  final result = await ref.watch(adminRepositoryProvider).activeUsers();
+  return result.valueOrThrow;
+}

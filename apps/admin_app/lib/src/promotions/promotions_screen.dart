@@ -192,14 +192,48 @@ class _Request extends ConsumerWidget {
               Expanded(
                 child: Text(
                   merchant?.name ?? promotion.merchantId,
-                  style: theme.textTheme.titleMedium,
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
               ),
-              Text(
-                PromotionsScreen.channelNames[promotion.channel]!,
-                style: LuqmaType.caption.copyWith(color: colors.textSecondary),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: Space.sm,
+                  vertical: 3,
+                ),
+                decoration: BoxDecoration(
+                  color: colors.surface,
+                  borderRadius: Radii.pillAll,
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 6,
+                      height: 6,
+                      decoration: BoxDecoration(
+                        color: colors.accent,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    const SizedBox(width: Space.xs),
+                    Text(
+                      'قيد المراجعة',
+                      style: LuqmaType.caption.copyWith(
+                        color: colors.textSecondary,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ],
+          ),
+          const SizedBox(height: Space.xs),
+          Text(
+            PromotionsScreen.channelNames[promotion.channel]!,
+            style: LuqmaType.caption.copyWith(color: colors.textSecondary),
           ),
           if (promotion.channel == PromotionChannel.push) ...[
             const SizedBox(height: Space.sm),
@@ -238,16 +272,44 @@ class _Request extends ConsumerWidget {
             ),
           ],
           const SizedBox(height: Space.sm),
-          Text(promotion.title, style: theme.textTheme.titleLarge),
+          Text(
+            promotion.title,
+            style: theme.textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.bold,
+            ),
+          ),
           if (promotion.body.isNotEmpty) ...[
             const SizedBox(height: Space.xs),
-            Text(promotion.body, style: theme.textTheme.bodyMedium),
+            Text(
+              promotion.body,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: colors.textSecondary,
+              ),
+            ),
           ],
           const SizedBox(height: Space.sm),
-          Text(
-            'من ${_day(promotion.startAt)} لـ ${_day(promotion.endAt)}'
-            '${promotion.price > 0 ? ' · ${strings.price(promotion.price)}' : ''}',
-            style: LuqmaType.caption.copyWith(color: colors.textSecondary),
+          Row(
+            children: [
+              Icon(
+                Icons.calendar_today_outlined,
+                size: Sizes.iconSm,
+                color: colors.price,
+              ),
+              const SizedBox(width: Space.xs),
+              Text(
+                'من ${_day(promotion.startAt)} لـ ${_day(promotion.endAt)}'
+                // Whether there is a price to agree at all: a placement inside the shop's
+                // plan is already paid for by the subscription (2026-09-17).
+                // «مفيش سعر مسجّل» rather than "agree a price": a placement the admin put
+                // up themselves also carries zero, and calling that one unpaid would be
+                // wrong (found in review).
+                '${promotion.includedInPlan ? ' · ضمن الباقة' : promotion.price > 0 ? ' · ${strings.price(promotion.price)}' : ' · مفيش سعر مسجّل'}',
+                style: LuqmaType.bodySmall.copyWith(
+                  color: colors.price,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
           ),
           const SizedBox(height: Space.md),
           Row(
@@ -258,6 +320,7 @@ class _Request extends ConsumerWidget {
                   onPressed: () => _reject(context, ref),
                   style: OutlinedButton.styleFrom(
                     foregroundColor: colors.danger,
+                    side: BorderSide(color: colors.danger),
                     minimumSize: const Size.fromHeight(Sizes.minTarget),
                   ),
                   child: const Text('رفض'),
@@ -401,14 +464,40 @@ class _Placement extends ConsumerWidget {
               Expanded(
                 child: Text(
                   merchant?.name ?? promotion.merchantId,
-                  style: theme.textTheme.titleMedium,
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
               ),
-              Text(
-                label,
-                style: LuqmaType.bodySmall.copyWith(
-                  color: tone,
-                  fontWeight: FontWeight.w600,
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: Space.sm,
+                  vertical: 3,
+                ),
+                decoration: BoxDecoration(
+                  color: colors.surface,
+                  borderRadius: Radii.pillAll,
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 6,
+                      height: 6,
+                      decoration: BoxDecoration(
+                        color: tone,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    const SizedBox(width: Space.xs),
+                    Text(
+                      label,
+                      style: LuqmaType.caption.copyWith(
+                        color: tone,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ],
@@ -420,7 +509,12 @@ class _Placement extends ConsumerWidget {
           ),
           if (promotion.title.isNotEmpty) ...[
             const SizedBox(height: Space.xs),
-            Text(promotion.title, style: theme.textTheme.bodyMedium),
+            Text(
+              promotion.title,
+              style: theme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.bold,
+              ),
+            ),
           ],
           if (promotion.channel == PromotionChannel.push) ...[
             const SizedBox(height: Space.sm),
@@ -432,11 +526,18 @@ class _Placement extends ConsumerWidget {
           const SizedBox(height: Space.sm),
           Row(
             children: [
+              Icon(
+                Icons.calendar_today_outlined,
+                size: Sizes.iconSm,
+                color: colors.price,
+              ),
+              const SizedBox(width: Space.xs),
               Expanded(
                 child: Text(
                   'من ${_day(promotion.startAt)} لـ ${_day(promotion.endAt)}',
-                  style: LuqmaType.caption.copyWith(
-                    color: colors.textSecondary,
+                  style: LuqmaType.bodySmall.copyWith(
+                    color: colors.price,
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
               ),

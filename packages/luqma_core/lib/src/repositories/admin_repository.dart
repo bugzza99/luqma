@@ -2,6 +2,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../models/admin.dart';
 import '../result.dart';
+import 'customer_repository.dart';
+import 'staff_repository.dart';
 
 /// The dashboard and statistics numbers, answered by the server.
 ///
@@ -22,6 +24,12 @@ abstract interface class AdminRepository {
   /// chances to be slow on a phone in a shop, and they would land at eleven different
   /// moments so the grid would fill in raggedly.
   Future<Result<AdminAttention>> attention();
+
+  /// Deletes any customer, merchant owner, or courier account. Refuses platform staff.
+  Future<Result<void>> deleteAccount(String uid);
+
+  /// Reports active users today, past 7 days and past 30 days per app.
+  Future<Result<ActiveUsers>> activeUsers();
 }
 
 class SupabaseAdminRepository implements AdminRepository {
@@ -52,6 +60,21 @@ class SupabaseAdminRepository implements AdminRepository {
       return AdminAttention.fromJson(Map<String, dynamic>.from(row as Map));
     });
   }
+
+  @override
+  Future<Result<void>> deleteAccount(String uid) {
+    return Result.guard(
+      () => _db.rpc('admin_delete_account', params: {'p_uid': uid}),
+    );
+  }
+
+  @override
+  Future<Result<ActiveUsers>> activeUsers() {
+    return Result.guard(() async {
+      final rows = await _db.rpc('admin_active_users');
+      return ActiveUsers.fromRows(rows as List? ?? const []);
+    });
+  }
 }
 
 /// In-memory admin figures, for tests and for building the screens above them.
@@ -60,13 +83,26 @@ class FakeAdminRepository implements AdminRepository {
     this.todayValue,
     this.statisticsValue,
     this.attentionValue,
+    this.activeUsersValue,
     this.failure,
-  });
+    String? currentAdminUid,
+    Set<String>? platformStaffUids,
+    this.customers,
+    this.staff,
+  })  : currentAdminUid = currentAdminUid ?? 'admin-1',
+        platformStaffUids = platformStaffUids ?? {'admin-1'};
 
   final AdminToday? todayValue;
   final AdminStatistics? statisticsValue;
   final AdminAttention? attentionValue;
+  final ActiveUsers? activeUsersValue;
   final Failure? failure;
+  final String currentAdminUid;
+  final Set<String> platformStaffUids;
+  final FakeCustomerRepository? customers;
+  final FakeStaffRepository? staff;
+
+  final List<String> deletedAccountCalls = [];
 
   @override
   Future<Result<AdminAttention>> attention() async {
@@ -84,6 +120,28 @@ class FakeAdminRepository implements AdminRepository {
   Future<Result<AdminStatistics>> statistics() async {
     if (failure != null) return Result.err(failure!);
     return Result.ok(statisticsValue ?? _emptyStatistics);
+  }
+
+  @override
+  Future<Result<void>> deleteAccount(String uid) async {
+    if (failure != null) return Result.err(failure!);
+    // Platform staff from the shared staff fixture as well as the explicit set, so a
+    // platform account seeded in [staff] cannot be deleted here when the server refuses it.
+    final isPlatformStaff = platformStaffUids.contains(uid) ||
+        (staff?.all.any((m) => m.uid == uid && m.scope == 'platform') ?? false);
+    if (uid == currentAdminUid || isPlatformStaff) {
+      return const Result.err(PermissionFailure());
+    }
+    customers?.removeCustomer(uid);
+    staff?.removeStaff(uid);
+    deletedAccountCalls.add(uid);
+    return const Result.ok(null);
+  }
+
+  @override
+  Future<Result<ActiveUsers>> activeUsers() async {
+    if (failure != null) return Result.err(failure!);
+    return Result.ok(activeUsersValue ?? const ActiveUsers());
   }
 
   static final _emptyToday = const AdminToday(

@@ -199,4 +199,53 @@ void main() {
     expect(repo['o1']!.status, OrderStatus.cancelled);
     expect(repo['o1']!.cancelReason, 'العميل مش موجود');
   });
+
+  /// Where an order stands for the courier holding it, which is not always where the
+  /// server thinks it is. The queue is the only other thing on the phone that knows.
+  group("the courier's own account of an order", () {
+    const started = PendingCourierWrite(
+      orderId: 'o1',
+      kind: CourierWriteKind.onTheWay,
+      courierUid: 'c1',
+    );
+    const done = PendingCourierWrite(
+      orderId: 'o1',
+      kind: CourierWriteKind.delivered,
+    );
+
+    test('with nothing queued it is whatever the server says', () {
+      expect(CourierProgress.of('o1', OrderStatus.preparing, const []),
+          CourierProgress.toCollect);
+      expect(CourierProgress.of('o1', OrderStatus.outForDelivery, const []),
+          CourierProgress.onTheRoad);
+    });
+
+    // The finding: the run was started with no signal, so the server still says
+    // `preparing`, and reading it alone left the delivery with no way to be finished.
+    test('a start that has not been sent yet still puts them on the road', () {
+      expect(CourierProgress.of('o1', OrderStatus.preparing, const [started]),
+          CourierProgress.onTheRoad);
+    });
+
+    test('and an end that has not been sent leaves nothing more to tap', () {
+      expect(CourierProgress.of('o1', OrderStatus.preparing, const [started, done]),
+          CourierProgress.finished);
+      expect(
+          CourierProgress.of('o1', OrderStatus.outForDelivery, const [
+            PendingCourierWrite(
+                orderId: 'o1',
+                kind: CourierWriteKind.failed,
+                reason: 'العميل مش موجود'),
+          ]),
+          CourierProgress.finished);
+    });
+
+    test("another order's queue is not this order's business", () {
+      expect(
+        CourierProgress.of('o2', OrderStatus.preparing, const [started, done]),
+        CourierProgress.toCollect,
+      );
+      expect(lastQueuedFor('o2', const [started, done]), isNull);
+    });
+  });
 }

@@ -2,16 +2,14 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 
 /**
- * Gives a customer a new password, because there is nowhere to send them a link.
+ * Sets a new password for a customer, merchant owner or courier, chosen by the admin.
  *
  * A customer's account is keyed on their phone number folded into a synthetic address
  * (`01…@phone.luqma.app`) that has no mailbox, and OTP is off — so the ordinary "reset by
  * email" and "reset by SMS" paths both lead nowhere. Somebody who forgets their password
- * calls the number on حول لقمة, and an admin does this.
- *
- * The password is generated here rather than typed by the admin: an admin choosing one
- * picks the same weak password for everybody, and this way what gets read down the phone
- * is at least random. It is returned once and never stored anywhere in readable form.
+ * calls the number on حول لقمة, and an admin sets a password they choose so they can tell
+ * the person a password they can remember. It is still never stored or logged anywhere
+ * in readable form.
  *
  * Same door policy as `create-staff-account`: the caller must carry a real GoTrue JWT
  * whose `staff` row says platform admin and active, checked before the service role is
@@ -29,18 +27,6 @@ function json(body: unknown, status = 200): Response {
     status,
     headers: { ...CORS, 'Content-Type': 'application/json' },
   });
-}
-
-/**
- * Ten characters a person can read down a phone line without spelling anything out.
- *
- * No `l`/`1`/`O`/`0` and no symbols: this password is spoken aloud, and every character
- * that has to be disambiguated ("zero or the letter O?") is a failed call-back.
- */
-function readablePassword(): string {
-  const alphabet = 'abcdefghijkmnpqrstuvwxyz23456789';
-  const bytes = crypto.getRandomValues(new Uint8Array(10));
-  return Array.from(bytes, (b) => alphabet[b % alphabet.length]).join('');
 }
 
 Deno.serve(async (req: Request) => {
@@ -80,7 +66,11 @@ Deno.serve(async (req: Request) => {
 
   let body: Record<string, unknown>;
   try {
-    body = await req.json();
+    const parsed = await req.json();
+    if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      return json({ error: 'badRequest' }, 400);
+    }
+    body = parsed as Record<string, unknown>;
   } catch {
     return json({ error: 'badRequest' }, 400);
   }
@@ -88,34 +78,63 @@ Deno.serve(async (req: Request) => {
   const uid = typeof body.uid === 'string' ? body.uid.trim() : '';
   if (!uid) return json({ error: 'badRequest' }, 400);
 
-  // Customers only. A merchant or courier password is reset by whoever manages staff,
-  // through the staff screen — and an admin resetting another *admin* here would turn a
-  // support call into a way to take the platform.
-  const { data: staffRow } = await service
+  const password = typeof body.password === 'string' ? body.password.trim() : '';
+  if (!password || password.length < 8 || password.length > 72) {
+    return json({ error: 'badPassword' }, 400);
+  }
+
+  // Allowed targets: a customer (a users row and no staff row) or a staff row with
+  // scope = 'merchant' (owners and couriers). A scope = 'platform' staff row is still
+  // refused with 400 {error:'notAllowed'} — resetting another admin must stay impossible.
+  // A uid with neither → 404 {error:'noSuchAccount'}.
+  //
+  // A failed lookup is a refusal, never "no staff row". Found in review: with the error
+  // discarded, a timeout here let a platform admin's password be reset as a customer's.
+  const { data: staffRow, error: staffError } = await service
     .from('staff')
-    .select('uid')
+    .select('scope, role')
     .eq('uid', uid)
     .maybeSingle();
-  if (staffRow) return json({ error: 'notACustomer' }, 400);
+  if (staffError) return json({ error: 'lookupFailed' }, 500);
 
-  const { data: profile } = await service
-    .from('users')
-    .select('id')
-    .eq('id', uid)
-    .maybeSingle();
-  if (!profile) return json({ error: 'noSuchCustomer' }, 404);
+  let kind: 'customer' | 'owner' | 'courier';
 
-  const password = readablePassword();
+  if (staffRow) {
+    if (staffRow.scope === 'platform') {
+      return json({ error: 'notAllowed' }, 400);
+    }
+    if (staffRow.scope === 'merchant' && (staffRow.role === 'owner' || staffRow.role === 'courier')) {
+      kind = staffRow.role;
+    } else {
+      return json({ error: 'notAllowed' }, 400);
+    }
+  } else {
+    const { data: profile, error: profileError } = await service
+      .from('users')
+      .select('id')
+      .eq('id', uid)
+      .maybeSingle();
+    if (profileError) return json({ error: 'lookupFailed' }, 500);
+    if (!profile) return json({ error: 'noSuchAccount' }, 404);
+    kind = 'customer';
+  }
+
   const { error: updateError } = await service.auth.admin.updateUserById(uid, { password });
   if (updateError) return json({ error: 'resetFailed' }, 500);
 
-  // Who did it, and to whom. Not the password — an audit log that carries credentials is
-  // a place to steal them from.
-  await service.from('audit_log').insert({
+  // The audit row: action: 'account.password_set', detail: { target: uid, kind: 'customer'|'owner'|'courier' }. Never the password.
+  const { error: auditError } = await service.from('audit_log').insert({
     actor: userData.user.id,
-    action: 'customer.password_reset',
-    detail: { customer: uid },
+    action: 'account.password_set',
+    detail: { target: uid, kind },
   });
 
-  return json({ password });
+  // The password has already changed, so this is not a failure to report as one — but a
+  // change nobody can find in the log is worth saying out loud. Never the password.
+  if (auditError) {
+    console.error(`password set for ${kind} ${uid} but the audit row failed: ${auditError.message}`);
+    return json({ ok: true, audited: false });
+  }
+
+  return json({ ok: true });
 });

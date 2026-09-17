@@ -254,6 +254,28 @@ class _ConfigFormState extends ConsumerState<_ConfigForm> {
       );
       return false;
     }
+    // A minimum nobody can install walls every phone on that app out, with no way past
+    // it — the gate is un-bypassable on purpose. All three apps share one version, so this
+    // build's own is the newest that exists. The admin field is the one that matters most:
+    // set above this build, it locks out the only app that could put it back.
+    //
+    // `appVersionProvider` reads like `0.9.0 (10)`; the version is the part before the
+    // space. A build that cannot say what it is refuses nothing on a guess.
+    final existing = ref.read(appVersionProvider).split(' ').first;
+    for (final field in [_customerMinVersion, _merchantMinVersion, _adminMinVersion]) {
+      if (LuqmaConfig.versionExceeds(field.text.trim(), existing)) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'أحدث نسخة موجودة $existing. لو حطيت رقم أعلى منها، التطبيق هيقفل '
+              'في وش كل اللي بيستخدموه ومفيش طريقة يتفتح غير بتحديث مش موجود.',
+            ),
+          ),
+        );
+        return false;
+      }
+    }
+
     // The pair is validated together: a max below a min describes no valid fee at all.
     if (Money.parse(_feeMin.text.trim())! > Money.parse(_feeMax.text.trim())!) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -266,6 +288,9 @@ class _ConfigFormState extends ConsumerState<_ConfigForm> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = theme.luqma;
+
     // SingleChildScrollView, not ListView: the whole form is built eagerly so every
     // field is reachable, and the save button is not hidden behind lazy construction.
     return SingleChildScrollView(
@@ -273,30 +298,146 @@ class _ConfigFormState extends ConsumerState<_ConfigForm> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          // A16 warning banner: modifying dynamic configuration impacts all running apps.
+          Container(
+            padding: const EdgeInsets.symmetric(
+              horizontal: Space.md,
+              vertical: Space.sm,
+            ),
+            decoration: BoxDecoration(
+              color: colors.danger.withValues(alpha: 0.08),
+              borderRadius: Radii.cardAll,
+              border: Border.all(color: colors.danger.withValues(alpha: 0.25)),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.warning_amber_rounded,
+                  size: Sizes.iconSm,
+                  color: colors.danger,
+                ),
+                const SizedBox(width: Space.sm),
+                Expanded(
+                  child: Text(
+                    // True as written: `admin_set_config` stamps an `audit_log` row with the actor. And
+                    // not "at once" — the first draft said so, and a phone keeps the old value
+                    // until the app starts or comes back to the foreground.
+                    // Said in words rather than by naming the table.
+                    'أي تعديل هنا بيوصل للتطبيقات أول ما تتفتح أو ترجع لها، وبيتسجّل مين عدّله.',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: colors.danger,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: Space.lg),
           _Section(
             title: 'الميزات',
             children: [
               SwitchListTile(
-                title: const Text('تفعيل الـ OTP'),
-                subtitle: const Text('غير متاح في الإصدار الحالي'),
+                title: Text(
+                  'otp_enabled',
+                  textDirection: TextDirection.ltr,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    fontFamily: 'monospace',
+                    fontWeight: FontWeight.w700,
+                    color: colors.textPrimary,
+                  ),
+                ),
+                subtitle: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Text('تفعيل الـ OTP'),
+                    Text(
+                      'غير متاح في الإصدار الحالي',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: colors.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
                 value: _otp,
                 onChanged: null,
               ),
               SwitchListTile(
-                title: const Text('إعلانات AdMob'),
-                subtitle: const Text('غير متاح في الإصدار الحالي'),
+                title: Text(
+                  'admob_enabled',
+                  textDirection: TextDirection.ltr,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    fontFamily: 'monospace',
+                    fontWeight: FontWeight.w700,
+                    color: colors.textPrimary,
+                  ),
+                ),
+                subtitle: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Text('إعلانات AdMob'),
+                    Text(
+                      'غير متاح في الإصدار الحالي',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: colors.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
                 value: _admob,
                 onChanged: null,
               ),
               SwitchListTile(
-                title: const Text('التعليقات العامة'),
-                subtitle: const Text('غير متاح في الإصدار الحالي'),
+                title: Text(
+                  'public_comments_enabled',
+                  textDirection: TextDirection.ltr,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    fontFamily: 'monospace',
+                    fontWeight: FontWeight.w700,
+                    color: colors.textPrimary,
+                  ),
+                ),
+                subtitle: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Text('التعليقات العامة'),
+                    Text(
+                      'غير متاح في الإصدار الحالي',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: colors.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
                 value: _publicComments,
                 onChanged: null,
               ),
               SwitchListTile(
-                title: const Text('الدفع أونلاين'),
-                subtitle: const Text('غير متاح في الإصدار الحالي'),
+                title: Text(
+                  'online_payment_enabled',
+                  textDirection: TextDirection.ltr,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    fontFamily: 'monospace',
+                    fontWeight: FontWeight.w700,
+                    color: colors.textPrimary,
+                  ),
+                ),
+                subtitle: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Text('الدفع أونلاين'),
+                    Text(
+                      'غير متاح في الإصدار الحالي',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: colors.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
                 value: _onlinePayment,
                 onChanged: null,
               ),
@@ -321,6 +462,8 @@ class _ConfigFormState extends ConsumerState<_ConfigForm> {
               _IntTile(
                 controller: _minRatings,
                 label: 'أقل تقييمات لعرض النجوم',
+                subtitle: 'min_ratings_to_show',
+                subtitleMono: true,
               ),
               _IntTile(controller: _feeMin, label: 'أقل رسوم توصيل (جنيه)'),
               _IntTile(controller: _feeMax, label: 'أقصى رسوم توصيل (جنيه)'),
@@ -400,8 +543,20 @@ class _Section extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(title, style: theme.textTheme.titleLarge),
-        const SizedBox(height: Space.sm),
+        Padding(
+          padding: const EdgeInsets.only(
+            left: Space.xs,
+            right: Space.xs,
+            bottom: Space.xs,
+          ),
+          child: Text(
+            title,
+            style: theme.textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.w700,
+              color: colors.textSecondary,
+            ),
+          ),
+        ),
         // Material rather than a coloured Container: ListTile paints its ink on the
         // nearest Material ancestor, and a DecoratedBox in between hides it.
         Material(
@@ -411,7 +566,15 @@ class _Section extends StatelessWidget {
             borderRadius: Radii.cardAll,
             side: BorderSide(color: colors.hairline),
           ),
-          child: Column(children: children),
+          child: Column(
+            children: [
+              for (var i = 0; i < children.length; i++) ...[
+                if (i > 0)
+                  Divider(height: 1, thickness: 1, color: colors.hairline),
+                children[i],
+              ],
+            ],
+          ),
         ),
       ],
     );
@@ -424,6 +587,7 @@ class _IntTile extends StatelessWidget {
     required this.label,
     this.fieldKey,
     this.subtitle,
+    this.subtitleMono = false,
     this.enabled = true,
   });
 
@@ -431,13 +595,28 @@ class _IntTile extends StatelessWidget {
   final String label;
   final Key? fieldKey;
   final String? subtitle;
+  final bool subtitleMono;
   final bool enabled;
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = theme.luqma;
+
     return ListTile(
       title: Text(label),
-      subtitle: subtitle == null ? null : Text(subtitle!),
+      subtitle: subtitle == null
+          ? null
+          : Text(
+              subtitle!,
+              textDirection: subtitleMono ? TextDirection.ltr : null,
+              style: subtitleMono
+                  ? theme.textTheme.bodySmall?.copyWith(
+                      fontFamily: 'monospace',
+                      color: colors.textSecondary,
+                    )
+                  : null,
+            ),
       trailing: SizedBox(
         width: 140,
         child: TextField(

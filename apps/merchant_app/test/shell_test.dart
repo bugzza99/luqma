@@ -278,6 +278,49 @@ void main() {
       expect(find.textContaining('مش هتوصلك طلبات'), findsOneWidget);
     });
 
+    // The card used to be a plan name over a lone analytics link, which told the merchant
+    // nothing about what they pay. One line of terms, true to each model.
+    testWidgets('a subscriber is told there is no per-order charge', (tester) async {
+      await pump(tester);
+
+      await tester.tap(find.byKey(MerchantApp.shopTabKey));
+      await tester.pumpAndSettle();
+
+      expect(find.text('مبلغ ثابت كل شهر، ومفيش عمولة على الطلبات.'), findsOneWidget);
+    });
+
+    testWidgets('a commission merchant sees the rate and that delivery is not charged',
+        (tester) async {
+      await pump(
+        tester,
+        shopIs: shop.copyWith(revenueModel: RevenueModel.commission, revenueValue: 750),
+      );
+
+      await tester.tap(find.byKey(MerchantApp.shopTabKey));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text('7.5% على الأكل بس. التوصيل مش بناخد منه حاجة.'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('a prepaid merchant sees what each order takes', (tester) async {
+      await pump(
+        tester,
+        shopIs: shop.copyWith(
+          revenueModel: RevenueModel.prepaid,
+          revenueValue: 500,
+          walletBalance: 4000,
+        ),
+      );
+
+      await tester.tap(find.byKey(MerchantApp.shopTabKey));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('مع كل طلب يتوصّل، ومش أكتر من تمن الأكل'), findsOneWidget);
+    });
+
     testWidgets('a subscriber sees no wallet at all', (tester) async {
       await pump(tester);
 

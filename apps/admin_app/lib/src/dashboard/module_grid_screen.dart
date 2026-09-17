@@ -53,26 +53,47 @@ class ModuleGridScreen extends ConsumerWidget {
 
     return Scaffold(
       appBar: AppBar(title: const Text('لقمة')),
-      body: RefreshIndicator(
-        onRefresh: () async => ref.invalidate(adminAttentionProvider),
-        child: AdminContent(
-          child: GridView.builder(
-            key: gridKey,
-            padding: const EdgeInsets.all(Space.gutter),
-            gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
-              // Two columns on a phone, more as the window grows. An extent rather than a
-              // count, so the tablet and the browser are the same code.
-              maxCrossAxisExtent: 200,
-              mainAxisSpacing: Space.md,
-              crossAxisSpacing: Space.md,
-              childAspectRatio: 1.15,
+      body: AdminContent(
+        child: Column(
+          children: [
+            // The grid is where the admin lives; «اليوم» may never be opened. Asked only
+            // there, the permission was never asked at all, and the unanswered-order alert
+            // was dropped silently.
+            const LuqmaNotificationBanner(
+              reason:
+                  'أوردر محدش ردّ عليه بيوصلك بتنبيه — بس لو التنبيهات شغالة.',
+              margin: EdgeInsets.fromLTRB(
+                Space.gutter,
+                Space.gutter,
+                Space.gutter,
+                0,
+              ),
             ),
-            itemCount: modules.length,
-            itemBuilder: (context, i) => _Tile(
-              module: modules[i],
-              waiting: counts == null ? null : modules[i].waiting?.call(counts),
+            Expanded(
+              child: RefreshIndicator(
+                onRefresh: () async => ref.invalidate(adminAttentionProvider),
+                child: GridView.builder(
+                  key: gridKey,
+                  padding: const EdgeInsets.all(Space.gutter),
+                  gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
+                    // Two columns on a phone, more as the window grows. An extent rather than a
+                    // count, so the tablet and the browser are the same code.
+                    maxCrossAxisExtent: 200,
+                    mainAxisSpacing: Space.md,
+                    crossAxisSpacing: Space.md,
+                    childAspectRatio: 1.15,
+                  ),
+                  itemCount: modules.length,
+                  itemBuilder: (context, i) => _Tile(
+                    module: modules[i],
+                    waiting: counts == null
+                        ? null
+                        : modules[i].waiting?.call(counts),
+                  ),
+                ),
+              ),
             ),
-          ),
+          ],
         ),
       ),
     );
@@ -148,8 +169,9 @@ class _Tile extends StatelessWidget {
                       ),
                       child: Text(
                         '$count',
-                        style: theme.textTheme.bodySmall
-                            ?.copyWith(color: colors.onBrand),
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: colors.onBrand,
+                        ),
                       ),
                     ),
                 ],

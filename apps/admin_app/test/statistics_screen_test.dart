@@ -32,6 +32,7 @@ void main() {
     WidgetTester tester, {
     AdminStatistics? value,
     Failure? failure,
+    ActiveUsers? activeUsers,
   }) async {
     tester.view.physicalSize = const Size(1080, 2340);
     tester.view.devicePixelRatio = 3;
@@ -43,6 +44,7 @@ void main() {
           adminRepositoryProvider.overrideWithValue(
             FakeAdminRepository(
               statisticsValue: value ?? stats(),
+              activeUsersValue: activeUsers,
               failure: failure,
             ),
           ),
@@ -137,5 +139,33 @@ void main() {
     expect(find.byType(LuqmaErrorView), findsOneWidget);
     expect(find.byKey(StatisticsScreen.customersKey), findsNothing,
         reason: 'zeroes on a failed load would read as a platform with nobody on it');
+  });
+
+  // Built 2026-09-17: the owner asked how many people open the apps each day, week and
+  // month, and nothing in the product counted it.
+  testWidgets('says how many devices and accounts opened each app', (tester) async {
+    await pump(
+      tester,
+      activeUsers: const ActiveUsers(
+        customer: AppActiveUsers(
+          day: ActiveUserCount(devices: 12, accounts: 8),
+          week: ActiveUserCount(devices: 40, accounts: 25),
+          month: ActiveUserCount(devices: 90, accounts: 61),
+        ),
+        merchant: AppActiveUsers(
+          day: ActiveUserCount(devices: 3, accounts: 3),
+          week: ActiveUserCount(devices: 5, accounts: 4),
+          month: ActiveUserCount(devices: 7, accounts: 6),
+        ),
+      ),
+    );
+
+    expect(find.byKey(StatisticsScreen.activeUsersKey), findsOneWidget);
+    expect(find.text('مين فتح التطبيق'), findsOneWidget);
+    expect(find.text('12 جهاز'), findsOneWidget);
+    expect(find.text('8 حساب'), findsOneWidget);
+    expect(find.text('90 جهاز'), findsOneWidget);
+    expect(find.text('6 حساب'), findsOneWidget);
+    expect(find.text('آخر 30 يوم'), findsOneWidget);
   });
 }

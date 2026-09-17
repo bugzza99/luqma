@@ -19,6 +19,7 @@ void main() {
     String date = today,
     int remainingQty = 8,
     DailyMealStatus status = DailyMealStatus.published,
+    DeliveryOption deliveryOption = DeliveryOption.pickup,
   }) =>
       DailyMeal(
         id: id,
@@ -31,6 +32,7 @@ void main() {
         remainingQty: remainingQty,
         pickupWindowStart: 13 * 60,
         pickupWindowEnd: 16 * 60,
+        deliveryOption: deliveryOption,
         status: status,
       );
 
@@ -41,6 +43,11 @@ void main() {
     List<DailyMeal> seed = const [],
     Failure? failure,
   }) async {
+    tester.view.physicalSize = const Size(390 * 2, 844 * 2);
+    tester.view.devicePixelRatio = 2.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
     meals = FakeDailyMealRepository(seed: seed, failure: failure);
 
     await tester.pumpWidget(
@@ -80,6 +87,16 @@ void main() {
 
       expect(find.text('محشي كرنب'), findsOneWidget);
       expect(find.byKey(MealsScreen.remainingKey('d1')), findsOneWidget);
+    });
+
+    testWidgets('today\'s meal shows header banner, photo, and fulfilment badge', (tester) async {
+      await pump(tester, seed: [meal(deliveryOption: DeliveryOption.platformCourier)]);
+
+      expect(find.byKey(MealsScreen.headerBannerKey), findsOneWidget);
+      expect(find.textContaining('وجبة اليوم'), findsOneWidget);
+      expect(find.byType(LuqmaImage), findsOneWidget);
+      expect(find.byKey(MealsScreen.fulfilmentKey('d1')), findsOneWidget);
+      expect(find.text('🛵 توصيل'), findsOneWidget);
     });
 
     // Yesterday's is history, not a mistake to correct. It stays, below today's.
@@ -128,9 +145,27 @@ void main() {
       final saved = meals.all.single;
       expect(saved.name, 'ورق عنب');
       expect(saved.date, today);
+      expect(saved.deliveryOption, DeliveryOption.pickup);
       // Cooked already, so both counts start the same.
       expect(saved.totalQty, 15);
       expect(saved.remainingQty, 15);
+    });
+
+    testWidgets('choosing courier delivery saves DeliveryOption.platformCourier',
+        (tester) async {
+      await pump(tester);
+
+      await tester.tap(find.byKey(MealsScreen.addKey));
+      await tester.pumpAndSettle();
+      await fillIn(tester);
+      await tester.ensureVisible(find.byKey(MealsScreen.deliveryCourierKey));
+      await tester.tap(find.byKey(MealsScreen.deliveryCourierKey));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(MealsScreen.saveKey));
+      await tester.pumpAndSettle();
+
+      final saved = meals.all.single;
+      expect(saved.deliveryOption, DeliveryOption.platformCourier);
     });
 
     testWidgets('the price is read as pounds and stored as piastres',

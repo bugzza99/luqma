@@ -61,6 +61,14 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  // The ask lived only inside «اليوم», so an admin who used the grid and never opened that
+  // module was never asked, and their unanswered-order alerts were dropped silently.
+  testWidgets('the home asks for notifications', (tester) async {
+    await pump(tester, attention: const AdminAttention());
+
+    expect(find.byType(LuqmaNotificationBanner), findsOneWidget);
+  });
+
   testWidgets('every module is on it', (tester) async {
     await pump(tester, attention: const AdminAttention());
 

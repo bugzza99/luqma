@@ -58,11 +58,18 @@ void main() {
     Zone(id: 'z9', cityId: 'edku', name: 'المعمورة'),
   ];
 
+  late FakeOrderRepository orders;
+  Order? placed;
+
   Future<void> pump(
     WidgetTester tester, {
     required DailyMeal dish,
     Address? chosen,
+    Merchant cook = kitchen,
+    LuqmaConfig config = LuqmaConfig.defaults,
   }) async {
+    orders = FakeOrderRepository();
+    placed = null;
     // A phone, not the 800x600 default: that window is wider than it is tall and unlike
     // any device this ships on, which has hidden real layout faults here before.
     tester.view.physicalSize = const Size(1080, 2340);
@@ -74,7 +81,9 @@ void main() {
         overrides: [
           clockProvider.overrideWithValue(() => now),
           merchantRepositoryProvider
-              .overrideWithValue(FakeMerchantRepository(seed: const [kitchen])),
+              .overrideWithValue(FakeMerchantRepository(seed: [cook])),
+          orderRepositoryProvider.overrideWithValue(orders),
+          appConfigProvider.overrideWithValue(config),
           geographyRepositoryProvider
               .overrideWithValue(FakeGeographyRepository(zones: zones)),
           currentIdentityProvider.overrideWith((ref) => Stream.value(
@@ -94,7 +103,7 @@ void main() {
             child: PreorderCheckoutScreen(
               meal: dish,
               quantity: 2,
-              onPlaced: (_) {},
+              onPlaced: (order) => placed = order,
             ),
           ),
         ),
@@ -109,11 +118,56 @@ void main() {
           .onPressed !=
       null;
 
+  for (final option in [DeliveryOption.pickup, DeliveryOption.sellerArrangement]) {
+    testWidgets('$option omits a selected address from the reservation',
+        (tester) async {
+      await pump(tester,
+          dish: meal(deliveryOption: option), chosen: address('z1'));
+
+      await tester.tap(find.byKey(PreorderCheckoutScreen.reserveKey));
+      await tester.pumpAndSettle();
+
+      expect(placed, isNotNull);
+      expect(orders.drafts.single.addressId, isNull,
+          reason: 'a remembered address must not buy an unrequested delivery');
+    });
+  }
+
   testWidgets('a zone the kitchen serves can be confirmed', (tester) async {
     await pump(tester, dish: meal(), chosen: address('z1'));
 
     expect(enabled(tester), isTrue);
     expect(find.byKey(PreorderCheckoutScreen.outOfRangeKey), findsNothing);
+  });
+
+  testWidgets('platform courier sends the address and quotes the clamped bill',
+      (tester) async {
+    // Two 90 EGP portions plus 10 EGP delivery. The stored override is only 5,
+    // so reading it raw would quote 185 while the courier asks for 190.
+    await pump(tester,
+        dish: meal(),
+        chosen: address('z1'),
+        cook: kitchen.copyWith(deliveryFeeOverride: 500),
+        config: LuqmaConfig.from(MapConfigSource({'delivery_fee_min': 1000})));
+
+    expect(
+        find.descendant(
+            of: find.byKey(PreorderCheckoutScreen.totalKey),
+            matching: find.text('190 ج')),
+        findsOneWidget);
+    final deliveryRow = find.ancestor(
+        of: find.text('التوصيل — وسط البلد'), matching: find.byType(Row));
+    expect(find.descendant(of: deliveryRow, matching: find.text('10 ج')),
+        findsOneWidget);
+    final subtotalRow = find.ancestor(
+        of: find.text('الأصناف'), matching: find.byType(Row));
+    expect(find.descendant(of: subtotalRow, matching: find.text('180 ج')),
+        findsOneWidget);
+
+    await tester.tap(find.byKey(PreorderCheckoutScreen.reserveKey));
+    await tester.pumpAndSettle();
+    expect(placed, isNotNull);
+    expect(orders.drafts.single.addressId, 'a1');
   });
 
   testWidgets('a zone it does not serve is refused on this screen, not later',
@@ -145,5 +199,9 @@ void main() {
             'range of');
     expect(find.byKey(PreorderCheckoutScreen.outOfRangeKey), findsNothing);
     expect(find.byKey(PreorderCheckoutScreen.needsAddressKey), findsNothing);
+    await tester.tap(find.byKey(PreorderCheckoutScreen.reserveKey));
+    await tester.pumpAndSettle();
+    expect(placed, isNotNull);
+    expect(orders.drafts.single.addressId, isNull);
   });
 }

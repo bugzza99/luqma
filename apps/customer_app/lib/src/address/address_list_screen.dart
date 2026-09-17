@@ -10,7 +10,9 @@ import 'address_editor_screen.dart';
 /// A building number is the last thing anybody navigates by here, so it is not what the
 /// row leads with.
 class AddressListScreen extends ConsumerWidget {
-  const AddressListScreen({super.key, this.onSignIn});
+  const AddressListScreen({super.key, this.onSignIn, this.merchantId});
+
+  final String? merchantId;
 
   /// Opens the sign-in sheet. Injected so the shell owns that decision.
   final VoidCallback? onSignIn;
@@ -63,7 +65,7 @@ class AddressListScreen extends ConsumerWidget {
               key: addKey,
               onPressed: () => Navigator.of(context).push(
                 MaterialPageRoute<void>(
-                  builder: (_) => const AddressEditorScreen(),
+                  builder: (_) => AddressEditorScreen(merchantId: merchantId),
                 ),
               ),
               icon: const Icon(Icons.add_location_alt_outlined),

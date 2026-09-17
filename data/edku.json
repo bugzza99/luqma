@@ -1,77 +1,296 @@
 {
-  "_comment": [
-    "Edku's zones and landmarks.",
-    "",
-    "PLACEHOLDERS. These names are structurally correct but they are not researched local",
-    "knowledge — the owner lives in Edku and must replace them with the real ones before",
-    "this is seeded into production. A wrong zone name is not cosmetic: the zone prices the",
-    "delivery, bounds which merchants may take an order, and is the first thing a courier",
-    "reads.",
-    "",
-    "Landmarks should be things people actually say: a named pharmacy, a mosque, a tuk-tuk",
-    "stop, a school. Not a street name — the point of a landmark is that it is the thing",
-    "people navigate by when the street has no useful name.",
-    "",
-    "deliveryFee is in piastres. 1000 = 10.00 EGP."
-  ],
-
+  "_comment": "Edku itself. The zone and landmark names here are no longer placeholders: they come from the address research in Documents/Codex/2026-09-09/edku-address-research — 43 places observed on Google Maps with real coordinates, المعدية and its 8 places were excluded at first and added back on 2026-09-11 at the owner's request. Its points sit in two clusters about seven kilometres apart — five around 30.17 and three around 30.25 — which is what the sources say and is not a transcription error; the research file flags two of the school names as possibly one place listed twice. Split it or correct it from AdminApp, which is the path for this. Every landmark sits in the area its own source names; none was assigned by guess, because a wrong zone sends a courier to the wrong part of town. The seven neighbourhood names inside the city (القلفاط، الطابية، غرب السمني، خط خنيفر، المحكمة غرب، أبو بكر الصديق، قبلي ممدوح عشرة) are real but no source places any landmark in them, so the city is one zone until somebody with local knowledge splits it from AdminApp. Delivery fees are still the owner's to set.",
   "city": {
     "id": "edku",
     "name": "إدكو",
     "isActive": true
   },
-
   "zones": [
-    { "id": "balad", "name": "البلد", "defaultDeliveryFee": 800, "sortOrder": 0 },
-    { "id": "maamoura", "name": "المعمورة", "defaultDeliveryFee": 1000, "sortOrder": 1 },
-    { "id": "shatt", "name": "الشط", "defaultDeliveryFee": 1500, "sortOrder": 2 },
-    { "id": "mahatta", "name": "المحطة", "defaultDeliveryFee": 800, "sortOrder": 3 },
-    { "id": "bahri", "name": "بحري", "defaultDeliveryFee": 1200, "sortOrder": 4 },
-    { "id": "qibli", "name": "قبلي", "defaultDeliveryFee": 1200, "sortOrder": 5 },
-    { "id": "sahel", "name": "الساحل", "defaultDeliveryFee": 1800, "sortOrder": 6 },
-    { "id": "gharb", "name": "الغربية", "defaultDeliveryFee": 1500, "sortOrder": 7 }
+    {
+      "id": "edku",
+      "name": "إدكو",
+      "defaultDeliveryFee": 800,
+      "sortOrder": 0
+    },
+    {
+      "id": "dabono",
+      "name": "منشية دبونو",
+      "defaultDeliveryFee": 1500,
+      "sortOrder": 1
+    },
+    {
+      "id": "amal",
+      "name": "منشية الأمل",
+      "defaultDeliveryFee": 1500,
+      "sortOrder": 2
+    },
+    {
+      "id": "maadiya",
+      "name": "المعدية",
+      "defaultDeliveryFee": 1500,
+      "sortOrder": 3
+    }
   ],
-
   "landmarks": [
-    { "zoneId": "balad", "name": "المسجد الكبير" },
-    { "zoneId": "balad", "name": "سوق البلد" },
-    { "zoneId": "balad", "name": "مكتب البريد" },
-    { "zoneId": "balad", "name": "الوحدة الصحية" },
-    { "zoneId": "balad", "name": "موقف التوك توك" },
-
-    { "zoneId": "maamoura", "name": "صيدلية النور" },
-    { "zoneId": "maamoura", "name": "مسجد الفتح" },
-    { "zoneId": "maamoura", "name": "مدرسة المعمورة الابتدائية" },
-    { "zoneId": "maamoura", "name": "الفرن البلدي" },
-    { "zoneId": "maamoura", "name": "كافيه الركن" },
-
-    { "zoneId": "shatt", "name": "الكورنيش" },
-    { "zoneId": "shatt", "name": "نادي الشط" },
-    { "zoneId": "shatt", "name": "مرسى الصيادين" },
-    { "zoneId": "shatt", "name": "سوق السمك" },
-
-    { "zoneId": "mahatta", "name": "محطة القطار" },
-    { "zoneId": "mahatta", "name": "موقف الأتوبيس" },
-    { "zoneId": "mahatta", "name": "صيدلية المحطة" },
-    { "zoneId": "mahatta", "name": "مسجد المحطة" },
-
-    { "zoneId": "bahri", "name": "مدرسة بحري الإعدادية" },
-    { "zoneId": "bahri", "name": "مسجد بحري" },
-    { "zoneId": "bahri", "name": "محل العطارة" },
-
-    { "zoneId": "qibli", "name": "مسجد قبلي" },
-    { "zoneId": "qibli", "name": "المخبز الآلي" },
-    { "zoneId": "qibli", "name": "ملعب النادي" },
-
-    { "zoneId": "sahel", "name": "الطريق الساحلي" },
-    { "zoneId": "sahel", "name": "محطة البنزين" },
-    { "zoneId": "sahel", "name": "كوبري الساحل" },
-
-    { "zoneId": "gharb", "name": "مسجد الغربية" },
-    { "zoneId": "gharb", "name": "الوحدة المحلية" },
-    { "zoneId": "gharb", "name": "سوق الجمعة" }
+    {
+      "zoneId": "edku",
+      "name": "شاطئ ادكو الجديد",
+      "lat": 31.3208639,
+      "lng": 30.2839234
+    },
+    {
+      "zoneId": "edku",
+      "name": "طاحونة كوم الطواحين",
+      "lat": 31.3051726,
+      "lng": 30.3013353
+    },
+    {
+      "zoneId": "edku",
+      "name": "مسجد الشلبي",
+      "lat": 31.3056289,
+      "lng": 30.3044289
+    },
+    {
+      "zoneId": "edku",
+      "name": "قاعة السرايا",
+      "lat": 31.322464,
+      "lng": 30.2978555
+    },
+    {
+      "zoneId": "edku",
+      "name": "مجلس مدينة ادكو",
+      "lat": 31.2988649,
+      "lng": 30.3041114
+    },
+    {
+      "zoneId": "edku",
+      "name": "مسجد الهداية",
+      "lat": 31.3020148,
+      "lng": 30.3017306
+    },
+    {
+      "zoneId": "edku",
+      "name": "مدرسة إدكو الثانوي الزراعي",
+      "lat": 31.272275,
+      "lng": 30.2380268
+    },
+    {
+      "zoneId": "edku",
+      "name": "مدرسة عمر بن الخطاب",
+      "lat": 31.2696016,
+      "lng": 30.1787855
+    },
+    {
+      "zoneId": "edku",
+      "name": "مدرسة غنيم الابتدائيه",
+      "lat": 31.2441027,
+      "lng": 30.3728528
+    },
+    {
+      "zoneId": "edku",
+      "name": "مدرسة جمعة غضبان الابتدائية",
+      "lat": 31.268374,
+      "lng": 30.4005617
+    },
+    {
+      "zoneId": "dabono",
+      "name": "مدرسه مهنا ((اعدادى و ابتداءى ))",
+      "lat": 31.23944,
+      "lng": 30.42582
+    },
+    {
+      "zoneId": "dabono",
+      "name": "مركز تنمية مهارات الاطفال بقرية ديبونو",
+      "lat": 31.2649888,
+      "lng": 30.378138
+    },
+    {
+      "zoneId": "edku",
+      "name": "معهد فتيات الشهيد محمد البنا الاعدادى بقرية7 ادكو",
+      "lat": 31.2827677,
+      "lng": 30.3804627
+    },
+    {
+      "zoneId": "dabono",
+      "name": "مدرسةقرية 6 الابتدائية",
+      "lat": 31.2723005,
+      "lng": 30.3540488
+    },
+    {
+      "zoneId": "amal",
+      "name": "مدرسه منشيه الامل الابتدائيه",
+      "lat": 31.3062259,
+      "lng": 30.3657779
+    },
+    {
+      "zoneId": "edku",
+      "name": "مدرسة ادكو الجديدة الصباحية",
+      "lat": 31.3058849,
+      "lng": 30.311657
+    },
+    {
+      "zoneId": "edku",
+      "name": "مدارس الأمين الخاصة",
+      "lat": 31.2999472,
+      "lng": 30.297064
+    },
+    {
+      "zoneId": "edku",
+      "name": "مدرسة ادكو الحديثة الابتدائية",
+      "lat": 31.2988409,
+      "lng": 30.2955914
+    },
+    {
+      "zoneId": "edku",
+      "name": "مدرسة الحرية المسائيه الابتدائيه",
+      "lat": 31.2966045,
+      "lng": 30.2882466
+    },
+    {
+      "zoneId": "edku",
+      "name": "مدرسة السلام الرسمية",
+      "lat": 31.3011763,
+      "lng": 30.3097427
+    },
+    {
+      "zoneId": "edku",
+      "name": "مدرسة ادكو الثانوية بنين",
+      "lat": 31.2951085,
+      "lng": 30.2933155
+    },
+    {
+      "zoneId": "edku",
+      "name": "مدرسة ادكو الاعدادية بنين",
+      "lat": 31.3020581,
+      "lng": 30.3079272
+    },
+    {
+      "zoneId": "dabono",
+      "name": "مقابر قرية 6 أكتوبر",
+      "lat": 31.2751997,
+      "lng": 30.3569748
+    },
+    {
+      "zoneId": "dabono",
+      "name": "قرية رقم 6",
+      "lat": 31.2711156,
+      "lng": 30.352864
+    },
+    {
+      "zoneId": "dabono",
+      "name": "الجمعية الزراعية بقرية 6 أكتوبر",
+      "lat": 31.2709884,
+      "lng": 30.3484721
+    },
+    {
+      "zoneId": "dabono",
+      "name": "الوحدة المحلية بقرية 6 أكتوبر",
+      "lat": 31.2712414,
+      "lng": 30.348274
+    },
+    {
+      "zoneId": "edku",
+      "name": "مؤسسة العز لتجارة مبيدات الآفات الزراعية.",
+      "lat": 31.2724475,
+      "lng": 30.3516177
+    },
+    {
+      "zoneId": "edku",
+      "name": "صيدليةد نعيم سعيد",
+      "lat": 31.3074891,
+      "lng": 30.2905193
+    },
+    {
+      "zoneId": "edku",
+      "name": "صيدلية د.محمداحمدنمير",
+      "lat": 31.2971926,
+      "lng": 30.2931392
+    },
+    {
+      "zoneId": "edku",
+      "name": "صيدلية د.عماد مدره",
+      "lat": 31.3014167,
+      "lng": 30.3041289
+    },
+    {
+      "zoneId": "edku",
+      "name": "صيدلية د. الشيماء عبد المحسن",
+      "lat": 31.308642,
+      "lng": 30.2999216
+    },
+    {
+      "zoneId": "edku",
+      "name": "صيدلية د سعيد بلال",
+      "lat": 31.3045545,
+      "lng": 30.3014832
+    },
+    {
+      "zoneId": "edku",
+      "name": "صيدليات عشرة",
+      "lat": 31.3040451,
+      "lng": 30.3066568
+    },
+    {
+      "zoneId": "edku",
+      "name": "صيدلية د/نبيل حسن زيتون",
+      "lat": 31.3085621,
+      "lng": 30.2917558
+    },
+    {
+      "zoneId": "edku",
+      "name": "صيدلية الجزيرة",
+      "lat": 31.3027364,
+      "lng": 30.3107392
+    },
+    {
+      "zoneId": "maadiya",
+      "name": "المعدية",
+      "lat": 31.2838358,
+      "lng": 30.2455033
+    },
+    {
+      "zoneId": "maadiya",
+      "name": "محطة قطار المعدية",
+      "lat": 31.2673033,
+      "lng": 30.1745691
+    },
+    {
+      "zoneId": "maadiya",
+      "name": "مدرسة المعدية الثانوية المشتركة",
+      "lat": 31.2688999,
+      "lng": 30.1803588
+    },
+    {
+      "zoneId": "maadiya",
+      "name": "مدرسة المعدية الاعدادية المشتركه",
+      "lat": 31.2661203,
+      "lng": 30.1749165
+    },
+    {
+      "zoneId": "maadiya",
+      "name": "مدرسة المعدية الابتدائية المشتركة",
+      "lat": 31.2677242,
+      "lng": 30.1755029
+    },
+    {
+      "zoneId": "maadiya",
+      "name": "مدرسة بني المعدية",
+      "lat": 31.2676486,
+      "lng": 30.1758945
+    },
+    {
+      "zoneId": "maadiya",
+      "name": "مدرسة المعديه الفنيه بنات",
+      "lat": 31.2786712,
+      "lng": 30.2523813
+    },
+    {
+      "zoneId": "maadiya",
+      "name": "مدرسة المعدية الرسمية لغات",
+      "lat": 31.2799523,
+      "lng": 30.2504565
+    }
   ],
-
   "plans": [
     {
       "id": "free",
@@ -119,12 +338,45 @@
       }
     }
   ],
-
   "homeSections": [
-    { "key": "categories", "titleAr": "الأقسام", "type": "categoryChips", "sortOrder": 0, "isVisible": true },
-    { "key": "top_banner", "titleAr": "", "type": "adSlot", "sortOrder": 1, "isVisible": true, "params": { "maxAds": 3, "rotationSeconds": 6 } },
-    { "key": "home_kitchen", "titleAr": "أكل بيتي النهارده", "type": "homeKitchenToday", "sortOrder": 2, "isVisible": true },
-    { "key": "most_ordered", "titleAr": "الأكتر طلباً", "type": "mostOrdered", "sortOrder": 3, "isVisible": true },
-    { "key": "all_merchants", "titleAr": "كل المطاعم", "type": "merchantList", "sortOrder": 4, "isVisible": true }
+    {
+      "key": "categories",
+      "titleAr": "الأقسام",
+      "type": "categoryChips",
+      "sortOrder": 0,
+      "isVisible": true
+    },
+    {
+      "key": "top_banner",
+      "titleAr": "",
+      "type": "adSlot",
+      "sortOrder": 1,
+      "isVisible": true,
+      "params": {
+        "maxAds": 3,
+        "rotationSeconds": 6
+      }
+    },
+    {
+      "key": "home_kitchen",
+      "titleAr": "أكل بيتي النهارده",
+      "type": "homeKitchenToday",
+      "sortOrder": 2,
+      "isVisible": true
+    },
+    {
+      "key": "most_ordered",
+      "titleAr": "الأكتر طلباً",
+      "type": "mostOrdered",
+      "sortOrder": 3,
+      "isVisible": true
+    },
+    {
+      "key": "all_merchants",
+      "titleAr": "كل المطاعم",
+      "type": "merchantList",
+      "sortOrder": 4,
+      "isVisible": true
+    }
   ]
 }

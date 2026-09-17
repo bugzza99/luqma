@@ -96,36 +96,57 @@ class SupabaseMerchantRepository implements MerchantRepository {
   /// - **Fields with a life of their own**: served zones and menu categories live in
   ///   their own tables and move through their own paths, so a merchant edit neither
   ///   reads nor rewrites them.
-  Map<String, dynamic> _row(Merchant m) => {
-        'city_id': m.cityId,
-        'type': m.type.name,
-        'name': m.name,
-        'zone_id': m.zoneId,
-        'phone': m.phone,
-        'status': m.status.name,
-        'description': m.description,
-        // jsonb whose inner keys the app itself wrote, already camelCase.
-        'opening_hours': [for (final w in m.openingHours) w.toJson()],
-        // UTC, spelled: Dart writes local times without a zone suffix, and timestamptz
-        // would read that as its own zone — the pause would come back an instant other
-        // than the one the merchant set.
-        'paused_until': m.pausedUntil?.toUtc().toIso8601String(),
-        'logo_media_id': _uuidOrNull(m.logoMediaId),
-        'cover_media_id': _uuidOrNull(m.coverMediaId),
-        'delivers_self': m.deliversSelf,
-        'owner_uid': _uuidOrNull(m.ownerUid),
-        'plan_id': m.planId,
-        'revenue_model': m.revenueModel.name,
-        'revenue_value': m.revenueValue,
-        'delivery_fee_override': m.deliveryFeeOverride,
-        'min_order': m.minOrder,
-        // Omitted until 2026-08-29, and the customer read the consequence: every
-        // merchant card in the city says "٣٠ دقيقة تقريباً" because the column keeps its
-        // default and nothing has ever been able to write another number to it. The
-        // column is in the merchant's own writable list — see the guard in
-        // `20260827010000_images_and_cuisines.sql` — so this was a gap, not a boundary.
-        'prep_minutes': m.prepMinutes,
-      };
+  Map<String, dynamic> _row(Merchant m) => rowFor(m);
+
+  /// The columns a save carries.
+  ///
+  /// Written out rather than derived from the model's JSON, because three kinds of field
+  /// must never reach this statement:
+  ///
+  /// - **The server's money**: `wallet_balance`, `commission_owed`. A form built from a
+  ///   stale load would quietly zero a wallet the server has been moving all day. In
+  ///   Firestore the merged set had the same hazard; here it is answered instead of
+  ///   survived.
+  /// - **The customers' verdict**: `rating_avg`, `rating_count`. Same argument, less money.
+  /// - **Fields with a life of their own**: served zones and menu categories live in
+  ///   their own tables and move through their own paths, so a merchant edit neither
+  ///   reads nor rewrites them.
+  static Map<String, dynamic> rowFor(Merchant m) {
+    // Both halves or neither: the column check refuses half a pin, and half a pin is
+    // a marker in the Gulf of Guinea rather than no marker at all.
+    final hasCompletePin = m.lat != null && m.lng != null;
+
+    return {
+      'city_id': m.cityId,
+      'type': m.type.name,
+      'name': m.name,
+      'zone_id': m.zoneId,
+      'phone': m.phone,
+      'status': m.status.name,
+      'description': m.description,
+      // jsonb whose inner keys the app itself wrote, already camelCase.
+      'opening_hours': [for (final w in m.openingHours) w.toJson()],
+      // UTC, spelled: Dart writes local times without a zone suffix, and timestamptz
+      // would read that as its own zone — the pause would come back an instant other
+      // than the one the merchant set.
+      'paused_until': m.pausedUntil?.toUtc().toIso8601String(),
+      'logo_media_id': _uuidOrNull(m.logoMediaId),
+      'cover_media_id': _uuidOrNull(m.coverMediaId),
+      'delivers_self': m.deliversSelf,
+      'owner_uid': _uuidOrNull(m.ownerUid),
+      'plan_id': m.planId,
+      'revenue_model': m.revenueModel.name,
+      'revenue_value': m.revenueValue,
+      'delivery_fee_override': m.deliveryFeeOverride,
+      'min_order': m.minOrder,
+      'prep_minutes': m.prepMinutes,
+      'landmark_id': _uuidOrNull(m.landmarkId),
+      'landmark_name': m.landmarkName,
+      'street': m.street,
+      'lat': hasCompletePin ? m.lat : null,
+      'lng': hasCompletePin ? m.lng : null,
+    };
+  }
 
   /// The address of an embedded picture, but only once somebody has approved it.
   ///

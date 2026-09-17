@@ -192,12 +192,15 @@ class _ModelState extends ConsumerState<_Model> {
                           vertical: 2,
                         ),
                         decoration: BoxDecoration(
-                          color: colors.success,
+                          color: colors.brand,
                           borderRadius: Radii.pillAll,
                         ),
                         child: Text(
                           'الحالي',
-                          style: LuqmaType.caption.copyWith(color: colors.onBrand),
+                          style: LuqmaType.caption.copyWith(
+                            color: colors.onBrand,
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
                       ),
                   ],
@@ -607,10 +610,10 @@ class _Settlements extends ConsumerWidget {
 
     return _Card(
       cardKey: MerchantBillingScreen.settlementsKey,
-      title: 'الحساب على الأوردرات',
+      title: 'إجمالي الحساب من البداية',
       child: LuqmaAsyncView(
         value: summary,
-        onRetry: () => ref.invalidate(merchantSettlementsProvider(merchant.id)),
+        onRetry: () => ref.invalidate(settlementSummaryProvider(merchant.id)),
         builder: (context, s) => Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -626,18 +629,21 @@ class _Settlements extends ConsumerWidget {
                 ),
               )
             else ...[
-              _Figure(label: strings.orderCount(s.orders), value: strings.price(s.taken)),
+              LuqmaBillLine(
+                label: strings.orderCount(s.orders),
+                value: strings.price(s.taken),
+              ),
               if (s.platformOwes > 0) ...[
                 const SizedBox(height: Space.sm),
-                _Figure(
-                  figureKey: MerchantBillingScreen.platformOwesKey,
+                LuqmaBillLine(
+                  key: MerchantBillingScreen.platformOwesKey,
                   // Netted against the commission by a person, not by this screen: what
                   // the platform owes for its own discounts is a different conversation
                   // from what the merchant owes, and collapsing them into one number is
                   // how a merchant stops being able to check either.
                   label: 'لقمة عليها للمطعم',
                   value: strings.price(s.platformOwes),
-                  emphasis: colors.success,
+                  emphasis: true,
                 ),
               ],
             ],
@@ -649,8 +655,8 @@ class _Settlements extends ConsumerWidget {
             if (merchant.revenueModel == RevenueModel.commission ||
                   merchant.commissionOwed != 0) ...[
               const SizedBox(height: Space.sm),
-              _Figure(
-                figureKey: merchant.commissionOwed < 0
+              LuqmaBillLine(
+                key: merchant.commissionOwed < 0
                     ? MerchantBillingScreen.creditKey
                     : MerchantBillingScreen.owedKey,
                 // Negative means the merchant handed over more than they owed — an
@@ -662,7 +668,7 @@ class _Settlements extends ConsumerWidget {
                     ? 'رصيد للمطعم عندنا'
                     : 'المستحق على المطعم',
                 value: strings.price(merchant.commissionOwed.abs()),
-                emphasis: merchant.commissionOwed < 0 ? colors.success : colors.price,
+                emphasis: merchant.commissionOwed < 0,
               ),
             ],
             // Only where there is something to take. A merchant who owes nothing and a
@@ -697,9 +703,19 @@ class _Settlements extends ConsumerWidget {
 
     if (amount == null || !context.mounted) return;
 
+    // One id for this collection, made before the first attempt and reused by every
+    // retry. Without it a reply lost on a shop's wifi turned into a second subtraction:
+    // the function took the money again and wrote a second receipt, and a 100 debt became
+    // 100 of credit — money the platform now owes for cash it collected once.
+    final attempt = newClientOrderId();
+
     final result = await ref
         .read(settlementRepositoryProvider)
-        .recordPayment(merchantId: merchant.id, amount: amount);
+        .recordPayment(
+          merchantId: merchant.id,
+          amount: amount,
+          clientPaymentId: attempt,
+        );
     if (!context.mounted) return;
 
     // The result is read rather than discarded. A collection that failed and a
@@ -709,6 +725,7 @@ class _Settlements extends ConsumerWidget {
       case Ok(:final value):
         ref.invalidate(merchantProvider(merchant.id));
         ref.invalidate(commissionPaymentsProvider(merchant.id));
+        ref.invalidate(settlementSummaryProvider(merchant.id));
         ScaffoldMessenger.maybeOf(context)?.showSnackBar(
           SnackBar(
             key: MerchantBillingScreen.collectedKey,
@@ -720,47 +737,34 @@ class _Settlements extends ConsumerWidget {
           ),
         );
       case Err():
+        // «جرّب تاني» is now safe advice rather than a guess. A failure here can mean the
+        // request never landed *or* that it landed and the reply did not, and the two are
+        // indistinguishable from this side — so the sentence used to invite the admin to
+        // collect the same cash twice. Retrying carries the same id, which the server
+        // answers with the original receipt.
         ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-          const SnackBar(content: Text('التحصيل مااتسجّلش. جرّب تاني.')),
+          SnackBar(
+            content: const Text('التحصيل مااتسجّلش. جرّب تاني.'),
+            action: SnackBarAction(
+              label: 'جرّب تاني',
+              onPressed: () async {
+                final retry = await ref
+                    .read(settlementRepositoryProvider)
+                    .recordPayment(
+                      merchantId: merchant.id,
+                      amount: amount,
+                      clientPaymentId: attempt,
+                    );
+                if (retry is Ok) {
+                  ref.invalidate(merchantProvider(merchant.id));
+                  ref.invalidate(commissionPaymentsProvider(merchant.id));
+                  ref.invalidate(settlementSummaryProvider(merchant.id));
+                }
+              },
+            ),
+          ),
         );
     }
-  }
-}
-
-class _Figure extends StatelessWidget {
-  const _Figure({
-    required this.label,
-    required this.value,
-    this.emphasis,
-    this.figureKey,
-  });
-
-  final String label;
-  final String value;
-  final Color? emphasis;
-  final Key? figureKey;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colors = theme.luqma;
-
-    return Row(
-      key: figureKey,
-      children: [
-        Expanded(
-          child: Text(
-            label,
-            style: theme.textTheme.bodyMedium
-                ?.copyWith(color: colors.textSecondary),
-          ),
-        ),
-        Text(
-          value,
-          style: LuqmaType.priceSmall.copyWith(color: emphasis ?? colors.textPrimary),
-        ),
-      ],
-    );
   }
 }
 
@@ -789,11 +793,17 @@ class _Card extends StatelessWidget {
         decoration: BoxDecoration(
           borderRadius: Radii.cardAll,
           border: Border.all(color: colors.hairline),
+          boxShadow: Elevations.card,
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text(title, style: theme.textTheme.titleLarge),
+            Text(
+              title,
+              style: theme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w700,
+              ),
+            ),
             const SizedBox(height: Space.md),
             child,
           ],

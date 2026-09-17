@@ -80,7 +80,10 @@ class _PreorderCheckoutScreenState extends ConsumerState<PreorderCheckoutScreen>
             // second portion from the cook's remaining quantity.
             clientOrderId: _clientOrderId,
             dailyMealId: meal.id,
-            addressId: address?.id,
+            // An address is also a request for paid delivery on the server. The one
+            // remembered elsewhere in the app must not charge somebody collecting
+            // their meal, or arranging the handover directly with the cook.
+            addressId: _needsAddress ? address?.id : null,
             type: OrderType.preorder,
             items: [
               OrderLine(
@@ -121,7 +124,8 @@ class _PreorderCheckoutScreenState extends ConsumerState<PreorderCheckoutScreen>
 
     final meal = widget.meal;
     final cook = ref.watch(merchantProvider(meal.merchantId)).value;
-    final total = meal.price * widget.quantity;
+    final config = ref.watch(appConfigProvider);
+    final subtotal = meal.price * widget.quantity;
 
     // Having an address is not the same as being somewhere the cook delivers to.
     // `CheckoutScreen` has always made that distinction; this screen checked only that
@@ -131,6 +135,14 @@ class _PreorderCheckoutScreenState extends ConsumerState<PreorderCheckoutScreen>
         (cook != null &&
             address != null &&
             Delivery.serves(merchant: cook, zoneId: address.zoneId));
+
+    // The courier collects the server's total, so the reservation must quote the same
+    // clamped fee as ordinary checkout. A cook's stored override can be below a newly
+    // configured minimum; using it raw would leave the customer short at the door.
+    final deliveryFee = _needsAddress && cook != null && zone != null && inRange
+        ? Delivery.feeFor(merchant: cook, zone: zone, config: config)
+        : 0;
+    final total = subtotal + deliveryFee;
 
     final ready = identity != null &&
         !_sending &&
@@ -181,7 +193,11 @@ class _PreorderCheckoutScreenState extends ConsumerState<PreorderCheckoutScreen>
                 _Collection(meal: meal),
                 if (_needsAddress) ...[
                   const SizedBox(height: Space.lg),
-                  _AddressCard(address: address, zoneName: zone?.name),
+                  _AddressCard(
+                    address: address,
+                    zoneName: zone?.name,
+                    merchantId: widget.meal.merchantId,
+                  ),
                   if (address == null) ...[
                     const SizedBox(height: Space.md),
                     LuqmaNotice(
@@ -228,6 +244,21 @@ class _PreorderCheckoutScreenState extends ConsumerState<PreorderCheckoutScreen>
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
+                      if (_needsAddress) ...[
+                        LuqmaBillLine(label: 'الأصناف', value: strings.price(subtotal)),
+                        const SizedBox(height: Space.sm),
+                        LuqmaBillLine(
+                          label: zone == null
+                              ? 'التوصيل'
+                              : 'التوصيل — ${zone.name}',
+                          // An unknown destination is not an offer of free delivery.
+                          value: address == null ? '—' : strings.price(deliveryFee),
+                        ),
+                        const Padding(
+                          padding: EdgeInsets.symmetric(vertical: Space.md),
+                          child: Divider(height: 1),
+                        ),
+                      ],
                       Row(
                         key: PreorderCheckoutScreen.totalKey,
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -353,10 +384,23 @@ class _Collection extends StatelessWidget {
 }
 
 class _AddressCard extends StatelessWidget {
-  const _AddressCard({required this.address, required this.zoneName});
+  const _AddressCard({
+    required this.address,
+    required this.zoneName,
+    required this.merchantId,
+  });
 
   final Address? address;
   final String? zoneName;
+
+  /// The cook, carried down so the address screens can quote this meal's delivery and
+  /// refuse a zone the kitchen does not reach. It was the fourth door into that flow and
+  /// the only one that opened it blind — so a pre-order was the one path where somebody
+  /// could save an address the kitchen cannot deliver to and find out from the refusal.
+  ///
+  /// Never null here: this card is built only inside the `_needsAddress` branch, which is
+  /// exactly the case where a courier is carrying it.
+  final String merchantId;
 
   @override
   Widget build(BuildContext context) {
@@ -382,7 +426,9 @@ class _AddressCard extends StatelessWidget {
           ),
           TextButton(
             onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute<void>(builder: (_) => const AddressListScreen()),
+              MaterialPageRoute<void>(
+                builder: (_) => AddressListScreen(merchantId: merchantId),
+              ),
             ),
             child: Text(address == null ? 'ضيف' : 'غيّر'),
           ),

@@ -41,7 +41,9 @@ class MerchantApp extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return MaterialApp(
-      title: 'لقمة — التاجر',
+      // The name the recents screen shows, and it has to match the icon's: a courier who
+      // switches apps and finds «التاجر» on the card is told this app is not for them.
+      title: 'لقمة شريك',
       debugShowCheckedModeBanner: false,
       theme: LuqmaTheme.light,
       darkTheme: LuqmaTheme.dark,

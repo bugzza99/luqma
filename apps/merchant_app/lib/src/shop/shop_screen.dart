@@ -4,8 +4,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:luqma_core/luqma_core.dart';
 
+import 'analytics_screen.dart';
+import 'coupons_screen.dart';
+import 'courier_roster_screen.dart';
 import 'hours_screen.dart';
+import 'merchant_address_screen.dart';
 import 'statement_screen.dart';
+import 'subscription_screen.dart';
 
 
 import '../promotions/promotions_screen.dart';
@@ -24,9 +29,15 @@ class ShopScreen extends ConsumerWidget {
   static const feedbackKey = Key('shop.feedback');
   static const billingKey = Key('shop.billing');
   static const statementKey = Key('shop.statement');
+  static const analyticsKey = Key('shop.analytics');
+  static const salesKey = analyticsKey;
   static const walletKey = Key('shop.wallet');
   static const promotionsKey = Key('shop.promotions');
   static const hoursKey = Key('shop.hours');
+  static const addressKey = Key('shop.address');
+  static const rosterKey = Key('shop.roster');
+  static const couponsKey = Key('shop.coupons');
+  static const subscriptionKey = Key('shop.subscription');
   static const noFeedbackKey = Key('shop.noFeedback');
 
   @override
@@ -73,18 +84,15 @@ class ShopScreen extends ConsumerWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                if (merchant != null) _Identity(merchant: merchant),
-                const SizedBox(height: Space.lg),
-                if (merchant != null) _Rating(merchant: merchant),
                 if (merchant != null) ...[
-                  const SizedBox(height: Space.lg),
-                  _Billing(merchant: merchant),
+                  const _SectionHeader(title: 'هوية المتجر'),
+                  _Identity(merchant: merchant),
+                  const SizedBox(height: Space.md),
+                  _Rating(merchant: merchant),
+                  const SizedBox(height: Space.section),
                 ],
                 if (staff.merchantId != null) ...[
-                  const SizedBox(height: Space.lg),
-                  // The schedule the whole product derives "can this shop take an order"
-                  // from. It had no editor anywhere, so a merchant whose hours were wrong
-                  // — or empty — was shut with nothing on any screen that changed it.
+                  const _SectionHeader(title: 'التشغيل والتوصيل'),
                   _Tile(
                     tileKey: ShopScreen.hoursKey,
                     icon: Icons.schedule_rounded,
@@ -96,24 +104,70 @@ class ShopScreen extends ConsumerWidget {
                       ),
                     ),
                   ),
-                ],
-                const SizedBox(height: Space.lg),
-                _Tile(
-                  tileKey: ShopScreen.promotionsKey,
-                  icon: Icons.campaign_outlined,
-                  title: 'الإعلانات',
-                  subtitle: 'اطلب بانر أو رفع في الترتيب',
-                  onTap: () => Navigator.of(context).push(
-                    MaterialPageRoute<void>(
-                      builder: (_) => const MerchantPromotionsScreen(),
+                  const SizedBox(height: Space.sm),
+                  _Tile(
+                    tileKey: ShopScreen.addressKey,
+                    icon: Icons.storefront_rounded,
+                    title: 'عنوان المطعم',
+                    subtitle: merchant?.formatAddress() ??
+                        'مكان المحل عشان الطيارين يوصلوا له',
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) =>
+                            MerchantAddressScreen(merchantId: staff.merchantId!),
+                      ),
                     ),
                   ),
-                ),
-                if (staff.merchantId != null) ...[
-                  const SizedBox(height: Space.lg),
-                  _Feedback(merchantId: staff.merchantId!),
+                  const SizedBox(height: Space.sm),
+                  _Tile(
+                    tileKey: ShopScreen.rosterKey,
+                    icon: Icons.delivery_dining_rounded,
+                    title: 'كباتن المطعم',
+                    subtitle: 'الطيارين اللي بيشيلوا للمحل',
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) =>
+                            CourierRosterScreen(merchantId: staff.merchantId!),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: Space.section),
                 ],
-                const SizedBox(height: Space.xl),
+                if (merchant != null) ...[
+                  const _SectionHeader(title: 'الحسابات والنمو'),
+                  _Billing(merchant: merchant),
+                  const SizedBox(height: Space.sm),
+                  _Tile(
+                    tileKey: ShopScreen.promotionsKey,
+                    icon: Icons.campaign_outlined,
+                    title: 'الخطة والإعلانات',
+                    subtitle: 'اطلب بانر أو رفع في الترتيب',
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => const MerchantPromotionsScreen(),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: Space.sm),
+                  _Tile(
+                    tileKey: ShopScreen.couponsKey,
+                    icon: Icons.confirmation_number_outlined,
+                    title: 'كوبونات الخصم',
+                    subtitle: 'اعمل كود خصم لعملائك — الخصم على حساب المحل',
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => MerchantCouponsScreen(merchant: merchant),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: Space.section),
+                ],
+                if (staff.merchantId != null) ...[
+                  const _SectionHeader(title: 'آراء العملاء'),
+                  _Feedback(merchantId: staff.merchantId!),
+                  const SizedBox(height: Space.section),
+                ],
+                const SizedBox(height: Space.sm),
                 Text(
                   staff.email ?? '',
                   textAlign: TextAlign.center,
@@ -330,6 +384,7 @@ class _IdentityState extends ConsumerState<_Identity> {
         color: colors.card,
         borderRadius: Radii.cardAll,
         border: Border.all(color: colors.hairline),
+        boxShadow: Elevations.card,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -376,7 +431,6 @@ class _IdentityState extends ConsumerState<_Identity> {
             url: _coverUrl,
             name: merchant.name,
             ownerId: merchant.id,
-            height: 120,
             onUploaded: (media) => _attach(media, isLogo: false),
           ),
           const SizedBox(height: Space.lg),
@@ -395,7 +449,6 @@ class _IdentityState extends ConsumerState<_Identity> {
             url: _logoUrl,
             name: merchant.name,
             ownerId: merchant.id,
-            height: 96,
             onUploaded: (media) => _attach(media, isLogo: true),
           ),
           const SizedBox(height: Space.md),
@@ -467,6 +520,14 @@ class _Billing extends ConsumerWidget {
     RevenueModel.prepaid: 'رصيد مدفوع مقدماً',
   };
 
+  /// Basis points as a percentage, without a trailing `.0`: 750 → `7.5`, 1000 → `10`.
+  static String _percent(int basisPoints) {
+    final whole = basisPoints ~/ 100;
+    final rest = basisPoints % 100;
+    if (rest == 0) return '$whole';
+    return '$whole.${rest.toString().padLeft(2, '0').replaceFirst(RegExp(r'0$'), '')}';
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
@@ -488,6 +549,7 @@ class _Billing extends ConsumerWidget {
         color: colors.card,
         borderRadius: Radii.cardAll,
         border: Border.all(color: colors.hairline),
+        boxShadow: Elevations.card,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -507,6 +569,20 @@ class _Billing extends ConsumerWidget {
                 ),
               ),
             ],
+          ),
+          const SizedBox(height: Space.xs),
+          // The terms in one line. Without it the card was a plan name over a lone link,
+          // and said nothing about what the shop actually pays.
+          Text(
+            switch (merchant.revenueModel) {
+              RevenueModel.subscription =>
+                'مبلغ ثابت كل شهر، ومفيش عمولة على الطلبات.',
+              RevenueModel.commission =>
+                '${_percent(merchant.revenueValue)}% على الأكل بس. التوصيل مش بناخد منه حاجة.',
+              RevenueModel.prepaid =>
+                'بيتخصم ${strings.price(merchant.revenueValue)} من الرصيد مع كل طلب يتوصّل، ومش أكتر من تمن الأكل.',
+            },
+            style: LuqmaType.bodySmall.copyWith(color: colors.textSecondary),
           ),
           if (merchant.revenueModel == RevenueModel.prepaid) ...[
             const SizedBox(height: Space.sm),
@@ -551,25 +627,49 @@ class _Billing extends ConsumerWidget {
               ),
             ),
           ],
-          // Only where something is actually taken per order. Under a subscription the
-          // statement is a page of zeroes, and a screen that says nothing every time is
-          // one somebody stops believing when it finally has something to say.
-          if (merchant.revenueModel != RevenueModel.subscription) ...[
-            const SizedBox(height: Space.sm),
-            Align(
-              alignment: AlignmentDirectional.centerStart,
-              child: TextButton.icon(
-                key: ShopScreen.statementKey,
+          const SizedBox(height: Space.sm),
+          Wrap(
+            spacing: Space.sm,
+            runSpacing: Space.sm,
+            children: [
+              // Only where something is actually taken per order. Under a subscription the
+              // statement is a page of zeroes, and a screen that says nothing every time is
+              // one somebody stops believing when it finally has something to say.
+              if (merchant.revenueModel != RevenueModel.subscription)
+                TextButton.icon(
+                  key: ShopScreen.statementKey,
+                  onPressed: () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => StatementScreen(merchantId: merchant.id),
+                    ),
+                  ),
+                  icon: const Icon(Icons.list_alt_rounded, size: Sizes.iconSm),
+                  label: const Text('كشف الحساب'),
+                ),
+              // Ungated: a shop's own numbers are never hidden behind a plan.
+              TextButton.icon(
+                key: ShopScreen.analyticsKey,
                 onPressed: () => Navigator.of(context).push(
                   MaterialPageRoute<void>(
-                    builder: (_) => StatementScreen(merchantId: merchant.id),
+                    builder: (_) => AnalyticsScreen(merchantId: merchant.id),
                   ),
                 ),
-                icon: const Icon(Icons.list_alt_rounded, size: Sizes.iconSm),
-                label: const Text('كشف الحساب'),
+                icon: const Icon(Icons.bar_chart_rounded, size: Sizes.iconSm),
+                label: const Text('الإحصائيات'),
               ),
-            ),
-          ],
+              // Where a shop asks for a plan — a monthly amount instead of commission.
+              TextButton.icon(
+                key: ShopScreen.subscriptionKey,
+                onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => SubscriptionScreen(merchantId: merchant.id),
+                  ),
+                ),
+                icon: const Icon(Icons.workspace_premium_outlined, size: Sizes.iconSm),
+                label: const Text('الاشتراك'),
+              ),
+            ],
+          ),
         ],
       ),
     );
@@ -594,8 +694,6 @@ class _Feedback extends ConsumerWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text('اللي العملاء قالوه', style: theme.textTheme.titleLarge),
-        const SizedBox(height: Space.sm),
         // Left hand-written: this is a section inside a page that is otherwise fine, so
         // a failure is one quiet sentence rather than the full error block with a retry
         // that `LuqmaAsyncView` draws. Losing the ratings must not take over the screen.
@@ -646,6 +744,7 @@ class _FeedbackRow extends StatelessWidget {
         color: colors.card,
         borderRadius: Radii.cardAll,
         border: Border.all(color: colors.hairline),
+        boxShadow: Elevations.card,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -699,6 +798,7 @@ class _Rating extends ConsumerWidget {
         color: colors.card,
         borderRadius: Radii.cardAll,
         border: Border.all(color: colors.hairline),
+        boxShadow: Elevations.card,
       ),
       child: Row(
         children: [
@@ -770,6 +870,7 @@ class _Tile extends StatelessWidget {
           color: colors.card,
           borderRadius: Radii.cardAll,
           border: Border.all(color: colors.hairline),
+          boxShadow: Elevations.card,
         ),
         child: Row(
           children: [
@@ -795,6 +896,29 @@ class _Tile extends StatelessWidget {
               size: Sizes.iconMd,
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SectionHeader extends StatelessWidget {
+  const _SectionHeader({required this.title});
+
+  final String title;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = theme.luqma;
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: Space.sm),
+      child: Text(
+        title,
+        style: theme.textTheme.titleMedium?.copyWith(
+          color: colors.textPrimary,
+          fontWeight: FontWeight.bold,
         ),
       ),
     );

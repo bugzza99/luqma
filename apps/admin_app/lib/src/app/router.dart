@@ -7,7 +7,10 @@ import '../auth/admin_access.dart';
 import '../auth/gate_screens.dart';
 import '../auth/identity_provider.dart';
 import '../about/about_editor_screen.dart';
+import '../developer/developer_editor_screen.dart';
+import '../applications/applications_screen.dart';
 import '../config/config_screen.dart';
+import '../coupons/coupons_screen.dart';
 import '../cuisines/cuisines_screen.dart';
 import '../customers/customers_screen.dart';
 import '../dashboard/dashboard_screen.dart';
@@ -22,6 +25,7 @@ import '../settings/settings_screen.dart';
 import '../dashboard/module_grid_screen.dart';
 import '../shell/layout.dart';
 import '../staff/staff_screen.dart';
+import '../subscriptions/subscriptions_screen.dart';
 import '../statistics/statistics_screen.dart';
 
 part 'router.g.dart';
@@ -66,7 +70,22 @@ const _modules = [
   AdminModule(label: 'المطبخ', icon: Icons.restaurant_menu, route: Routes.cuisines),
   AdminModule(label: 'الصفحة الرئيسية', icon: Icons.dashboard, route: Routes.home),
   AdminModule(label: 'الإحصائيات', icon: Icons.bar_chart, route: Routes.statistics),
+  AdminModule(
+    label: 'الكوبونات',
+    icon: Icons.confirmation_number_outlined,
+    route: Routes.coupons,
+  ),
   AdminModule(label: 'الفريق', icon: Icons.badge, route: Routes.staff),
+  AdminModule(
+    label: 'طلبات الانضمام',
+    icon: Icons.assignment_ind_outlined,
+    route: Routes.applications,
+  ),
+  AdminModule(
+    label: 'الاشتراكات',
+    icon: Icons.card_membership,
+    route: Routes.subscriptions,
+  ),
   AdminModule(label: 'الخطط', icon: Icons.workspace_premium, route: Routes.plans),
   AdminModule(label: 'حول لقمة', icon: Icons.info_outline, route: Routes.about),
   AdminModule(label: 'الإعدادات', icon: Icons.settings, route: Routes.settings),
@@ -129,6 +148,10 @@ GoRouter router(Ref ref) {
           GoRoute(path: Routes.customers, builder: (_, _) => const CustomersScreen()),
           GoRoute(path: Routes.issues, builder: (_, _) => const IssuesScreen()),
           GoRoute(path: Routes.staff, builder: (_, _) => const StaffScreen()),
+          GoRoute(
+            path: Routes.applications,
+            builder: (_, _) => const ApplicationsScreen(),
+          ),
           GoRoute(path: Routes.zones, builder: (_, _) => const PlacesScreen()),
           GoRoute(path: Routes.media, builder: (_, _) => const MediaScreen()),
           GoRoute(
@@ -140,7 +163,16 @@ GoRouter router(Ref ref) {
           GoRoute(path: Routes.config, builder: (_, _) => const ConfigScreen()),
           GoRoute(path: Routes.plans, builder: (_, _) => const PlansEditorScreen()),
           GoRoute(path: Routes.cuisines, builder: (_, _) => const CuisinesScreen()),
+          GoRoute(path: Routes.coupons, builder: (_, _) => const CouponsScreen()),
+          GoRoute(
+            path: Routes.subscriptions,
+            builder: (_, _) => const SubscriptionsScreen(),
+          ),
           GoRoute(path: Routes.about, builder: (_, _) => const AboutEditorScreen()),
+          GoRoute(
+            path: Routes.developer,
+            builder: (_, _) => const DeveloperEditorScreen(),
+          ),
         ],
       ),
     ],

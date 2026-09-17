@@ -21,6 +21,7 @@ abstract final class Routes {
   static const customers = '/customers';
   static const issues = '/issues';
   static const staff = '/staff';
+  static const applications = '/applications';
   static const statistics = '/statistics';
   static const zones = '/zones';
   static const media = '/media';
@@ -30,9 +31,12 @@ abstract final class Routes {
   static const config = '/config';
   static const plans = '/plans';
   static const about = '/about';
+  static const developer = '/developer';
 
   /// The kinds of food the customer's home is arranged by.
   static const cuisines = '/cuisines';
+  static const coupons = '/coupons';
+  static const subscriptions = '/subscriptions';
 }
 
 enum AdminAccess {

@@ -12,6 +12,9 @@ import '../result.dart';
 /// repository with a `save` would be an interface promising something the database
 /// refuses, which is how a screen comes to show a button that cannot work.
 abstract interface class SettlementRepository {
+  /// Complete account totals, not the sum of either bounded list.
+  Future<Result<SettlementSummary>> summaryFor(String merchantId);
+
   /// The merchant's settlements, newest first.
   ///
   /// [limit] because a statement screen shows a page, not a year. The policy already
@@ -41,6 +44,12 @@ abstract interface class SettlementRepository {
     required String merchantId,
     required int amount,
     String? note,
+
+    /// Names this attempt, so a retry after a lost reply returns the original receipt
+    /// instead of collecting the cash a second time. The screen makes one per press and
+    /// keeps it across retries; null is the old behaviour and still accepted, because an
+    /// APK already on a phone cannot learn a new argument.
+    String? clientPaymentId,
   });
 }
 
@@ -48,6 +57,22 @@ class SupabaseSettlementRepository implements SettlementRepository {
   SupabaseSettlementRepository(this._db);
 
   final SupabaseClient _db;
+
+  @override
+  Future<Result<SettlementSummary>> summaryFor(String merchantId) =>
+      Result.guard(() async {
+        final row = await _db.rpc<Map<String, dynamic>?>(
+          'settlement_summary',
+          params: {'p_merchant_id': merchantId},
+        );
+        if (row == null) throw const PermissionFailure();
+        return SettlementSummary(
+          orders: row['orders'] as int,
+          taken: row['taken'] as int,
+          platformOwes: row['platform_owes'] as int,
+          paid: row['paid'] as int,
+        );
+      });
 
   @override
   Future<Result<List<OrderSettlement>>> forMerchant(
@@ -98,6 +123,12 @@ class SupabaseSettlementRepository implements SettlementRepository {
     required String merchantId,
     required int amount,
     String? note,
+
+    /// Names this attempt, so a retry after a lost reply returns the original receipt
+    /// instead of collecting the cash a second time. The screen makes one per press and
+    /// keeps it across retries; null is the old behaviour and still accepted, because an
+    /// APK already on a phone cannot learn a new argument.
+    String? clientPaymentId,
   }) {
     return Result.guard(() async {
       // An RPC rather than two writes: the receipt and the balance move together or
@@ -109,6 +140,7 @@ class SupabaseSettlementRepository implements SettlementRepository {
           'p_merchant_id': merchantId,
           'p_amount': amount,
           'p_note': note,
+          'p_client_payment_id': clientPaymentId,
         },
       );
       return result['remaining'] as int;
@@ -150,6 +182,15 @@ class FakeSettlementRepository implements SettlementRepository {
   List<CommissionPayment> get recorded => List.unmodifiable(_payments);
 
   @override
+  Future<Result<SettlementSummary>> summaryFor(String merchantId) async {
+    if (failure != null) return Result.err(failure!);
+    return Result.ok(SettlementSummary.of(
+      _settlements.where((s) => s.merchantId == merchantId),
+      payments: _payments.where((p) => p.merchantId == merchantId),
+    ));
+  }
+
+  @override
   Future<Result<List<OrderSettlement>>> forMerchant(
     String merchantId, {
     int limit = 100,
@@ -183,6 +224,12 @@ class FakeSettlementRepository implements SettlementRepository {
     required String merchantId,
     required int amount,
     String? note,
+
+    /// Names this attempt, so a retry after a lost reply returns the original receipt
+    /// instead of collecting the cash a second time. The screen makes one per press and
+    /// keeps it across retries; null is the old behaviour and still accepted, because an
+    /// APK already on a phone cannot learn a new argument.
+    String? clientPaymentId,
   }) async {
     if (failure != null) return Result.err(failure!);
     if (writeFailure != null) return Result.err(writeFailure!);

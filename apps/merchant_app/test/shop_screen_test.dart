@@ -127,4 +127,25 @@ void main() {
 
     expect(find.textContaining('جرّب تاني'), findsOneWidget);
   });
+
+  testWidgets('offers the address tile leading to the address editor', (tester) async {
+    await pump(tester);
+
+    expect(find.byKey(ShopScreen.addressKey), findsOneWidget);
+    // The shop's own discount codes, from the same section as its money and campaigns.
+    expect(find.byKey(ShopScreen.couponsKey, skipOffstage: false), findsOneWidget);
+    expect(find.text('عنوان المطعم'), findsOneWidget);
+  });
+
+  testWidgets('organizes the shop into clear sections with headers',
+      (tester) async {
+    await pump(tester);
+
+    expect(find.text('هوية المتجر'), findsOneWidget);
+    expect(find.text('التشغيل والتوصيل'), findsOneWidget);
+    expect(find.text('الحسابات والنمو'), findsOneWidget);
+    expect(find.text('آراء العملاء'), findsOneWidget);
+    // The section header already says it; a second heading under it said it again.
+    expect(find.text('اللي العملاء قالوه'), findsNothing);
+  });
 }

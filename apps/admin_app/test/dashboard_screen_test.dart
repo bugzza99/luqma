@@ -123,4 +123,18 @@ void main() {
     expect(find.byKey(DashboardScreen.ordersKey), findsNothing);
     expect(find.byKey(DashboardScreen.moneyKey), findsNothing);
   });
+
+  testWidgets('attention banner shows when items need attention and hides when quiet',
+      (tester) async {
+    await pump(tester, value: today(ordersToday: 5, openIssues: 2, needsAttention: [
+      waiting(id: 'o1', number: 104, merchantName: 'مطعم البحر'),
+    ]));
+
+    expect(find.byIcon(Icons.warning_amber_rounded), findsOneWidget);
+    expect(find.textContaining('يحتاج انتباه'), findsOneWidget);
+    expect(find.textContaining('مفتوحة'), findsOneWidget);
+
+    await pump(tester, value: today(ordersToday: 5, openIssues: 0, needsAttention: const []));
+    expect(find.byIcon(Icons.warning_amber_rounded), findsNothing);
+  });
 }

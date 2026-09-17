@@ -1,4 +1,5 @@
 import 'package:customer_app/src/home/see_all_screen.dart';
+import 'package:customer_app/src/merchant/merchant_screen.dart';
 import 'package:customer_app/src/home/sections/item_tile.dart';
 import 'package:customer_app/src/home/sections/merchant_list_section.dart';
 import 'package:customer_app/src/home/sections/merchant_tile.dart';
@@ -109,18 +110,24 @@ void main() {
   }
 
   group('the shops shelf', () {
-    testWidgets('two shops sit side by side rather than stacked', (tester) async {
+    // This asserted the opposite — two across, same row, different columns — and it was
+    // right about the grid it was written for. The design replaced that grid with a
+    // column of full-width rows: the same six shops on a screen, but each with a whole
+    // line instead of half a tile that had to truncate either the description or the
+    // rating. The test follows the intent rather than the old geometry.
+    testWidgets('shops stack as full-width rows', (tester) async {
       await pump(
         tester,
         const MerchantListSection(section: merchantList),
         merchants: [shop('m1', 'مطعم أ'), shop('m2', 'مطعم ب')],
       );
 
-      final first = tester.getCenter(find.byKey(MerchantTile.tileKey('m1')));
-      final second = tester.getCenter(find.byKey(MerchantTile.tileKey('m2')));
+      final first = tester.getRect(find.byKey(MerchantTile.tileKey('m1')));
+      final second = tester.getRect(find.byKey(MerchantTile.tileKey('m2')));
 
-      expect(first.dy, second.dy, reason: 'same row');
-      expect(first.dx, isNot(second.dx), reason: 'different columns');
+      expect(second.top, greaterThan(first.bottom - 1), reason: 'stacked, not side by side');
+      expect(first.width, second.width, reason: 'both full width');
+      expect(first.left, second.left, reason: 'one column');
     });
 
     // What a customer chooses on, in the space a tile has: whose shop it is, whether it
@@ -178,6 +185,29 @@ void main() {
 
       expect(find.byKey(ItemTile.shopKey), findsOneWidget);
       expect(find.text('مطعم أ'), findsOneWidget);
+    });
+
+    // Tapping a dish used to land on the shop's page with the dish nowhere in sight: the
+    // customer picked «فراخ مشوية» and got a menu to go and find it in again. The shop
+    // still opens — adding anything needs it, and dismissing the sheet should leave them
+    // there — but the dish they actually pressed comes with them.
+    testWidgets('tapping one carries the dish into the shop it came from',
+        (tester) async {
+      await pump(
+        tester,
+        const PopularItemsSection(section: popular),
+        items: [dish('i1', 'فراخ مشوية', merchantName: 'مطعم أ')],
+        merchants: [shop('m1', 'مطعم أ')],
+      );
+
+      await tester.tap(find.byKey(ItemTile.tileKey('i1')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+
+      final opened = tester.widget<MerchantScreen>(find.byType(MerchantScreen));
+      expect(opened.merchantId, 'm1');
+      expect(opened.openItemId, 'i1',
+          reason: 'the shop opens, and so does the dish that was pressed');
     });
 
     testWidgets('most ordered comes first', (tester) async {

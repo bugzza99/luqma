@@ -77,7 +77,65 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  testWidgets('chosen extras qualify their dish, before the next dish', (tester) async {
+    final incoming = order().copyWith(items: [
+      OrderLine.fromJson({
+        ...line.toJson(),
+        'optionIds': ['large', 'cheese'],
+        'optionsTotal': 750,
+        'options': [
+          {'id': 'large', 'name': 'حجم كبير', 'price': 500},
+          {'id': 'cheese', 'name': 'جبنة زيادة', 'price': 250},
+        ],
+      }),
+      const OrderLine(itemId: 'i2', name: 'سلطة', unitPrice: 1000, quantity: 1),
+    ]);
+    await pump(tester, seed: [incoming]);
+    final extras = find.text('حجم كبير، جبنة زيادة');
+    expect(extras, findsOneWidget);
+    expect(tester.getTopLeft(extras).dy,
+        greaterThanOrEqualTo(tester.getBottomLeft(find.text('فراخ مشوية')).dy));
+    expect(tester.getBottomLeft(extras).dy,
+        lessThanOrEqualTo(tester.getTopLeft(find.text('سلطة')).dy));
+    expect(find.text(''), findsNothing);
+  });
+
+  testWidgets('no chosen extras draws no extra text or space', (tester) async {
+    // Old rows have ids but no frozen names. They must still open without inventing
+    // names from a menu that may have changed since the order was placed.
+    for (final snapshot in [<String, dynamic>{}, <String, dynamic>{'options': []}]) {
+      final incoming = order().copyWith(items: [
+        OrderLine.fromJson({
+          ...(line.toJson()..remove('options')),
+          'optionIds': ['old'],
+          ...snapshot,
+        }),
+      ]);
+      await pump(tester, seed: [incoming]);
+      expect(find.text(''), findsNothing);
+      expect(find.text('حجم كبير، جبنة زيادة'), findsNothing);
+      final dish = find.text('فراخ مشوية');
+      final row = find.ancestor(of: dish, matching: find.byType(Row)).first;
+      expect(tester.getSize(row).height, tester.getSize(dish).height);
+    }
+  });
+
   group('what is on the board', () {
+    testWidgets('the checkout instruction stays visible while cooking', (tester) async {
+      final cooking = Order.fromJson({
+        ...order(status: OrderStatus.preparing).toJson(),
+        'note': 'من غير شطة\nالدور التالت، الجرس مكسور',
+      });
+      await pump(tester, seed: [cooking]);
+      expect(find.text('من غير شطة\nالدور التالت، الجرس مكسور'), findsOneWidget);
+      expect(find.text('ملاحظة العميل'), findsOneWidget);
+    });
+
+    testWidgets('no checkout instruction draws no note section', (tester) async {
+      await pump(tester, seed: [order()]);
+      expect(find.text('ملاحظة العميل'), findsNothing);
+    });
+
     testWidgets('orders that have been accepted and not yet finished',
         (tester) async {
       await pump(tester, seed: [
@@ -155,6 +213,123 @@ void main() {
     testWidgets('the phone number is on the card', (tester) async {
       await pump(tester, seed: [order()]);
       expect(find.textContaining('01000000000'), findsWidgets);
+    });
+  });
+
+  group('M02 columns restyle', () {
+    testWidgets('columns exist for accepted, preparing, and outForDelivery stages', (tester) async {
+      await pump(tester, seed: [
+        order(id: 'a', status: OrderStatus.accepted),
+        order(id: 'b', number: 102, status: OrderStatus.preparing),
+        order(id: 'c', number: 103, status: OrderStatus.outForDelivery),
+      ]);
+
+      expect(find.byKey(LiveBoardScreen.columnKey(OrderStatus.accepted)), findsOneWidget);
+      expect(find.byKey(LiveBoardScreen.columnKey(OrderStatus.preparing)), findsOneWidget);
+      expect(find.byKey(LiveBoardScreen.columnKey(OrderStatus.outForDelivery)), findsOneWidget);
+
+      expect(
+        find.descendant(
+          of: find.byKey(LiveBoardScreen.columnKey(OrderStatus.accepted)),
+          matching: find.text('مقبولة'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: find.byKey(LiveBoardScreen.columnKey(OrderStatus.preparing)),
+          matching: find.text('قيد التحضير'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: find.byKey(LiveBoardScreen.columnKey(OrderStatus.outForDelivery)),
+          matching: find.text('خرج للتوصيل'),
+        ),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('column headers display correct order counts', (tester) async {
+      await pump(tester, seed: [
+        order(id: 'a1', status: OrderStatus.accepted),
+        order(id: 'a2', number: 102, status: OrderStatus.accepted),
+        order(id: 'b1', number: 103, status: OrderStatus.preparing),
+      ]);
+
+      expect(
+        find.descendant(
+          of: find.byKey(LiveBoardScreen.columnCountKey(OrderStatus.accepted)),
+          matching: find.text('2'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: find.byKey(LiveBoardScreen.columnCountKey(OrderStatus.preparing)),
+          matching: find.text('1'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: find.byKey(LiveBoardScreen.columnCountKey(OrderStatus.outForDelivery)),
+          matching: find.text('0'),
+        ),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('advancing an order updates column counts and moves card', (tester) async {
+      await pump(tester, seed: [order(id: 'o1', status: OrderStatus.accepted)]);
+
+      expect(
+        find.descendant(
+          of: find.byKey(LiveBoardScreen.columnCountKey(OrderStatus.accepted)),
+          matching: find.text('1'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: find.byKey(LiveBoardScreen.columnCountKey(OrderStatus.preparing)),
+          matching: find.text('0'),
+        ),
+        findsOneWidget,
+      );
+
+      await tester.tap(find.byKey(LiveBoardScreen.advanceKey('o1')));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.descendant(
+          of: find.byKey(LiveBoardScreen.columnCountKey(OrderStatus.accepted)),
+          matching: find.text('0'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: find.byKey(LiveBoardScreen.columnCountKey(OrderStatus.preparing)),
+          matching: find.text('1'),
+        ),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('columns render without overflow on a phone view', (tester) async {
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      await pump(tester, seed: [
+        order(id: 'a', status: OrderStatus.accepted),
+        order(id: 'b', number: 102, status: OrderStatus.preparing),
+        order(id: 'c', number: 103, status: OrderStatus.outForDelivery),
+      ]);
+
+      expect(tester.takeException(), isNull);
     });
   });
 }

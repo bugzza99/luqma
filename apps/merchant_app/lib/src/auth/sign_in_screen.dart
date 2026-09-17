@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:luqma_core/luqma_core.dart';
 
+import 'apply_screen.dart';
+
 /// The way in.
 ///
 /// Email and password, because a merchant account is created *for* somebody by the
@@ -13,6 +15,7 @@ class SignInScreen extends ConsumerStatefulWidget {
   static const emailKey = Key('signIn.email');
   static const passwordKey = Key('signIn.password');
   static const submitKey = Key('signIn.submit');
+  static const applyKey = Key('signIn.apply');
   static const errorKey = Key('signIn.error');
 
   @override
@@ -81,14 +84,20 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                 children: [
                   const Center(child: LuqmaLockup(logo: LuqmaLogo.mark, height: 72)),
                   const SizedBox(height: Space.xl),
+                  // Not «دخول التاجر». The courier signs in on this same screen, and a
+                  // rider who opens the app and reads «التاجر» across the top is being told
+                  // they installed the wrong one. The app is «لقمة شريك» for that reason.
                   Text(
-                    'دخول التاجر',
+                    'دخول الشركاء',
                     style: theme.textTheme.headlineMedium,
                     textAlign: TextAlign.center,
                   ),
                   const SizedBox(height: Space.sm),
                   Text(
-                    'الحساب بيتعمل من إدارة لقمة. لو مش معاك بيانات دخول كلّمهم.',
+                    // This said the only way in was to call the office. There is a way in
+                    // now — the application just below — and a sentence telling somebody
+                    // there is not sends them to the telephone instead of the button.
+                    'مطعم، أكل بيتي، أو مندوب توصيل. لو لسه ملكش حساب، قدّم طلب وإحنا هنكلمك.',
                     style: theme.textTheme.bodySmall
                         ?.copyWith(color: colors.textSecondary),
                     textAlign: TextAlign.center,
@@ -131,6 +140,16 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                       minimumSize: const Size.fromHeight(50),
                     ),
                     child: Text(_busy ? 'لحظة…' : 'دخول'),
+                  ),
+                  const SizedBox(height: Space.md),
+                  TextButton(
+                    key: SignInScreen.applyKey,
+                    onPressed: () => Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => const ApplyScreen(),
+                      ),
+                    ),
+                    child: const Text('طلب انضمام جديد'),
                   ),
                 ],
               ),

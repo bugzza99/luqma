@@ -1,5 +1,5 @@
 import { describe, it } from 'node:test';
-import { strictEqual, ok } from 'node:assert';
+import { deepStrictEqual, strictEqual, ok } from 'node:assert';
 import { freshDatabase } from './harness.mjs';
 
 /**
@@ -69,7 +69,63 @@ describe('what the extras cost', () => {
   it('no extras is the dish alone', async () => {
     await setup();
     strictEqual((await place({})).subtotal, 10000);
+    deepStrictEqual((await db.query('select items from orders')).rows[0].items[0].options, []);
     await db.close();
+  });
+
+  it('the kitchen keeps the chosen names and unit prices after the menu changes', async () => {
+    await setup();
+    try {
+      await place({
+        optionIds: ['o2', 'o1', 'o1'], quantity: 3,
+        options: [{ id: 'o1', name: 'كلام العميل', price: 0 }],
+      });
+      await db.query(`update menu_items set options =
+        '[{"id":"o1","name":"صلصة جديدة","price":900}]'::jsonb where id=$1`, [item]);
+      const saved = (await db.query('select items, pricing from orders')).rows[0];
+      deepStrictEqual(saved.items[0].options, [
+        { id: 'o1', name: 'صلصة', price: 500 },
+        { id: 'o2', name: 'أرز', price: 750 },
+      ]);
+      deepStrictEqual(saved.items[0].optionIds, ['o2', 'o1', 'o1']);
+      strictEqual(saved.items[0].optionsTotal, 1250);
+      strictEqual(saved.pricing.subtotal, 33750);
+      strictEqual(saved.pricing.total, 34750);
+    } finally {
+      await db.close();
+    }
+  });
+
+  it('a daily meal freezes no extras, even when the draft claims them', async () => {
+    await setup();
+    try {
+      const meal = (await db.query(`insert into daily_meals
+        (merchant_id, city_id, name, price, date, total_qty, remaining_qty,
+         pickup_window_start, pickup_window_end, status)
+        values ($1, 'p', 'محشي', 9000, (now() at time zone 'Africa/Cairo')::date,
+                20, 20, 0, 1440, 'published') returning id`, [merchant])).rows[0].id;
+      await db.query('select place_order($1::jsonb)', [JSON.stringify({
+        merchantId: merchant, addressId, type: 'preorder', dailyMealId: meal,
+        items: [{ itemId: meal, quantity: 2, optionIds: ['o1'], optionsTotal: 500,
+          options: [{ id: 'o1', name: 'صلصة', price: 500 }] }],
+      })]);
+      const saved = (await db.query('select items, pricing from orders')).rows[0];
+      deepStrictEqual(saved.items[0].options, []);
+      strictEqual(saved.items[0].optionsTotal, 0);
+      strictEqual(saved.pricing.subtotal, 18000);
+    } finally {
+      await db.close();
+    }
+  });
+
+  it('an option id outside a list freezes nothing, just as it costs nothing', async () => {
+    await setup();
+    try {
+      strictEqual((await place({ optionIds: 'o1' })).subtotal, 10000);
+      deepStrictEqual((await db.query('select items from orders')).rows[0].items[0].options, []);
+    } finally {
+      await db.close();
+    }
   });
 
   it('an extra is priced from the menu', async () => {

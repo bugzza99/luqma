@@ -59,6 +59,23 @@ android {
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+
+        // One architecture in the APK, and this is what actually enforces it.
+        //
+        // `--target-platform android-arm64` limits Flutter's own engine and compiled Dart
+        // to arm64 and says nothing about the plugins: without this filter Gradle packs
+        // MapLibre and Sentry for every ABI it knows, and the customer APK came out at
+        // **53.5 MB with x86_64 and armeabi-v7a copies of libmaplibre.so** that no phone
+        // in Edku will ever load.
+        //
+        // `--split-per-abi` used to hide that by splitting the output — at the cost of
+        // adding 1000 x the architecture's index to the version code, which is where the
+        // 2009 on حسابي came from. The filter gives the one architecture without the
+        // offset.
+        ndk {
+            abiFilters.clear()
+            abiFilters.add("arm64-v8a")
+        }
     }
 
     signingConfigs {

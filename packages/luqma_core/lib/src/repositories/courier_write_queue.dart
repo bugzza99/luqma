@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import '../models/order.dart';
 import 'courier_order_repository.dart';
 import '../result.dart';
 
@@ -114,6 +115,60 @@ class CourierRejected extends CourierSubmitOutcome {
   const CourierRejected(this.failure);
 
   final Failure failure;
+}
+
+/// Where an order stands for the courier who is holding it.
+///
+/// The server is not the whole truth on this screen, and treating it as one cost the
+/// half of the delivery that carries the cash. A courier taps «بدأت التوصيل» in a
+/// stairwell with no signal: the tap is queued, the server goes on saying `preparing`,
+/// and a card reading the status alone offers «بدأت التوصيل» a second time and never
+/// offers «تم التسليم». So a run could be *started* with no connection and not
+/// *finished* with one — the money changed hands at the door and the one tap that
+/// records it was the tap the screen refused to draw.
+///
+/// What this reads is the courier's own queue, which is the only other thing on the
+/// phone that knows what they did.
+enum CourierProgress {
+  /// Nothing queued, and the server has not sent it out: the next tap starts the run.
+  toCollect,
+
+  /// On the road — by the server's account, or by a tap still waiting to be sent.
+  onTheRoad,
+
+  /// This phone has already recorded the end of it. There is no tap left to make, and
+  /// offering one would queue the same delivery twice.
+  finished;
+
+  /// [status] is what the server last said; [pending] is everything this account has
+  /// queued, for every order.
+  static CourierProgress of(
+    String orderId,
+    OrderStatus status,
+    Iterable<PendingCourierWrite> pending,
+  ) {
+    // The last one wins: a courier who started and then delivered has queued two, and
+    // where they stand is wherever the second one put them.
+    final queued = lastQueuedFor(orderId, pending);
+    return switch (queued) {
+      CourierWriteKind.delivered || CourierWriteKind.failed => finished,
+      CourierWriteKind.onTheWay => onTheRoad,
+      null => status == OrderStatus.outForDelivery ? onTheRoad : toCollect,
+    };
+  }
+}
+
+/// The last thing this phone recorded about one order and has not yet managed to send,
+/// or null when the queue holds nothing for it.
+CourierWriteKind? lastQueuedFor(
+  String orderId,
+  Iterable<PendingCourierWrite> pending,
+) {
+  CourierWriteKind? last;
+  for (final write in pending) {
+    if (write.orderId == orderId) last = write.kind;
+  }
+  return last;
 }
 
 /// A local queue over [CourierOrderRepository].

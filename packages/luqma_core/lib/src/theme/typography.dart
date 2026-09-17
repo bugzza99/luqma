@@ -43,7 +43,18 @@ abstract final class LuqmaType {
   static final button = _style(size: 16, weight: semibold, lineHeight: 1.20);
   static final body = _style(size: 15, weight: regular, lineHeight: 1.60);
   static final bodyStrong = _style(size: 15, weight: semibold, lineHeight: 1.60);
-  static final bodySmall = _style(size: 13, weight: regular, lineHeight: 1.60);
+  /// Secondary body text: the line under a card, a dish description, a meta row.
+  ///
+  /// **The same size as [body], and that is the settlement rather than an oversight.**
+  /// `docs/14` has asked for a 15sp floor since Phase 0 and this token sat at 13 with a
+  /// hundred call sites across the three apps, so the published rule and the code
+  /// disagreed for nine phases. The owner settled it on 2026-09-11: the token moves.
+  ///
+  /// It keeps its own name because the call sites mean something by it — this is the
+  /// quieter line, and it is drawn in `textSecondary` wherever the theme maps it. The
+  /// difference is colour and role, not size. [caption] is the token for text that is
+  /// genuinely small, and it is a label rather than body text.
+  static final bodySmall = _style(size: 15, weight: regular, lineHeight: 1.60);
   static final caption =
       _style(size: 12, weight: medium, lineHeight: 1.50, letterSpacing: 0.2);
 

@@ -11,6 +11,9 @@ import 'package:luqma_core/luqma_core.dart';
 /// says the right sentence when the create comes back refused.
 void main() {
   late FakeStaffRepository staff;
+  late FakeCourierRosterRepository roster;
+  late FakeCustomerRepository customers;
+  late FakeAdminRepository admin;
 
   const shore = Merchant(
     id: 'aaaaaaaa-0000-4000-8000-000000000001',
@@ -31,13 +34,32 @@ void main() {
     status: MerchantStatus.approved,
   );
 
-  Future<void> pump(WidgetTester tester) async {
-    staff = FakeStaffRepository();
+  Future<void> pump(
+    WidgetTester tester, {
+    Size? size,
+    FakeStaffRepository? staffRepo,
+    FakeCourierRosterRepository? rosterRepo,
+    FakeCustomerRepository? customerRepo,
+    FakeAdminRepository? adminRepo,
+  }) async {
+    if (size != null) {
+      tester.view.physicalSize = size;
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+    }
+    staff = staffRepo ?? FakeStaffRepository();
+    roster = rosterRepo ?? FakeCourierRosterRepository();
+    customers = customerRepo ?? FakeCustomerRepository(staff: staff);
+    admin = adminRepo ??
+        FakeAdminRepository(staff: staff, customers: customers);
 
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
           staffRepositoryProvider.overrideWithValue(staff),
+          courierRosterRepositoryProvider.overrideWithValue(roster),
+          customerRepositoryProvider.overrideWithValue(customers),
+          adminRepositoryProvider.overrideWithValue(admin),
           merchantRepositoryProvider.overrideWithValue(
             FakeMerchantRepository(seed: const [shore, kitchen]),
           ),
@@ -194,5 +216,558 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('الإيميل ده متسجل قبل كده.'), findsOneWidget);
+  });
+
+  group('courier detail and attachments', () {
+    const phoneSize = Size(390, 844);
+    const wideSize = Size(1200, 800);
+
+    testWidgets('tapping an owner row does not open courier detail', (tester) async {
+      final staffRepo = FakeStaffRepository();
+      await staffRepo.createAccount(
+        email: 'owner@luqma.test',
+        password: 'password123',
+        name: 'صاحب الشاطئ',
+        scope: 'merchant',
+        role: 'owner',
+        merchantId: shore.id,
+      );
+
+      await pump(tester, size: phoneSize, staffRepo: staffRepo);
+
+      expect(find.text('صاحب الشاطئ'), findsOneWidget);
+      await tester.tap(find.text('صاحب الشاطئ'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('إضافة محل'), findsNothing);
+      expect(find.text('المنصة'), findsNothing);
+    });
+
+    testWidgets('tapping a courier row opens detail with active shop names and platform row',
+        (tester) async {
+      final staffRepo = FakeStaffRepository();
+      final created = await staffRepo.createAccount(
+        email: 'courier@luqma.test',
+        password: 'password123',
+        name: 'كابتن محمود',
+        scope: 'merchant',
+        role: 'courier',
+        merchantId: shore.id,
+      );
+      final courierUid = (created as Ok<StaffMember>).value.uid;
+
+      final rosterRepo = FakeCourierRosterRepository(
+        seed: [
+          CourierRosterItem(
+            id: 'att-1',
+            courierUid: courierUid,
+            merchantId: null, // Platform row
+            isActive: true,
+          ),
+          CourierRosterItem(
+            id: 'att-2',
+            courierUid: courierUid,
+            merchantId: shore.id,
+            merchantName: 'مطعم الشاطئ',
+            isActive: true,
+          ),
+        ],
+      );
+
+      await pump(
+        tester,
+        size: phoneSize,
+        staffRepo: staffRepo,
+        rosterRepo: rosterRepo,
+      );
+
+      await tester.tap(find.text('كابتن محمود'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('المنصة'), findsOneWidget);
+      expect(find.text('مطعم الشاطئ'), findsWidgets);
+      expect(find.text('إضافة محل'), findsOneWidget);
+      // Already holds platform, so "إضافة للمنصة" should NOT be shown
+      expect(find.text('إضافة للمنصة'), findsNothing);
+    });
+
+    testWidgets('add to platform button appears when platform is not held and attaches when tapped',
+        (tester) async {
+      final staffRepo = FakeStaffRepository();
+      final created = await staffRepo.createAccount(
+        email: 'courier@luqma.test',
+        password: 'password123',
+        name: 'كابتن كريم',
+        scope: 'merchant',
+        role: 'courier',
+        merchantId: shore.id,
+      );
+      final courierUid = (created as Ok<StaffMember>).value.uid;
+
+      final rosterRepo = FakeCourierRosterRepository(
+        seed: [
+          CourierRosterItem(
+            id: 'att-1',
+            courierUid: courierUid,
+            merchantId: shore.id,
+            merchantName: 'مطعم الشاطئ',
+            isActive: true,
+          ),
+        ],
+      );
+
+      await pump(
+        tester,
+        size: phoneSize,
+        staffRepo: staffRepo,
+        rosterRepo: rosterRepo,
+      );
+
+      await tester.tap(find.text('كابتن كريم'));
+      await tester.pumpAndSettle();
+
+      // Platform not held yet, so button is present
+      expect(find.text('إضافة للمنصة'), findsOneWidget);
+
+      await tester.tap(find.text('إضافة للمنصة'));
+      await tester.pumpAndSettle();
+
+      // Platform row attached!
+      expect(
+        rosterRepo.all.any(
+          (a) => a.courierUid == courierUid && a.merchantId == null && a.isActive,
+        ),
+        isTrue,
+      );
+      // Button disappears once platform is held
+      expect(find.text('إضافة للمنصة'), findsNothing);
+    });
+
+    testWidgets('add shop reuses merchant picker and attaches courier to picked shop',
+        (tester) async {
+      final staffRepo = FakeStaffRepository();
+      final created = await staffRepo.createAccount(
+        email: 'courier@luqma.test',
+        password: 'password123',
+        name: 'كابتن يوسف',
+        scope: 'merchant',
+        role: 'courier',
+        merchantId: shore.id,
+      );
+      final courierUid = (created as Ok<StaffMember>).value.uid;
+
+      final rosterRepo = FakeCourierRosterRepository(
+        seed: [
+          CourierRosterItem(
+            id: 'att-1',
+            courierUid: courierUid,
+            merchantId: shore.id,
+            merchantName: 'مطعم الشاطئ',
+            isActive: true,
+          ),
+        ],
+      );
+
+      await pump(
+        tester,
+        size: phoneSize,
+        staffRepo: staffRepo,
+        rosterRepo: rosterRepo,
+      );
+
+      await tester.tap(find.text('كابتن يوسف'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('إضافة محل'));
+      await tester.pumpAndSettle();
+
+      // Reuses _MerchantPicker
+      await chooseMerchant(tester, 'مطبخ أم أحمد');
+      await tester.tap(find.text('إضافة').last);
+      await tester.pumpAndSettle();
+
+      expect(
+        rosterRepo.all.any(
+          (a) => a.courierUid == courierUid && a.merchantId == kitchen.id && a.isActive,
+        ),
+        isTrue,
+      );
+      expect(find.text('مطبخ أم أحمد'), findsWidgets);
+    });
+
+    testWidgets('detach requires confirmation and deactivates the attachment',
+        (tester) async {
+      final staffRepo = FakeStaffRepository();
+      final created = await staffRepo.createAccount(
+        email: 'courier@luqma.test',
+        password: 'password123',
+        name: 'كابتن أحمد',
+        scope: 'merchant',
+        role: 'courier',
+        merchantId: shore.id,
+      );
+      final courierUid = (created as Ok<StaffMember>).value.uid;
+
+      final rosterRepo = FakeCourierRosterRepository(
+        seed: [
+          CourierRosterItem(
+            id: 'att-1',
+            courierUid: courierUid,
+            merchantId: shore.id,
+            merchantName: 'مطعم الشاطئ',
+            isActive: true,
+          ),
+        ],
+      );
+
+      await pump(
+        tester,
+        size: phoneSize,
+        staffRepo: staffRepo,
+        rosterRepo: rosterRepo,
+      );
+
+      await tester.tap(find.text('كابتن أحمد'));
+      await tester.pumpAndSettle();
+
+      // Find detach button
+      final detachBtn = find.byTooltip('إلغاء الربط');
+      expect(detachBtn, findsOneWidget);
+
+      // Tap detach -> confirmation dialog pops up
+      await tester.tap(detachBtn);
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text('هل أنت متأكد من إلغاء الربط؟ سيتوقف الكابتن عن استلام طلبات هذا المحل فوراً.'),
+        findsOneWidget,
+      );
+
+      // Cancel first
+      await tester.tap(find.text('إلغاء'));
+      await tester.pumpAndSettle();
+
+      // Still active
+      expect(
+        rosterRepo.all.firstWhere((a) => a.id == 'att-1').isActive,
+        isTrue,
+      );
+
+      // Tap detach again and confirm
+      await tester.tap(detachBtn);
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('تأكيد إلغاء الربط'));
+      await tester.pumpAndSettle();
+
+      // Now deactivated
+      expect(
+        rosterRepo.all.firstWhere((a) => a.id == 'att-1').isActive,
+        isFalse,
+      );
+    });
+
+    testWidgets('wide layout displays list and detail side by side without breaking',
+        (tester) async {
+      final staffRepo = FakeStaffRepository();
+      final created = await staffRepo.createAccount(
+        email: 'courier@luqma.test',
+        password: 'password123',
+        name: 'كابتن عادل',
+        scope: 'merchant',
+        role: 'courier',
+        merchantId: shore.id,
+      );
+      final courierUid = (created as Ok<StaffMember>).value.uid;
+
+      final rosterRepo = FakeCourierRosterRepository(
+        seed: [
+          CourierRosterItem(
+            id: 'att-1',
+            courierUid: courierUid,
+            merchantId: null,
+            isActive: true,
+          ),
+          CourierRosterItem(
+            id: 'att-2',
+            courierUid: courierUid,
+            merchantId: shore.id,
+            merchantName: 'مطعم الشاطئ',
+            isActive: true,
+          ),
+        ],
+      );
+
+      await pump(
+        tester,
+        size: wideSize,
+        staffRepo: staffRepo,
+        rosterRepo: rosterRepo,
+      );
+
+      // On wide layout, tapping courier selects them into the detail pane
+      await tester.tap(find.text('كابتن عادل'));
+      await tester.pumpAndSettle();
+
+      // Both the staff list and the detail pane are on screen simultaneously
+      expect(find.text('فريق العمل'), findsOneWidget);
+      expect(find.text('المنصة'), findsOneWidget);
+      expect(find.text('مطعم الشاطئ'), findsWidgets);
+      expect(find.text('إضافة محل'), findsOneWidget);
+    });
+
+    testWidgets('role filter chips filter the staff list and inactive member shows status',
+        (tester) async {
+      final staffRepo = FakeStaffRepository();
+      await staffRepo.createAccount(
+        email: 'admin@luqma.test',
+        password: 'password123',
+        name: 'مصطفى صلاح',
+        scope: 'platform',
+        role: 'admin',
+      );
+      final courierRes = await staffRepo.createAccount(
+        email: 'courier@luqma.test',
+        password: 'password123',
+        name: 'يوسف عادل',
+        scope: 'merchant',
+        role: 'courier',
+        merchantId: shore.id,
+      );
+      final courierUid = (courierRes as Ok<StaffMember>).value.uid;
+      // Deactivate courier
+      await staffRepo.setActive(courierUid, active: false);
+
+      await pump(tester, size: phoneSize, staffRepo: staffRepo);
+
+      // Inactive courier shows 'موقوف'
+      expect(find.text('موقوف'), findsOneWidget);
+
+      // Both admin and courier initially visible under 'الكل'
+      expect(find.text('مصطفى صلاح'), findsOneWidget);
+      expect(find.text('يوسف عادل'), findsOneWidget);
+
+      // Tap 'أدمن' filter chip
+      await tester.tap(find.text('أدمن').first);
+      await tester.pumpAndSettle();
+
+      expect(find.text('مصطفى صلاح'), findsOneWidget);
+      expect(find.text('يوسف عادل'), findsNothing);
+
+      // Tap 'كباتن' filter chip
+      await tester.tap(find.text('كباتن').first);
+      await tester.pumpAndSettle();
+
+      expect(find.text('مصطفى صلاح'), findsNothing);
+      expect(find.text('يوسف عادل'), findsOneWidget);
+    });
+  });
+
+  group('staff password change and account deletion', () {
+    const phoneSize = Size(390, 844);
+
+    testWidgets(
+        'password button disabled until both fields match and are 8-72 chars with inline errors',
+        (tester) async {
+      final staffRepo = FakeStaffRepository();
+      await staffRepo.createAccount(
+        email: 'owner@luqma.test',
+        password: 'password123',
+        name: 'صاحب الشاطئ',
+        scope: 'merchant',
+        role: 'owner',
+        merchantId: shore.id,
+      );
+
+      await pump(tester, size: phoneSize, staffRepo: staffRepo);
+
+      await tester.tap(find.text('صاحب الشاطئ'));
+      await tester.pumpAndSettle();
+
+      final changeBtn = find.byKey(StaffScreen.changePasswordKey);
+      final newPassField = find.byKey(StaffScreen.newPasswordFieldKey);
+      final confirmPassField = find.byKey(StaffScreen.confirmPasswordFieldKey);
+
+      expect(changeBtn, findsOneWidget);
+      expect(tester.widget<FilledButton>(changeBtn).onPressed, isNull);
+
+      // Too short
+      await tester.enterText(newPassField, 'short');
+      await tester.pump();
+      expect(find.text('كلمة السر لازم تكون 8 حروف على الأقل.'), findsOneWidget);
+      expect(tester.widget<FilledButton>(changeBtn).onPressed, isNull);
+
+      // Valid new, but confirm empty
+      await tester.enterText(newPassField, 'validPassword123');
+      await tester.pump();
+      expect(find.text('كلمة السر لازم تكون 8 حروف على الأقل.'), findsNothing);
+      expect(tester.widget<FilledButton>(changeBtn).onPressed, isNull);
+
+      // Confirm does not match
+      await tester.enterText(confirmPassField, 'differentPassword');
+      await tester.pump();
+      expect(find.text('كلمتي السر مش متطابقتين.'), findsOneWidget);
+      expect(tester.widget<FilledButton>(changeBtn).onPressed, isNull);
+
+      // Both match and valid
+      await tester.enterText(confirmPassField, 'validPassword123');
+      await tester.pump();
+      expect(find.text('كلمتي السر مش متطابقتين.'), findsNothing);
+      expect(tester.widget<FilledButton>(changeBtn).onPressed, isNotNull);
+    });
+
+    testWidgets(
+        'success calls setPassword with typed value, clears fields, and shows snackbar',
+        (tester) async {
+      final staffRepo = FakeStaffRepository();
+      final res = await staffRepo.createAccount(
+        email: 'courier@luqma.test',
+        password: 'password123',
+        name: 'كابتن محمود',
+        scope: 'merchant',
+        role: 'courier',
+        merchantId: shore.id,
+      );
+      final courierUid = (res as Ok<StaffMember>).value.uid;
+
+      await pump(tester, size: phoneSize, staffRepo: staffRepo);
+
+      await tester.tap(find.text('كابتن محمود'));
+      await tester.pumpAndSettle();
+
+      await tester.drag(find.byType(SingleChildScrollView).last, const Offset(0, -300));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(
+          find.byKey(StaffScreen.newPasswordFieldKey), 'newSecurePass123');
+      await tester.enterText(
+          find.byKey(StaffScreen.confirmPasswordFieldKey), 'newSecurePass123');
+      await tester.pump();
+
+      await tester.tap(find.byKey(StaffScreen.changePasswordKey));
+      await tester.pumpAndSettle();
+
+      expect(customers.passwordCalls, [(courierUid, 'newSecurePass123')]);
+      expect(
+          tester
+              .widget<TextFormField>(find.byKey(StaffScreen.newPasswordFieldKey))
+              .controller!
+              .text,
+          isEmpty);
+      expect(
+          tester
+              .widget<TextFormField>(
+                  find.byKey(StaffScreen.confirmPasswordFieldKey))
+              .controller!
+              .text,
+          isEmpty);
+      expect(find.text('اتغيرت كلمة السر'), findsOneWidget);
+    });
+
+    testWidgets(
+        'delete dialog for owner shows specific warning and confirm calls deleteAccount',
+        (tester) async {
+      final staffRepo = FakeStaffRepository();
+      final res = await staffRepo.createAccount(
+        email: 'owner@luqma.test',
+        password: 'password123',
+        name: 'صاحب الشاطئ',
+        scope: 'merchant',
+        role: 'owner',
+        merchantId: shore.id,
+      );
+      final ownerUid = (res as Ok<StaffMember>).value.uid;
+
+      await pump(tester, size: phoneSize, staffRepo: staffRepo);
+
+      await tester.tap(find.text('صاحب الشاطئ'));
+      await tester.pumpAndSettle();
+
+      final deleteBtn = find.byKey(StaffScreen.deleteAccountKey);
+      await tester.drag(
+          find.byType(SingleChildScrollView).last, const Offset(0, -500));
+      await tester.pumpAndSettle();
+      expect(deleteBtn, findsOneWidget);
+
+      await tester.tap(deleteBtn);
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text('المحل هيفضل موجود من غير صاحب لحد ما تربطه بحساب تاني'),
+        findsOneWidget,
+      );
+      expect(find.text('مش هتقدر ترجع في الخطوة دي بعد ما تحذف.'), findsOneWidget);
+
+      final confirmBtn = find.byKey(StaffScreen.confirmDeleteAccountKey);
+      expect(confirmBtn, findsOneWidget);
+      await tester.tap(confirmBtn);
+      await tester.pumpAndSettle();
+
+      expect(admin.deletedAccountCalls, [ownerUid]);
+      expect(find.text('الحساب اتحذف'), findsOneWidget);
+    });
+
+    testWidgets(
+        'delete dialog for courier shows specific warning and confirm calls deleteAccount',
+        (tester) async {
+      final staffRepo = FakeStaffRepository();
+      final res = await staffRepo.createAccount(
+        email: 'courier@luqma.test',
+        password: 'password123',
+        name: 'كابتن محمود',
+        scope: 'merchant',
+        role: 'courier',
+        merchantId: shore.id,
+      );
+      final courierUid = (res as Ok<StaffMember>).value.uid;
+
+      await pump(tester, size: phoneSize, staffRepo: staffRepo);
+
+      await tester.tap(find.text('كابتن محمود'));
+      await tester.pumpAndSettle();
+
+      final deleteBtn = find.byKey(StaffScreen.deleteAccountKey);
+      await tester.drag(
+          find.byType(SingleChildScrollView).last, const Offset(0, -500));
+      await tester.pumpAndSettle();
+      expect(deleteBtn, findsOneWidget);
+
+      await tester.tap(deleteBtn);
+      await tester.pumpAndSettle();
+
+      expect(find.text('هيتشال من كل المحلات'), findsOneWidget);
+      expect(find.text('مش هتقدر ترجع في الخطوة دي بعد ما تحذف.'), findsOneWidget);
+
+      final confirmBtn = find.byKey(StaffScreen.confirmDeleteAccountKey);
+      expect(confirmBtn, findsOneWidget);
+      await tester.tap(confirmBtn);
+      await tester.pumpAndSettle();
+
+      expect(admin.deletedAccountCalls, [courierUid]);
+      expect(find.text('الحساب اتحذف'), findsOneWidget);
+    });
+
+    testWidgets(
+        'platform staff detail shows neither password block nor delete button',
+        (tester) async {
+      final staffRepo = FakeStaffRepository();
+      await staffRepo.createAccount(
+        email: 'admin@luqma.test',
+        password: 'password123',
+        name: 'مصطفى صلاح',
+        scope: 'platform',
+        role: 'admin',
+      );
+
+      await pump(tester, size: phoneSize, staffRepo: staffRepo);
+
+      await tester.tap(find.text('مصطفى صلاح'));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(StaffScreen.newPasswordFieldKey), findsNothing);
+      expect(find.byKey(StaffScreen.confirmPasswordFieldKey), findsNothing);
+      expect(find.byKey(StaffScreen.changePasswordKey), findsNothing);
+      expect(find.byKey(StaffScreen.deleteAccountKey), findsNothing);
+    });
   });
 }

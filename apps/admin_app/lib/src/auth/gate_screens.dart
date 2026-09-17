@@ -61,7 +61,8 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final colors = Theme.of(context).luqma;
+    final theme = Theme.of(context);
+    final colors = theme.luqma;
 
     return Scaffold(
       body: Center(
@@ -74,11 +75,31 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const LuqmaLockup(height: 44),
+                  const LuqmaLockup(logo: LuqmaLogo.mark, height: 64),
+                  const SizedBox(height: Space.lg),
+                  Text(
+                    'لوحة إدارة لقمة',
+                    style: theme.textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.w700,
+                      color: colors.textPrimary,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: Space.xs),
+                  Text(
+                    'للفريق الإداري فقط',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: colors.textSecondary,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
                   const SizedBox(height: Space.xxl),
                   TextFormField(
                     key: SignInScreen.emailKey,
-                    decoration: const InputDecoration(labelText: 'البريد'),
+                    decoration: const InputDecoration(
+                      labelText: 'البريد الإلكتروني',
+                      hintText: 'admin@luqma.app',
+                    ),
                     keyboardType: TextInputType.emailAddress,
                     autofillHints: const [AutofillHints.username],
                     validator: (v) =>
@@ -98,13 +119,39 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                   ),
                   if (_error != null) ...[
                     const SizedBox(height: Space.md),
-                    Text(_error!, style: TextStyle(color: colors.danger)),
+                    Text(
+                      _error!,
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: colors.danger,
+                        fontWeight: FontWeight.w600,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
                   ],
                   const SizedBox(height: Space.xl),
                   FilledButton(
                     key: SignInScreen.submitKey,
                     onPressed: _busy ? null : _submit,
+                    style: FilledButton.styleFrom(
+                      minimumSize: const Size.fromHeight(Sizes.minTarget),
+                    ),
                     child: Text(_busy ? '…' : 'دخول'),
+                  ),
+                  const SizedBox(height: Space.xl),
+                  // The design's A01 notice said access is checked against
+                  // `staff.scope = platform` and that every change is written to `auditLog`.
+                  // Neither belongs here. The second is not true — config changes, payments
+                  // and application reviews are audited, and menu edits, for one, are not —
+                  // and a sentence the product says about itself that is false is the kind
+                  // somebody relies on three weeks later. The first is a table and a column,
+                  // on the one screen anybody holding this APK can open without an account.
+                  Text(
+                    'للفريق الإداري فقط. الحسابات بتتعمل من جوه لقمة.',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: colors.textSecondary,
+                      height: 1.6,
+                    ),
+                    textAlign: TextAlign.center,
                   ),
                 ],
               ),

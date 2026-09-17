@@ -120,6 +120,15 @@ abstract interface class OrderRepository {
   /// Prices one coupon against one basket, placing nothing. The verdict is what the
   /// server will enforce again at placement, so the total shown is a promise kept -
   /// computed by the same arithmetic that will judge it at the door.
+  /// Whether [orderId] already carries a rating, watched rather than read once.
+  ///
+  /// [rate] upserts on the order id, so a second rating silently replaces the first —
+  /// and the form it is typed into starts empty, so somebody answering a card that came
+  /// back a second time can overwrite five stars with three without being told they had
+  /// already answered. The database has always known there is one rating per order
+  /// (`ratings.order_id` is its primary key); nothing in the product ever asked it.
+  Stream<bool> watchHasRated(String orderId);
+
   Future<Result<CouponEvaluation>> evaluateCoupon({
     required String code,
     required String merchantId,
@@ -278,6 +287,15 @@ class SupabaseOrderRepository implements OrderRepository {
     });
   }
   @override
+  Stream<bool> watchHasRated(String orderId) {
+    return _db
+        .from('ratings')
+        .stream(primaryKey: ['order_id'])
+        .eq('order_id', orderId)
+        .map((rows) => rows.isNotEmpty);
+  }
+
+  @override
   Future<Result<CouponEvaluation>> evaluateCoupon({
     required String code,
     required String merchantId,
@@ -330,6 +348,12 @@ class FakeOrderRepository implements OrderRepository {
   /// rejects everything as unknown.
   CouponEvaluation couponEvaluation =
       const CouponRejected(CouponRejection.notFound);
+
+  @override
+  Stream<bool> watchHasRated(String orderId) {
+    if (failure != null) return Stream.error(failure!);
+    return Stream.value(ratings.any((r) => r['orderId'] == orderId));
+  }
 
   @override
   Future<Result<CouponEvaluation>> evaluateCoupon({

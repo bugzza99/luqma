@@ -7,10 +7,17 @@ import 'merchant_screen.dart';
 /// One function rather than a callback threaded down through the section registry: the
 /// registry builds sections from a fixed map keyed by a server-chosen string, and it has
 /// no navigation to hand them. Every list that shows a merchant opens it the same way.
-Future<void> openMerchant(BuildContext context, String merchantId) {
+Future<void> openMerchant(
+  BuildContext context,
+  String merchantId, {
+  String? openItemId,
+}) {
   return Navigator.of(context).push(
     MaterialPageRoute<void>(
-      builder: (_) => MerchantScreen(merchantId: merchantId),
+      builder: (_) => MerchantScreen(
+        merchantId: merchantId,
+        openItemId: openItemId,
+      ),
     ),
   );
 }

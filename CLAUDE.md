@@ -487,6 +487,15 @@ variable; it simply runs in the shell that already has the right one.
 `flutter test` runs files concurrently — so in parallel the suite fails somewhere
 different every run and none of it is about the code.
 
+**`npm --prefix supabase test` is capped at two files at a time**, and the cap is the
+point. Node's test runner defaults to one worker per core and each PGlite instance is a
+whole Postgres compiled to WebAssembly; once the suite passed about forty files this
+machine ran out of memory and the run came back with a *different* set of a dozen failures
+each time, none of which reproduce when the file is run alone. That reads as flaky tests
+and is a full disk of RAM. Same family as the `-j 1` on `test_live` and the Gradle daemon
+that died mid-build the day somebody ran the schema suite beside it: **if a suite fails
+differently every run, count the processes before reading the diff.**
+
 `supabase test` runs on **PGlite**, Postgres compiled to WebAssembly: the real migrations,
 the real constraint machinery, no container. `test:stack` and `test_live` need policies,
 `auth.uid()` and the claims hook, which only exist in a real Postgres — that is the
@@ -569,10 +578,41 @@ DATABASE_URL=<luqma-test session pooler> npm --prefix supabase run test:stack
   apps have no self-serve reset. The way back stays a phone call to an admin, who issues
   a new password through `reset-customer-password`. Do not reopen this as a gap.
 - **Cash on delivery only.** The model is payment-method aware for later, nothing more.
+- **A courier is paid outside the app, and the app's job is the facts.** Settled
+  2026-09-11 when the earnings screen was specified and it turned out nothing in the
+  product knew what a courier earns — no table, no column, no rule, only a colour note in
+  a design pack. There is no courier pay model and none is being built. The screen counts
+  what the app already knows: deliveries made, cash in hand, and which shop each belongs
+  to. That is what a rider and a shop argue over at the end of a shift, and the app can
+  settle it without inventing a wage.
+- **A delivery that came back is recorded, counted on its own, and carries no money.**
+  The customer refused, or was not there. Today that is an ordinary `cancelled` with a
+  reason and `cancelled_by = 'courier'`, so the data already exists; what was missing is
+  counting it apart from an order the customer cancelled before it ever left. **Whether
+  the courier is paid for that trip is the shop's decision, made between them** — the
+  owner's call, and deliberately not a rule in here. Sales figures exclude it; the
+  courier's own count shows it beside the deliveries that landed.
 - **Arabic RTL only**, with i18n scaffolding so English is a file, not a rewrite.
 - **Western numerals** for prices (`150 ج`), not Eastern.
 - **Multi-city data model, Edku-only launch.** Everything carries `cityId`.
 - **No driver app.** Courier is a mode inside MerchantApp, driven by `staff.role`.
+  Reaffirmed 2026-09-11 against the September design handoff, which ships eleven screens
+  as a dedicated Courier App and says in its own README that the owner approved it. The
+  owner did not: asked directly, they kept the mode. The handoff is amended on this point
+  and `design/design_handoff_luqma_apps/README.md` says so at the top.
+  **Courier mode also stays one screen.** The handoff's eleven — a filtered queue, a
+  five-step pickup flow, earnings, availability, a problem sheet — are a richer product
+  than somebody can read one-handed at a junction, which is what the existing screen was
+  deliberately sized for. It gets modifications, not a shell of its own.
+- **A courier works for several merchants, and that is new.** Agreed 2026-09-11 from the
+  same handoff, and it is the one part of that divergence the owner kept. Edku's couriers
+  freelance across shops; a one-merchant scope either leaves capacity unused or forces
+  platform scope on everybody.
+  It is not a UI change. `staff.merchant_id` is a scalar, and the access-token hook copies
+  it into the JWT as a single `merchant_id` claim that `belongs_to_merchant`,
+  `is_merchant_owner` and `is_courier_for` all read. Three merchants do not fit in that
+  field. **An owner stays bound to one merchant** — only the courier relationship becomes
+  many-to-many — so `is_merchant_owner`, which guards the money, does not move.
 - **AdminApp never goes on Google Play.** Direct APK.
 - **Dynamic means values plus home-screen composition** — never full server-driven UI.
   The section registry is a fixed map of widget builders; the server picks and orders them.
@@ -582,7 +622,27 @@ DATABASE_URL=<luqma-test session pooler> npm --prefix supabase run test:stack
   captured rather than verified and the password is what protects the account.
 - **The brand name is never a text widget.** It is `LuqmaLockup`, backed by SVG. Lemonada is
   not a bundled font. Cairo renders everything else.
-- **The owner enters merchant menus and shoots photos personally.** Merchants never self-onboard.
+- **The owner enters merchant menus and shoots photos personally.**
+  **Amended 2026-09-11: there is a way in, and it is an application rather than an
+  account.** MerchantApp gains a signup page asking one question — courier, restaurant, or
+  home kitchen — and what it writes is a row in `staff_applications`: a name, a phone, a
+  kind, and whatever the applicant typed about themselves. **That row has no privileges of
+  any sort.** The owner reads it in AdminApp, telephones, and approves; approval is what
+  calls `create-staff-account`, which remains the only thing that may mint a `staff` row.
+  The reason for that shape: `staff` is what every policy in the database reads to decide
+  who you are, so a screen writing it directly would give that boundary an anonymous
+  writer, and anybody who installs the APK a row in it.
+  A merchant **does** fill in their own details now, and the owner checks them on the call
+  and corrects what is wrong from AdminApp. The zone, the hours, the delivery fee, the
+  plan and the menu stay the owner's to settle — a shop that describes its own zone wrongly
+  sends couriers to the wrong part of town, which is why this was closed in the first
+  place.
+  **A courier's attachment is granted, never claimed.** An applicant may not name the shops
+  they carry for: a rider who could attach themselves to every shop in Edku would read
+  every customer's address and telephone number in the city.
+  This replaced a decision taken an hour earlier the same day — that a merchant owner could
+  create courier accounts for their own shop. With an approval queue nobody needs to, and
+  the narrower privilege is the one not granted.
 - **Edku's zone and landmark names are entered from AdminApp, not from a file.** The names
   in `data/edku.json` are structurally correct placeholders and were never meant to ship
   as they are; the places screen edits both, and that is the path. So this is data entry
@@ -621,6 +681,24 @@ DATABASE_URL=<luqma-test session pooler> npm --prefix supabase run test:stack
   `1.0.0` on حول لقمة, directly under the owner's photo and description — a technical
   detail presented as part of who they are, and a second source of truth that would
   eventually disagree with the store.
+- **The apps are `0.9.0` until they are on Play, and nothing builds `--split-per-abi`.**
+  Two decisions taken together on 2026-09-11, both about the number a customer reads out
+  on a support call. `1.0.0` is reserved for the first build anybody can download; before
+  that it would be claiming a release that has not happened. And `--split-per-abi` adds
+  1000 × the architecture's index to the version code, so build 9 shipped as **2009** —
+  which the owner read as a year, reasonably. That offset exists so several architectures
+  of one release can coexist on Play and we ship exactly one, so it bought nothing. The
+  output is a single `app-release.apk` now and the version code is the build number in
+  `pubspec.yaml`.
+  The build number **never repeats and only ever rises**; it starts at 10 because 1 and 9
+  have both been on a handset, and Android refuses a code lower than one it has seen. A
+  repo whose version sat at `+1` while a phone carried `2008` is how that was discovered.
+- **`min_supported_version` is compared against the version *name*, not the code.**
+  `LuqmaConfig._requiresUpdate` parses three dotted integers, so setting it to `1.0.0`
+  from AdminApp while the apps are `0.9.0` walls every customer out of the product with
+  no back door — the gate is deliberately un-bypassable. It is unset in production today,
+  which is the only reason changing the version name was safe. Raise it to a version that
+  actually exists, and never above what is installed.
 
 ## Rules that are easy to break by accident
 
@@ -631,6 +709,20 @@ DATABASE_URL=<luqma-test session pooler> npm --prefix supabase run test:stack
 - Cards are **white with a soft shadow**, never `Surface #E5D3C1` — it is invisible on cream.
 - No colour is written in a screen. Everything comes from tokens in `luqma_core`.
 - Minimum body text is **15sp**, not 14. Arabic loses legibility faster than Latin.
+  **Settled 2026-09-11: the token moved.** `bodySmall` was 13sp across a hundred call
+  sites in the three apps — merchant and dish descriptions, the secondary row under every
+  card — so the published rule and the token set disagreed from Phase 0 until the
+  customer redesign closed. It is 15 now, the same size as `body`, differing from it in
+  colour and role rather than in size. `caption` stays at 12 and is deliberately outside
+  the rule: it is a label, not body text.
+  `theme_test` asked the question of `body` alone, which is how a rule about body text
+  passed for nine phases while the token most of it used sat two points under. It now
+  asks it of every style used for body text.
+  It cost one layout: the admin billing screen's record button sits below the fold on a
+  360x780 phone with the larger text, and its test had been tapping where the button
+  happened to be. The body is a `ListView`, so the fix is to scroll to it — but a screen
+  that is *not* scrollable would have been a real defect, and that is what to look for
+  when this bites again.
 - Minimum touch target 48×48dp with 8dp between targets.
 - Every uploaded image becomes a `media` document and is invisible until an admin approves it.
   There is no second path for images.

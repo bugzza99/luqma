@@ -17,6 +17,7 @@ void main() => luqmaBootstrap(() async {
   // Crash reporting: silent without a DSN dart-define, so dev builds send nothing.
   await LuqmaTelemetry.init();
   final supabase = await LuqmaSupabase.initialize();
+  unawaited(AppOpenRecorder.start(supabase, 'customer'));
   // The version this install runs as, against minSupportedVersion. Read once here so
   // everything below it stays a plain widget.
   final info = await PackageInfo.fromPlatform();
@@ -40,6 +41,8 @@ void main() => luqmaBootstrap(() async {
       appVersionProvider.overrideWithValue(
         '${info.version} (${info.buildNumber})',
       ),
+      themeModeStoreProvider
+          .overrideWithValue(SharedPreferencesThemeModeStore()),
     ],
   );
 
@@ -64,19 +67,23 @@ void main() => luqmaBootstrap(() async {
   );
 });
 
-class CustomerApp extends StatelessWidget {
+class CustomerApp extends ConsumerWidget {
   const CustomerApp({super.key, required this.currentVersion});
 
   /// What [LuqmaForceUpdateGate] compares against the owner's floor.
   final String currentVersion;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return MaterialApp(
       title: 'لقمة',
       debugShowCheckedModeBanner: false,
       theme: LuqmaTheme.light,
       darkTheme: LuqmaTheme.dark,
+      // Both themes have existed since Phase 0 and this was never set, so it defaulted
+      // to `system` and there was no way to say otherwise from inside the app. حسابي
+      // sets it now, and `system` is still where somebody who never chooses stays.
+      themeMode: ref.watch(themeModeProvider),
       // Arabic only, right-to-left everywhere. There is no English build to fall back
       // to, so the locale is fixed rather than following the device.
       locale: const Locale('ar'),

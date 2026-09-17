@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:luqma_core/luqma_core.dart';
 
+import 'order_time.dart';
+
 /// One order, followed live.
 ///
 /// The whole screen is a document listener: the merchant accepting, the courier setting
@@ -22,6 +24,11 @@ class OrderScreen extends ConsumerWidget {
   static const sendIssueKey = Key('order.sendIssue');
   static const rateKey = Key('order.rate');
   static const sendRatingKey = Key('order.sendRating');
+  static const heroKey = Key('order.hero');
+  static const stageKey = Key('order.stage');
+  static const prepQuoteKey = Key('order.prepQuote');
+  static const billKey = Key('order.bill');
+  static const callMerchantKey = Key('order.callMerchant');
 
   static Key stepKey(OrderStatus status) => Key('order.step.${status.name}');
   static Key starKey(int stars) => Key('order.star.$stars');
@@ -45,7 +52,15 @@ class OrderScreen extends ConsumerWidget {
 
     return Scaffold(
       backgroundColor: Theme.of(context).luqma.background,
-      appBar: AppBar(title: const Text('متابعة الطلب')),
+      // The number, not «متابعة الطلب». It is what a phone call to the shop opens with,
+      // and the bar is the one part of this screen that does not scroll away — which is
+      // where it has to be, because the moment somebody needs it is the moment they have
+      // scrolled to the bottom looking for how to complain.
+      appBar: AppBar(
+        title: Text(
+          order.value == null ? 'متابعة الطلب' : 'طلب #${order.value!.orderNumber}',
+        ),
+      ),
       body: LuqmaAsyncView(
         value: order,
         errorKey: OrderScreen.errorKey,
@@ -63,82 +78,63 @@ class _Loaded extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final theme = Theme.of(context);
-    final colors = theme.luqma;
-    final strings = LuqmaStrings.of(context);
+    final colors = Theme.of(context).luqma;
 
     final canCancel =
         order.status.canMoveTo(OrderStatus.cancelled, by: OrderActor.customer);
 
+    final zoneName = ref
+        .watch(zonesProvider)
+        .value
+        ?.where((z) => z.id == order.zoneId)
+        .firstOrNull
+        ?.name;
+
+    final sections = <Widget>[
+      _Hero(order: order, zoneName: zoneName),
+      if (order.status == OrderStatus.cancelled)
+        _Cancelled(order: order)
+      else
+        _Track(order: order),
+      _Bill(order: order),
+      _Items(order: order),
+      if (order.status == OrderStatus.delivered) _RatingCard(order: order),
+      _Actions(order: order, onIssue: () => _reportIssue(context, ref)),
+      if (canCancel)
+        TextButton(
+          key: OrderScreen.cancelKey,
+          onPressed: () => _confirmCancel(context, ref),
+          style: TextButton.styleFrom(
+            foregroundColor: colors.danger,
+            minimumSize: const Size.fromHeight(Sizes.minTarget),
+          ),
+          child: const Text('إلغاء الطلب'),
+        ),
+    ];
+
     return ListView(
       padding: const EdgeInsets.fromLTRB(
         Space.gutter,
-        Space.lg,
+        Space.md,
         Space.gutter,
         Space.xxxl,
       ),
       children: [
-        _Header(order: order),
-        const SizedBox(height: Space.xl),
-        if (order.status == OrderStatus.cancelled)
-          _Cancelled(order: order)
-        else
-          _Track(order: order),
-        const SizedBox(height: Space.xl),
-        _Summary(order: order),
-        const SizedBox(height: Space.xl),
-        Container(
-          padding: const EdgeInsets.all(Space.md),
-          decoration: BoxDecoration(
-            color: colors.card,
-            borderRadius: Radii.cardAll,
-            border: Border.all(color: colors.hairline),
-          ),
-          child: Row(
-            children: [
-              Icon(Icons.payments_outlined, size: Sizes.iconMd, color: colors.price),
-              const SizedBox(width: Space.md),
-              Expanded(
-                child: Text(
-                  strings.collectFromCustomer,
-                  style: theme.textTheme.bodyMedium,
-                ),
-              ),
-              Text(
-                strings.price(order.pricing.total),
-                style: LuqmaType.price.copyWith(color: colors.price),
-              ),
-            ],
-          ),
+        // Here as well as on طلباتي: checkout lands on this screen, and a customer who never
+        // opens that tab was never asked — so Android dropped every status notification.
+        const LuqmaNotificationBanner(
+          reason: 'من غيرها مش هنعرف نقولك إن المطعم قبل طلبك، ولا لما الأوردر '
+              'يخرج ويبقى في الطريق لك.',
         ),
-        if (order.status == OrderStatus.delivered) ...[
-          const SizedBox(height: Space.xl),
-          _RatingCard(order: order),
-        ],
-        const SizedBox(height: Space.xl),
-        // Always reachable, whatever state the order is in. A customer who cannot
-        // complain phones the merchant instead, and the platform never hears about it.
-        OutlinedButton.icon(
-          key: OrderScreen.issueKey,
-          onPressed: () => _reportIssue(context, ref),
-          icon: const Icon(Icons.flag_outlined, size: Sizes.iconSm),
-          label: Text(strings.orderProblem),
-          style: OutlinedButton.styleFrom(
-            minimumSize: const Size.fromHeight(Sizes.minTarget),
+        for (final (index, section) in sections.indexed)
+          Padding(
+            // The rating card appears when the food lands and the cancel button leaves
+            // when it can no longer be pressed, so this list changes length while
+            // somebody is looking at it — and Flutter matches children by position.
+            key: ValueKey('slot:${section.key ?? section.runtimeType}'),
+            padding: const EdgeInsets.only(bottom: Space.md),
+            child: LuqmaEntrance(index: index, child: section),
           ),
-        ),
-        if (canCancel) ...[
-          const SizedBox(height: Space.sm),
-          TextButton(
-            key: OrderScreen.cancelKey,
-            onPressed: () => _confirmCancel(context, ref),
-            style: TextButton.styleFrom(
-              foregroundColor: colors.danger,
-              minimumSize: const Size.fromHeight(Sizes.minTarget),
-            ),
-            child: const Text('إلغاء الطلب'),
-          ),
-        ],
       ],
     );
   }
@@ -267,28 +263,134 @@ class _IssueSheetState extends State<_IssueSheet> {
   }
 }
 
-class _Header extends StatelessWidget {
-  const _Header({required this.order});
+class _Card extends StatelessWidget {
+  const _Card({super.key, required this.child});
 
-  final Order order;
+  final Widget child;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colors = theme.luqma;
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(order.merchantName, style: theme.textTheme.headlineMedium),
-        const SizedBox(height: Space.xs),
-        // The number is what a phone call to the merchant starts with, so it is on the
-        // screen rather than buried in a receipt.
-        Text(
-          'طلب رقم ${order.orderNumber}',
-          style: LuqmaType.bodySmall.copyWith(color: colors.textSecondary),
+    return Container(
+      padding: const EdgeInsets.all(Space.md),
+      decoration: BoxDecoration(
+        color: colors.card,
+        borderRadius: Radii.cardAll,
+        border: Border.all(color: colors.hairline),
+        boxShadow:
+            theme.brightness == Brightness.light ? Elevations.card : Elevations.none,
+      ),
+      child: child,
+    );
+  }
+}
+
+/// The burgundy panel a customer opens the app to look at.
+///
+/// The artboard puts a clock time in the largest type on the screen — «هيوصلك 8:45 م».
+/// Nothing can produce that number. `prepMinutes` is what the merchant quoted **when they
+/// accepted**, and the order carries no `acceptedAt` to anchor it to, so an arrival time
+/// computed here would be a guess printed in the boldest thing on the page, on the one
+/// screen somebody checks precisely because they want to know.
+///
+/// So the biggest line is the stage, which is known for certain, and the quote is offered
+/// underneath as what it actually is: a duration the kitchen said, not a time we promise.
+class _Hero extends StatelessWidget {
+  const _Hero({required this.order, required this.zoneName});
+
+  /// The stages where a kitchen's estimate is still a statement about the future.
+  static const _quotable = {
+    OrderStatus.placed,
+    OrderStatus.accepted,
+    OrderStatus.preparing,
+  };
+
+  final Order order;
+  final String? zoneName;
+
+  static const _stage = {
+    OrderStatus.placed: 'مستنيين المطعم يرد',
+    OrderStatus.accepted: 'المطعم قبل الطلب',
+    OrderStatus.preparing: 'الطلب بيتجهز',
+    OrderStatus.outForDelivery: 'الطلب في الطريق ليك',
+    OrderStatus.delivered: 'الطلب اتسلّم',
+    OrderStatus.cancelled: 'الطلب اتلغى',
+    OrderStatus.needsAttention: 'مستنيين المطعم يرد',
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final strings = LuqmaStrings.of(context);
+
+    // The burgundy stays on a delivered order as well as a live one. It was briefly a
+    // pale card there, on the reasoning that a finished order has nothing left to
+    // announce — the owner's call is that the colour is the product's, and a receipt in
+    // the brand reads better than a receipt in grey. What the state changes is the
+    // *words*, not the ground.
+    final settled = order.status == OrderStatus.delivered;
+
+    // Fixed in both themes, not `colors.brand`. The dark theme swaps the brand to a
+    // lighter burgundy, and the eyebrow below is small orange text: 4.79:1 on this
+    // ground and 3.83:1 on that one, which fails the 4.5:1 small text needs.
+    const ink = LuqmaPalette.cream;
+
+    final where = [
+      order.merchantName,
+      if (zoneName != null && zoneName!.isNotEmpty) zoneName!,
+    ].join(' · ');
+
+    return Container(
+      key: OrderScreen.heroKey,
+      width: double.infinity,
+      padding: const EdgeInsets.all(Space.lg),
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topRight,
+          end: Alignment.bottomLeft,
+          colors: [LuqmaPalette.bannerTop, LuqmaPalette.bannerBottom],
         ),
-      ],
+        borderRadius: Radii.cardAll,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            where,
+            style: LuqmaType.caption.copyWith(color: LuqmaPalette.orangeLight),
+          ),
+          const SizedBox(height: Space.xs),
+          Text(
+            // On a delivered order the loudest line is the hour it arrived, because that
+            // is the fact somebody comes back for and it is genuinely stamped on the
+            // order. Every other stage has no time behind it — see `_stampFor` — so the
+            // stage's own words stay the headline there.
+            switch (order.deliveredAt) {
+              final DateTime at when settled =>
+                'اتسلّم ${formatClockTime(at, strings)}',
+              _ => _stage[order.status] ?? _stage[OrderStatus.placed]!,
+            },
+            key: OrderScreen.stageKey,
+            style: LuqmaType.display.copyWith(color: LuqmaPalette.white),
+          ),
+          // Only while it can still be true. The quote is about food becoming ready, so
+          // once the courier has it the readiness has happened and the sentence is about
+          // a moment that has passed — which is how a delivered order came to say
+          // «هيجهز خلال ١٥ دقيقة» under «الطلب اتسلّم» on a real handset.
+          if (order.prepMinutes != null && _quotable.contains(order.status)) ...[
+            const SizedBox(height: Space.xs),
+            Text(
+              // Attributed on purpose. «المطعم قال» is a quote with an author; «هيوصلك»
+              // would be the app promising a time it cannot know.
+              'المطعم قال هيجهز خلال ${strings.minutes(order.prepMinutes!)}',
+              key: OrderScreen.prepQuoteKey,
+              style: theme.textTheme.bodySmall?.copyWith(color: ink),
+            ),
+          ],
+        ],
+      ),
     );
   }
 }
@@ -306,49 +408,62 @@ class _Track extends StatelessWidget {
     OrderStatus.delivered: 'اتسلّم',
   };
 
+  /// The clock beside a step, or null when nothing on the order can say.
+  ///
+  /// The artboard prints a time against every line. The order carries exactly two:
+  /// `placedAt` and `deliveredAt`. Acceptance, cooking and setting off are not stamped
+  /// anywhere, so those steps are marked reached and left without an hour rather than
+  /// given one derived from something else — a made-up 8:14 beside «المطعم قبل الطلب» is
+  /// worse than a dash, because it is the kind of detail somebody repeats on the phone.
+  DateTime? _stampFor(OrderStatus status) => switch (status) {
+        OrderStatus.placed => order.placedAt,
+        OrderStatus.delivered => order.deliveredAt,
+        _ => null,
+      };
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colors = theme.luqma;
+    final strings = LuqmaStrings.of(context);
 
     final reached = OrderScreen.track.indexOf(order.status);
     // needsAttention is not on the track. It means nobody answered, which the customer
     // reads as "still waiting" — and somebody is already phoning the restaurant.
     final current = reached < 0 ? 0 : reached;
 
-    return Container(
-      padding: const EdgeInsets.all(Space.md),
-      decoration: BoxDecoration(
-        color: colors.card,
-        borderRadius: Radii.cardAll,
-        border: Border.all(color: colors.hairline),
-      ),
+    // «اتسلّم» is where the track ends, and an order sitting on it is not *at* that step,
+    // it is finished with it. Marking it the way every in-progress step is marked left
+    // the one stage that genuinely completed as the only one without a tick — a filled
+    // ring reading "happening now" under a card that says the food arrived.
+    final settled = order.status == OrderStatus.delivered;
+
+    return _Card(
       child: Column(
         children: [
           for (var i = 0; i < OrderScreen.track.length; i++)
             Padding(
               key: OrderScreen.stepKey(OrderScreen.track[i]),
               padding: EdgeInsets.only(
-                bottom: i == OrderScreen.track.length - 1 ? 0 : Space.md,
+                bottom: i == OrderScreen.track.length - 1 ? 0 : Space.lg,
               ),
               child: Row(
                 children: [
-                  Icon(
-                    i < current
-                        ? Icons.check_circle_rounded
-                        : i == current
-                            ? Icons.radio_button_checked_rounded
-                            : Icons.radio_button_unchecked_rounded,
+                  _StepMark(
                     key: i == current ? OrderScreen.currentStepKey : null,
-                    size: Sizes.iconMd,
-                    color: i <= current ? colors.success : colors.border,
+                    done: i < current || (settled && i == current),
+                    current: i == current && !settled,
                   ),
                   const SizedBox(width: Space.md),
                   Expanded(
                     child: Text(
                       _labels[OrderScreen.track[i]]!,
                       style: i == current
-                          ? LuqmaType.bodyStrong.copyWith(color: colors.textPrimary)
+                          ? LuqmaType.bodyStrong.copyWith(
+                              color: theme.brightness == Brightness.dark
+                                  ? colors.textPrimary
+                                  : colors.brand,
+                            )
                           : theme.textTheme.bodyMedium?.copyWith(
                               color: i < current
                                   ? colors.textPrimary
@@ -356,11 +471,296 @@ class _Track extends StatelessWidget {
                             ),
                     ),
                   ),
+                  // Nothing at all where there is no time, rather than a dash. Only two
+                  // of the five stages are stamped, so a placeholder on the other three
+                  // stacked into a column of dashes down the side of the card — which
+                  // reads as a screen that failed to load its data, not as three things
+                  // that have not happened yet. The mark on the left already says which
+                  // stages are done; the absence of an hour says the rest on its own.
+                  if (switch (_stampFor(OrderScreen.track[i])) {
+                    final DateTime at when i <= current =>
+                      formatClockTime(at, strings),
+                    _ when i == current => 'دلوقتي',
+                    _ => null,
+                  } case final String label) ...[
+                    const SizedBox(width: Space.sm),
+                    Text(
+                      label,
+                      style: theme.textTheme.bodySmall
+                          ?.copyWith(color: colors.textSecondary),
+                    ),
+                  ],
                 ],
               ),
             ),
         ],
       ),
+    );
+  }
+}
+
+class _StepMark extends StatelessWidget {
+  const _StepMark({super.key, required this.done, required this.current});
+
+  final bool done;
+  final bool current;
+
+  static const size = 26.0;
+  static const _pip = 9.0;
+  static const _ringWidth = 2.0;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).luqma;
+
+    return AnimatedContainer(
+      // A running implicit animation retains its old duration until it restarts.
+      key: ValueKey(MediaQuery.disableAnimationsOf(context)),
+      duration: Motion.of(context, Motion.quick),
+      curve: Motion.enter,
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: done
+            ? colors.success
+            : current
+                ? colors.brand
+                : Colors.transparent,
+        border: done || current
+            ? null
+            : Border.all(color: colors.hairline, width: _ringWidth),
+      ),
+      alignment: Alignment.center,
+      child: done
+          ? Icon(
+              Icons.check_rounded,
+              size: Sizes.iconSm,
+              // The dark theme's success green is too light for a white tick.
+              color: Theme.of(context).brightness == Brightness.dark
+                  ? LuqmaPalette.ink
+                  : colors.onBrand,
+            )
+          : current
+              ? Container(
+                  width: _pip,
+                  height: _pip,
+                  decoration: const BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: LuqmaPalette.orangeLight,
+                  ),
+                )
+              : null,
+    );
+  }
+}
+
+/// What the order cost, as it was frozen when it was placed.
+class _Bill extends StatelessWidget {
+  const _Bill({required this.order});
+
+  final Order order;
+  static const _dividerHeight = 1.0;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = theme.luqma;
+    final strings = LuqmaStrings.of(context);
+    final pricing = order.pricing;
+
+    return _Card(
+      key: OrderScreen.billKey,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _BillLine(label: 'الأصناف', value: strings.price(pricing.subtotal)),
+          if (pricing.subtotalDiscount > 0) ...[
+            const SizedBox(height: Space.sm),
+            _BillLine(
+              label: order.couponCode == null
+                  ? 'خصم الكود'
+                  : 'خصم ${order.couponCode}',
+              value: '− ${strings.price(pricing.subtotalDiscount)}',
+              emphasis: true,
+            ),
+          ],
+          if (pricing.deliveryDiscount > 0) ...[
+            const SizedBox(height: Space.sm),
+            _BillLine(
+              label: 'خصم التوصيل',
+              value: '− ${strings.price(pricing.deliveryDiscount)}',
+              emphasis: true,
+            ),
+          ],
+          const SizedBox(height: Space.sm),
+          _BillLine(
+            label: 'التوصيل',
+            value: strings.price(pricing.deliveryFee),
+          ),
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: Space.md),
+            child: Divider(height: _dividerHeight),
+          ),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Expanded(
+                child: Text('المطلوب كاش', style: LuqmaType.bodyStrong),
+              ),
+              Text(
+                strings.price(pricing.total),
+                style: LuqmaType.price.copyWith(color: colors.price),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _BillLine extends StatelessWidget {
+  const _BillLine({
+    required this.label,
+    required this.value,
+    this.emphasis = false,
+  });
+
+  final String label;
+  final String value;
+  final bool emphasis;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = theme.luqma;
+
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Expanded(
+          child: Text(label, style: theme.textTheme.bodyMedium),
+        ),
+        const SizedBox(width: Space.sm),
+        Text(
+          value,
+          style: theme.textTheme.bodyMedium?.copyWith(
+            color: emphasis ? colors.success : colors.textPrimary,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _Items extends StatelessWidget {
+  const _Items({required this.order});
+
+  final Order order;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = theme.luqma;
+    final strings = LuqmaStrings.of(context);
+
+    return _Card(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('الطلب', style: LuqmaType.bodyStrong),
+          for (final item in order.items)
+            Padding(
+              padding: const EdgeInsets.only(top: Space.sm),
+              child: Row(
+                children: [
+                  Text(
+                    '${item.quantity}×',
+                    style:
+                        LuqmaType.bodyStrong.copyWith(color: colors.textSecondary),
+                  ),
+                  const SizedBox(width: Space.sm),
+                  Expanded(child: Text(item.name, style: theme.textTheme.bodyMedium)),
+                  Text(
+                    strings.price(item.lineTotal),
+                    style:
+                        LuqmaType.priceSmall.copyWith(color: colors.textPrimary),
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// The two things a customer reaches for when something is wrong.
+///
+/// «كلّم المطعم» is drawn only when a number is actually known — the order carries the
+/// *customer's* phone, not the shop's, so the shop has to be fetched. A button that
+/// cannot dial is worse than no button on the screen somebody opens because their food
+/// is late.
+class _Actions extends ConsumerWidget {
+  const _Actions({required this.order, required this.onIssue});
+
+  final Order order;
+  final VoidCallback onIssue;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final colors = Theme.of(context).luqma;
+    final phone = ref.watch(merchantProvider(order.merchantId)).value?.phone;
+
+    return Row(
+      children: [
+        if (phone != null && phone.trim().isNotEmpty) ...[
+          Expanded(
+            child: OutlinedButton.icon(
+              key: OrderScreen.callMerchantKey,
+              onPressed: () async {
+                final opened = await ref
+                    .read(externalLinksProvider)
+                    .open(Uri(scheme: 'tel', path: phone));
+                if (!opened && context.mounted) {
+                  // The dialer refusing is silent otherwise, and the person is holding a
+                  // phone waiting for something to happen.
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('مش قادرين نفتح الاتصال. الرقم: $phone')),
+                  );
+                }
+              },
+              icon: const Icon(Icons.call_outlined, size: Sizes.iconSm),
+              label: const Text('كلّم المطعم'),
+              style: OutlinedButton.styleFrom(
+                minimumSize: const Size.fromHeight(Sizes.minTarget),
+                // Burgundy is a button ground in the dark theme, not readable ink.
+                foregroundColor: Theme.of(context).brightness == Brightness.dark
+                    ? colors.textPrimary
+                    : colors.brand,
+                side: BorderSide(color: colors.border),
+              ),
+            ),
+          ),
+          const SizedBox(width: Sizes.targetGap),
+        ],
+        Expanded(
+          // Always reachable, whatever state the order is in. A customer who cannot
+          // complain phones the merchant instead, and the platform never hears about it.
+          child: OutlinedButton.icon(
+            key: OrderScreen.issueKey,
+            onPressed: onIssue,
+            icon: const Icon(Icons.error_outline_rounded, size: Sizes.iconSm),
+            label: Text(LuqmaStrings.of(context).orderProblem),
+            style: OutlinedButton.styleFrom(
+              minimumSize: const Size.fromHeight(Sizes.minTarget),
+              foregroundColor: colors.danger,
+              side: BorderSide(color: colors.danger),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
@@ -402,45 +802,6 @@ class _Cancelled extends StatelessWidget {
           ),
         ],
       ),
-    );
-  }
-}
-
-class _Summary extends StatelessWidget {
-  const _Summary({required this.order});
-
-  final Order order;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colors = theme.luqma;
-    final strings = LuqmaStrings.of(context);
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text('الطلب', style: theme.textTheme.titleLarge),
-        const SizedBox(height: Space.sm),
-        for (final item in order.items)
-          Padding(
-            padding: const EdgeInsets.only(bottom: Space.xs),
-            child: Row(
-              children: [
-                Text(
-                  '${item.quantity}×',
-                  style: LuqmaType.bodyStrong.copyWith(color: colors.textSecondary),
-                ),
-                const SizedBox(width: Space.sm),
-                Expanded(child: Text(item.name)),
-                Text(
-                  strings.price(item.lineTotal),
-                  style: LuqmaType.priceSmall.copyWith(color: colors.textPrimary),
-                ),
-              ],
-            ),
-          ),
-      ],
     );
   }
 }
@@ -505,7 +866,13 @@ class _RatingCardState extends ConsumerState<_RatingCard> {
         borderRadius: Radii.cardAll,
         border: Border.all(color: colors.hairline),
       ),
-      child: _sent
+      // `_sent` alone was this card's whole memory, and it lived in the widget — so
+      // leaving the screen and coming back reset it and the card asked again for a
+      // rating the customer had already given. `rate` upserts, so answering twice
+      // replaced the first verdict silently, from a form that starts empty: five stars
+      // could become three for no reason but being asked twice. The order is the memory
+      // now; `_sent` only covers the instant between the write and the stream catching up.
+      child: _sent || ref.watch(hasRatedProvider(widget.order.id)).value == true
           ? Row(
               children: [
                 Icon(Icons.favorite_rounded, color: colors.brand),

@@ -58,16 +58,17 @@ abstract class OrderSettlement with _$OrderSettlement {
 
 /// A merchant's account at a glance.
 ///
-/// Summed in Dart from the rows rather than asked of the database, deliberately: the
-/// statement screen needs the rows anyway, so an aggregate would be a second round trip
-/// to answer a question the first one already contains. That stops being true when a
-/// merchant has a year behind them — at which point the right move is a SQL function,
-/// not a bigger fetch.
+/// Server aggregates over the complete account, independent of either evidence page.
+/// [SettlementSummary.of] is the in-memory equivalent for fakes and arithmetic tests;
+/// callers must give it the whole account, never a fetched page.
 @freezed
 abstract class SettlementSummary with _$SettlementSummary {
   const factory SettlementSummary({
     /// Orders that were charged and not taken back.
     @Default(0) int orders,
+
+    /// All commission receipts, in integer piastres.
+    @Default(0) int paid,
 
     /// What the platform took across them.
     @Default(0) int taken,
@@ -79,7 +80,10 @@ abstract class SettlementSummary with _$SettlementSummary {
   const SettlementSummary._();
 
   /// Reversed rows count for nothing in either direction.
-  factory SettlementSummary.of(Iterable<OrderSettlement> settlements) {
+  factory SettlementSummary.of(
+    Iterable<OrderSettlement> settlements, {
+    Iterable<CommissionPayment> payments = const [],
+  }) {
     var orders = 0;
     var taken = 0;
     var owes = 0;
@@ -88,7 +92,12 @@ abstract class SettlementSummary with _$SettlementSummary {
       taken += s.amount;
       owes += s.platformOwes;
     }
-    return SettlementSummary(orders: orders, taken: taken, platformOwes: owes);
+    return SettlementSummary(
+      orders: orders,
+      taken: taken,
+      platformOwes: owes,
+      paid: payments.fold(0, (total, payment) => total + payment.amount),
+    );
   }
 }
 

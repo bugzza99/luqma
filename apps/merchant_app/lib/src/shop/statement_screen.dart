@@ -130,14 +130,22 @@ class _Charges extends ConsumerWidget {
           Space.gutter,
           Space.xxxl,
         ),
-        // One extra for the summary when it is not already pinned above: it is the total
-        // of this list, and a header that stays while the list moves reads as a figure
-        // about something else.
-        itemCount: rows.length + (withSummary ? 1 : 0),
+        // The account and this bounded evidence page have explicitly different scopes.
+        itemCount: rows.length + (withSummary ? 2 : 1),
         separatorBuilder: (_, _) => const SizedBox(height: Space.sm),
         itemBuilder: (context, index) => withSummary && index == 0
             ? _Summary(merchantId: merchantId)
-            : _Row(settlement: rows[index - (withSummary ? 1 : 0)]),
+            : index == (withSummary ? 1 : 0)
+                ? Padding(
+                    padding: const EdgeInsets.only(bottom: Space.xs),
+                    child: Text(
+                      'المعروض أحدث 100 شحنة فقط',
+                      style: LuqmaType.bodySmall.copyWith(
+                        color: Theme.of(context).luqma.textSecondary,
+                      ),
+                    ),
+                  )
+                : _Row(settlement: rows[index - (withSummary ? 2 : 1)]),
       ),
     );
   }
@@ -173,9 +181,19 @@ class _Payments extends ConsumerWidget {
           Space.gutter,
           Space.xxxl,
         ),
-        itemCount: rows.length,
+        itemCount: rows.length + 1,
         separatorBuilder: (_, _) => const SizedBox(height: Space.sm),
-        itemBuilder: (context, index) => _PaymentRow(payment: rows[index]),
+        itemBuilder: (context, index) => index == 0
+            ? Padding(
+                padding: const EdgeInsets.only(bottom: Space.xs),
+                child: Text(
+                  'المعروض أحدث 100 دفعة فقط',
+                  style: LuqmaType.bodySmall.copyWith(
+                    color: Theme.of(context).luqma.textSecondary,
+                  ),
+                ),
+              )
+            : _PaymentRow(payment: rows[index - 1]),
       ),
     );
   }
@@ -191,14 +209,20 @@ class _Summary extends ConsumerWidget {
     final theme = Theme.of(context);
     final colors = theme.luqma;
     final strings = LuqmaStrings.of(context);
-    final summary = ref.watch(settlementSummaryProvider(merchantId)).value;
+    final account = ref.watch(settlementSummaryProvider(merchantId));
+    if (!account.hasValue) {
+      return LuqmaAsyncView<SettlementSummary>(
+        value: account,
+        onRetry: () => ref.invalidate(settlementSummaryProvider(merchantId)),
+        builder: (_, _) => const SizedBox.shrink(),
+      );
+    }
+    final summary = account.value;
     final merchant = ref.watch(merchantProvider(merchantId)).value;
-    final payments = ref.watch(commissionPaymentsProvider(merchantId)).value;
 
     if (summary == null || merchant == null) return const SizedBox.shrink();
 
-    final paid = (payments ?? const <CommissionPayment>[])
-        .fold(0, (total, payment) => total + payment.amount);
+    final paid = summary.paid;
 
     return Container(
       key: StatementScreen.summaryKey,
@@ -213,14 +237,23 @@ class _Summary extends ConsumerWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
+            'إجمالي الحساب من البداية',
+            style: theme.textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: Space.xs),
+          Text(
             strings.orderCount(summary.orders),
-            style: theme.textTheme.titleMedium,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: colors.textSecondary,
+            ),
           ),
           const SizedBox(height: Space.md),
           _Line(
             label: merchant.revenueModel == RevenueModel.prepaid
                 ? 'اتخصم من الرصيد'
-                : 'العمولة على الفترة دي',
+                : 'إجمالي العمولة',
             value: strings.price(summary.taken),
           ),
           // Only when there is one. A row reading "لينا عندك ٠" on every merchant's
@@ -342,6 +375,7 @@ class _Row extends StatelessWidget {
         color: colors.card,
         borderRadius: Radii.cardAll,
         border: Border.all(color: colors.hairline),
+        boxShadow: Elevations.card,
       ),
       child: Row(
         children: [
@@ -409,6 +443,7 @@ class _PaymentRow extends StatelessWidget {
         color: colors.card,
         borderRadius: Radii.cardAll,
         border: Border.all(color: colors.hairline),
+        boxShadow: Elevations.card,
       ),
       child: Row(
         children: [
@@ -433,7 +468,11 @@ class _PaymentRow extends StatelessWidget {
                     // here rather than kept on the admin's side: a merchant should read
                     // the same note the admin wrote rather than remember it.
                     payment.note!,
-                    style: LuqmaType.caption.copyWith(color: colors.textSecondary),
+                    // `bodySmall`, not `caption`. This is a sentence a person wrote —
+                    // «دفع كاش، الباقي الأسبوع الجاي» — and it is the one thing on this
+                    // screen that settles an argument three weeks later. `caption` is 12
+                    // and is for labels; the 15sp floor is for text somebody reads.
+                    style: LuqmaType.bodySmall.copyWith(color: colors.textSecondary),
                   ),
                 ],
               ],

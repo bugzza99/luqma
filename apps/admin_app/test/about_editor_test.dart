@@ -46,17 +46,26 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  testWidgets('shows the current values', (tester) async {
-    await pump(tester, seed: {'about_facebook': 'https://facebook.com/luqma'});
+  testWidgets('shows the current description', (tester) async {
+    await pump(tester, seed: {'about_description': 'تطبيق أكل من إدكو.'});
 
-    expect(
-      tester
-          .widget<TextField>(find.byKey(AboutEditorScreen.descriptionKey))
-          .controller!
-          .text,
-      isEmpty,
-    );
-    expect(find.text('https://facebook.com/luqma'), findsOneWidget);
+    expect(find.text('تطبيق أكل من إدكو.'), findsOneWidget);
+  });
+
+  // The product's page only. The photo and personal links moved to «عن المطور».
+  testWidgets('offers no photo and no personal links', (tester) async {
+    await pump(tester, seed: {'about_facebook': 'https://facebook.com/owner'});
+
+    expect(find.byType(MediaPicker), findsNothing);
+    expect(find.text('https://facebook.com/owner'), findsNothing);
+  });
+
+  testWidgets('saving writes the description and nothing of the developer', (tester) async {
+    await pump(tester);
+    await tester.enterText(find.byKey(AboutEditorScreen.descriptionKey), 'وصف');
+    await save(tester);
+
+    expect(config.setCalls.single.keys, ['about_description']);
   });
 
   testWidgets('saving writes the about fields through the repository', (tester) async {

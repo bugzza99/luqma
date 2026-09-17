@@ -148,11 +148,51 @@ abstract class Merchant with _$Merchant {
     /// "25–35" built from two hand-typed numbers reads as a precision nobody measured.
     /// The database bounds it between 5 and 180, because 600 is a typo.
     @Default(30) int prepMinutes,
+
+    /// Where the shop is located, for couriers to find it.
+    ///
+    /// The zone is on this row already as [zoneId], which the owner cannot change here
+    /// because it bounds delivery. The landmark, street, and pin are the owner's to set.
+    String? landmarkId,
+
+    /// A copy taken when the landmark is chosen, never looked up at read time.
+    /// A landmark renamed next month must not rewrite where somebody was told to go today.
+    String? landmarkName,
+
+    /// Where the shop is, in words.
+    String? street,
+
+    /// Both halves or neither, on Earth.
+    double? lat,
+    double? lng,
   }) = _Merchant;
 
   const Merchant._();
 
   factory Merchant.fromJson(Map<String, dynamic> json) => _$MerchantFromJson(json);
+
+  /// Whether the shop has an address entered.
+  ///
+  /// A zone alone is not an address — in Edku that is just «إدكو», which was
+  /// worse than nothing because it looked like information. An address needs a
+  /// landmark or a street.
+  bool get hasAddress =>
+      (landmarkName != null && landmarkName!.isNotEmpty) ||
+      (street != null && street!.isNotEmpty);
+
+  /// Formats the shop's address for display (e.g. on the courier card).
+  ///
+  /// Returns null when [hasAddress] is false so callers can draw nothing
+  /// rather than an empty line.
+  String? formatAddress({String? zoneName}) {
+    if (!hasAddress) return null;
+    final parts = <String>[
+      if (zoneName != null && zoneName.isNotEmpty) zoneName,
+      if (landmarkName != null && landmarkName!.isNotEmpty) 'جنب $landmarkName',
+      if (street != null && street!.isNotEmpty) street!,
+    ];
+    return parts.isEmpty ? null : parts.join(' · ');
+  }
 
   /// The single question the whole app asks about a merchant, derived rather than
   /// stored so its three inputs can never disagree.

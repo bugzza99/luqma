@@ -1,5 +1,6 @@
 import 'package:freezed_annotation/freezed_annotation.dart';
 
+import '../theme/dimens.dart';
 import 'converters.dart';
 
 part 'media.freezed.dart';
@@ -18,7 +19,41 @@ enum MediaKind {
   aboutPhoto,
 
   /// The picture on one of the circles across the top of the customer's home.
-  cuisine,
+  cuisine;
+
+  /// The aspect ratio (width / height) at which this image is displayed across apps.
+  ///
+  /// The single source of truth for previewing in [MediaPicker] and displaying
+  /// in customer and merchant screens.
+  double get aspectRatio => switch (this) {
+        MediaKind.merchantCover => 16 / 9,
+        MediaKind.merchantLogo => 1.0,
+        MediaKind.menuItem => 1.0,
+        MediaKind.dailyMeal => 1.0,
+        MediaKind.promotion => Sizes.bannerAspect,
+        MediaKind.aboutPhoto => 1.0,
+        MediaKind.cuisine => 1.0,
+      };
+
+  /// Recommended pixel dimensions for merchant uploads.
+  ///
+  /// Capped at 1600 on the long edge so no upload exceeds `ImageCompressor.maxEdge`.
+  ({int width, int height}) get recommendedDimensions => switch (this) {
+        MediaKind.merchantCover => (width: 1600, height: 900),
+        MediaKind.merchantLogo => (width: 800, height: 800),
+        MediaKind.menuItem => (width: 1200, height: 1200),
+        MediaKind.dailyMeal => (width: 1200, height: 1200),
+        MediaKind.promotion => (
+            width: 1600,
+            height: (1600 / Sizes.bannerAspect).round(),
+          ),
+        MediaKind.aboutPhoto => (width: 800, height: 800),
+        MediaKind.cuisine => (width: 800, height: 800),
+      };
+
+  int get recommendedWidth => recommendedDimensions.width;
+  int get recommendedHeight => recommendedDimensions.height;
+
 }
 
 enum MediaStatus { pending, approved, rejected }

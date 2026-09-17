@@ -5,6 +5,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:luqma_core/luqma_core.dart';
 
+import 'support/address_map_double.dart';
+
 /// Choosing and keeping an address.
 ///
 /// A courier reads the zone first and the landmark second, which is why those two are
@@ -36,7 +38,13 @@ void main() {
     Widget screen, {
     LuqmaIdentity? signedInAs = const LuqmaIdentity(uid: 'u1', name: 'أحمد'),
     List<Address> seed = const [home, work],
+    List<Landmark> places = landmarks,
+    Merchant? merchant,
   }) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
     addresses = FakeAddressRepository(
       seed: signedInAs == null ? const {} : {signedInAs.uid: seed},
     );
@@ -47,8 +55,13 @@ void main() {
           authServiceProvider
               .overrideWithValue(FakeAuthService(restoring: signedInAs)),
           addressRepositoryProvider.overrideWithValue(addresses),
+          if (merchant != null)
+            merchantProvider(merchant.id).overrideWith((ref) async => merchant),
+          appConfigProvider.overrideWithValue(LuqmaConfig.from(MapConfigSource({
+            'delivery_fee_min': 1000, 'delivery_fee_max': 2000,
+          }))),
           geographyRepositoryProvider.overrideWithValue(
-            FakeGeographyRepository(zones: zones, landmarks: landmarks),
+            FakeGeographyRepository(zones: zones, landmarks: places),
           ),
           remoteConfigServiceProvider
               .overrideWithValue(RemoteConfigService(FakeConfigFetcher({}))),
@@ -146,6 +159,103 @@ void main() {
   });
 
   group('the editor', () {
+    const merchant = Merchant(
+      id: 'm1', cityId: 'edku', type: MerchantType.restaurant,
+      name: 'المطعم', zoneId: 'z1', phone: '01000000000',
+      status: MerchantStatus.approved, deliveryFeeOverride: 500,
+    );
+
+    testWidgets('without merchant context the editor has no quote', (tester) async {
+      await pump(tester, const AddressEditorScreen(initial: home), merchant: merchant);
+      expect(find.byKey(const Key('addressEditor.fee')), findsNothing);
+      expect(find.textContaining('التوصيل للمنطقة دي:'), findsNothing);
+      await tester.tap(find.text('الشط'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('التوصيل للمنطقة دي:'), findsNothing);
+    });
+
+    testWidgets('quotes the configured floor and ceiling, not the override', (tester) async {
+      for (final (override, quote) in [(500, '10 ج'), (3000, '20 ج')]) {
+        await pump(tester, const AddressEditorScreen(initial: home, merchantId: 'm1'),
+          merchant: merchant.copyWith(deliveryFeeOverride: override));
+        expect(find.text('التوصيل للمنطقة دي: $quote'), findsOneWidget);
+        await tester.pumpWidget(const SizedBox.shrink());
+      }
+    });
+
+    testWidgets('an unserved zone replaces the fee with an explanation', (tester) async {
+      await pump(tester, const AddressEditorScreen(initial: home, merchantId: 'm1'),
+        merchant: merchant);
+      expect(find.text('التوصيل للمنطقة دي: 10 ج'), findsOneWidget);
+      await tester.tap(find.text('الشط'));
+      await tester.pumpAndSettle();
+      expect(find.text('المطعم مش بيوصل للمنطقة دي'), findsOneWidget);
+      expect(find.textContaining('التوصيل للمنطقة دي:'), findsNothing);
+    });
+
+    testWidgets('coordinate-free landmarks draw no map section', (tester) async {
+      await pump(tester, const AddressEditorScreen(initial: home));
+      expect(find.byType(LuqmaMap), findsNothing);
+      expect(find.byKey(const ValueKey('addressEditor.map.z1')), findsNothing);
+    });
+
+    const mapped = Landmark(
+      id: 'real', cityId: 'edku', zoneId: 'z1', name: 'المكتبة',
+      lat: 31.30, lng: 30.29,
+    );
+
+    testWidgets('only complete coordinates in the selected zone reach the map', (tester) async {
+      final map = AddressMapDouble()..install();
+      addTearDown(map.restore);
+      await pump(tester, const AddressEditorScreen(initial: home), places: [
+        mapped,
+        const Landmark(id: 'partial', cityId: 'edku', zoneId: 'z1',
+          name: 'مكان', lat: 31.30),
+        const Landmark(id: 'other', cityId: 'edku', zoneId: 'z2',
+          name: 'مكان', lat: 31.31, lng: 30.30),
+      ]);
+      final panel = tester.widget<LuqmaMap>(find.byType(LuqmaMap));
+      // Tall enough to aim at. The artboard drew a 132 strip, which is a picture of a map
+      // rather than something a finger can pan and pinch inside — and since a pin is now
+      // how the address gets chosen, the map has to be big enough to press.
+      expect(panel.height, greaterThanOrEqualTo(240));
+      expect(panel.showLabels, isTrue);
+      // Still not a pin-drop: tapping empty ground sets nothing, because a point on a
+      // street is not an address anybody can deliver to. Tapping a *landmark* does.
+      expect(panel.onTap, isNull);
+      expect(panel.onMarkerTap, isNotNull);
+      expect(panel.markers.map((m) => m.id), ['real']);
+      expect(panel.markers.single.label, 'المكتبة');
+      expect(panel.markers.single.lat, mapped.lat);
+      expect(panel.markers.single.lng, mapped.lng);
+      await tester.tap(find.text('الشط'));
+      await tester.pumpAndSettle();
+      expect(tester.widget<LuqmaMap>(find.byType(LuqmaMap)).markers.single.id, 'other');
+    });
+
+    // The realistic failure, and the only one worth simulating: a phone that cannot reach
+    // the tile store never gets `onStyleLoadedCallback`, so the panel sits there empty for
+    // ever. The address still has to be saveable through it — this screen decides where a
+    // courier drives, and an optional picture must never be able to take it down.
+    {
+      testWidgets('saves while the map never loads', (tester) async {
+        final map = AddressMapDouble()..install();
+        addTearDown(map.restore);
+        await pump(tester, const AddressEditorScreen(), places: [mapped], seed: []);
+        await tester.tap(find.text('المعمورة'));
+        await tester.pumpAndSettle();
+        expect(find.byType(LuqmaMap), findsOneWidget);
+        await tester.ensureVisible(find.byKey(AddressPicker.streetKey));
+        await tester.enterText(find.byKey(AddressPicker.streetKey), 'شارع البحر');
+        await tester.tap(find.byKey(AddressPicker.saveKey));
+        await tester.pumpAndSettle();
+        final saved = (await addresses.addresses('u1')).valueOrNull!.single;
+        expect(saved.zoneId, 'z1');
+        expect(saved.street, 'شارع البحر');
+        expect(tester.takeException(), isNull);
+      });
+    }
+
     testWidgets('a new address saves and comes back with its label', (tester) async {
       await pump(tester, const AddressEditorScreen(), seed: []);
 
@@ -213,6 +323,9 @@ void main() {
       await pump(tester, const AddressEditorScreen(), seed: []);
       // Swapped after the screen is up, so the failure happens on the save itself.
       container.updateOverrides([
+        appConfigProvider.overrideWithValue(LuqmaConfig.from(MapConfigSource({
+          'delivery_fee_min': 1000, 'delivery_fee_max': 2000,
+        }))),
         authServiceProvider.overrideWithValue(
           FakeAuthService(restoring: const LuqmaIdentity(uid: 'u1')),
         ),

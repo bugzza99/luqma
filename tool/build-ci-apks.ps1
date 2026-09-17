@@ -15,11 +15,11 @@ foreach ($app in @('customer_app', 'merchant_app', 'admin_app')) {
     Write-Host "`n===== release smoke: $app =====" -ForegroundColor Cyan
     Push-Location (Join-Path $root "apps\$app")
     try {
-        flutter build apk --release --target-platform android-arm64 --split-per-abi `
+        flutter build apk --release --target-platform android-arm64 `
             --android-project-arg=luqma.debugSigning=true @defines
         if ($LASTEXITCODE -ne 0) { throw "$app release smoke failed" }
 
-        $apk = Join-Path (Get-Location) 'build\app\outputs\flutter-apk\app-arm64-v8a-release.apk'
+        $apk = Join-Path (Get-Location) 'build\app\outputs\flutter-apk\app-release.apk'
         $blob = [IO.File]::ReadAllText($apk, [Text.Encoding]::ASCII)
         if ($blob -match 'sb_secret_[A-Za-z0-9_-]+' -or $blob -match '"service_role"') {
             throw "$app embeds a privileged Supabase credential marker"

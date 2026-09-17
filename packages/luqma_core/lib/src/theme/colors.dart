@@ -40,14 +40,34 @@ abstract final class LuqmaPalette {
   static const darkHairline = Color(0xFF3E2A21);
   static const darkEdge = Color(0xFF8A6A55);
 
+  /// The ground under a brand banner — the promotion slot and the live-order hero.
+  ///
+  /// **Fixed in both themes, unlike `LuqmaColors.brand`.** The dark theme swaps the brand
+  /// to [burgundyLight] because plain [burgundy] is too dark against a near-black page,
+  /// and that is right for a button. It is wrong here, because these two surfaces carry
+  /// small **orange** text: [orangeLight] scores 4.79:1 on [burgundy] and only **3.83:1**
+  /// on [burgundyLight], which fails the 4.5:1 that small text needs.
+  ///
+  /// So the ink cannot follow the theme, and neither can the ground under it. The cost is
+  /// a card that separates from the dark page at 1.76:1 rather than 2.20:1 — neither
+  /// clears 3:1, so nothing is lost that was there before, and a filled brand-coloured
+  /// card is read by its content rather than by its edge.
+  static const bannerTop = burgundy;
+  static const bannerBottom = burgundyDark;
+
   // Water, for the basemap only. Edku sits between the sea and a lake, so water is most
   // of that map and it is the one thing on it that cannot be a brand swatch: read as
   // surface, the shoreline — the most useful landmark in the city — disappears.
   //
   // Here rather than as a role on [LuqmaColors] because it is not a role any of the forty
   // screens has. It is a literal, and this is the file literals live in.
-  static const water = Color(0xFFBBD4DE);
-  static const waterDark = Color(0xFF16323F);
+  //
+  // Both were a step paler than they should have been and the shoreline nearly vanished:
+  // the old light swatch scored **1.32:1** on cream and the dark one 1.44:1 on the dark
+  // ground, which is a slightly different beige rather than the edge of the sea. These
+  // clear the 1.6:1 that `map_style_test` asks of a large field of colour.
+  static const water = Color(0xFF8FBED0);
+  static const waterDark = Color(0xFF1D4456);
 
   // Status. Only two colours beyond the brand set, both required to express order state.
   // [danger] is a brighter red than the burgundy so the two do not read as the same thing;

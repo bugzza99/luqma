@@ -11,6 +11,8 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  # The theme preference, and the courier's write queue in MerchantApp.
+  shared_preferences: ^2.3.0
   firebase_core: ^3.8.0
   firebase_messaging: ^15.1.5
   flutter_local_notifications: ^18.0.1
@@ -40,6 +42,7 @@ dependencies:
   url_launcher: ^6.3.0
 
   intl: any
+  timezone: ^0.10.1
   sentry_flutter: ^9.0.0
 
   # Downscaling a photo before it is uploaded. Pure Dart on purpose: it runs in an

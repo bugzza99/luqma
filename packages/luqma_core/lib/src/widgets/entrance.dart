@@ -69,13 +69,16 @@ class _LuqmaEntranceState extends State<LuqmaEntrance>
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    if (_started) return;
-    _started = true;
-
     if (MediaQuery.disableAnimationsOf(context)) {
+      // The setting can change while an entrance is running; settling the controller
+      // preserves the child's state while stopping both the fade and the lift.
+      _started = true;
       _controller.value = 1;
       return;
     }
+
+    if (_started) return;
+    _started = true;
 
     _controller.forward();
   }

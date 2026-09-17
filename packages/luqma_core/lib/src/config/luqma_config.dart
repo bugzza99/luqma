@@ -73,11 +73,13 @@ class LuqmaConfig {
     required this.adminUpdateUrl,
     required this.updateMessage,
     required this.supportWhatsapp,
-    this.aboutPhotoMediaId,
-    this.aboutFacebook,
-    this.aboutWhatsapp,
-    this.aboutInstagram,
     this.aboutDescription,
+    this.developerName,
+    this.developerBio,
+    this.developerPhotoMediaId,
+    this.developerFacebook,
+    this.developerWhatsapp,
+    this.developerInstagram,
   });
 
   /// Phone verification. Built, and off until order volume makes it worth the SMS cost.
@@ -118,13 +120,20 @@ class LuqmaConfig {
   final String updateMessage;
   final String supportWhatsapp;
 
-  /// The "حول لقمة" content, edited from AdminApp and stored on the same config table.
-  /// An icon with no link set is not drawn, so each of these is nullable.
-  final String? aboutPhotoMediaId;
-  final String? aboutFacebook;
-  final String? aboutWhatsapp;
-  final String? aboutInstagram;
+  /// «حول لقمة» — the product, in the owner's words. Edited from AdminApp.
   final String? aboutDescription;
+
+  /// «عن المطور» — the person who made it, on a page of its own.
+  ///
+  /// These were one page until 2026-09-16: the owner's photo and personal links sat under
+  /// the title "about Luqma", beside the description of the app. The owner asked for them
+  /// apart. A link with nothing set is not drawn, so each is nullable.
+  final String? developerName;
+  final String? developerBio;
+  final String? developerPhotoMediaId;
+  final String? developerFacebook;
+  final String? developerWhatsapp;
+  final String? developerInstagram;
 
   static const defaults = LuqmaConfig(
     otpEnabled: false,
@@ -224,11 +233,13 @@ class LuqmaConfig {
           text('support_whatsapp') ??
           text('supportWhatsapp') ??
           defaults.supportWhatsapp,
-      aboutPhotoMediaId: text('about_photo_media_id'),
-      aboutFacebook: text('about_facebook'),
-      aboutWhatsapp: text('about_whatsapp'),
-      aboutInstagram: text('about_instagram'),
       aboutDescription: text('about_description'),
+      developerName: text('developer_name'),
+      developerBio: text('developer_bio'),
+      developerPhotoMediaId: text('developer_photo_media_id'),
+      developerFacebook: text('developer_facebook'),
+      developerWhatsapp: text('developer_whatsapp'),
+      developerInstagram: text('developer_instagram'),
     );
   }
 
@@ -282,6 +293,23 @@ class LuqmaConfig {
 
     for (var i = 0; i < 3; i++) {
       if (current[i] != minimum[i]) return current[i] < minimum[i];
+    }
+    return false;
+  }
+
+  /// Whether [candidate] is a newer version than [ceiling], as the force-update gate
+  /// compares them. False when either does not parse — a comparison that cannot be made is
+  /// not a reason to refuse anything.
+  ///
+  /// Public so the admin's config screen asks the question in exactly the arithmetic the
+  /// gate will later apply. A second copy of the comparison would be the one that disagrees
+  /// on `0.10.0` against `0.9.0`, which a string compare gets backwards.
+  static bool versionExceeds(String? candidate, String? ceiling) {
+    final a = _parseVersion(candidate);
+    final b = _parseVersion(ceiling);
+    if (a == null || b == null) return false;
+    for (var i = 0; i < 3; i++) {
+      if (a[i] != b[i]) return a[i] > b[i];
     }
     return false;
   }

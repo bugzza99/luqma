@@ -2,16 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:luqma_core/luqma_core.dart';
 
-/// Entering or correcting one address.
-///
-/// The zone/landmark/detail part is [AddressPicker], shared with AdminApp so an address
-/// the owner types during onboarding is the same shape as one a customer types. The only
-/// thing added here is the label — the word the customer will pick this address by later,
-/// which is theirs and means nothing to a courier.
+/// Customer-only delivery context surrounds the shared address form.
 class AddressEditorScreen extends ConsumerStatefulWidget {
-  const AddressEditorScreen({super.key, this.initial});
+  const AddressEditorScreen({super.key, this.initial, this.merchantId});
 
   final Address? initial;
+  final String? merchantId;
 
   static const labelKey = Key('addressEditor.label');
   static const errorKey = Key('addressEditor.error');
@@ -33,6 +29,7 @@ class _AddressEditorScreenState extends ConsumerState<AddressEditorScreen> {
   }
 
   Future<void> _save(Address address) async {
+    if (_saving) return;
     setState(() {
       _saving = true;
       _failure = null;
@@ -73,33 +70,45 @@ class _AddressEditorScreenState extends ConsumerState<AddressEditorScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.initial == null ? 'عنوان جديد' : 'تعديل العنوان'),
+        title: const Text('عنوان التوصيل'),
+        leading: BackButton(onPressed: () => Navigator.of(context).maybePop()),
       ),
       body: Column(
         children: [
           if (_failure != null)
             _ErrorBanner(key: AddressEditorScreen.errorKey, failure: _failure!),
           if (_saving) const LinearProgressIndicator(),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(
-              Space.gutter,
-              Space.lg,
-              Space.gutter,
-              0,
-            ),
-            child: TextField(
-              key: AddressEditorScreen.labelKey,
-              controller: _label,
-              decoration: const InputDecoration(
-                labelText: 'اسم العنوان',
-                hintText: 'البيت، الشغل…',
-              ),
-            ),
-          ),
           Expanded(
             child: AddressPicker(
               initial: widget.initial,
-              onSaved: (address) => _saving ? null : _save(address),
+              onSaved: _save,
+              saving: _saving,
+              afterZone: (zone) => _FeeNotice(
+                zone: zone, merchantId: widget.merchantId,
+              ),
+              top: (zone, selection) => _LandmarkMap(
+                zoneId: zone?.id,
+                selection: selection,
+              ),
+              afterDetails: (zone) => Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  LuqmaEntrance(
+                    index: 4,
+                    child: Padding(
+                      padding: const EdgeInsets.only(top: Space.xl),
+                      child: TextField(
+                        key: AddressEditorScreen.labelKey,
+                        controller: _label,
+                        decoration: const InputDecoration(
+                          labelText: 'اسم العنوان (اختياري)',
+                          hintText: 'البيت، الشغل…',
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ],
@@ -113,6 +122,7 @@ class _ErrorBanner extends StatelessWidget {
   const _ErrorBanner({super.key, required this.failure});
 
   final Failure failure;
+  static const _backgroundOpacity = .12;
 
   @override
   Widget build(BuildContext context) {
@@ -121,7 +131,7 @@ class _ErrorBanner extends StatelessWidget {
 
     return Container(
       width: double.infinity,
-      color: colors.danger.withValues(alpha: 0.12),
+      color: colors.danger.withValues(alpha: _backgroundOpacity),
       padding: const EdgeInsets.symmetric(
         horizontal: Space.gutter,
         vertical: Space.md,
@@ -144,6 +154,115 @@ class _ErrorBanner extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _FeeNotice extends ConsumerWidget {
+  const _FeeNotice({required this.zone, required this.merchantId});
+
+  final Zone? zone;
+  final String? merchantId;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final merchant = merchantId == null ? null
+        : ref.watch(merchantProvider(merchantId!)).value;
+    final colors = Theme.of(context).luqma;
+    final strings = LuqmaStrings.of(context);
+    final config = ref.watch(appConfigProvider);
+    final destination = zone;
+    final message = merchant == null || destination == null ? null
+        : !Delivery.serves(merchant: merchant, zoneId: destination.id)
+            ? 'المطعم مش بيوصل للمنطقة دي'
+            : '${strings.addressDeliveryFee} ${strings.price(Delivery.feeFor(
+                merchant: merchant, zone: destination, config: config))}';
+
+    // Only the current quote survives a zone change; a departing price must not
+    // remain readable while the new destination is already selected.
+    return AnimatedSwitcher(
+      duration: Motion.of(context, Motion.quick),
+      layoutBuilder: (current, previous) => Stack(
+        alignment: Alignment.topCenter,
+        children: [
+          for (final child in previous)
+            ExcludeSemantics(child: Opacity(opacity: 0, child: child)),
+          ?current,
+        ],
+      ),
+      transitionBuilder: (child, animation) => SizeTransition(
+        sizeFactor: animation, alignment: Alignment.topCenter, child: child,
+      ),
+      child: message == null ? const SizedBox.shrink()
+          : Padding(
+              key: ValueKey('${destination!.id}:$message'),
+              padding: const EdgeInsets.only(top: Space.md),
+              child: Container(
+                key: const Key('addressEditor.fee'),
+                width: double.infinity,
+                padding: const EdgeInsets.all(Space.md),
+                decoration: BoxDecoration(
+                  color: colors.surface, borderRadius: Radii.fieldAll,
+                ),
+                child: Text(message,
+                  style: LuqmaType.bodySmall.copyWith(color: colors.price)),
+              ),
+            ),
+    );
+  }
+}
+
+/// The zone's landmarks, and the way most people will actually pick one.
+///
+/// It sits above everything else and takes real height, because on a street somebody
+/// recognises a pharmacy on a corner long before they recognise its name in a list — and
+/// the artboard's 132 strip was a picture of a map rather than a map.
+class _LandmarkMap extends ConsumerWidget {
+  const _LandmarkMap({required this.zoneId, required this.selection});
+
+  final String? zoneId;
+  final AddressPickerSelection selection;
+
+  /// Tall enough to pan and pinch inside. The pins spread across a town, and a strip
+  /// short enough to be a decoration is one nobody can aim at.
+  static const _height = 260.0;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    // Only the ones that can be drawn. Every landmark seeded from the address research
+    // carries coordinates; one typed into AdminApp by hand does not, and a pin at a
+    // guessed location is worse than a name in a list.
+    final landmarks = selection.landmarks
+        .where((l) => l.lat != null && l.lng != null)
+        .toList();
+    if (landmarks.isEmpty) return const SizedBox.shrink();
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: Space.xl),
+      child: LuqmaEntrance(
+        index: 0,
+        child: LuqmaMap(
+          key: ValueKey('addressEditor.map.$zoneId'),
+          height: _height,
+          showLabels: true,
+          markers: [
+            for (final l in landmarks)
+              LuqmaMapMarker(
+                id: l.id,
+                lat: l.lat!,
+                lng: l.lng!,
+                label: l.name,
+                // The chosen one is the emphasised pin, and the only one carrying its
+                // name: twenty-seven names at once is a map nobody can read, and the
+                // customer already knows which they pressed.
+                emphasised: l.id == selection.landmarkId,
+              ),
+          ],
+          // Pressing a pin is pressing its chip. Anything else would be a second way to
+          // say the same thing that the form does not hear.
+          onMarkerTap: (marker) => selection.choose(marker.id),
+        ),
       ),
     );
   }

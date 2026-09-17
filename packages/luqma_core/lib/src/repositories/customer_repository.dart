@@ -5,6 +5,7 @@ import '../models/order.dart';
 import '../data/column_names.dart';
 import '../result.dart';
 import '../util/phone.dart';
+import 'staff_repository.dart';
 
 /// Customers, as AdminApp supports and moderates them.
 ///
@@ -23,15 +24,8 @@ abstract interface class CustomerRepository {
   /// Blocks or unblocks. Blocked customers fail at sign-in.
   Future<Result<void>> setBlocked(String uid, {required bool blocked});
 
-  /// Gives a customer a new password and returns it, once.
-  ///
-  /// A customer's account is keyed on a synthetic address with no mailbox and OTP is
-  /// off, so "email me a link" and "text me a code" both lead nowhere. Somebody who
-  /// forgets their password calls, and the admin reads them what this returns.
-  ///
-  /// It is never stored: the returned string is the only time it is readable, which is
-  /// why it comes back rather than being written anywhere.
-  Future<Result<String>> resetPassword(String uid);
+  /// Sets a new password chosen by the admin for a customer or merchant staff member.
+  Future<Result<void>> setPassword(String uid, String password);
 }
 
 class SupabaseCustomerRepository implements CustomerRepository {
@@ -100,32 +94,39 @@ class SupabaseCustomerRepository implements CustomerRepository {
   }
 
   @override
-  Future<Result<String>> resetPassword(String uid) {
+  Future<Result<void>> setPassword(String uid, String password) {
     return Result.guard(() async {
-      final response = await _db.functions.invoke(
-        'reset-customer-password',
-        body: {'uid': uid},
-      );
-
-      // The function names its refusals so the screen can say which sentence to show.
-      switch (response.status) {
-        case >= 200 && < 300:
-          break;
-        case 400:
-          // A staff account reached through the customers screen — the staff screen is
-          // where those are managed.
-          throw const ConflictFailure();
-        case 404:
-          throw const NotFoundFailure();
-        case 401 || 403:
-          throw const PermissionFailure();
-        default:
-          throw UnknownFailure(
-            'reset-customer-password: HTTP ${response.status}',
-          );
+      int status;
+      dynamic data;
+      try {
+        final response = await _db.functions.invoke(
+          'reset-customer-password',
+          body: {'uid': uid, 'password': password},
+        );
+        status = response.status;
+        data = response.data;
+      } on FunctionException catch (e) {
+        status = e.status;
+        data = e.details;
       }
 
-      return (response.data as Map)['password'] as String;
+      if (status >= 200 && status < 300) {
+        return;
+      }
+
+      final error = data is Map ? data['error'] as String? : null;
+      if (status == 400) {
+        if (error == 'badPassword') throw const ValidationFailure();
+        if (error == 'notAllowed') throw const PermissionFailure();
+        throw const ValidationFailure();
+      }
+      if (status == 404) {
+        throw const NotFoundFailure();
+      }
+      if (status == 401 || status == 403) {
+        throw const PermissionFailure();
+      }
+      throw UnknownFailure('reset-customer-password: HTTP $status');
     });
   }
 }
@@ -136,11 +137,16 @@ class FakeCustomerRepository implements CustomerRepository {
     List<CustomerSummary> seed = const [],
     Map<String, List<Order>> histories = const {},
     this.failure,
+    this.staff,
   })  : _customers = {for (final c in seed) c.id: c},
         _histories = Map.of(histories);
 
   final Map<String, CustomerSummary> _customers;
   final Map<String, List<Order>> _histories;
+
+  /// Staff accounts, so [setPassword] refuses platform staff and accepts shop staff the
+  /// way `reset-customer-password` does.
+  final FakeStaffRepository? staff;
 
   /// Makes every call fail with this. Mutable so a test can let a search succeed and
   /// then refuse what follows — which is the shape of most of the interesting cases.
@@ -149,8 +155,16 @@ class FakeCustomerRepository implements CustomerRepository {
   /// What [setBlocked] did, for assertions.
   final List<(String, bool)> blockCalls = [];
 
-  /// Who [resetPassword] was called for, for assertions.
-  final List<String> resetCalls = [];
+  /// Who [setPassword] was called for, for assertions.
+  final List<(String, String)> passwordCalls = [];
+
+  /// Legacy getter for assertions checking callers by uid.
+  List<String> get resetCalls => passwordCalls.map((c) => c.$1).toList();
+
+  /// Removes a customer by uid, used by account deletion.
+  void removeCustomer(String uid) {
+    _customers.remove(uid);
+  }
 
   @override
   Future<Result<List<CustomerSummary>>> search(String query) async {
@@ -189,13 +203,20 @@ class FakeCustomerRepository implements CustomerRepository {
   }
 
   @override
-  Future<Result<String>> resetPassword(String uid) async {
+  Future<Result<void>> setPassword(String uid, String password) async {
     if (failure != null) return Result.err(failure!);
-    if (!_customers.containsKey(uid)) return const Result.err(NotFoundFailure());
+    final trimmed = password.trim();
+    if (trimmed.length < 8 || trimmed.length > 72) {
+      return const Result.err(ValidationFailure());
+    }
+    final member = staff?.all.where((m) => m.uid == uid).firstOrNull;
+    if (member != null) {
+      if (member.scope != 'merchant') return const Result.err(PermissionFailure());
+    } else if (!_customers.containsKey(uid)) {
+      return const Result.err(NotFoundFailure());
+    }
 
-    resetCalls.add(uid);
-    // Fixed rather than random: a test asserting on a password it cannot predict can
-    // only assert that a string came back, which is what the real one guarantees anyway.
-    return const Result.ok('demo-pass-42');
+    passwordCalls.add((uid, password));
+    return const Result.ok(null);
   }
 }

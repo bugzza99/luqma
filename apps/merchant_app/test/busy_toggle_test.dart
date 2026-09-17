@@ -43,8 +43,10 @@ void main() {
       );
 
   late FakeMerchantRepository merchants;
+  late DateTime currentTime;
 
-  Future<void> pump(WidgetTester tester, {Merchant? seed}) async {
+  Future<void> pump(WidgetTester tester, {Merchant? seed, DateTime? now}) async {
+    currentTime = now ?? DateTime(2026, 9, 22, 14, 0);
     merchants = FakeMerchantRepository(seed: [seed ?? shop()]);
 
     await tester.pumpWidget(
@@ -59,6 +61,7 @@ void main() {
             ),
           ),
           merchantRepositoryProvider.overrideWithValue(merchants),
+          clockProvider.overrideWithValue(() => currentTime),
           remoteConfigServiceProvider
               .overrideWithValue(RemoteConfigService(FakeConfigFetcher({}))),
         ],
@@ -92,6 +95,42 @@ void main() {
       expect(find.byKey(BusyToggle.sheetKey), findsOneWidget);
     });
 
+    testWidgets('pause sheet explains the pause in legible body text',
+        (tester) async {
+      await pump(tester, now: DateTime(2026, 9, 22, 14, 0));
+
+      await tester.tap(find.byKey(BusyToggle.pauseKey));
+      await tester.pumpAndSettle();
+
+      // Heading and explanatory note matching M06
+      expect(find.text('إيقاف الطلبات مؤقتاً'), findsOneWidget);
+      expect(
+        find.text('هيتوقف ظهور محلك للعملاء. هيرجع تلقائياً بعد المدة اللي تختارها.'),
+        findsOneWidget,
+      );
+      final explanation = tester.widget<Text>(find.text(
+        'هيتوقف ظهور محلك للعملاء. هيرجع تلقائياً بعد المدة اللي تختارها.'));
+      expect(explanation.style!.fontSize, greaterThanOrEqualTo(15));
+    });
+
+    testWidgets('pause options name the exact reopen time, not just the duration',
+        (tester) async {
+      await pump(tester, now: DateTime(2026, 9, 22, 14, 0));
+
+      await tester.tap(find.byKey(BusyToggle.pauseKey));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(BusyToggle.sheetKey), findsOneWidget);
+
+      // At 14:00 (2:00 م):
+      // 30 min -> 2:30 م
+      // 60 min -> 3:00 م
+      // 120 min -> 4:00 م
+      expect(find.textContaining('2:30'), findsWidgets);
+      expect(find.textContaining('3:00'), findsWidgets);
+      expect(find.textContaining('4:00'), findsWidgets);
+    });
+
     testWidgets('a chosen stretch sets a time, not a flag', (tester) async {
       await pump(tester);
 
@@ -103,16 +142,19 @@ void main() {
       final paused = (await merchants.getMerchant('m1')).valueOrNull!;
       expect(paused.pausedUntil, isNotNull);
       // Roughly an hour out. Exactness is not the point; a timestamp that lapses is.
-      final minutes = paused.pausedUntil!.difference(DateTime.now()).inMinutes;
+      final minutes = paused.pausedUntil!.difference(currentTime).inMinutes;
       expect(minutes, inInclusiveRange(58, 61));
     });
   });
 
   group('a paused shop', () {
+    final baseTime = DateTime(2026, 9, 22, 14, 0);
+
     testWidgets('says so, and says until when', (tester) async {
       await pump(
         tester,
-        seed: shop(pausedUntil: DateTime.now().add(const Duration(minutes: 45))),
+        now: baseTime,
+        seed: shop(pausedUntil: baseTime.add(const Duration(minutes: 45))),
       );
 
       expect(find.byKey(BusyToggle.pausedKey), findsOneWidget);
@@ -122,7 +164,8 @@ void main() {
     testWidgets('can reopen before the time is up', (tester) async {
       await pump(
         tester,
-        seed: shop(pausedUntil: DateTime.now().add(const Duration(minutes: 45))),
+        now: baseTime,
+        seed: shop(pausedUntil: baseTime.add(const Duration(minutes: 45))),
       );
 
       await tester.tap(find.byKey(BusyToggle.resumeKey));
@@ -136,7 +179,8 @@ void main() {
     testWidgets('a pause that has lapsed reads as open', (tester) async {
       await pump(
         tester,
-        seed: shop(pausedUntil: DateTime.now().subtract(const Duration(minutes: 1))),
+        now: baseTime,
+        seed: shop(pausedUntil: baseTime.subtract(const Duration(minutes: 1))),
       );
 
       expect(find.byKey(BusyToggle.openKey), findsOneWidget);

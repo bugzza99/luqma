@@ -92,57 +92,148 @@ class _Open extends ConsumerWidget {
   }
 
   Future<void> _pause(BuildContext context, WidgetRef ref) async {
+    final theme = Theme.of(context);
+    final colors = theme.luqma;
+
     final minutes = await showModalBottomSheet<int>(
       context: context,
       isScrollControlled: true,
-      builder: (sheetContext) => SafeArea(
-        key: BusyToggle.sheetKey,
-        child: Padding(
-          padding: const EdgeInsets.all(Space.gutter),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text(
-                'توقف قد إيه؟',
-                style: Theme.of(sheetContext).textTheme.titleLarge,
-              ),
-              const SizedBox(height: Space.xs),
-              Text(
-                'هترجع تستقبل طلبات لوحدها بعد المدة دي.',
-                style: Theme.of(sheetContext).textTheme.bodySmall?.copyWith(
-                      color: Theme.of(sheetContext).luqma.textSecondary,
+      backgroundColor: colors.background,
+      shape: const RoundedRectangleBorder(borderRadius: Radii.sheetTop),
+      builder: (sheetContext) {
+        final now = ref.read(clockProvider)();
+        final sheetTheme = Theme.of(sheetContext);
+        final sheetColors = sheetTheme.luqma;
+        final strings = LuqmaStrings.of(sheetContext);
+
+        return SafeArea(
+          key: BusyToggle.sheetKey,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(
+              Space.gutter,
+              Space.md,
+              Space.gutter,
+              Space.xl,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // Top drag handle from M06
+                Center(
+                  child: Container(
+                    width: 44,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: sheetColors.border,
+                      borderRadius: Radii.pillAll,
                     ),
-              ),
-              const SizedBox(height: Space.md),
-              Flexible(
-                child: SingleChildScrollView(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      for (final choice in BusyToggle.choices)
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: Sizes.targetGap),
-                          child: OutlinedButton(
-                            key: BusyToggle.choiceKey(choice),
-                            onPressed: () => Navigator.of(sheetContext).pop(choice),
-                            style: OutlinedButton.styleFrom(
-                              minimumSize: const Size.fromHeight(56),
-                            ),
-                            child: Text(
-                              LuqmaStrings.of(sheetContext).minutes(choice),
-                              style: LuqmaType.button,
-                            ),
-                          ),
-                        ),
-                    ],
                   ),
                 ),
-              ),
-            ],
+                const SizedBox(height: Space.lg),
+                // Header with icon circle and title/subtitle from M06
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      width: 44,
+                      height: 44,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: sheetColors.price.withValues(alpha: 0.14),
+                      ),
+                      alignment: Alignment.center,
+                      child: Icon(
+                        Icons.pause_rounded,
+                        size: Sizes.iconMd,
+                        color: sheetColors.price,
+                      ),
+                    ),
+                    const SizedBox(width: Space.md),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'إيقاف الطلبات مؤقتاً',
+                            style: sheetTheme.textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const SizedBox(height: Space.xs),
+                          Text(
+                            'هيتوقف ظهور محلك للعملاء. هيرجع تلقائياً بعد المدة اللي تختارها.',
+                            style: LuqmaType.bodySmall.copyWith(
+                              color: sheetColors.textSecondary,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: Space.lg),
+                // The radio cards from M06
+                for (final choice in BusyToggle.choices) ...[
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: Space.sm),
+                    child: InkWell(
+                      key: BusyToggle.choiceKey(choice),
+                      onTap: () => Navigator.of(sheetContext).pop(choice),
+                      borderRadius: Radii.cardAll,
+                      child: Container(
+                        padding: const EdgeInsets.all(Space.md),
+                        decoration: BoxDecoration(
+                          color: sheetColors.card,
+                          borderRadius: Radii.cardAll,
+                          border: Border.all(color: sheetColors.hairline),
+                          boxShadow: Elevations.card,
+                        ),
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 18,
+                              height: 18,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                border: Border.all(
+                                  color: sheetColors.border,
+                                  width: 2,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: Space.md),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    strings.minutes(choice),
+                                    style: LuqmaType.bodyStrong.copyWith(
+                                      color: sheetColors.textPrimary,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    'يرجع الساعة ${luqmaClockTime(now.add(Duration(minutes: choice)), strings)}',
+                                    style: LuqmaType.bodySmall.copyWith(
+                                      color: sheetColors.textSecondary,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
           ),
-        ),
-      ),
+        );
+      },
     );
 
     if (minutes == null) return;

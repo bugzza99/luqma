@@ -24,6 +24,54 @@ void main() {
       expect(Contrast.passesText(c.onBrand, c.brandPressed), isTrue);
     });
 
+    // The home's promotion banner puts small orange text on the brand gradient, which is
+    // the only place in the product where orange sits on a dark ground. The first
+    // implementation reached for `colors.accent` — the theme's orange — and that is the
+    // wrong one: it is `#D67F2B` in the light theme and scores 3.70:1 here, under the
+    // 4.5:1 that 12sp normal text needs. The banner's ground is brand burgundy in *both*
+    // themes, so its ink cannot be the swatch that swaps with the theme.
+    test('small orange text on the brand gradient uses the light orange', () {
+      // Both ends of the gradient, because text crosses the whole of it.
+      for (final ground in [LuqmaPalette.bannerTop, LuqmaPalette.bannerBottom]) {
+        expect(Contrast.passesText(LuqmaPalette.orangeLight, ground), isTrue);
+      }
+      // The one that was used. It fails on the light end and passes on the dark end —
+      // 3.70:1 on `bannerTop`, 5.11:1 on `bannerBottom` — which is the trap: checked
+      // against the darker half it looks fine, and the text runs across both.
+      expect(Contrast.passesText(LuqmaPalette.orange, LuqmaPalette.bannerTop), isFalse);
+      expect(
+        Contrast.passesText(LuqmaPalette.orange, LuqmaPalette.bannerBottom),
+        isTrue,
+      );
+    });
+
+    // The half of the rule that the first version of this test missed, and the miss was
+    // the whole point: it lived in the light-theme group and read `c.brand`, so it proved
+    // the banner was legible in the theme it happened to check and said nothing about the
+    // other one. `LuqmaColors.dark.brand` is the *lighter* burgundy — swapped on purpose,
+    // because plain burgundy is too dark on a near-black page — and `orangeLight` scores
+    // only 3.83:1 on it. The banner was still failing in dark mode after the fix that was
+    // supposed to have fixed it.
+    //
+    // Which is why the ground is a fixed pair rather than the theme's brand, and why this
+    // assertion names the themes explicitly instead of taking whichever one the
+    // surrounding group happens to be about.
+    test('and the banner ground does not follow the theme', () {
+      for (final theme in [LuqmaColors.light, LuqmaColors.dark]) {
+        expect(
+          Contrast.passesText(LuqmaPalette.orangeLight, theme.brand),
+          theme == LuqmaColors.light,
+          reason: 'the theme brand is only safe for this text in one theme, '
+              'which is why the banner does not use it',
+        );
+      }
+      // What it uses instead is safe in both, because it is the same in both.
+      expect(Contrast.passesText(LuqmaPalette.orangeLight, LuqmaPalette.bannerTop),
+          isTrue);
+      expect(Contrast.passesText(LuqmaColors.dark.onBrand, LuqmaPalette.bannerTop),
+          isTrue);
+    });
+
     test('an accent badge carries dark text, never white', () {
       expect(Contrast.passesText(c.onAccent, c.accent), isTrue);
       // The mistake this palette invites. Kept as a test so nobody re-introduces it.
@@ -117,8 +165,23 @@ void main() {
       expect(styles.map((s) => s.fontFamily), isNot(contains('Lemonada')));
     });
 
-    test('body text never drops below 15sp', () {
-      expect(LuqmaType.body.fontSize, greaterThanOrEqualTo(15));
+    // `docs/14` has said 15sp since Phase 0, and this asked it of one token while
+    // `bodySmall` sat at 13 and carried a hundred call sites across the three apps —
+    // merchant and dish descriptions, secondary rows, the lines under every card. The
+    // published rule and the token set disagreed for nine phases because the test only
+    // ever looked at the token that already complied.
+    //
+    // Settled on 2026-09-11: the token moves. `caption` stays at 12 and is deliberately
+    // not in this list — it is a label, not body text, and the rule was never about it.
+    test('no style used for body text drops below 15sp', () {
+      for (final (name, style) in [
+        ('body', LuqmaType.body),
+        ('bodyStrong', LuqmaType.bodyStrong),
+        ('bodySmall', LuqmaType.bodySmall),
+      ]) {
+        expect(style.fontSize, greaterThanOrEqualTo(15),
+            reason: '$name is body text, and Arabic loses legibility faster than Latin');
+      }
     });
 
     test('prices use tabular figures so columns line up', () {
