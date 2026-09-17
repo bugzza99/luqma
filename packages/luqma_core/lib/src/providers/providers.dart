@@ -25,6 +25,7 @@ import '../repositories/admin_repository.dart';
 import '../repositories/billing_repository.dart';
 import '../repositories/config_repository.dart';
 import '../repositories/coupon_repository.dart';
+import '../repositories/subscription_request_repository.dart';
 import '../repositories/courier_order_repository.dart';
 import '../repositories/courier_roster_repository.dart';
 import '../repositories/courier_queue_drain.dart';
@@ -334,6 +335,10 @@ StaffIdentity staffIdentity(Ref ref) => switch (ref.watch(currentIdentityProvide
 @Riverpod(keepAlive: true)
 CouponRepository couponRepository(Ref ref) =>
     SupabaseCouponRepository(ref.watch(supabaseProvider));
+
+@Riverpod(keepAlive: true)
+SubscriptionRequestRepository subscriptionRequestRepository(Ref ref) =>
+    SupabaseSubscriptionRequestRepository(ref.watch(supabaseProvider));
 
 @Riverpod(keepAlive: true)
 PromotionRepository promotionRepository(Ref ref) =>

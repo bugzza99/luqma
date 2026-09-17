@@ -118,6 +118,7 @@ class MerchantPromotionsScreen extends ConsumerWidget {
                 merchant: merchant,
                 subscription: subscription,
                 plan: plan,
+                now: ref.watch(clockProvider)(),
               ),
               const SizedBox(height: Space.section),
               if (value.isNotEmpty) ...[
@@ -207,8 +208,10 @@ class _PlanCard extends StatelessWidget {
     required this.merchant,
     required this.subscription,
     required this.plan,
+    required this.now,
   });
 
+  final DateTime now;
   final Merchant? merchant;
   final Subscription? subscription;
   final Plan? plan;
@@ -234,14 +237,15 @@ class _PlanCard extends StatelessWidget {
         ? 'رصيد مسبق الدفع للطلبات'
         : null;
 
-    final itemsLimit = plan == null
-        ? null
-        : !plan!.features.hasUnlimitedItems
-        ? '${plan!.features.maxItems} صنف بالصور'
-        : 'أصناف غير محدودة بالصور';
+    // The term that is running now — not merely the latest one, which stays readable after it
+    // ends until the nightly pass clears the plan.
+    final planActive = merchant?.planId != null &&
+        subscription != null &&
+        subscription!.expiresAt.isAfter(now);
 
-    final commissionRate =
-        merchant != null && merchant!.revenueModel == RevenueModel.commission
+    final commissionRate = !planActive &&
+            merchant != null &&
+            merchant!.revenueModel == RevenueModel.commission
         ? '${(merchant!.revenueValue / 100).toStringAsFixed(2)}%'
         : null;
 
@@ -304,13 +308,12 @@ class _PlanCard extends StatelessWidget {
                   spacing: Space.md,
                   runSpacing: Space.xs,
                   children: [
-                    _FeaturePill(
-                      text: '✓ إحصائيات مفصلة',
-                      color: colors.onBrand,
-                    ),
-                    if (itemsLimit != null)
+                    // Only what a plan actually does. The item limit and "detailed
+                    // statistics" were shown here and enforced nowhere — every shop has
+                    // the statistics, and no menu is capped.
+                    if (planActive)
                       _FeaturePill(
-                        text: '✓ $itemsLimit',
+                        text: '✓ مفيش عمولة على الطلبات',
                         color: colors.onBrand,
                       ),
                     if (commissionRate != null)

@@ -25,6 +25,7 @@ import '../settings/settings_screen.dart';
 import '../dashboard/module_grid_screen.dart';
 import '../shell/layout.dart';
 import '../staff/staff_screen.dart';
+import '../subscriptions/subscriptions_screen.dart';
 import '../statistics/statistics_screen.dart';
 
 part 'router.g.dart';
@@ -79,6 +80,11 @@ const _modules = [
     label: 'طلبات الانضمام',
     icon: Icons.assignment_ind_outlined,
     route: Routes.applications,
+  ),
+  AdminModule(
+    label: 'الاشتراكات',
+    icon: Icons.card_membership,
+    route: Routes.subscriptions,
   ),
   AdminModule(label: 'الخطط', icon: Icons.workspace_premium, route: Routes.plans),
   AdminModule(label: 'حول لقمة', icon: Icons.info_outline, route: Routes.about),
@@ -158,6 +164,10 @@ GoRouter router(Ref ref) {
           GoRoute(path: Routes.plans, builder: (_, _) => const PlansEditorScreen()),
           GoRoute(path: Routes.cuisines, builder: (_, _) => const CuisinesScreen()),
           GoRoute(path: Routes.coupons, builder: (_, _) => const CouponsScreen()),
+          GoRoute(
+            path: Routes.subscriptions,
+            builder: (_, _) => const SubscriptionsScreen(),
+          ),
           GoRoute(path: Routes.about, builder: (_, _) => const AboutEditorScreen()),
           GoRoute(
             path: Routes.developer,

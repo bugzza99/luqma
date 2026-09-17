@@ -10,6 +10,7 @@ import 'courier_roster_screen.dart';
 import 'hours_screen.dart';
 import 'merchant_address_screen.dart';
 import 'statement_screen.dart';
+import 'subscription_screen.dart';
 
 
 import '../promotions/promotions_screen.dart';
@@ -36,6 +37,7 @@ class ShopScreen extends ConsumerWidget {
   static const addressKey = Key('shop.address');
   static const rosterKey = Key('shop.roster');
   static const couponsKey = Key('shop.coupons');
+  static const subscriptionKey = Key('shop.subscription');
   static const noFeedbackKey = Key('shop.noFeedback');
 
   @override
@@ -654,6 +656,17 @@ class _Billing extends ConsumerWidget {
                 ),
                 icon: const Icon(Icons.bar_chart_rounded, size: Sizes.iconSm),
                 label: const Text('الإحصائيات'),
+              ),
+              // Where a shop asks for a plan — a monthly amount instead of commission.
+              TextButton.icon(
+                key: ShopScreen.subscriptionKey,
+                onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => SubscriptionScreen(merchantId: merchant.id),
+                  ),
+                ),
+                icon: const Icon(Icons.workspace_premium_outlined, size: Sizes.iconSm),
+                label: const Text('الاشتراك'),
               ),
             ],
           ),
