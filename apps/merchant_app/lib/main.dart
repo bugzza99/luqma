@@ -17,6 +17,7 @@ void main() => luqmaBootstrap(() async {
   // Crash reporting: silent without a DSN dart-define, so dev builds send nothing.
   await LuqmaTelemetry.init();
   final supabase = await LuqmaSupabase.initialize();
+  unawaited(AppOpenRecorder.start(supabase, 'merchant'));
   // The version this install runs as, against minSupportedVersion.
   final info = await PackageInfo.fromPlatform();
 

@@ -12,6 +12,8 @@ import 'package:luqma_core/luqma_core.dart';
 void main() {
   late FakeStaffRepository staff;
   late FakeCourierRosterRepository roster;
+  late FakeCustomerRepository customers;
+  late FakeAdminRepository admin;
 
   const shore = Merchant(
     id: 'aaaaaaaa-0000-4000-8000-000000000001',
@@ -37,6 +39,8 @@ void main() {
     Size? size,
     FakeStaffRepository? staffRepo,
     FakeCourierRosterRepository? rosterRepo,
+    FakeCustomerRepository? customerRepo,
+    FakeAdminRepository? adminRepo,
   }) async {
     if (size != null) {
       tester.view.physicalSize = size;
@@ -45,12 +49,17 @@ void main() {
     }
     staff = staffRepo ?? FakeStaffRepository();
     roster = rosterRepo ?? FakeCourierRosterRepository();
+    customers = customerRepo ?? FakeCustomerRepository(staff: staff);
+    admin = adminRepo ??
+        FakeAdminRepository(staff: staff, customers: customers);
 
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
           staffRepositoryProvider.overrideWithValue(staff),
           courierRosterRepositoryProvider.overrideWithValue(roster),
+          customerRepositoryProvider.overrideWithValue(customers),
+          adminRepositoryProvider.overrideWithValue(admin),
           merchantRepositoryProvider.overrideWithValue(
             FakeMerchantRepository(seed: const [shore, kitchen]),
           ),
@@ -551,6 +560,214 @@ void main() {
 
       expect(find.text('مصطفى صلاح'), findsNothing);
       expect(find.text('يوسف عادل'), findsOneWidget);
+    });
+  });
+
+  group('staff password change and account deletion', () {
+    const phoneSize = Size(390, 844);
+
+    testWidgets(
+        'password button disabled until both fields match and are 8-72 chars with inline errors',
+        (tester) async {
+      final staffRepo = FakeStaffRepository();
+      await staffRepo.createAccount(
+        email: 'owner@luqma.test',
+        password: 'password123',
+        name: 'صاحب الشاطئ',
+        scope: 'merchant',
+        role: 'owner',
+        merchantId: shore.id,
+      );
+
+      await pump(tester, size: phoneSize, staffRepo: staffRepo);
+
+      await tester.tap(find.text('صاحب الشاطئ'));
+      await tester.pumpAndSettle();
+
+      final changeBtn = find.byKey(StaffScreen.changePasswordKey);
+      final newPassField = find.byKey(StaffScreen.newPasswordFieldKey);
+      final confirmPassField = find.byKey(StaffScreen.confirmPasswordFieldKey);
+
+      expect(changeBtn, findsOneWidget);
+      expect(tester.widget<FilledButton>(changeBtn).onPressed, isNull);
+
+      // Too short
+      await tester.enterText(newPassField, 'short');
+      await tester.pump();
+      expect(find.text('كلمة السر لازم تكون 8 حروف على الأقل.'), findsOneWidget);
+      expect(tester.widget<FilledButton>(changeBtn).onPressed, isNull);
+
+      // Valid new, but confirm empty
+      await tester.enterText(newPassField, 'validPassword123');
+      await tester.pump();
+      expect(find.text('كلمة السر لازم تكون 8 حروف على الأقل.'), findsNothing);
+      expect(tester.widget<FilledButton>(changeBtn).onPressed, isNull);
+
+      // Confirm does not match
+      await tester.enterText(confirmPassField, 'differentPassword');
+      await tester.pump();
+      expect(find.text('كلمتي السر مش متطابقتين.'), findsOneWidget);
+      expect(tester.widget<FilledButton>(changeBtn).onPressed, isNull);
+
+      // Both match and valid
+      await tester.enterText(confirmPassField, 'validPassword123');
+      await tester.pump();
+      expect(find.text('كلمتي السر مش متطابقتين.'), findsNothing);
+      expect(tester.widget<FilledButton>(changeBtn).onPressed, isNotNull);
+    });
+
+    testWidgets(
+        'success calls setPassword with typed value, clears fields, and shows snackbar',
+        (tester) async {
+      final staffRepo = FakeStaffRepository();
+      final res = await staffRepo.createAccount(
+        email: 'courier@luqma.test',
+        password: 'password123',
+        name: 'كابتن محمود',
+        scope: 'merchant',
+        role: 'courier',
+        merchantId: shore.id,
+      );
+      final courierUid = (res as Ok<StaffMember>).value.uid;
+
+      await pump(tester, size: phoneSize, staffRepo: staffRepo);
+
+      await tester.tap(find.text('كابتن محمود'));
+      await tester.pumpAndSettle();
+
+      await tester.drag(find.byType(SingleChildScrollView).last, const Offset(0, -300));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(
+          find.byKey(StaffScreen.newPasswordFieldKey), 'newSecurePass123');
+      await tester.enterText(
+          find.byKey(StaffScreen.confirmPasswordFieldKey), 'newSecurePass123');
+      await tester.pump();
+
+      await tester.tap(find.byKey(StaffScreen.changePasswordKey));
+      await tester.pumpAndSettle();
+
+      expect(customers.passwordCalls, [(courierUid, 'newSecurePass123')]);
+      expect(
+          tester
+              .widget<TextFormField>(find.byKey(StaffScreen.newPasswordFieldKey))
+              .controller!
+              .text,
+          isEmpty);
+      expect(
+          tester
+              .widget<TextFormField>(
+                  find.byKey(StaffScreen.confirmPasswordFieldKey))
+              .controller!
+              .text,
+          isEmpty);
+      expect(find.text('اتغيرت كلمة السر'), findsOneWidget);
+    });
+
+    testWidgets(
+        'delete dialog for owner shows specific warning and confirm calls deleteAccount',
+        (tester) async {
+      final staffRepo = FakeStaffRepository();
+      final res = await staffRepo.createAccount(
+        email: 'owner@luqma.test',
+        password: 'password123',
+        name: 'صاحب الشاطئ',
+        scope: 'merchant',
+        role: 'owner',
+        merchantId: shore.id,
+      );
+      final ownerUid = (res as Ok<StaffMember>).value.uid;
+
+      await pump(tester, size: phoneSize, staffRepo: staffRepo);
+
+      await tester.tap(find.text('صاحب الشاطئ'));
+      await tester.pumpAndSettle();
+
+      final deleteBtn = find.byKey(StaffScreen.deleteAccountKey);
+      await tester.drag(
+          find.byType(SingleChildScrollView).last, const Offset(0, -500));
+      await tester.pumpAndSettle();
+      expect(deleteBtn, findsOneWidget);
+
+      await tester.tap(deleteBtn);
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text('المحل هيفضل موجود من غير صاحب لحد ما تربطه بحساب تاني'),
+        findsOneWidget,
+      );
+      expect(find.text('مش هتقدر ترجع في الخطوة دي بعد ما تحذف.'), findsOneWidget);
+
+      final confirmBtn = find.byKey(StaffScreen.confirmDeleteAccountKey);
+      expect(confirmBtn, findsOneWidget);
+      await tester.tap(confirmBtn);
+      await tester.pumpAndSettle();
+
+      expect(admin.deletedAccountCalls, [ownerUid]);
+      expect(find.text('الحساب اتحذف'), findsOneWidget);
+    });
+
+    testWidgets(
+        'delete dialog for courier shows specific warning and confirm calls deleteAccount',
+        (tester) async {
+      final staffRepo = FakeStaffRepository();
+      final res = await staffRepo.createAccount(
+        email: 'courier@luqma.test',
+        password: 'password123',
+        name: 'كابتن محمود',
+        scope: 'merchant',
+        role: 'courier',
+        merchantId: shore.id,
+      );
+      final courierUid = (res as Ok<StaffMember>).value.uid;
+
+      await pump(tester, size: phoneSize, staffRepo: staffRepo);
+
+      await tester.tap(find.text('كابتن محمود'));
+      await tester.pumpAndSettle();
+
+      final deleteBtn = find.byKey(StaffScreen.deleteAccountKey);
+      await tester.drag(
+          find.byType(SingleChildScrollView).last, const Offset(0, -500));
+      await tester.pumpAndSettle();
+      expect(deleteBtn, findsOneWidget);
+
+      await tester.tap(deleteBtn);
+      await tester.pumpAndSettle();
+
+      expect(find.text('هيتشال من كل المحلات'), findsOneWidget);
+      expect(find.text('مش هتقدر ترجع في الخطوة دي بعد ما تحذف.'), findsOneWidget);
+
+      final confirmBtn = find.byKey(StaffScreen.confirmDeleteAccountKey);
+      expect(confirmBtn, findsOneWidget);
+      await tester.tap(confirmBtn);
+      await tester.pumpAndSettle();
+
+      expect(admin.deletedAccountCalls, [courierUid]);
+      expect(find.text('الحساب اتحذف'), findsOneWidget);
+    });
+
+    testWidgets(
+        'platform staff detail shows neither password block nor delete button',
+        (tester) async {
+      final staffRepo = FakeStaffRepository();
+      await staffRepo.createAccount(
+        email: 'admin@luqma.test',
+        password: 'password123',
+        name: 'مصطفى صلاح',
+        scope: 'platform',
+        role: 'admin',
+      );
+
+      await pump(tester, size: phoneSize, staffRepo: staffRepo);
+
+      await tester.tap(find.text('مصطفى صلاح'));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(StaffScreen.newPasswordFieldKey), findsNothing);
+      expect(find.byKey(StaffScreen.confirmPasswordFieldKey), findsNothing);
+      expect(find.byKey(StaffScreen.changePasswordKey), findsNothing);
+      expect(find.byKey(StaffScreen.deleteAccountKey), findsNothing);
     });
   });
 }

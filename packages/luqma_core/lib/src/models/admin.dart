@@ -321,3 +321,123 @@ class SeriesPoint {
     count: (json['count'] as num?)?.toInt() ?? 0,
   );
 }
+
+/// Active users for a single period: devices (installs) and accounts (signed-in).
+class ActiveUserCount {
+  const ActiveUserCount({this.devices = 0, this.accounts = 0});
+
+  final int devices;
+  final int accounts;
+
+  factory ActiveUserCount.fromJson(Map<String, dynamic> json) => ActiveUserCount(
+    devices: (json['devices'] as num?)?.toInt() ?? 0,
+    accounts: (json['accounts'] as num?)?.toInt() ?? 0,
+  );
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is ActiveUserCount &&
+          runtimeType == other.runtimeType &&
+          devices == other.devices &&
+          accounts == other.accounts;
+
+  @override
+  int get hashCode => Object.hash(devices, accounts);
+
+  @override
+  String toString() => 'ActiveUserCount(devices: $devices, accounts: $accounts)';
+}
+
+/// Active user metrics for an app across day, week, and month.
+class AppActiveUsers {
+  const AppActiveUsers({
+    this.day = const ActiveUserCount(),
+    this.week = const ActiveUserCount(),
+    this.month = const ActiveUserCount(),
+  });
+
+  final ActiveUserCount day;
+  final ActiveUserCount week;
+  final ActiveUserCount month;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is AppActiveUsers &&
+          runtimeType == other.runtimeType &&
+          day == other.day &&
+          week == other.week &&
+          month == other.month;
+
+  @override
+  int get hashCode => Object.hash(day, week, month);
+
+  @override
+  String toString() => 'AppActiveUsers(day: $day, week: $week, month: $month)';
+}
+
+/// Active users across customer and merchant apps for day, week, and month.
+class ActiveUsers {
+  const ActiveUsers({
+    this.customer = const AppActiveUsers(),
+    this.merchant = const AppActiveUsers(),
+  });
+
+  final AppActiveUsers customer;
+  final AppActiveUsers merchant;
+
+  factory ActiveUsers.fromRows(List<dynamic> rows) {
+    var customerDay = const ActiveUserCount();
+    var customerWeek = const ActiveUserCount();
+    var customerMonth = const ActiveUserCount();
+    var merchantDay = const ActiveUserCount();
+    var merchantWeek = const ActiveUserCount();
+    var merchantMonth = const ActiveUserCount();
+
+    for (final raw in rows) {
+      if (raw is! Map) continue;
+      final row = Map<String, dynamic>.from(raw);
+      final app = row['app'] as String?;
+      final period = row['period'] as String?;
+      final count = ActiveUserCount.fromJson(row);
+
+      if (app == 'customer') {
+        if (period == 'day') customerDay = count;
+        if (period == 'week') customerWeek = count;
+        if (period == 'month') customerMonth = count;
+      } else if (app == 'merchant') {
+        if (period == 'day') merchantDay = count;
+        if (period == 'week') merchantWeek = count;
+        if (period == 'month') merchantMonth = count;
+      }
+    }
+
+    return ActiveUsers(
+      customer: AppActiveUsers(
+        day: customerDay,
+        week: customerWeek,
+        month: customerMonth,
+      ),
+      merchant: AppActiveUsers(
+        day: merchantDay,
+        week: merchantWeek,
+        month: merchantMonth,
+      ),
+    );
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is ActiveUsers &&
+          runtimeType == other.runtimeType &&
+          customer == other.customer &&
+          merchant == other.merchant;
+
+  @override
+  int get hashCode => Object.hash(customer, merchant);
+
+  @override
+  String toString() => 'ActiveUsers(customer: $customer, merchant: $merchant)';
+}

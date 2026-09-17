@@ -10,6 +10,7 @@ import '../about/about_editor_screen.dart';
 import '../developer/developer_editor_screen.dart';
 import '../applications/applications_screen.dart';
 import '../config/config_screen.dart';
+import '../coupons/coupons_screen.dart';
 import '../cuisines/cuisines_screen.dart';
 import '../customers/customers_screen.dart';
 import '../dashboard/dashboard_screen.dart';
@@ -68,6 +69,11 @@ const _modules = [
   AdminModule(label: 'المطبخ', icon: Icons.restaurant_menu, route: Routes.cuisines),
   AdminModule(label: 'الصفحة الرئيسية', icon: Icons.dashboard, route: Routes.home),
   AdminModule(label: 'الإحصائيات', icon: Icons.bar_chart, route: Routes.statistics),
+  AdminModule(
+    label: 'الكوبونات',
+    icon: Icons.confirmation_number_outlined,
+    route: Routes.coupons,
+  ),
   AdminModule(label: 'الفريق', icon: Icons.badge, route: Routes.staff),
   AdminModule(
     label: 'طلبات الانضمام',
@@ -151,6 +157,7 @@ GoRouter router(Ref ref) {
           GoRoute(path: Routes.config, builder: (_, _) => const ConfigScreen()),
           GoRoute(path: Routes.plans, builder: (_, _) => const PlansEditorScreen()),
           GoRoute(path: Routes.cuisines, builder: (_, _) => const CuisinesScreen()),
+          GoRoute(path: Routes.coupons, builder: (_, _) => const CouponsScreen()),
           GoRoute(path: Routes.about, builder: (_, _) => const AboutEditorScreen()),
           GoRoute(
             path: Routes.developer,

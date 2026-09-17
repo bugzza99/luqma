@@ -32,6 +32,13 @@ class StaffScreen extends ConsumerStatefulWidget {
   static const toggleKey = Key('staff.toggle');
   static const createKey = Key('staff.create');
   static const submitKey = Key('staff.submit');
+  static const newPasswordFieldKey = Key('staff.new_password');
+  static const confirmPasswordFieldKey = Key('staff.confirm_password');
+  static const changePasswordKey = Key('staff.change_password');
+  static const toggleNewPasswordVisibilityKey = Key('staff.toggle_new_password');
+  static const toggleConfirmPasswordVisibilityKey = Key('staff.toggle_confirm_password');
+  static const deleteAccountKey = Key('staff.delete_account');
+  static const confirmDeleteAccountKey = Key('staff.confirm_delete_account');
 
   static const _roleLabels = {
     'admin': 'أدمن',
@@ -66,9 +73,11 @@ class _StaffScreenState extends ConsumerState<StaffScreen> {
         .firstOrNull;
     if (currentCourier != null) {
       _selectedCourier = currentCourier;
+    } else if (staffAsync.hasValue && _selectedCourier != null) {
+      _selectedCourier = null;
     }
 
-    // On narrow screens (phone), the courier detail replaces the staff list so that
+    // On narrow screens (phone), the staff detail replaces the staff list so that
     // controls have sufficient touch target size and never overflow.
     if (!layout.showsTwoPanes && _selectedCourier != null) {
       return Scaffold(
@@ -81,15 +90,24 @@ class _StaffScreenState extends ConsumerState<StaffScreen> {
           title: Text(
             _selectedCourier!.name?.isNotEmpty == true
                 ? _selectedCourier!.name!
-                : 'ارتباطات الكابتن',
+                : (_selectedCourier!.role == 'courier'
+                    ? 'ارتباطات الكابتن'
+                    : 'تفاصيل الحساب'),
           ),
         ),
         body: AdminContent(
           child: SingleChildScrollView(
             padding: const EdgeInsets.all(Space.gutter),
             child: _CourierDetailView(
+              // Keyed by the account: a password change or deletion still in flight for
+              // one member must not finish into the pane of the next one selected.
+              key: ValueKey(_selectedCourier!.uid),
               courier: _selectedCourier!,
               merchantsMap: merchantsMap,
+              onDeleted: () {
+                setState(() => _selectedCourier = null);
+                ref.invalidate(staffListProvider);
+              },
             ),
           ),
         ),
@@ -145,9 +163,7 @@ class _StaffScreenState extends ConsumerState<StaffScreen> {
                           member: member,
                           merchantName: merchantName,
                           isSelected: isSelected,
-                          onTap: member.role == 'courier'
-                              ? () => setState(() => _selectedCourier = member)
-                              : null,
+                          onTap: () => setState(() => _selectedCourier = member),
                           onToggle: () => _toggle(context, ref, member),
                         );
                       },
@@ -202,10 +218,15 @@ class _StaffScreenState extends ConsumerState<StaffScreen> {
                         : SingleChildScrollView(
                             padding: const EdgeInsets.all(Space.gutter),
                             child: _CourierDetailView(
+                              key: ValueKey(_selectedCourier!.uid),
                               courier: _selectedCourier!,
                               merchantsMap: merchantsMap,
                               onClose: () =>
                                   setState(() => _selectedCourier = null),
+                              onDeleted: () {
+                                setState(() => _selectedCourier = null);
+                                ref.invalidate(staffListProvider);
+                              },
                             ),
                           ),
                   ),
@@ -380,7 +401,7 @@ class _StaffRow extends StatelessWidget {
         : 'ح';
 
     return InkWell(
-      onTap: isCourier ? onTap : null,
+      onTap: onTap,
       borderRadius: Radii.cardAll,
       child: AnimatedOpacity(
         opacity: member.isActive ? 1.0 : 0.55,
@@ -496,23 +517,309 @@ class _StaffRow extends StatelessWidget {
   }
 }
 
-/// The detail pane/sheet for managing which shops (and/or platform) a courier carries for.
-class _CourierDetailView extends ConsumerWidget {
+/// The detail pane/sheet for managing a staff member's attachments, password, and account.
+class _CourierDetailView extends ConsumerStatefulWidget {
   const _CourierDetailView({
+    super.key,
     required this.courier,
     required this.merchantsMap,
     this.onClose,
+    this.onDeleted,
   });
 
   final StaffMember courier;
   final Map<String, Merchant> merchantsMap;
   final VoidCallback? onClose;
+  final VoidCallback? onDeleted;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_CourierDetailView> createState() => _CourierDetailViewState();
+}
+
+class _CourierDetailViewState extends ConsumerState<_CourierDetailView> {
+  final _newPasswordController = TextEditingController();
+  final _confirmPasswordController = TextEditingController();
+  bool _obscureNew = true;
+  bool _obscureConfirm = true;
+  bool _changingPassword = false;
+  bool _deletingAccount = false;
+
+  @override
+  void dispose() {
+    _newPasswordController.dispose();
+    _confirmPasswordController.dispose();
+    super.dispose();
+  }
+
+  @override
+  void didUpdateWidget(covariant _CourierDetailView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.courier.uid != widget.courier.uid) {
+      _newPasswordController.clear();
+      _confirmPasswordController.clear();
+    }
+  }
+
+  Future<void> _changePassword() async {
+    // Trimmed as the server trims it, so what passes here is what the server accepts.
+    final password = _newPasswordController.text.trim();
+    setState(() => _changingPassword = true);
+    final result = await ref
+        .read(customerRepositoryProvider)
+        .setPassword(widget.courier.uid, password);
+    if (!mounted) return;
+    setState(() => _changingPassword = false);
+
+    final messenger = ScaffoldMessenger.of(context);
+
+    if (result is Ok) {
+      _newPasswordController.clear();
+      _confirmPasswordController.clear();
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text('اتغيرت كلمة السر'),
+        ),
+      );
+    } else if (result case Err(:final failure)) {
+      final message = switch (failure) {
+        PermissionFailure() => 'مش مسموح لك تغيّر كلمة السر.',
+        NotFoundFailure() => 'الحساب مش موجود.',
+        OfflineFailure() => 'مفيش نت — اتأكد من اتصالك وجرّب تاني.',
+        _ => 'مقدرناش نغيّر كلمة السر. حاول تاني.',
+      };
+      messenger.showSnackBar(
+        SnackBar(content: Text(message)),
+      );
+    }
+  }
+
+  Future<void> _deleteAccount() async {
+    final colors = Theme.of(context).luqma;
+    final isOwner = widget.courier.role == 'owner';
+
+    final noticeText = isOwner
+        ? 'المحل هيفضل موجود من غير صاحب لحد ما تربطه بحساب تاني'
+        : 'هيتشال من كل المحلات';
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('حذف الحساب'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(noticeText),
+            const SizedBox(height: Space.xs),
+            const Text('مش هتقدر ترجع في الخطوة دي بعد ما تحذف.'),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('إلغاء'),
+          ),
+          TextButton(
+            key: StaffScreen.confirmDeleteAccountKey,
+            style: TextButton.styleFrom(
+              foregroundColor: colors.danger,
+            ),
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('احذف نهائياً'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    setState(() => _deletingAccount = true);
+    final result = await ref
+        .read(adminRepositoryProvider)
+        .deleteAccount(widget.courier.uid);
+    if (!mounted) return;
+    setState(() => _deletingAccount = false);
+
+    final messenger = ScaffoldMessenger.of(context);
+
+    if (result is Ok) {
+      messenger.showSnackBar(
+        const SnackBar(content: Text('الحساب اتحذف')),
+      );
+      widget.onDeleted?.call();
+    } else if (result case Err(:final failure)) {
+      final message = switch (failure) {
+        PermissionFailure() => 'مش مسموح لك تحذف الحساب.',
+        NotFoundFailure() => 'الحساب مش موجود.',
+        OfflineFailure() => 'مفيش نت — اتأكد من اتصالك وجرّب تاني.',
+        _ => 'مقدرناش نحذف الحساب. حاول تاني.',
+      };
+      messenger.showSnackBar(
+        SnackBar(content: Text(message)),
+      );
+    }
+  }
+
+  Widget _buildPasswordBlock(
+      BuildContext context, LuqmaColors colors, ThemeData theme) {
+    return Container(
+      padding: const EdgeInsets.all(Space.md),
+      decoration: BoxDecoration(
+        color: colors.card,
+        borderRadius: Radii.cardAll,
+        border: Border.all(color: colors.border),
+        boxShadow: Elevations.card,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            'كلمة السر',
+            style: theme.textTheme.titleSmall?.copyWith(
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: Space.md),
+          Builder(
+            builder: (context) {
+              final p1 = _newPasswordController.text.trim();
+              final p2 = _confirmPasswordController.text.trim();
+
+              String? p1Error;
+              if (p1.isNotEmpty && (p1.length < 8 || p1.length > 72)) {
+                p1Error = 'كلمة السر لازم تكون 8 حروف على الأقل.';
+              }
+
+              String? p2Error;
+              if (p2.isNotEmpty && p1 != p2) {
+                p2Error = 'كلمتي السر مش متطابقتين.';
+              }
+
+              final canSubmit = p1.length >= 8 &&
+                  p1.length <= 72 &&
+                  p1 == p2 &&
+                  !_changingPassword;
+
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  TextFormField(
+                    key: StaffScreen.newPasswordFieldKey,
+                    controller: _newPasswordController,
+                    obscureText: _obscureNew,
+                    textDirection: TextDirection.ltr,
+                    decoration: InputDecoration(
+                      labelText: 'كلمة السر الجديدة',
+                      errorText: p1Error,
+                      suffixIcon: IconButton(
+                        key: StaffScreen.toggleNewPasswordVisibilityKey,
+                        icon: Icon(
+                          _obscureNew
+                              ? Icons.visibility_outlined
+                              : Icons.visibility_off_outlined,
+                        ),
+                        tooltip:
+                            _obscureNew ? 'إظهار كلمة السر' : 'إخفاء كلمة السر',
+                        onPressed: () =>
+                            setState(() => _obscureNew = !_obscureNew),
+                      ),
+                    ),
+                    onChanged: (_) => setState(() {}),
+                  ),
+                  const SizedBox(height: Space.sm),
+                  TextFormField(
+                    key: StaffScreen.confirmPasswordFieldKey,
+                    controller: _confirmPasswordController,
+                    obscureText: _obscureConfirm,
+                    textDirection: TextDirection.ltr,
+                    decoration: InputDecoration(
+                      labelText: 'اكتبها تاني',
+                      errorText: p2Error,
+                      suffixIcon: IconButton(
+                        key: StaffScreen.toggleConfirmPasswordVisibilityKey,
+                        icon: Icon(
+                          _obscureConfirm
+                              ? Icons.visibility_outlined
+                              : Icons.visibility_off_outlined,
+                        ),
+                        tooltip: _obscureConfirm
+                            ? 'إظهار كلمة السر'
+                            : 'إخفاء كلمة السر',
+                        onPressed: () => setState(
+                            () => _obscureConfirm = !_obscureConfirm),
+                      ),
+                    ),
+                    onChanged: (_) => setState(() {}),
+                  ),
+                  const SizedBox(height: Space.md),
+                  FilledButton(
+                    key: StaffScreen.changePasswordKey,
+                    onPressed: canSubmit ? _changePassword : null,
+                    style: FilledButton.styleFrom(
+                      minimumSize: const Size.fromHeight(Sizes.minTarget),
+                    ),
+                    child: _changingPassword
+                        ? const SizedBox(
+                            height: 18,
+                            width: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Text('غيّر كلمة السر'),
+                  ),
+                ],
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDeleteAction(
+      BuildContext context, LuqmaColors colors, ThemeData theme) {
+    return Center(
+      child: TextButton.icon(
+        key: StaffScreen.deleteAccountKey,
+        onPressed: _deletingAccount ? null : _deleteAccount,
+        icon: Icon(Icons.delete_forever_outlined, color: colors.danger),
+        label: Text(
+          'احذف الحساب',
+          style: theme.textTheme.bodyMedium?.copyWith(
+            color: colors.danger,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        style: TextButton.styleFrom(
+          foregroundColor: colors.danger,
+          minimumSize: const Size(Sizes.minTarget, Sizes.minTarget),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colors = theme.luqma;
-    final attachmentsAsync = ref.watch(courierAttachmentsProvider(courier.uid));
+    final courier = widget.courier;
+    final isCourier = courier.role == 'courier';
+    final isOwner = courier.role == 'owner';
+    final attachmentsAsync = isCourier
+        ? ref.watch(courierAttachmentsProvider(courier.uid))
+        : null;
+
+    final headerIcon = isCourier
+        ? Icons.delivery_dining
+        : (isOwner
+            ? Icons.storefront_outlined
+            : Icons.admin_panel_settings_outlined);
+    final headerColor = isCourier
+        ? colors.price
+        : (isOwner ? colors.success : colors.brand);
+
+    final merchantName = courier.merchantId != null
+        ? widget.merchantsMap[courier.merchantId]?.name
+        : null;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -531,12 +838,12 @@ class _CourierDetailView extends ConsumerWidget {
                 width: 44,
                 height: 44,
                 decoration: BoxDecoration(
-                  color: colors.price,
+                  color: headerColor,
                   shape: BoxShape.circle,
                 ),
                 alignment: Alignment.center,
                 child: Icon(
-                  Icons.delivery_dining,
+                  headerIcon,
                   color: colors.onBrand,
                   size: 24,
                 ),
@@ -547,7 +854,9 @@ class _CourierDetailView extends ConsumerWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      courier.name?.isNotEmpty == true ? courier.name! : 'كابتن',
+                      courier.name?.isNotEmpty == true
+                          ? courier.name!
+                          : (StaffScreen._roleLabels[courier.role] ?? 'حساب'),
                       style: theme.textTheme.titleLarge?.copyWith(
                         fontWeight: FontWeight.w700,
                       ),
@@ -561,35 +870,55 @@ class _CourierDetailView extends ConsumerWidget {
                         ),
                       ),
                     ],
+                    if (merchantName != null && merchantName.isNotEmpty) ...[
+                      const SizedBox(height: Space.xs / 2),
+                      Text(
+                        'مطعم: $merchantName',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: colors.textSecondary,
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),
-              if (onClose != null)
+              if (widget.onClose != null)
                 IconButton(
                   tooltip: 'إغلاق',
                   icon: const Icon(Icons.close),
-                  onPressed: onClose,
+                  onPressed: widget.onClose,
                 ),
             ],
           ),
         ),
-        const SizedBox(height: Space.lg),
 
-        // Live active attachments and actions
-        LuqmaAsyncView<List<CourierRosterItem>>(
-          value: attachmentsAsync,
-          onRetry: () => ref.invalidate(courierAttachmentsProvider(courier.uid)),
-          empty: _buildEmptyOrActive(context, ref, const []),
-          isEmpty: (items) => items.isEmpty,
-          builder: (context, items) => _buildEmptyOrActive(context, ref, items),
-        ),
+        // Live active attachments and actions (couriers only)
+        if (isCourier && attachmentsAsync != null) ...[
+          const SizedBox(height: Space.lg),
+          LuqmaAsyncView<List<CourierRosterItem>>(
+            value: attachmentsAsync,
+            onRetry: () =>
+                ref.invalidate(courierAttachmentsProvider(courier.uid)),
+            empty: _buildEmptyOrActive(context, const []),
+            isEmpty: (items) => items.isEmpty,
+            builder: (context, items) => _buildEmptyOrActive(context, items),
+          ),
+        ],
+
+        // Typed-password block and delete action for merchant-scope staff (owner or courier)
+        if (courier.scope == 'merchant') ...[
+          const SizedBox(height: Space.lg),
+          _buildPasswordBlock(context, colors, theme),
+          const SizedBox(height: Space.xl),
+          _buildDeleteAction(context, colors, theme),
+          const SizedBox(height: Space.lg),
+        ],
       ],
     );
   }
 
   Widget _buildEmptyOrActive(
     BuildContext context,
-    WidgetRef ref,
     List<CourierRosterItem> items,
   ) {
     final theme = Theme.of(context);
@@ -597,7 +926,8 @@ class _CourierDetailView extends ConsumerWidget {
     final l10n = LuqmaStrings.of(context);
 
     // Platform row is represented by merchantId == null
-    final hasPlatform = items.any((item) => item.merchantId == null && item.isActive);
+    final hasPlatform =
+        items.any((item) => item.merchantId == null && item.isActive);
     final attachedMerchantIds = {
       for (final item in items)
         if (item.merchantId != null && item.isActive) item.merchantId!,
@@ -612,14 +942,14 @@ class _CourierDetailView extends ConsumerWidget {
           runSpacing: Space.sm,
           children: [
             FilledButton.tonalIcon(
-              onPressed: () => _openAddShop(context, ref, attachedMerchantIds),
+              onPressed: () => _openAddShop(context, attachedMerchantIds),
               icon: const Icon(Icons.add_business_outlined),
               label: Text(l10n.courierAddShop),
             ),
             // Only offered when the courier does not already hold the platform row.
             if (!hasPlatform)
               FilledButton.icon(
-                onPressed: () => _attachToPlatform(context, ref),
+                onPressed: () => _attachToPlatform(context),
                 icon: const Icon(Icons.add_moderator_outlined),
                 label: Text(l10n.courierAddToPlatform),
               ),
@@ -661,7 +991,7 @@ class _CourierDetailView extends ConsumerWidget {
               final displayName = isPlatform
                   ? l10n.courierPlatformRow
                   : (item.merchantName ??
-                      merchantsMap[item.merchantId]?.name ??
+                      widget.merchantsMap[item.merchantId]?.name ??
                       item.merchantId ??
                       'محل');
 
@@ -708,7 +1038,7 @@ class _CourierDetailView extends ConsumerWidget {
                     IconButton(
                       tooltip: l10n.courierDetachTooltip,
                       icon: Icon(Icons.link_off, color: colors.danger),
-                      onPressed: () => _confirmAndDetach(context, ref, item),
+                      onPressed: () => _confirmAndDetach(context, item),
                     ),
                   ],
                 ),
@@ -719,28 +1049,32 @@ class _CourierDetailView extends ConsumerWidget {
     );
   }
 
-  Future<void> _attachToPlatform(BuildContext context, WidgetRef ref) async {
+  Future<void> _attachToPlatform(BuildContext context) async {
     final messenger = ScaffoldMessenger.of(context);
     final result = await ref
         .read(courierRosterRepositoryProvider)
-        .attachCourierToMerchant(courierUid: courier.uid, merchantId: null);
+        .attachCourierToMerchant(
+          courierUid: widget.courier.uid,
+          merchantId: null,
+        );
 
     if (result is Err && context.mounted) {
       messenger.showSnackBar(
-        const SnackBar(content: Text('تعذر ربط الكابتن بالمنصة. حاول مرة أخرى.')),
+        const SnackBar(
+          content: Text('تعذر ربط الكابتن بالمنصة. حاول مرة أخرى.'),
+        ),
       );
     }
   }
 
   Future<void> _openAddShop(
     BuildContext context,
-    WidgetRef ref,
     Set<String> attachedMerchantIds,
   ) async {
     await showDialog<void>(
       context: context,
       builder: (_) => _AddShopDialog(
-        courierUid: courier.uid,
+        courierUid: widget.courier.uid,
         excludedIds: attachedMerchantIds,
       ),
     );
@@ -748,7 +1082,6 @@ class _CourierDetailView extends ConsumerWidget {
 
   Future<void> _confirmAndDetach(
     BuildContext context,
-    WidgetRef ref,
     CourierRosterItem item,
   ) async {
     final l10n = LuqmaStrings.of(context);
@@ -780,7 +1113,7 @@ class _CourierDetailView extends ConsumerWidget {
     final result = await ref
         .read(courierRosterRepositoryProvider)
         .detachCourierFromMerchant(
-          courierUid: courier.uid,
+          courierUid: widget.courier.uid,
           merchantId: item.merchantId,
         );
 

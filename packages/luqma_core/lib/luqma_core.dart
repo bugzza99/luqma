@@ -5,6 +5,7 @@
 library;
 
 export 'src/app/bootstrap.dart';
+export 'src/app/app_open_recorder.dart';
 export 'src/app/external_links.dart';
 export 'src/app/supabase_options.dart';
 export 'src/app/push.dart';
@@ -41,6 +42,7 @@ export 'src/repositories/address_repository.dart';
 export 'src/repositories/admin_repository.dart';
 export 'src/repositories/billing_repository.dart';
 export 'src/repositories/config_repository.dart';
+export 'src/repositories/coupon_repository.dart';
 export 'src/repositories/courier_order_repository.dart';
 export 'src/repositories/courier_roster_repository.dart';
 export 'src/repositories/courier_queue_drain.dart';
@@ -100,6 +102,7 @@ export 'src/widgets/pressable.dart';
 export 'src/widgets/chip.dart';
 export 'src/widgets/bill_line.dart';
 export 'src/widgets/luqma_lockup.dart';
+export 'src/widgets/coupon_form.dart';
 export 'src/widgets/menu_editor.dart';
 export 'src/widgets/force_update_gate.dart';
 export 'src/widgets/luqma_splash.dart';

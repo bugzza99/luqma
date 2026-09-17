@@ -603,7 +603,87 @@
 
   "customerResetDone": "تمام",
   "@customerResetDone": {
-    "description": "Dismiss button for new password dialog."
+    "description": "Dismiss button for reset password dialog."
+  },
+
+  "customerNewPasswordFieldLabel": "كلمة السر الجديدة",
+  "@customerNewPasswordFieldLabel": {
+    "description": "Label for the new password field in customer detail."
+  },
+
+  "customerConfirmPasswordFieldLabel": "اكتبها تاني",
+  "@customerConfirmPasswordFieldLabel": {
+    "description": "Label for confirming the new password."
+  },
+
+  "customerChangePasswordAction": "غيّر كلمة السر",
+  "@customerChangePasswordAction": {
+    "description": "Button to change the customer password."
+  },
+
+  "customerPasswordTooShort": "كلمة السر لازم تكون 8 حروف على الأقل.",
+  "@customerPasswordTooShort": {
+    "description": "Validation error when typed password is less than 8 characters."
+  },
+
+  "customerPasswordsDoNotMatch": "كلمتي السر مش متطابقتين.",
+  "@customerPasswordsDoNotMatch": {
+    "description": "Validation error when typed passwords do not match."
+  },
+
+  "customerPasswordChangedSuccess": "اتغيرت كلمة السر — قولها للعميل",
+  "@customerPasswordChangedSuccess": {
+    "description": "Snackbar shown after successfully setting customer password."
+  },
+
+  "customerPasswordPermissionDenied": "مش مسموح لك تغيّر كلمة السر.",
+  "@customerPasswordPermissionDenied": {
+    "description": "Error message when admin lacks permission to change password."
+  },
+
+  "customerPasswordNotFound": "الحساب مش موجود.",
+  "@customerPasswordNotFound": {
+    "description": "Error message when account does not exist."
+  },
+
+  "customerPasswordOffline": "مفيش نت — اتأكد من اتصالك وجرّب تاني.",
+  "@customerPasswordOffline": {
+    "description": "Error message when setting password fails due to network offline."
+  },
+
+  "customerDeleteAction": "احذف الحساب",
+  "@customerDeleteAction": {
+    "description": "Destructive button to delete a customer account."
+  },
+
+  "customerDeleteDialogTitle": "حذف الحساب",
+  "@customerDeleteDialogTitle": {
+    "description": "Title of the delete customer confirmation dialog."
+  },
+
+  "customerDeletePoint1": "هيتم حذف الحساب وكل العناوين والتقييمات التابعة له.",
+  "@customerDeletePoint1": {
+    "description": "First point in delete confirmation dialog."
+  },
+
+  "customerDeletePoint2": "الطلبات السابقة هتفضل موجودة لحسابات المحلات تحت \"حساب محذوف\".",
+  "@customerDeletePoint2": {
+    "description": "Second point in delete confirmation dialog."
+  },
+
+  "customerDeletePoint3": "مش هتقدر ترجع في الخطوة دي بعد ما تحذف.",
+  "@customerDeletePoint3": {
+    "description": "Third point in delete confirmation dialog."
+  },
+
+  "customerDeleteConfirm": "احذف نهائياً",
+  "@customerDeleteConfirm": {
+    "description": "Confirm button in delete customer confirmation dialog."
+  },
+
+  "customerDeletedSuccess": "الحساب اتحذف",
+  "@customerDeletedSuccess": {
+    "description": "Snackbar message shown after account is deleted."
   },
 
   "customerNothingSelected": "اختر عميلاً لعرض التفاصيل",

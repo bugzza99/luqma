@@ -132,6 +132,8 @@ void main() {
     await pump(tester);
 
     expect(find.byKey(ShopScreen.addressKey), findsOneWidget);
+    // The shop's own discount codes, from the same section as its money and campaigns.
+    expect(find.byKey(ShopScreen.couponsKey, skipOffstage: false), findsOneWidget);
     expect(find.text('عنوان المطعم'), findsOneWidget);
   });
 

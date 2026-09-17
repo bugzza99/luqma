@@ -24,6 +24,7 @@ import '../repositories/address_repository.dart';
 import '../repositories/admin_repository.dart';
 import '../repositories/billing_repository.dart';
 import '../repositories/config_repository.dart';
+import '../repositories/coupon_repository.dart';
 import '../repositories/courier_order_repository.dart';
 import '../repositories/courier_roster_repository.dart';
 import '../repositories/courier_queue_drain.dart';
@@ -329,6 +330,10 @@ StaffIdentity staffIdentity(Ref ref) => switch (ref.watch(currentIdentityProvide
       AsyncData(:final value) => StaffIdentity.from(value),
       _ => StaffIdentity.none,
     };
+
+@Riverpod(keepAlive: true)
+CouponRepository couponRepository(Ref ref) =>
+    SupabaseCouponRepository(ref.watch(supabaseProvider));
 
 @Riverpod(keepAlive: true)
 PromotionRepository promotionRepository(Ref ref) =>

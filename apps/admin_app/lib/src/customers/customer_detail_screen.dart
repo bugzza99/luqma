@@ -11,15 +11,26 @@ class CustomerDetailScreen extends ConsumerStatefulWidget {
     super.key,
     required this.customer,
     this.onBack,
+    this.onDeleted,
     this.onCustomerUpdated,
   });
 
   final CustomerSummary customer;
   final VoidCallback? onBack;
+
+  /// Called once the account is gone, so the list can drop the row and the selection.
+  final VoidCallback? onDeleted;
   final VoidCallback? onCustomerUpdated;
 
   static const detailKey = Key('customer_detail');
   static const generatePasswordKey = Key('customer_detail.generate_password');
+  static const newPasswordFieldKey = Key('customer_detail.new_password');
+  static const confirmPasswordFieldKey = Key('customer_detail.confirm_password');
+  static const changePasswordKey = Key('customer_detail.change_password');
+  static const toggleNewPasswordVisibilityKey = Key('customer_detail.toggle_new_password');
+  static const toggleConfirmPasswordVisibilityKey = Key('customer_detail.toggle_confirm_password');
+  static const deleteAccountKey = Key('customer_detail.delete_account');
+  static const confirmDeleteAccountKey = Key('customer_detail.confirm_delete_account');
   static const blockKey = Key('customer_detail.block');
   static const callKey = Key('customer_detail.call');
   static const backKey = Key('customer_detail.back');
@@ -37,8 +48,14 @@ class _CustomerDetailScreenState extends ConsumerState<CustomerDetailScreen> {
   List<Address>? _addresses;
   Failure? _failure;
   bool _loading = true;
-  bool _generating = false;
+  bool _changingPassword = false;
+  bool _deletingAccount = false;
   late CustomerSummary _customer;
+
+  final _newPasswordController = TextEditingController();
+  final _confirmPasswordController = TextEditingController();
+  bool _obscureNew = true;
+  bool _obscureConfirm = true;
 
   @override
   void initState() {
@@ -48,10 +65,19 @@ class _CustomerDetailScreenState extends ConsumerState<CustomerDetailScreen> {
   }
 
   @override
+  void dispose() {
+    _newPasswordController.dispose();
+    _confirmPasswordController.dispose();
+    super.dispose();
+  }
+
+  @override
   void didUpdateWidget(covariant CustomerDetailScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.customer.id != widget.customer.id) {
       _customer = widget.customer;
+      _newPasswordController.clear();
+      _confirmPasswordController.clear();
       _load();
     } else if (oldWidget.customer != widget.customer) {
       _customer = widget.customer;
@@ -135,39 +161,116 @@ class _CustomerDetailScreenState extends ConsumerState<CustomerDetailScreen> {
     }
   }
 
-  Future<void> _resetPassword() async {
-    setState(() => _generating = true);
-    final result = await ref.read(customerRepositoryProvider).resetPassword(_customer.id);
+  Future<void> _changePassword() async {
+    // Trimmed as the server trims it, so what passes here is what the server accepts.
+    final password = _newPasswordController.text.trim();
+    setState(() => _changingPassword = true);
+    final result = await ref
+        .read(customerRepositoryProvider)
+        .setPassword(_customer.id, password);
     if (!mounted) return;
-    setState(() => _generating = false);
+    setState(() => _changingPassword = false);
 
     final strings = LuqmaStrings.of(context);
-    final isOk = result is Ok;
+    final messenger = ScaffoldMessenger.of(context);
 
-    await showDialog<void>(
+    if (result is Ok) {
+      _newPasswordController.clear();
+      _confirmPasswordController.clear();
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(strings.customerPasswordChangedSuccess),
+        ),
+      );
+    } else if (result case Err(:final failure)) {
+      final message = switch (failure) {
+        ConflictFailure() => strings.customerResetStaffConflict,
+        PermissionFailure() => strings.customerPasswordPermissionDenied,
+        NotFoundFailure() => strings.customerPasswordNotFound,
+        OfflineFailure() => strings.customerPasswordOffline,
+        _ => strings.customerResetGenericError,
+      };
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(message),
+        ),
+      );
+    }
+  }
+
+  Future<void> _deleteAccount() async {
+    final strings = LuqmaStrings.of(context);
+    final colors = Theme.of(context).luqma;
+
+    final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: Text(isOk ? strings.customerResetDialogTitle : strings.customerResetFailedTitle),
-        content: switch (result) {
-          // Selectable, and in one big line: this is read down a phone line, and it is
-          // the only time anybody can see it.
-          Ok(:final value) => SelectableText(
-              value,
-              textDirection: TextDirection.ltr,
-              style: Theme.of(dialogContext).textTheme.headlineSmall,
-            ),
-          Err(failure: ConflictFailure()) =>
-            Text(strings.customerResetStaffConflict),
-          Err() => Text(strings.customerResetGenericError),
-        },
+        title: Text(strings.customerDeleteDialogTitle),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(strings.customerDeletePoint1),
+            const SizedBox(height: Space.xs),
+            Text(strings.customerDeletePoint2),
+            const SizedBox(height: Space.xs),
+            Text(strings.customerDeletePoint3),
+          ],
+        ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(),
-            child: Text(strings.customerResetDone),
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('إلغاء'),
+          ),
+          TextButton(
+            key: CustomerDetailScreen.confirmDeleteAccountKey,
+            style: TextButton.styleFrom(
+              foregroundColor: colors.danger,
+            ),
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: Text(strings.customerDeleteConfirm),
           ),
         ],
       ),
     );
+
+    if (confirmed != true || !mounted) return;
+
+    setState(() => _deletingAccount = true);
+    final result = await ref
+        .read(adminRepositoryProvider)
+        .deleteAccount(_customer.id);
+    if (!mounted) return;
+    setState(() => _deletingAccount = false);
+
+    final messenger = ScaffoldMessenger.of(context);
+
+    if (result is Ok) {
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(strings.customerDeletedSuccess),
+        ),
+      );
+      if (widget.onDeleted != null) {
+        widget.onDeleted!();
+      } else if (widget.onBack != null) {
+        widget.onBack!();
+      } else {
+        Navigator.of(context).maybePop();
+      }
+    } else if (result case Err(:final failure)) {
+      final message = switch (failure) {
+        PermissionFailure() => strings.customerPasswordPermissionDenied,
+        NotFoundFailure() => strings.customerPasswordNotFound,
+        OfflineFailure() => strings.customerPasswordOffline,
+        _ => strings.customerResetGenericError,
+      };
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(message),
+        ),
+      );
+    }
   }
 
   Future<void> _callCustomer() async {
@@ -449,19 +552,92 @@ class _CustomerDetailScreenState extends ConsumerState<CustomerDetailScreen> {
                 ),
               ],
               const SizedBox(height: Space.md),
-              SizedBox(
-                width: double.infinity,
-                child: FilledButton(
-                  key: CustomerDetailScreen.generatePasswordKey,
-                  onPressed: _generating ? null : _resetPassword,
-                  child: _generating
-                      ? const SizedBox(
-                          height: 18,
-                          width: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : Text(strings.customerResetGenerateButton),
-                ),
+              Builder(
+                builder: (context) {
+                  final p1 = _newPasswordController.text.trim();
+                  final p2 = _confirmPasswordController.text.trim();
+
+                  String? p1Error;
+                  if (p1.isNotEmpty && (p1.length < 8 || p1.length > 72)) {
+                    p1Error = strings.customerPasswordTooShort;
+                  }
+
+                  String? p2Error;
+                  if (p2.isNotEmpty && p1 != p2) {
+                    p2Error = strings.customerPasswordsDoNotMatch;
+                  }
+
+                  final canSubmit = p1.length >= 8 &&
+                      p1.length <= 72 &&
+                      p1 == p2 &&
+                      !_changingPassword;
+
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      TextFormField(
+                        key: CustomerDetailScreen.newPasswordFieldKey,
+                        controller: _newPasswordController,
+                        obscureText: _obscureNew,
+                        textDirection: TextDirection.ltr,
+                        decoration: InputDecoration(
+                          labelText: strings.customerNewPasswordFieldLabel,
+                          errorText: p1Error,
+                          suffixIcon: IconButton(
+                            key: CustomerDetailScreen.toggleNewPasswordVisibilityKey,
+                            icon: Icon(
+                              _obscureNew
+                                  ? Icons.visibility_outlined
+                                  : Icons.visibility_off_outlined,
+                            ),
+                            tooltip: _obscureNew ? 'إظهار كلمة السر' : 'إخفاء كلمة السر',
+                            onPressed: () =>
+                                setState(() => _obscureNew = !_obscureNew),
+                          ),
+                        ),
+                        onChanged: (_) => setState(() {}),
+                      ),
+                      const SizedBox(height: Space.sm),
+                      TextFormField(
+                        key: CustomerDetailScreen.confirmPasswordFieldKey,
+                        controller: _confirmPasswordController,
+                        obscureText: _obscureConfirm,
+                        textDirection: TextDirection.ltr,
+                        decoration: InputDecoration(
+                          labelText: strings.customerConfirmPasswordFieldLabel,
+                          errorText: p2Error,
+                          suffixIcon: IconButton(
+                            key: CustomerDetailScreen.toggleConfirmPasswordVisibilityKey,
+                            icon: Icon(
+                              _obscureConfirm
+                                  ? Icons.visibility_outlined
+                                  : Icons.visibility_off_outlined,
+                            ),
+                            tooltip: _obscureConfirm ? 'إظهار كلمة السر' : 'إخفاء كلمة السر',
+                            onPressed: () =>
+                                setState(() => _obscureConfirm = !_obscureConfirm),
+                          ),
+                        ),
+                        onChanged: (_) => setState(() {}),
+                      ),
+                      const SizedBox(height: Space.md),
+                      FilledButton(
+                        key: CustomerDetailScreen.changePasswordKey,
+                        onPressed: canSubmit ? _changePassword : null,
+                        style: FilledButton.styleFrom(
+                          minimumSize: const Size.fromHeight(Sizes.minTarget),
+                        ),
+                        child: _changingPassword
+                            ? const SizedBox(
+                                height: 18,
+                                width: 18,
+                                child: CircularProgressIndicator(strokeWidth: 2),
+                              )
+                            : Text(strings.customerChangePasswordAction),
+                      ),
+                    ],
+                  );
+                },
               ),
             ],
           ),
@@ -573,6 +749,27 @@ class _CustomerDetailScreenState extends ConsumerState<CustomerDetailScreen> {
             onPressed: () => setState(() => _showAllOrders = !_showAllOrders),
             child: Text(_showAllOrders ? 'عرض أقل' : 'عرض الكل (${orders.length})'),
           ),
+
+        const SizedBox(height: Space.xl),
+        Center(
+          child: TextButton.icon(
+            key: CustomerDetailScreen.deleteAccountKey,
+            onPressed: _deletingAccount ? null : _deleteAccount,
+            icon: Icon(Icons.delete_forever_outlined, color: colors.danger),
+            label: Text(
+              strings.customerDeleteAction,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: colors.danger,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            style: TextButton.styleFrom(
+              foregroundColor: colors.danger,
+              minimumSize: const Size(Sizes.minTarget, Sizes.minTarget),
+            ),
+          ),
+        ),
+        const SizedBox(height: Space.lg),
       ],
     );
   }

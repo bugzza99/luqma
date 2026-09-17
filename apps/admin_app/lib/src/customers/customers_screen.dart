@@ -89,6 +89,10 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
       return CustomerDetailScreen(
         customer: _selectedCustomer!,
         onBack: () => setState(() => _selectedCustomer = null),
+        onDeleted: () {
+          setState(() => _selectedCustomer = null);
+          _search(_query.text);
+        },
         onCustomerUpdated: () => _search(_query.text),
       );
     }
@@ -154,6 +158,10 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                       // late loads as well; this is the second line, not the only one.
                       key: ValueKey(_selectedCustomer!.id),
                       customer: _selectedCustomer!,
+                      onDeleted: () {
+                        setState(() => _selectedCustomer = null);
+                        _search(_query.text);
+                      },
                       onCustomerUpdated: () => _search(_query.text),
                     ),
             ),

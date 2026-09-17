@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:luqma_core/luqma_core.dart';
 
 import 'analytics_screen.dart';
+import 'coupons_screen.dart';
 import 'courier_roster_screen.dart';
 import 'hours_screen.dart';
 import 'merchant_address_screen.dart';
@@ -34,6 +35,7 @@ class ShopScreen extends ConsumerWidget {
   static const hoursKey = Key('shop.hours');
   static const addressKey = Key('shop.address');
   static const rosterKey = Key('shop.roster');
+  static const couponsKey = Key('shop.coupons');
   static const noFeedbackKey = Key('shop.noFeedback');
 
   @override
@@ -141,6 +143,18 @@ class ShopScreen extends ConsumerWidget {
                     onTap: () => Navigator.of(context).push(
                       MaterialPageRoute<void>(
                         builder: (_) => const MerchantPromotionsScreen(),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: Space.sm),
+                  _Tile(
+                    tileKey: ShopScreen.couponsKey,
+                    icon: Icons.confirmation_number_outlined,
+                    title: 'كوبونات الخصم',
+                    subtitle: 'اعمل كود خصم لعملائك — الخصم على حساب المحل',
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => MerchantCouponsScreen(merchant: merchant),
                       ),
                     ),
                   ),

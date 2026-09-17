@@ -51,6 +51,9 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    // The rail scrolls, and with fifteen modules the last ones sit below a 1000px window.
+    await tester.ensureVisible(find.text('الإعدادات').first);
+    await tester.pumpAndSettle();
     await tester.tap(find.text('الإعدادات').first);
     await tester.pumpAndSettle();
   }

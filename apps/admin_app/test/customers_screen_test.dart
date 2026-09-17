@@ -16,6 +16,7 @@ void main() {
   late FakeAddressRepository addresses;
   late FakeGeographyRepository geography;
   late FakeExternalLinks externalLinks;
+  late FakeAdminRepository adminRepo;
 
   final fixedClock = DateTime(2026, 8, 27, 12);
 
@@ -95,6 +96,7 @@ void main() {
         'u2': [],
       },
     );
+    adminRepo = FakeAdminRepository(customers: customers);
     geography = FakeGeographyRepository(
       zones: [
         const Zone(
@@ -111,6 +113,7 @@ void main() {
       ProviderScope(
         overrides: [
           customerRepositoryProvider.overrideWithValue(customers),
+          adminRepositoryProvider.overrideWithValue(adminRepo),
           addressRepositoryProvider.overrideWithValue(addresses),
           geographyRepositoryProvider.overrideWithValue(geography),
           externalLinksProvider.overrideWithValue(externalLinks),
@@ -237,12 +240,14 @@ void main() {
         findsOneWidget,
       );
 
-      // Generate button is present
-      expect(find.byKey(CustomerDetailScreen.generatePasswordKey), findsOneWidget);
-      expect(customers.resetCalls, isEmpty, reason: 'password must not be generated yet');
+      // Typed password fields are present
+      expect(find.byKey(CustomerDetailScreen.newPasswordFieldKey), findsOneWidget);
+      expect(find.byKey(CustomerDetailScreen.confirmPasswordFieldKey), findsOneWidget);
+      expect(find.byKey(CustomerDetailScreen.changePasswordKey), findsOneWidget);
+      expect(customers.passwordCalls, isEmpty, reason: 'password must not be set yet');
     });
 
-    testWidgets('customer with no orders and no addresses shows plain notice and allows reset', (tester) async {
+    testWidgets('customer with no orders and no addresses shows plain notice and allows password change', (tester) async {
       await pump(tester);
       await search(tester, 'سلمى');
       await tester.tap(find.text('سلمى علي'));
@@ -255,35 +260,59 @@ void main() {
         findsOneWidget,
       );
 
-      // Still allows password generation (owner's call on fresh accounts)
-      expect(find.byKey(CustomerDetailScreen.generatePasswordKey), findsOneWidget);
-      await tester.tap(find.byKey(CustomerDetailScreen.generatePasswordKey));
-      await tester.pumpAndSettle();
-
-      expect(customers.resetCalls, ['u2']);
-      expect(find.text('demo-pass-42'), findsOneWidget);
+      expect(find.byKey(CustomerDetailScreen.changePasswordKey), findsOneWidget);
     });
   });
 
-  group('password generation', () {
-    testWidgets('shows new password once as selectable text in LTR', (tester) async {
+  group('typed password block', () {
+    testWidgets('change password button is disabled until both fields match and are 8-72 chars with inline errors', (tester) async {
       await pump(tester);
       await search(tester, 'أحمد');
       await tester.tap(find.text('أحمد محمود'));
       await tester.pumpAndSettle();
 
-      await tester.tap(find.byKey(CustomerDetailScreen.generatePasswordKey));
+      final buttonFinder = find.byKey(CustomerDetailScreen.changePasswordKey);
+      expect(tester.widget<FilledButton>(buttonFinder).onPressed, isNull);
+
+      // Short password (< 8 chars)
+      await tester.enterText(find.byKey(CustomerDetailScreen.newPasswordFieldKey), '12345');
+      await tester.enterText(find.byKey(CustomerDetailScreen.confirmPasswordFieldKey), '12345');
+      await tester.pump();
+      expect(tester.widget<FilledButton>(buttonFinder).onPressed, isNull);
+      expect(find.textContaining('8 حروف'), findsWidgets);
+
+      // Passwords do not match
+      await tester.enterText(find.byKey(CustomerDetailScreen.newPasswordFieldKey), 'password123');
+      await tester.enterText(find.byKey(CustomerDetailScreen.confirmPasswordFieldKey), 'password456');
+      await tester.pump();
+      expect(tester.widget<FilledButton>(buttonFinder).onPressed, isNull);
+      expect(find.textContaining('مش متطابقتين'), findsOneWidget);
+
+      // Matching and >= 8 chars
+      await tester.enterText(find.byKey(CustomerDetailScreen.confirmPasswordFieldKey), 'password123');
+      await tester.pump();
+      expect(tester.widget<FilledButton>(buttonFinder).onPressed, isNotNull);
+      expect(find.textContaining('مش متطابقتين'), findsNothing);
+    });
+
+    testWidgets('success calls setPassword with typed value, clears fields, and shows snackbar', (tester) async {
+      await pump(tester);
+      await search(tester, 'أحمد');
+      await tester.tap(find.text('أحمد محمود'));
       await tester.pumpAndSettle();
 
-      expect(customers.resetCalls, ['u1']);
-      final selectable = tester.widget<SelectableText>(find.byType(SelectableText));
-      expect(selectable.data, 'demo-pass-42');
-      expect(selectable.textDirection, TextDirection.ltr);
+      await tester.enterText(find.byKey(CustomerDetailScreen.newPasswordFieldKey), 'newSecurePass123');
+      await tester.enterText(find.byKey(CustomerDetailScreen.confirmPasswordFieldKey), 'newSecurePass123');
+      await tester.pump();
 
-      // Dismiss dialog
-      await tester.tap(find.text('تمام'));
+      await tester.tap(find.byKey(CustomerDetailScreen.changePasswordKey));
       await tester.pumpAndSettle();
-      expect(find.byType(SelectableText), findsNothing);
+
+      expect(customers.passwordCalls, [('u1', 'newSecurePass123')]);
+      expect(find.text('اتغيرت كلمة السر — قولها للعميل'), findsOneWidget);
+
+      // Fields are cleared
+      expect(find.text('newSecurePass123'), findsNothing);
     });
 
     testWidgets('refusal for staff account shows specific message', (tester) async {
@@ -293,25 +322,83 @@ void main() {
       await tester.pumpAndSettle();
 
       customers.failure = const ConflictFailure();
-      await tester.tap(find.byKey(CustomerDetailScreen.generatePasswordKey));
+      await tester.enterText(find.byKey(CustomerDetailScreen.newPasswordFieldKey), 'newSecurePass123');
+      await tester.enterText(find.byKey(CustomerDetailScreen.confirmPasswordFieldKey), 'newSecurePass123');
+      await tester.pump();
+
+      await tester.tap(find.byKey(CustomerDetailScreen.changePasswordKey));
       await tester.pumpAndSettle();
 
       expect(find.textContaining('شاشة الموظفين'), findsOneWidget);
-      expect(find.text('demo-pass-42'), findsNothing);
     });
 
-    testWidgets('refusal for generic error shows حاول تاني', (tester) async {
+    testWidgets('refusal for permission shows specific message', (tester) async {
       await pump(tester);
       await search(tester, 'أحمد');
       await tester.tap(find.text('أحمد محمود'));
       await tester.pumpAndSettle();
 
       customers.failure = const PermissionFailure();
-      await tester.tap(find.byKey(CustomerDetailScreen.generatePasswordKey));
+      await tester.enterText(find.byKey(CustomerDetailScreen.newPasswordFieldKey), 'newSecurePass123');
+      await tester.enterText(find.byKey(CustomerDetailScreen.confirmPasswordFieldKey), 'newSecurePass123');
+      await tester.pump();
+
+      await tester.tap(find.byKey(CustomerDetailScreen.changePasswordKey));
       await tester.pumpAndSettle();
 
-      expect(find.text('مقدرناش'), findsOneWidget);
-      expect(find.text('حاول تاني.'), findsOneWidget);
+      expect(find.textContaining('مش مسموح'), findsOneWidget);
+    });
+
+    testWidgets('refusal for offline shows specific message', (tester) async {
+      await pump(tester);
+      await search(tester, 'أحمد');
+      await tester.tap(find.text('أحمد محمود'));
+      await tester.pumpAndSettle();
+
+      customers.failure = const OfflineFailure();
+      await tester.enterText(find.byKey(CustomerDetailScreen.newPasswordFieldKey), 'newSecurePass123');
+      await tester.enterText(find.byKey(CustomerDetailScreen.confirmPasswordFieldKey), 'newSecurePass123');
+      await tester.pump();
+
+      await tester.tap(find.byKey(CustomerDetailScreen.changePasswordKey));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('مفيش نت'), findsOneWidget);
+    });
+  });
+
+  group('account deletion', () {
+    testWidgets('destructive delete button opens confirmation dialog with 3 points in order and confirm calls deleteAccount', (tester) async {
+      await pump(tester);
+      await search(tester, 'أحمد');
+      await tester.tap(find.text('أحمد محمود'));
+      await tester.pumpAndSettle();
+
+      // Delete button at bottom
+      final deleteBtn = find.byKey(CustomerDetailScreen.deleteAccountKey);
+      await tester.drag(find.byKey(CustomerDetailScreen.detailKey), const Offset(0, -500));
+      await tester.pumpAndSettle();
+      expect(deleteBtn, findsOneWidget);
+      expect(find.text('احذف الحساب'), findsOneWidget);
+
+      await tester.tap(deleteBtn);
+      await tester.pumpAndSettle();
+
+      // Dialog is displayed with 3 points in order
+      expect(find.text('هيتم حذف الحساب وكل العناوين والتقييمات التابعة له.'), findsOneWidget);
+      expect(find.text('الطلبات السابقة هتفضل موجودة لحسابات المحلات تحت "حساب محذوف".'), findsOneWidget);
+      expect(find.text('مش هتقدر ترجع في الخطوة دي بعد ما تحذف.'), findsOneWidget);
+
+      // Confirm button
+      final confirmBtn = find.byKey(CustomerDetailScreen.confirmDeleteAccountKey);
+      expect(confirmBtn, findsOneWidget);
+      expect(find.text('احذف نهائياً'), findsOneWidget);
+
+      await tester.tap(confirmBtn);
+      await tester.pumpAndSettle();
+
+      expect(adminRepo.deletedAccountCalls, ['u1']);
+      expect(find.text('الحساب اتحذف'), findsOneWidget);
     });
   });
 
@@ -401,6 +488,7 @@ void main() {
       ProviderScope(
         overrides: [
           customerRepositoryProvider.overrideWithValue(slow),
+          adminRepositoryProvider.overrideWithValue(adminRepo),
           addressRepositoryProvider.overrideWithValue(addresses),
           geographyRepositoryProvider.overrideWithValue(geography),
           externalLinksProvider.overrideWithValue(externalLinks),
@@ -454,6 +542,7 @@ void main() {
         ProviderScope(
           overrides: [
             customerRepositoryProvider.overrideWithValue(customers),
+            adminRepositoryProvider.overrideWithValue(adminRepo),
             addressRepositoryProvider.overrideWithValue(addresses),
             geographyRepositoryProvider.overrideWithValue(geography),
             externalLinksProvider.overrideWithValue(externalLinks),
@@ -482,13 +571,20 @@ void main() {
     testWidgets('reaches past the first five', (tester) async {
       await open(tester, manyOrders(6));
 
+      final scrollable = find
+          .descendant(
+            of: find.byType(CustomerDetailScreen),
+            matching: find.byType(Scrollable),
+          )
+          .first;
+
       final showAll = find.byKey(CustomerDetailScreen.showAllOrdersKey);
-      await tester.scrollUntilVisible(showAll, 200, scrollable: find.byType(Scrollable).last);
+      await tester.scrollUntilVisible(showAll, 200, scrollable: scrollable);
       await tester.tap(showAll);
       await tester.pumpAndSettle();
 
       await tester.scrollUntilVisible(find.textContaining('#2005'), 200,
-          scrollable: find.byType(Scrollable).last);
+          scrollable: scrollable);
       expect(find.textContaining('#2005'), findsWidgets);
     });
 
@@ -525,5 +621,6 @@ class _SlowCustomers implements CustomerRepository {
       const Result.ok(null);
 
   @override
-  Future<Result<String>> resetPassword(String uid) async => Result.ok('pw-$uid');
+  Future<Result<void>> setPassword(String uid, String password) async =>
+      const Result.ok(null);
 }

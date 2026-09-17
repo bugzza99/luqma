@@ -35,6 +35,7 @@ abstract final class Routes {
 
   /// The kinds of food the customer's home is arranged by.
   static const cuisines = '/cuisines';
+  static const coupons = '/coupons';
 }
 
 enum AdminAccess {

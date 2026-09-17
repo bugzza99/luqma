@@ -166,6 +166,12 @@ class FakeStaffRepository implements StaffRepository {
   /// Everything held right now, for assertions.
   List<StaffMember> get all => List.unmodifiable(_members.values);
 
+  /// Removes a staff member by uid, used by account deletion.
+  void removeStaff(String uid) {
+    _members.remove(uid);
+    _notify();
+  }
+
   final _changed = StreamController<void>.broadcast();
 
   Stream<T> _live<T>(T Function() read) => Stream.multi((listener) {

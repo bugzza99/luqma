@@ -260,4 +260,44 @@ void main() {
       expect(stats.byMonth, isNotNull);
     });
   });
+
+  group('deleteAccount', () {
+    test('a customer cannot call deleteAccount', () async {
+      final (customer, _) = await live.openAsCustomer();
+      addTearDown(customer.dispose);
+
+      final targetUid = await live.makeCustomer();
+      addTearDown(() async => live.client.from('users').delete().eq('id', targetUid));
+
+      final result = await SupabaseAdminRepository(customer).deleteAccount(targetUid);
+      expect(result.failureOrNull, isNotNull);
+    });
+
+    test('an admin deletes a customer account', () async {
+      final targetUid = await live.makeCustomer();
+      final result = await repository.deleteAccount(targetUid);
+      expect(result.isOk, isTrue);
+
+      final check = await live.client.from('users').select('id').eq('id', targetUid).maybeSingle();
+      expect(check, isNull);
+    });
+  });
+
+  group('activeUsers', () {
+    test('a customer cannot read active users', () async {
+      final (customer, _) = await live.openAsCustomer();
+      addTearDown(customer.dispose);
+
+      final result = await SupabaseAdminRepository(customer).activeUsers();
+      expect(result.failureOrNull, isNotNull);
+    });
+
+    test('an admin reads active user counts without error', () async {
+      final result = await repository.activeUsers();
+      expect(result.isOk, isTrue);
+      final active = result.valueOrNull!;
+      expect(active.customer.day.devices, greaterThanOrEqualTo(0));
+      expect(active.merchant.week.accounts, greaterThanOrEqualTo(0));
+    });
+  });
 }
