@@ -7,14 +7,20 @@ import 'package:luqma_core/luqma_core.dart';
 /// Somebody with no account looks at the sign-in screen and has nowhere to go. This page
 /// lets them leave their name, phone, and role details.
 ///
-/// It is completely honest about what happens next: filling this form does NOT create an
-/// account. The owner reviews it in AdminApp, telephones the applicant, and sets up the
-/// account through the staff screen.
+/// What it does, since 2026-09-18: it makes the applicant an ordinary phone account — the
+/// same one a customer has, and one that carries **no privileges of any kind** — and files
+/// the application against it. The owner reads the application in AdminApp, telephones, and
+/// approves; approval is what mints the `staff` row and the shop.
+///
+/// Before that, this form asked for no password at all, so an approved merchant had nothing
+/// to sign in with — which is exactly what happened to the first one.
 class ApplyScreen extends ConsumerStatefulWidget {
   const ApplyScreen({super.key});
 
   static const nameKey = Key('apply.name');
   static const phoneKey = Key('apply.phone');
+  static const passwordKey = Key('apply.password');
+  static const confirmKey = Key('apply.confirm');
   static const noteKey = Key('apply.note');
   static const submitKey = Key('apply.submit');
   static const errorKey = Key('apply.error');
@@ -29,6 +35,8 @@ class _ApplyScreenState extends ConsumerState<ApplyScreen> {
   final _formKey = GlobalKey<FormState>();
   final _name = TextEditingController();
   final _phone = TextEditingController();
+  final _password = TextEditingController();
+  final _confirm = TextEditingController();
   final _note = TextEditingController();
 
   StaffApplicationKind _kind = StaffApplicationKind.courier;
@@ -40,6 +48,8 @@ class _ApplyScreenState extends ConsumerState<ApplyScreen> {
   void dispose() {
     _name.dispose();
     _phone.dispose();
+    _password.dispose();
+    _confirm.dispose();
     _note.dispose();
     super.dispose();
   }
@@ -52,8 +62,44 @@ class _ApplyScreenState extends ConsumerState<ApplyScreen> {
       _error = null;
     });
 
+    // The account first: an application with nothing to approve into is what left the first
+    // merchant approved and non-existent. It carries no privileges until an admin approves.
+    final auth = ref.read(authServiceProvider);
+    var account = await auth.signUpWithPhone(
+      phone: _phone.text,
+      password: _password.text,
+      name: _name.text,
+    );
+    if (account case Err(failure: PhoneTakenFailure())) {
+      // The same person, already signed up here or as a customer: their password lets them
+      // prove it. A wrong one is not an account we may attach an application to.
+      account = await auth.signInWithPhone(
+        phone: _phone.text,
+        password: _password.text,
+      );
+      if (account is Err) {
+        if (!mounted) return;
+        setState(() {
+          _busy = false;
+          _error = 'الرقم ده عنده حساب بالفعل. اكتب كلمة السر بتاعته أو استخدم رقم تاني.';
+        });
+        return;
+      }
+    }
+    if (account case Err(failure: final failure)) {
+      if (!mounted) return;
+      setState(() {
+        _busy = false;
+        _error = failure is OfflineFailure
+            ? 'مفيش اتصال بالإنترنت — اتأكد من الشبكة وجرّب تاني'
+            : 'مقدرناش نعمل الحساب. جرّب تاني.';
+      });
+      return;
+    }
+
     final repo = ref.read(staffApplicationRepositoryProvider);
     final result = await repo.apply(
+      applicantUid: account.valueOrNull?.uid,
       kind: _kind,
       name: _name.text,
       phone: _phone.text,
@@ -140,7 +186,7 @@ class _ApplyScreenState extends ConsumerState<ApplyScreen> {
           ),
           const SizedBox(height: Space.xs),
           Text(
-            'سجل بياناتك وهنتواصل معاك تليفونياً لمراجعة الطلب.',
+            'سجل بياناتك وكلمة سر، وهنتواصل معاك تليفونياً. أول ما نوافق تدخل بنفس الرقم وكلمة السر.',
             style: theme.textTheme.bodySmall?.copyWith(color: colors.textSecondary),
             textAlign: TextAlign.center,
           ),
@@ -203,6 +249,29 @@ class _ApplyScreenState extends ConsumerState<ApplyScreen> {
           ),
           const SizedBox(height: Space.md),
           TextFormField(
+            key: ApplyScreen.passwordKey,
+            controller: _password,
+            obscureText: true,
+            textDirection: TextDirection.ltr,
+            decoration: const InputDecoration(
+              labelText: 'كلمة السر',
+              hintText: '8 حروف على الأقل',
+            ),
+            validator: (v) =>
+                (v ?? '').trim().length < 8 ? 'كلمة السر 8 حروف على الأقل' : null,
+          ),
+          const SizedBox(height: Space.md),
+          TextFormField(
+            key: ApplyScreen.confirmKey,
+            controller: _confirm,
+            obscureText: true,
+            textDirection: TextDirection.ltr,
+            decoration: const InputDecoration(labelText: 'اكتب كلمة السر تاني'),
+            validator: (v) =>
+                (v ?? '').trim() == _password.text.trim() ? null : 'كلمتي السر مش متطابقتين',
+          ),
+          const SizedBox(height: Space.md),
+          TextFormField(
             key: ApplyScreen.noteKey,
             controller: _note,
             maxLines: 3,
@@ -234,7 +303,7 @@ class _ApplyScreenState extends ConsumerState<ApplyScreen> {
                 const SizedBox(width: Space.sm),
                 Expanded(
                   child: Text(
-                    'تقديم الطلب مش معناه عمل حساب فوري. إدارة لقمة هتتصل بيك تليفونياً لمراجعة البيانات وتفعيل الحساب، ومش بيتعمل حساب من خلال الفورم دي.',
+                    'الحساب اللي بتعمله هنا من غير أي صلاحيات لحد ما نوافق. إدارة لقمة هتتصل بيك تليفونياً لمراجعة البيانات، وبعدها الحساب يتفعّل وتدخل بنفس الرقم وكلمة السر.',
                     style: theme.textTheme.bodySmall?.copyWith(color: colors.textSecondary),
                   ),
                 ),
@@ -282,7 +351,7 @@ class _ApplyScreenState extends ConsumerState<ApplyScreen> {
         ),
         const SizedBox(height: Space.md),
         Text(
-          'سجلنا بياناتك بنجاح. حد من إدارة لقمة هتتصل بيك تليفونياً في أقرب وقت لمراجعة التفاصيل. تقديم الطلب مش بيعمل حساب تلقائي، وإنشاء الحساب بيتم بعد التواصل.',
+          'سجلنا بياناتك وعملنا حسابك بالرقم وكلمة السر اللي كتبتهم. إدارة لقمة هتتصل بيك تليفونياً في أقرب وقت، وأول ما نوافق تدخل بنفس الرقم وكلمة السر. لحد ساعتها الحساب من غير صلاحيات.',
           style: theme.textTheme.bodyMedium?.copyWith(color: colors.textSecondary),
           textAlign: TextAlign.center,
         ),

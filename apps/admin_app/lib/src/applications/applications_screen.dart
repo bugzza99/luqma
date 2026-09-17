@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:luqma_core/luqma_core.dart';
 
 import '../shell/layout.dart';
+import '../merchants/merchants_controller.dart';
 
 /// Reviewing prospective couriers, restaurants and home kitchens.
 ///
@@ -16,6 +17,8 @@ class ApplicationsScreen extends ConsumerWidget {
   const ApplicationsScreen({super.key});
 
   static Key approveKey(String id) => Key('application.approve.$id');
+  static const zonePickerKey = Key('application.zone');
+  static const shopPickerKey = Key('application.shop');
   static Key rejectKey(String id) => Key('application.reject.$id');
   static const reviewNoteKey = Key('application.reviewNote');
   static const confirmKey = Key('application.confirm');
@@ -25,9 +28,7 @@ class ApplicationsScreen extends ConsumerWidget {
     final stream = ref.watch(pendingStaffApplicationsProvider);
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('طلبات الانضمام'),
-      ),
+      appBar: AppBar(title: const Text('طلبات الانضمام')),
       body: AdminContent(
         child: LuqmaAsyncView<List<StaffApplication>>(
           value: stream,
@@ -72,7 +73,7 @@ class _QueueList extends StatelessWidget {
               const SizedBox(width: Space.sm),
               Expanded(
                 child: Text(
-                  'قبول الطلب هنا يسجل قرار المراجعة فقط. إنشاء حساب المستخدم الفعلي وصلاحياته يتم من شاشة الفريق.',
+                  'اتصل بالمتقدم الأول. القبول هيعمل الحساب وصلاحياته على طول — والرفض بيتسجل بسببه.',
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: colors.textSecondary,
                   ),
@@ -106,77 +107,161 @@ class _ApplicationCard extends ConsumerWidget {
     BuildContext context,
     WidgetRef ref, {
     required StaffApplicationStatus status,
+    // Read where they are watched, in `build`: a provider only read inside this callback
+    // has never been started, and answers with nothing at all.
+    required List<Zone> zones,
+    required List<Merchant> shops,
   }) async {
     final isApproval = status == StaffApplicationStatus.approved;
     final noteController = TextEditingController();
+    final isCourier = application.kind == StaffApplicationKind.courier;
+    String? zoneId;
+    String? shopId;
 
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (dialogContext) {
-        final theme = Theme.of(dialogContext);
-        final colors = theme.luqma;
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) {
+          final theme = Theme.of(dialogContext);
+          final colors = theme.luqma;
 
-        return AlertDialog(
-          title: Text(isApproval ? 'قبول طلب الانضمام' : 'رفض طلب الانضمام'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              if (isApproval)
-                Container(
-                  padding: const EdgeInsets.all(Space.sm),
-                  margin: const EdgeInsets.only(bottom: Space.md),
-                  decoration: BoxDecoration(
-                    color: colors.background,
-                    borderRadius: Radii.cardAll,
-                    border: Border.all(color: colors.hairline),
+          return AlertDialog(
+            title: Text(isApproval ? 'قبول طلب الانضمام' : 'رفض طلب الانضمام'),
+            // Scrollable: the zone picker and the two explanations make this taller
+            // than a phone dialog, and an overflow there hides the confirm button.
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  if (isApproval)
+                    Container(
+                      padding: const EdgeInsets.all(Space.sm),
+                      margin: const EdgeInsets.only(bottom: Space.md),
+                      decoration: BoxDecoration(
+                        color: colors.background,
+                        borderRadius: Radii.cardAll,
+                        border: Border.all(color: colors.hairline),
+                      ),
+                      child: Text(
+                        isCourier
+                            ? 'القبول هيعمل حساب المندوب ويربطه بالمحل اللي تختاره. تقدر تضيفله محلات تانية من «الفريق».'
+                            : 'القبول هيعمل حساب صاحب المحل والمحل نفسه، وهيفضل «تحت المراجعة» لحد ما تكمّل بياناته.',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: colors.textSecondary,
+                        ),
+                      ),
+                    ),
+                  if (isApproval && application.applicantUid == null)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: Space.md),
+                      child: Text(
+                        'المتقدم ده طلب قبل ما التطبيق يطلب كلمة سر، فمعندوش حساب. ارفض الطلب ده '
+                        'عشان الرقم يفضى، وقوله يقدّم تاني من النسخة الجديدة — أو اعملّه حساب من «الفريق».',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: colors.danger,
+                        ),
+                      ),
+                    ),
+                  if (isApproval && application.applicantUid != null)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: Space.md),
+                      child: isCourier
+                          ? DropdownButtonFormField<String>(
+                              isExpanded: true,
+                              key: ApplicationsScreen.shopPickerKey,
+                              initialValue: shopId,
+                              decoration: const InputDecoration(
+                                labelText: 'يشتغل مع محل',
+                              ),
+                              items: [
+                                for (final shop in shops)
+                                  DropdownMenuItem(
+                                    value: shop.id,
+                                    child: Text(shop.name),
+                                  ),
+                              ],
+                              onChanged: (v) =>
+                                  setDialogState(() => shopId = v),
+                            )
+                          : DropdownButtonFormField<String>(
+                              isExpanded: true,
+                              key: ApplicationsScreen.zonePickerKey,
+                              initialValue: zoneId,
+                              decoration: const InputDecoration(
+                                labelText: 'المنطقة',
+                              ),
+                              items: [
+                                for (final zone in zones)
+                                  DropdownMenuItem(
+                                    value: zone.id,
+                                    child: Text(zone.name),
+                                  ),
+                              ],
+                              onChanged: (v) =>
+                                  setDialogState(() => zoneId = v),
+                            ),
+                    ),
+                  TextField(
+                    key: ApplicationsScreen.reviewNoteKey,
+                    controller: noteController,
+                    maxLines: 3,
+                    decoration: InputDecoration(
+                      labelText: isApproval
+                          ? 'ملاحظات المكالمة'
+                          : 'سبب الرفض وملاحظات المكالمة',
+                      hintText:
+                          'اكتب ما تم الاتفاق عليه خلال المكالمة تليفونياً',
+                      alignLabelWithHint: true,
+                    ),
                   ),
-                  child: Text(
-                    'القبول هنا يسجل قرار المراجعة فقط. لإنشاء الحساب الفعلي، استخدم شاشة الفريق.',
-                    style: theme.textTheme.bodySmall?.copyWith(color: colors.textSecondary),
-                  ),
-                ),
-              TextField(
-                key: ApplicationsScreen.reviewNoteKey,
-                controller: noteController,
-                maxLines: 3,
-                decoration: InputDecoration(
-                  labelText: isApproval ? 'ملاحظات المكالمة' : 'سبب الرفض وملاحظات المكالمة',
-                  hintText: 'اكتب ما تم الاتفاق عليه خلال المكالمة تليفونياً',
-                  alignLabelWithHint: true,
-                ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(false),
+                child: const Text('إلغاء'),
+              ),
+              FilledButton(
+                key: ApplicationsScreen.confirmKey,
+                // Approval cannot proceed without what it needs to build: no account to
+                // approve into, no zone for a shop, no shop for a courier.
+                onPressed:
+                    isApproval &&
+                        (application.applicantUid == null ||
+                            (isCourier ? shopId == null : zoneId == null))
+                    ? null
+                    : () => Navigator.of(dialogContext).pop(true),
+                style: isApproval
+                    ? null
+                    : FilledButton.styleFrom(
+                        backgroundColor: colors.danger,
+                        foregroundColor: colors.card,
+                      ),
+                child: Text(isApproval ? 'تأكيد القبول' : 'تأكيد الرفض'),
               ),
             ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(false),
-              child: const Text('إلغاء'),
-            ),
-            FilledButton(
-              key: ApplicationsScreen.confirmKey,
-              onPressed: () => Navigator.of(dialogContext).pop(true),
-              style: isApproval
-                  ? null
-                  : FilledButton.styleFrom(
-                      backgroundColor: colors.danger,
-                      foregroundColor: colors.card,
-                    ),
-              child: Text(isApproval ? 'تأكيد القبول' : 'تأكيد الرفض'),
-            ),
-          ],
-        );
-      },
+          );
+        },
+      ),
     );
 
     if (confirmed != true || !context.mounted) return;
 
     final repo = ref.read(staffApplicationRepositoryProvider);
-    final result = await repo.review(
-      application.id,
-      status: status,
-      note: noteController.text,
-    );
+    final result = isApproval
+        ? await repo.approve(
+            application.id,
+            zoneId: isCourier ? null : zoneId,
+            merchantId: isCourier ? shopId : null,
+            note: noteController.text,
+          )
+        : await repo.review(
+            application.id,
+            status: status,
+            note: noteController.text,
+          );
 
     if (!context.mounted) return;
 
@@ -184,7 +269,9 @@ class _ApplicationCard extends ConsumerWidget {
       SnackBar(
         content: Text(
           result.isOk
-              ? (isApproval ? 'تم قبول الطلب' : 'تم رفض الطلب')
+              ? (isApproval
+                    ? (isCourier ? 'اتعمل حساب المندوب' : 'اتعمل الحساب والمحل')
+                    : 'تم رفض الطلب')
               : 'حصل خطأ في حفظ القرار — حاول تاني',
         ),
       ),
@@ -195,6 +282,8 @@ class _ApplicationCard extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final colors = theme.luqma;
+    final zones = ref.watch(zonesProvider).value ?? const <Zone>[];
+    final shops = ref.watch(allMerchantsProvider).value ?? const <Merchant>[];
 
     final (kindLabel, badgeColor, badgeBg) = switch (application.kind) {
       StaffApplicationKind.courier => (
@@ -215,8 +304,9 @@ class _ApplicationCard extends ConsumerWidget {
     };
 
     final note = application.note;
-    final initialLetter =
-        application.name.trim().isNotEmpty ? application.name.trim()[0] : 'ع';
+    final initialLetter = application.name.trim().isNotEmpty
+        ? application.name.trim()[0]
+        : 'ع';
 
     return Material(
       color: colors.card,
@@ -275,7 +365,9 @@ class _ApplicationCard extends ConsumerWidget {
                   decoration: BoxDecoration(
                     color: badgeBg,
                     borderRadius: Radii.pillAll,
-                    border: Border.all(color: badgeColor.withValues(alpha: 0.3)),
+                    border: Border.all(
+                      color: badgeColor.withValues(alpha: 0.3),
+                    ),
                   ),
                   child: Text(
                     kindLabel,
@@ -315,6 +407,8 @@ class _ApplicationCard extends ConsumerWidget {
                     context,
                     ref,
                     status: StaffApplicationStatus.rejected,
+                    zones: zones,
+                    shops: shops,
                   ),
                   style: OutlinedButton.styleFrom(
                     foregroundColor: colors.danger,
@@ -331,6 +425,8 @@ class _ApplicationCard extends ConsumerWidget {
                     context,
                     ref,
                     status: StaffApplicationStatus.approved,
+                    zones: zones,
+                    shops: shops,
                   ),
                   child: const Text('قبول'),
                 ),

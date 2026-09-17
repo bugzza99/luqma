@@ -52,6 +52,7 @@ class StaffApplication {
     this.reviewedBy,
     this.reviewNote,
     this.staffUid,
+    this.applicantUid,
   });
 
   final String id;
@@ -71,6 +72,10 @@ class StaffApplication {
 
   /// Set on approval when linked to what it became, null otherwise.
   final String? staffUid;
+
+  /// The phone account the applicant made when they applied. Approval turns it into a
+  /// staff account; without one there is nothing to approve into.
+  final String? applicantUid;
 
   bool get isPending => status == StaffApplicationStatus.pending;
   bool get isApproved => status == StaffApplicationStatus.approved;
@@ -98,6 +103,7 @@ class StaffApplication {
         reviewedBy: json['reviewedBy'] as String?,
         reviewNote: json['reviewNote'] as String?,
         staffUid: json['staffUid'] as String?,
+        applicantUid: json['applicantUid'] as String?,
       );
 
   static StaffApplication fromRow(Map<String, dynamic> row) =>

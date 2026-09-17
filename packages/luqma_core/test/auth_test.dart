@@ -118,7 +118,7 @@ void main() {
 
       final first = await auth.changes.first.timeout(const Duration(seconds: 1));
 
-      expect(first?.uid, 'fake-uid');
+      expect(first?.uid, 'fake-uid-01012345678');
     });
 
     test('a failed sign-in reports the failure and signs nobody in', () async {

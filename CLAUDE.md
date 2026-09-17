@@ -628,10 +628,29 @@ DATABASE_URL=<luqma-test session pooler> npm --prefix supabase run test:stack
   home kitchen — and what it writes is a row in `staff_applications`: a name, a phone, a
   kind, and whatever the applicant typed about themselves. **That row has no privileges of
   any sort.** The owner reads it in AdminApp, telephones, and approves; approval is what
-  calls `create-staff-account`, which remains the only thing that may mint a `staff` row.
-  The reason for that shape: `staff` is what every policy in the database reads to decide
-  who you are, so a screen writing it directly would give that boundary an anonymous
-  writer, and anybody who installs the APK a row in it.
+  mints the `staff` row. The reason for that shape: `staff` is what every policy in the
+  database reads to decide who you are, so a screen writing it directly would give that
+  boundary an anonymous writer, and anybody who installs the APK a row in it.
+  **Amended again 2026-09-18, by the first real merchant.** He applied, was approved, and
+  vanished — and the three faults behind that are the shape of it now
+  (`20261005000000_an_application_becomes_an_account.sql`):
+  *the applicant makes their own account when they apply.* The form asks for a password and
+  creates the ordinary phone account a customer has — which carries nothing at all — and
+  the application names it in `applicant_uid`. Without one there is nothing for approval to
+  turn into a merchant, which is precisely what happened: the row said `approved` and no
+  account, no shop and no `staff` row existed anywhere.
+  *Approval creates the account, in one transaction.* `approve_staff_application` writes the
+  `staff` row, and for a shop the `merchants` row too — `pending`, in the zone the admin
+  picked, at zero commission — and pushes «حسابك اتفعّل». `review_staff_application` refuses
+  `approved` now, because an admin handset carrying an older APK would otherwise reproduce
+  the whole incident with one tap.
+  *An application is signed, and for the number the account holds.* `anon` cannot insert at
+  all, and a trigger requires the applicant's account address to be that number folded into
+  the reserved domain. Otherwise the theft is cheap: file a real restaurant's name and
+  number against your own uid, let the owner ring the restaurant and agree terms, and
+  approval hands you the shop.
+  `create-staff-account` stays, and is still how «الفريق» makes an account by hand — which is
+  why MerchantApp's sign-in takes an address *or* a number.
   A merchant **does** fill in their own details now, and the owner checks them on the call
   and corrects what is wrong from AdminApp. The zone, the hours, the delivery fee, the
   plan and the menu stay the owner's to settle — a shop that describes its own zone wrongly

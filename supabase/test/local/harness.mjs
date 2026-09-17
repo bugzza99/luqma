@@ -46,8 +46,12 @@ export async function freshDatabase({ realtime = false } = {}) {
     -- onto the profile row. A stub without the column makes every insert into auth.users
     -- fail with "record new has no field", which reads as a schema problem rather than
     -- as a missing stub column.
+    -- The email column is here for the same reason: a customer's account address is their phone
+    -- number folded into the reserved domain, and the application trigger asks whether the
+    -- number applied for is the number the account is on.
     create table auth.users (
       id uuid primary key default gen_random_uuid(),
+      email text,
       raw_user_meta_data jsonb not null default '{}'::jsonb
     );
 

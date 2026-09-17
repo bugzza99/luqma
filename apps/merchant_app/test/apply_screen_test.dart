@@ -7,6 +7,7 @@ import 'package:merchant_app/src/auth/sign_in_screen.dart';
 
 void main() {
   late FakeStaffApplicationRepository applications;
+  late FakeAuthService auth;
 
   Future<void> pumpScreen(
     WidgetTester tester, {
@@ -18,12 +19,14 @@ void main() {
     addTearDown(tester.view.reset);
 
     applications = FakeStaffApplicationRepository(failure: repositoryFailure);
+    auth = FakeAuthService();
+    addTearDown(auth.dispose);
 
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
           staffApplicationRepositoryProvider.overrideWithValue(applications),
-          authServiceProvider.overrideWithValue(FakeAuthService()),
+          authServiceProvider.overrideWithValue(auth),
         ],
         child: MaterialApp(
           theme: LuqmaTheme.light,
@@ -38,6 +41,13 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
+  }
+
+  /// The form asks for a password now, so every submit that is meant to succeed has to
+  /// type one — the account is made before the application is filed.
+  Future<void> enterPassword(WidgetTester tester, [String password = 'luqma12345']) async {
+    await tester.enterText(find.byKey(ApplyScreen.passwordKey), password);
+    await tester.enterText(find.byKey(ApplyScreen.confirmKey), password);
   }
 
   Future<void> submit(WidgetTester tester) async {
@@ -86,6 +96,7 @@ void main() {
 
       await tester.enterText(find.byKey(ApplyScreen.nameKey), 'أحمد');
       await tester.enterText(find.byKey(ApplyScreen.phoneKey), '012345'); // invalid
+      await enterPassword(tester);
       await submit(tester);
 
       expect(find.text('اكتب رقم موبايل مصري صحيح'), findsOneWidget);
@@ -108,6 +119,7 @@ void main() {
       await tester.enterText(find.byKey(ApplyScreen.nameKey), ' مطعم الزعيم ');
       await tester.enterText(find.byKey(ApplyScreen.phoneKey), ' ٠١١٢٣٤٥٦٧٨٩ ');
       await tester.enterText(find.byKey(ApplyScreen.noteKey), ' شارع البحر من 10ص لـ 12م ');
+      await enterPassword(tester);
       await submit(tester);
 
       expect(applications.all, hasLength(1));
@@ -117,6 +129,9 @@ void main() {
       expect(app.phone, '01123456789');
       expect(app.note, 'شارع البحر من 10ص لـ 12م');
       expect(app.status, StaffApplicationStatus.pending);
+      // Filed against the account this form just made: without it approval has nothing
+      // to turn into a merchant.
+      expect(app.applicantUid, isNotNull);
     });
 
     testWidgets('success state is honest and leaves no way back into a form', (tester) async {
@@ -124,6 +139,7 @@ void main() {
 
       await tester.enterText(find.byKey(ApplyScreen.nameKey), 'محمود');
       await tester.enterText(find.byKey(ApplyScreen.phoneKey), '01000000000');
+      await enterPassword(tester);
       await submit(tester);
 
       // Form is gone
@@ -131,10 +147,10 @@ void main() {
       expect(find.byKey(ApplyScreen.phoneKey), findsNothing);
       expect(find.byKey(ApplyScreen.submitKey), findsNothing);
 
-      // Honest explanation: someone will phone, no account is granted automatically
+      // Honest explanation: the account exists and carries nothing until an admin approves
       expect(find.byKey(ApplyScreen.successKey), findsOneWidget);
       expect(find.textContaining('إدارة لقمة هتتصل بيك'), findsOneWidget);
-      expect(find.textContaining('مش بيعمل حساب'), findsOneWidget);
+      expect(find.textContaining('من غير صلاحيات'), findsOneWidget);
 
       // Only control is back to sign in
       expect(find.byKey(ApplyScreen.backButtonKey), findsOneWidget);
@@ -145,6 +161,7 @@ void main() {
 
       await tester.enterText(find.byKey(ApplyScreen.nameKey), 'محمود');
       await tester.enterText(find.byKey(ApplyScreen.phoneKey), '01000000000');
+      await enterPassword(tester);
       await submit(tester);
 
       expect(find.byKey(ApplyScreen.errorKey), findsOneWidget);
@@ -157,10 +174,78 @@ void main() {
 
       await tester.enterText(find.byKey(ApplyScreen.nameKey), 'محمود');
       await tester.enterText(find.byKey(ApplyScreen.phoneKey), '01000000000');
+      await enterPassword(tester);
       await submit(tester);
 
       expect(find.byKey(ApplyScreen.errorKey), findsOneWidget);
       expect(find.text('في طلب متقدم بالرقم ده بالفعل — حد من الإدارة هيكلمك'), findsOneWidget);
+      expect(applications.all, isEmpty);
+    });
+  });
+
+  // 2026-09-18: the first real merchant applied, was approved, and had nothing to sign in
+  // with — the form had never asked for a password and the application pointed at no account.
+  group('ApplyScreen makes the account', () {
+    testWidgets('the two passwords have to match, and nothing is written until they do',
+        (tester) async {
+      await pumpScreen(tester);
+
+      await tester.enterText(find.byKey(ApplyScreen.nameKey), 'محمود');
+      await tester.enterText(find.byKey(ApplyScreen.phoneKey), '01000000000');
+      await tester.enterText(find.byKey(ApplyScreen.passwordKey), 'luqma12345');
+      await tester.enterText(find.byKey(ApplyScreen.confirmKey), 'luqma54321');
+      await submit(tester);
+
+      expect(find.text('كلمتي السر مش متطابقتين'), findsOneWidget);
+      expect(applications.all, isEmpty);
+    });
+
+    testWidgets('a short password is refused', (tester) async {
+      await pumpScreen(tester);
+
+      await tester.enterText(find.byKey(ApplyScreen.nameKey), 'محمود');
+      await tester.enterText(find.byKey(ApplyScreen.phoneKey), '01000000000');
+      await enterPassword(tester, 'luqma');
+      await submit(tester);
+
+      expect(find.text('كلمة السر 8 حروف على الأقل'), findsOneWidget);
+      expect(applications.all, isEmpty);
+    });
+
+    testWidgets('somebody who already orders as a customer applies with their own password',
+        (tester) async {
+      await pumpScreen(tester);
+      // The same number already has a customer account.
+      await auth.signUpWithPhone(
+        phone: '01000000000',
+        password: 'luqma12345',
+        name: 'محمود',
+      );
+
+      await tester.enterText(find.byKey(ApplyScreen.nameKey), 'محمود');
+      await tester.enterText(find.byKey(ApplyScreen.phoneKey), '01000000000');
+      await enterPassword(tester);
+      await submit(tester);
+
+      expect(find.byKey(ApplyScreen.successKey), findsOneWidget);
+      expect(applications.all.single.applicantUid, isNotNull);
+    });
+
+    testWidgets('the wrong password on a number that is taken files nothing', (tester) async {
+      await pumpScreen(tester);
+      await auth.signUpWithPhone(
+        phone: '01000000000',
+        password: 'luqma12345',
+        name: 'صاحب الرقم',
+      );
+
+      await tester.enterText(find.byKey(ApplyScreen.nameKey), 'حد تاني');
+      await tester.enterText(find.byKey(ApplyScreen.phoneKey), '01000000000');
+      await enterPassword(tester, 'luqma99999');
+      await submit(tester);
+
+      expect(find.byKey(ApplyScreen.errorKey), findsOneWidget);
+      expect(find.textContaining('الرقم ده عنده حساب بالفعل'), findsOneWidget);
       expect(applications.all, isEmpty);
     });
   });

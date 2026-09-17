@@ -175,7 +175,7 @@ void main() {
       expect(queue[1].name, 'أول متقدم');
     });
 
-    test('review approves or rejects and removes from pending queue', () async {
+    test('review rejects and removes from pending queue', () async {
       await repo.apply(
         kind: StaffApplicationKind.courier,
         name: 'محمود',
@@ -185,20 +185,81 @@ void main() {
 
       final reviewRes = await repo.review(
         id,
-        status: StaffApplicationStatus.approved,
-        note: 'اتكلمنا وشغال تمام',
-        staffUid: 'staff-new',
+        status: StaffApplicationStatus.rejected,
+        note: 'اتكلمنا ومش مناسب',
       );
 
       expect(reviewRes.isOk, isTrue);
       final decided = repo.all.first;
-      expect(decided.status, StaffApplicationStatus.approved);
-      expect(decided.reviewNote, 'اتكلمنا وشغال تمام');
-      expect(decided.staffUid, 'staff-new');
+      expect(decided.status, StaffApplicationStatus.rejected);
+      expect(decided.reviewNote, 'اتكلمنا ومش مناسب');
+      expect(decided.staffUid, isNull);
       expect(decided.reviewedAt, isNotNull);
 
       final pending = await repo.watchPending().first;
       expect(pending, isEmpty);
+    });
+
+    // 2026-09-18: approving through `review` is what stamped the first real merchant
+    // `approved` and created nobody. The server refuses it now, and so does this.
+    test('review cannot approve any more — approval makes the account', () async {
+      await repo.apply(
+        kind: StaffApplicationKind.restaurant,
+        name: 'ابو حاتم',
+        phone: '01000000100',
+        applicantUid: 'u-1',
+      );
+      final id = repo.all.first.id;
+
+      final refused = await repo.review(
+        id,
+        status: StaffApplicationStatus.approved,
+        staffUid: 'staff-new',
+      );
+
+      expect(refused.failureOrNull, isA<ConflictFailure>());
+      expect(repo.all.first.status, StaffApplicationStatus.pending);
+      expect(repo.accounts, isEmpty);
+    });
+
+    test('approve makes one account per person, and refuses a second', () async {
+      await repo.apply(
+        kind: StaffApplicationKind.restaurant,
+        name: 'ابو حاتم',
+        phone: '01000000100',
+        applicantUid: 'u-1',
+      );
+      final first = repo.all.first.id;
+
+      expect((await repo.approve(first, zoneId: 'z1')).isOk, isTrue);
+      expect(repo.accounts, {'u-1': null});
+      expect(repo.all.first.staffUid, 'u-1');
+
+      // The same person applying again after being approved: the server answers «that
+      // person already has a staff account».
+      await repo.apply(
+        kind: StaffApplicationKind.restaurant,
+        name: 'ابو حاتم',
+        phone: '01000000101',
+        applicantUid: 'u-1',
+      );
+      final second =
+          repo.all.firstWhere((a) => a.isPending && a.phone == '01000000101').id;
+      final refused = await repo.approve(second, zoneId: 'z1');
+      expect(refused.failureOrNull, isA<ConflictFailure>());
+    });
+
+    test('approve refuses an application with no account behind it', () async {
+      await repo.apply(
+        kind: StaffApplicationKind.restaurant,
+        name: 'ابو حاتم',
+        phone: '01000000100',
+      );
+      final id = repo.all.first.id;
+
+      final refused = await repo.approve(id, zoneId: 'z1');
+      expect(refused.failureOrNull, isA<ValidationFailure>());
+      expect(repo.all.first.status, StaffApplicationStatus.pending);
     });
 
     test('review refuses to decide an already decided or missing application', () async {
@@ -208,12 +269,13 @@ void main() {
         phone: '01000000100',
       );
       final id = repo.all.first.id;
-      await repo.review(id, status: StaffApplicationStatus.approved);
+      await repo.review(id, status: StaffApplicationStatus.rejected);
 
       final secondReview = await repo.review(id, status: StaffApplicationStatus.rejected);
       expect(secondReview.failureOrNull, isA<NotFoundFailure>());
 
-      final missingReview = await repo.review('non-existent', status: StaffApplicationStatus.approved);
+      final missingReview =
+          await repo.review('non-existent', status: StaffApplicationStatus.rejected);
       expect(missingReview.failureOrNull, isA<NotFoundFailure>());
     });
 

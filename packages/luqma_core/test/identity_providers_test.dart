@@ -63,7 +63,10 @@ void main() {
       await auth.signInWithPhone(phone: '01012345678', password: 'x');
       await Future<void>.delayed(Duration.zero);
 
-      expect(container.read(currentIdentityProvider).value?.uid, 'fake-uid');
+      expect(
+        container.read(currentIdentityProvider).value?.uid,
+        'fake-uid-01012345678',
+      );
     });
   });
 

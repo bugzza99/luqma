@@ -37,6 +37,7 @@ class MerchantApp extends ConsumerWidget {
   static const mealsTabKey = Key('app.tab.meals');
   static const shopTabKey = Key('app.tab.shop');
   static const noAccessKey = Key('app.noAccess');
+  static const refreshAccessKey = Key('app.refreshAccess');
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -199,11 +200,52 @@ class _Starting extends StatelessWidget {
   }
 }
 
-class _NoAccess extends ConsumerWidget {
+/// Signed in, and carrying nothing yet.
+///
+/// Since 2026-09-18 this is mostly an applicant waiting for the telephone call, not
+/// somebody who installed the wrong app — the account they made when they applied is an
+/// ordinary one until an admin approves it.
+///
+/// It carries a refresh, and that button is the whole reason this became a stateful
+/// screen: the claims live on the access token, stamped at sign-in, so an approval that
+/// landed a minute ago is invisible here until GoTrue rotates the token on its own — up to
+/// an hour of an approved merchant reading that they have no shop, right after a
+/// notification told them they had one.
+class _NoAccess extends ConsumerStatefulWidget {
   const _NoAccess();
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_NoAccess> createState() => _NoAccessState();
+}
+
+class _NoAccessState extends ConsumerState<_NoAccess> {
+  bool _busy = false;
+
+  Future<void> _refresh() async {
+    setState(() => _busy = true);
+    final result = await ref.read(authServiceProvider).refreshSession();
+    if (!mounted) return;
+    setState(() => _busy = false);
+
+    // On success the gate rebuilds by itself if anything changed, so the only thing worth
+    // saying is that nothing did. A *failure* is a different sentence: telling somebody
+    // their account is not activated when what actually happened is that the phone could
+    // not reach the server sends them back to the telephone for nothing.
+    final message = switch (result) {
+      Ok() => () {
+        final identity = ref.read(authServiceProvider).identity;
+        if (identity != null && StaffIdentity.from(identity).role != null) return null;
+        return 'لسه مفيش تفعيل على الحساب. جرّب تاني بعد المكالمة.';
+      }(),
+      Err(failure: OfflineFailure()) => 'مفيش اتصال بالإنترنت — اتأكد من الشبكة وجرّب تاني',
+      Err() => 'مقدرناش نحدّث الحساب دلوقتي. جرّب تاني.',
+    };
+    if (message == null || !mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
     return Scaffold(
@@ -218,18 +260,28 @@ class _NoAccess extends ConsumerWidget {
               const LuqmaLockup(logo: LuqmaLogo.mark, height: 64),
               const SizedBox(height: Space.xl),
               Text(
-                'الحساب ده مش مربوط بمطعم',
+                'الحساب لسه مش مفعّل',
                 style: theme.textTheme.titleLarge,
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: Space.sm),
               Text(
-                'التطبيق ده للتجّار. لو ده حسابك الصح، كلّم إدارة لقمة عشان يربطوه.',
+                'لو قدّمت طلب انضمام، إدارة لقمة هتتصل بيك وتفعّل الحساب. أول ما يوصلك إن '
+                'الحساب اتفعّل اضغط «حدّث الحساب».',
                 style: theme.textTheme.bodyMedium
                     ?.copyWith(color: theme.luqma.textSecondary),
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: Space.xl),
+              FilledButton(
+                key: MerchantApp.refreshAccessKey,
+                onPressed: _busy ? null : _refresh,
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size.fromHeight(50),
+                ),
+                child: Text(_busy ? 'لحظة…' : 'حدّث الحساب'),
+              ),
+              const SizedBox(height: Space.md),
               OutlinedButton(
                 onPressed: () => ref.read(authServiceProvider).signOut(),
                 child: const Text('تسجيل الخروج'),

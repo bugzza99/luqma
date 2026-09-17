@@ -152,7 +152,7 @@ void main() {
     final identitySubscription = container.listen(
       currentIdentityProvider,
       (_, next) {
-        if (next.value?.uid == 'fake-uid' && !switched.isCompleted) {
+        if (next.value?.uid == 'fake-uid-01000000001' && !switched.isCompleted) {
           switched.complete();
         }
       },
@@ -176,7 +176,7 @@ void main() {
     await second.load();
 
     expect(identical(second, first), isFalse);
-    expect(second.accountId, 'fake-uid');
+    expect(second.accountId, 'fake-uid-01000000001');
     expect(second.pending, isEmpty);
     expect(store.snapshotFor('c1'), hasLength(1));
   });

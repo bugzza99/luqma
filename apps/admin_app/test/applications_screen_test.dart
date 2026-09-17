@@ -13,6 +13,7 @@ void main() {
     name: 'عمرو',
     phone: '01000000001',
     note: 'معايا موتوسيكل وبغطي إدكو كلها',
+    applicantUid: 'u-courier',
     status: StaffApplicationStatus.pending,
   );
 
@@ -22,6 +23,7 @@ void main() {
     name: 'بيتزا روما',
     phone: '01000000002',
     note: 'المحطة ش البحر 11ص-2ص',
+    applicantUid: 'u-shop',
     status: StaffApplicationStatus.pending,
   );
 
@@ -39,6 +41,28 @@ void main() {
       ProviderScope(
         overrides: [
           staffApplicationRepositoryProvider.overrideWithValue(applications),
+          // Approval builds the account now, so it needs the zone a shop sits in and the
+          // shop a courier starts at.
+          geographyRepositoryProvider.overrideWithValue(
+            FakeGeographyRepository(
+              zones: const [Zone(id: 'z1', cityId: 'edku', name: 'منشية الأمل')],
+            ),
+          ),
+          merchantRepositoryProvider.overrideWithValue(
+            FakeMerchantRepository(
+              seed: const [
+                Merchant(
+                  id: 'm1',
+                  cityId: 'edku',
+                  type: MerchantType.restaurant,
+                  name: 'مطعم البحر',
+                  zoneId: 'z1',
+                  phone: '01000000000',
+                  status: MerchantStatus.approved,
+                ),
+              ],
+            ),
+          ),
         ],
         child: MaterialApp(
           theme: LuqmaTheme.light,
@@ -71,12 +95,13 @@ void main() {
       expect(find.text('المحطة ش البحر 11ص-2ص'), findsOneWidget);
     });
 
-    testWidgets('plainly says that approving does not create the account', (tester) async {
+    testWidgets('says that approving makes the account', (tester) async {
       await pump(tester);
 
-      // Plain explanation that approval is a decision record, account created through staff screen
+      // 2026-09-18: it used to say the opposite — approval was a decision record and the
+      // account was made by hand afterwards, which nobody did.
       expect(
-        find.textContaining('إنشاء حساب المستخدم الفعلي وصلاحياته يتم من شاشة الفريق'),
+        find.textContaining('القبول هيعمل الحساب وصلاحياته على طول'),
         findsOneWidget,
       );
     });
@@ -90,12 +115,16 @@ void main() {
       await tester.tap(approveButton);
       await tester.pumpAndSettle();
 
-      // Dialog opens asking for call notes and reiterating that account is made in staff
+      // Dialog opens asking for call notes and the zone the shop sits in.
       expect(find.byKey(ApplicationsScreen.reviewNoteKey), findsOneWidget);
       await tester.enterText(
         find.byKey(ApplicationsScreen.reviewNoteKey),
         'اتكلمنا واتفقنا على المنيو، هيتعمل له حساب صاحب مطعم',
       );
+      await tester.tap(find.byKey(ApplicationsScreen.zonePickerKey));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('منشية الأمل').last);
+      await tester.pumpAndSettle();
 
       await tester.tap(find.byKey(ApplicationsScreen.confirmKey));
       await tester.pumpAndSettle();
@@ -139,6 +168,60 @@ void main() {
       await pump(tester, seed: const []);
 
       expect(find.text('مفيش طلبات في الانتظار'), findsOneWidget);
+    });
+  });
+
+  // 2026-09-18: approving used to stamp the row and nothing else, so the first real merchant
+  // left the queue and existed nowhere.
+  group('approval builds the account', () {
+    testWidgets('a shop is approved into its zone', (tester) async {
+      await pump(tester, seed: [appNew]);
+
+      await tester.tap(find.byKey(ApplicationsScreen.approveKey('app-new')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(ApplicationsScreen.zonePickerKey));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('منشية الأمل').last);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(ApplicationsScreen.confirmKey));
+      await tester.pumpAndSettle();
+
+      expect(applications.approvals.single, ('app-new', 'z1', null));
+    });
+
+    testWidgets('a courier is approved onto the shop they start with', (tester) async {
+      await pump(tester, seed: [appOld]);
+
+      await tester.tap(find.byKey(ApplicationsScreen.approveKey('app-old')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(ApplicationsScreen.shopPickerKey));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('مطعم البحر').last);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(ApplicationsScreen.confirmKey));
+      await tester.pumpAndSettle();
+
+      expect(applications.approvals.single, ('app-old', null, 'm1'));
+    });
+
+    testWidgets('an application from before there were accounts says so and cannot be approved',
+        (tester) async {
+      await pump(tester, seed: [
+        const StaffApplication(
+          id: 'app-old-style',
+          kind: StaffApplicationKind.restaurant,
+          name: 'ابو حاتم',
+          phone: '01277077556',
+          status: StaffApplicationStatus.pending,
+        ),
+      ]);
+
+      await tester.tap(find.byKey(ApplicationsScreen.approveKey('app-old-style')));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('معندوش حساب'), findsOneWidget);
+      final confirm = tester.widget<FilledButton>(find.byKey(ApplicationsScreen.confirmKey));
+      expect(confirm.onPressed, isNull);
     });
   });
 }

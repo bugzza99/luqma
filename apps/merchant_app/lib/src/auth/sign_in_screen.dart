@@ -6,13 +6,23 @@ import 'apply_screen.dart';
 
 /// The way in.
 ///
-/// Email and password, because a merchant account is created *for* somebody by the
-/// owner — there is no self-service sign-up, and there never will be. The whole supply
-/// side of this platform is people the owner has met.
+/// A phone number and a password, the same pair a customer signs in with (2026-09-18).
+/// It used to ask for an email only, because accounts were minted by the owner with one —
+/// and the first real merchant was asked for an email and a password they had never had. A
+/// partner now makes their own phone account when they apply; approval is what turns it
+/// into a shop or a rider.
+///
+/// **An email still signs in**, and that is not politeness: every account
+/// `create-staff-account` has ever minted — which is still how «الفريق» makes one — has a
+/// real address and no phone identity at all. A phone-only field would lock every one of
+/// them out of the app, silently, with «البيانات غلط». Which of the two arrived is decided
+/// by the `@`, because that is the one thing an Egyptian mobile number can never contain.
 class SignInScreen extends ConsumerStatefulWidget {
   const SignInScreen({super.key});
 
-  static const emailKey = Key('signIn.email');
+  static const phoneKey = Key('signIn.phone');
+  // The old key, kept so nothing that reaches for it breaks: it is the same field.
+  static const emailKey = phoneKey;
   static const passwordKey = Key('signIn.password');
   static const submitKey = Key('signIn.submit');
   static const applyKey = Key('signIn.apply');
@@ -24,7 +34,7 @@ class SignInScreen extends ConsumerStatefulWidget {
 
 class _SignInScreenState extends ConsumerState<SignInScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _email = TextEditingController();
+  final _phone = TextEditingController();
   final _password = TextEditingController();
 
   bool _busy = false;
@@ -32,7 +42,7 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
 
   @override
   void dispose() {
-    _email.dispose();
+    _phone.dispose();
     _password.dispose();
     super.dispose();
   }
@@ -45,10 +55,11 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
       _error = null;
     });
 
-    final result = await ref.read(authServiceProvider).signInWithPassword(
-          email: _email.text,
-          password: _password.text,
-        );
+    final typed = _phone.text.trim();
+    final auth = ref.read(authServiceProvider);
+    final result = typed.contains('@')
+        ? await auth.signInWithPassword(email: typed, password: _password.text)
+        : await auth.signInWithPhone(phone: typed, password: _password.text);
     if (!mounted) return;
 
     // No navigation on success: the app is watching the session and moves on its own.
@@ -104,13 +115,21 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                   ),
                   const SizedBox(height: Space.xl),
                   TextFormField(
-                    key: SignInScreen.emailKey,
-                    controller: _email,
+                    key: SignInScreen.phoneKey,
+                    controller: _phone,
+                    // Not `TextInputType.phone`: an address has to be typeable here too.
                     keyboardType: TextInputType.emailAddress,
                     textDirection: TextDirection.ltr,
-                    decoration: const InputDecoration(labelText: 'الإيميل'),
-                    validator: (v) =>
-                        (v ?? '').trim().isEmpty ? 'اكتب الإيميل' : null,
+                    decoration: const InputDecoration(
+                      labelText: 'رقم الموبايل أو الإيميل',
+                    ),
+                    validator: (v) {
+                      final typed = (v ?? '').trim();
+                      if (typed.contains('@')) return null;
+                      return Phone.isValidEgyptianMobile(typed)
+                          ? null
+                          : 'اكتب رقم موبايل صح أو الإيميل';
+                    },
                   ),
                   const SizedBox(height: Space.md),
                   TextFormField(

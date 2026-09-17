@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -11,6 +12,75 @@ import 'package:merchant_app/src/orders/inbox_screen.dart';
 import 'package:merchant_app/src/orders/live_board_screen.dart';
 import 'package:merchant_app/src/shop/busy_toggle.dart';
 import 'package:merchant_app/src/shop/shop_screen.dart';
+
+/// An account that is approved between one look at the token and the next.
+///
+/// The claims live on the access token, stamped at sign-in, so this is what the server
+/// doing its job looks like from the phone: the same person, carrying a shop the moment the
+/// token is asked for again. `FakeAuthService` cannot express that — its identity is fixed
+/// at construction — and this is the one behaviour the refresh button exists for.
+class _ApprovedOnRefresh implements AuthService {
+  _ApprovedOnRefresh(this._before, this._after);
+
+  final LuqmaIdentity _before;
+  final LuqmaIdentity _after;
+  final _controller = StreamController<LuqmaIdentity?>.broadcast();
+
+  LuqmaIdentity? _identity;
+
+  @override
+  AuthState get state => _identity == null ? AuthState.unknown : AuthState.signedIn;
+
+  @override
+  LuqmaIdentity? get identity => _identity;
+
+  @override
+  Stream<LuqmaIdentity?> get changes => Stream.multi((listener) {
+        listener.add(_identity);
+        final sub = _controller.stream.listen(listener.add, onDone: listener.close);
+        listener.onCancel = sub.cancel;
+      });
+
+  @override
+  Future<void> restore() async {
+    _identity = _before;
+    _controller.add(_identity);
+  }
+
+  @override
+  Future<Result<void>> refreshSession() async {
+    _identity = _after;
+    _controller.add(_identity);
+    return const Result.ok(null);
+  }
+
+  @override
+  Future<Result<LuqmaIdentity>> signInWithPhone({
+    required String phone,
+    required String password,
+  }) async => Result.ok(_identity!);
+
+  @override
+  Future<Result<LuqmaIdentity>> signInWithPassword({
+    required String email,
+    required String password,
+  }) async => Result.ok(_identity!);
+
+  @override
+  Future<Result<LuqmaIdentity>> signUpWithPhone({
+    required String phone,
+    required String password,
+    required String name,
+  }) async => Result.ok(_identity!);
+
+  @override
+  Future<void> signOut() async {
+    _identity = null;
+    _controller.add(null);
+  }
+
+  void dispose() => _controller.close();
+}
 
 /// Getting into the app, and moving around it once inside.
 void main() {
@@ -42,14 +112,17 @@ void main() {
     claims: {'role': 'owner', 'scope': 'merchant', 'merchantId': 'm1'},
   );
 
-  late FakeAuthService auth;
+  late AuthService auth;
 
   Future<void> pump(
     WidgetTester tester, {
     LuqmaIdentity? signedInAs = owner,
     Merchant shopIs = shop,
+    // A fake of the test's own, for the two cases that are about what the *service* does
+    // rather than about who is signed in.
+    AuthService? signingIn,
   }) async {
-    auth = FakeAuthService(restoring: signedInAs);
+    auth = signingIn ?? FakeAuthService(restoring: signedInAs);
 
     await tester.pumpWidget(
       ProviderScope(
@@ -117,6 +190,68 @@ void main() {
       );
 
       expect(find.byType(SignInScreen), findsNothing);
+      expect(find.byKey(MerchantApp.noAccessKey), findsOneWidget);
+    });
+
+    // An approved partner is holding a token stamped before they were approved, and a
+    // claim only reaches the phone when the token rotates. Without this button that is up
+    // to an hour of reading «الحساب لسه مش مفعّل» straight after being told it worked.
+    testWidgets('and can ask for the claims again once the call has happened',
+        (tester) async {
+      await pump(
+        tester,
+        signedInAs: const LuqmaIdentity(uid: 'u1', phone: '01000000000'),
+      );
+
+      expect(find.byKey(MerchantApp.refreshAccessKey), findsOneWidget);
+
+      await tester.tap(find.byKey(MerchantApp.refreshAccessKey));
+      await tester.pumpAndSettle();
+
+      // Nothing changed on the server, so it says so rather than leaving somebody
+      // pressing a button that appears to do nothing.
+      expect(find.textContaining('لسه مفيش تفعيل'), findsOneWidget);
+    });
+
+    // The whole point of the button: the approval landed while this phone was holding a
+    // token stamped before it, and asking again is what turns the screen into a shop.
+    testWidgets('and lands on the inbox once the refreshed token carries the claims',
+        (tester) async {
+      await pump(
+        tester,
+        signedInAs: const LuqmaIdentity(uid: 'u1', phone: '01000000000'),
+        signingIn: _ApprovedOnRefresh(
+          const LuqmaIdentity(uid: 'u1', phone: '01000000000'),
+          owner,
+        ),
+      );
+
+      expect(find.byKey(MerchantApp.noAccessKey), findsOneWidget);
+
+      await tester.tap(find.byKey(MerchantApp.refreshAccessKey));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(InboxScreen), findsOneWidget);
+      expect(find.byKey(MerchantApp.noAccessKey), findsNothing);
+    });
+
+    testWidgets('and says it is the network when the refresh cannot reach anybody',
+        (tester) async {
+      await pump(
+        tester,
+        signedInAs: const LuqmaIdentity(uid: 'u1', phone: '01000000000'),
+        signingIn: FakeAuthService(
+          restoring: const LuqmaIdentity(uid: 'u1', phone: '01000000000'),
+          failure: const OfflineFailure(),
+        ),
+      );
+
+      await tester.tap(find.byKey(MerchantApp.refreshAccessKey));
+      await tester.pumpAndSettle();
+
+      // Not «لسه مفيش تفعيل»: that would send somebody back to the telephone over a
+      // dropped connection.
+      expect(find.textContaining('مفيش اتصال'), findsOneWidget);
       expect(find.byKey(MerchantApp.noAccessKey), findsOneWidget);
     });
 

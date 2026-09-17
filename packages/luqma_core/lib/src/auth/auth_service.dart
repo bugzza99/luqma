@@ -86,6 +86,15 @@ abstract interface class AuthService {
     required String password,
   });
 
+  /// Asks GoTrue for a new access token, and with it a fresh set of claims.
+  ///
+  /// A claim is only on the token because the access-token hook stamped it at sign-in, so
+  /// somebody whose `staff` row was written a minute ago is still carrying a token that
+  /// says they are nobody — for up to an hour, until the token refreshes on its own. That
+  /// is precisely the minute an approved partner opens the app, having just been told it
+  /// worked, and reads that they have no access. This is the button that answers them.
+  Future<Result<void>> refreshSession();
+
   Future<void> signOut();
 }
 
@@ -120,6 +129,17 @@ class SupabaseAuthService implements AuthService {
       // admin out of a screen they are working on because one refresh failed is a worse
       // answer than letting the next event correct it.
       onError: (Object error, StackTrace stackTrace) {
+        // Somebody already signed in **stays** signed in. A failed token refresh puts a
+        // retryable error on this stream, and clearing the identity for it throws whoever
+        // is holding the phone back to the sign-in screen for a moment of bad signal —
+        // which is what the «حدّث الحساب» button on the partner app would otherwise do to
+        // an approved merchant standing in their kitchen. The session on the device is
+        // still there; what failed was asking about it.
+        if (_identity != null) {
+          debugPrint('auth stream error, keeping the session we have: $error');
+          if (!_resolved.isCompleted) _resolved.complete();
+          return;
+        }
         debugPrint('auth stream error, treating the session as absent: $error');
         _identity = null;
         _state = AuthState.signedOut;
@@ -250,6 +270,15 @@ class SupabaseAuthService implements AuthService {
   }
 
   @override
+  Future<Result<void>> refreshSession() {
+    return Result.guard(() async {
+      // The listener above is what publishes the new identity: a refreshed token arrives
+      // as an ordinary auth state change, claims and all.
+      await _auth.refreshSession();
+    });
+  }
+
+  @override
   Future<void> signOut() => _auth.signOut();
 
   void dispose() {
@@ -320,9 +349,13 @@ class FakeAuthService implements AuthService {
 
   final _controller = StreamController<LuqmaIdentity?>.broadcast();
 
-  /// Phone numbers this fake has already handed an account, so a second sign-up is
-  /// refused the way production refuses it.
-  final Set<String> _takenPhones = {};
+  /// Phone numbers this fake has already handed an account, and the password each one
+  /// was given — so a second sign-up is refused and a wrong password is refused, the way
+  /// production refuses both.
+  ///
+  /// Keyed on [Phone.normalize], because that is what the real service folds into the
+  /// account address: `٠١٠…` and `010…` are one account there and must be one here.
+  final Map<String, String> _accounts = {};
 
   AuthState _state = AuthState.unknown;
   LuqmaIdentity? _identity;
@@ -367,12 +400,15 @@ class FakeAuthService implements AuthService {
       _state = AuthState.signedOut;
       return Result.err(failure!);
     }
-    if (_takenPhones.contains(phone)) {
+    final key = Phone.normalize(phone);
+    if (_accounts.containsKey(key)) {
       return const Result.err(PhoneTakenFailure());
     }
 
-    _takenPhones.add(phone);
-    _identity = LuqmaIdentity(uid: 'fake-uid', name: name, phone: phone);
+    _accounts[key] = password;
+    // A uid per account, not one shared string: a test that cannot tell two accounts apart
+    // cannot prove an application was filed against the right one.
+    _identity = LuqmaIdentity(uid: _uidFor(key), name: name, phone: key);
     _state = AuthState.signedIn;
     _controller.add(_identity);
     return Result.ok(_identity!);
@@ -388,8 +424,17 @@ class FakeAuthService implements AuthService {
       return Result.err(failure!);
     }
 
+    // A password this fake handed out is the only one it accepts back. Without this the
+    // fake signs anybody into any number, which is the one thing the screens above it
+    // rely on being impossible — see "the fakes are not the system".
+    final key = Phone.normalize(phone);
+    final known = _accounts[key];
+    if (known != null && known != password) {
+      return Result.err(UnknownFailure(Exception('wrong password')));
+    }
+
     _identity = _restoring ??
-        LuqmaIdentity(uid: 'fake-uid', name: 'عميل تجريبي', phone: phone);
+        LuqmaIdentity(uid: _uidFor(key), name: 'عميل تجريبي', phone: key);
     _state = AuthState.signedIn;
     _controller.add(_identity);
     return Result.ok(_identity!);
@@ -413,11 +458,23 @@ class FakeAuthService implements AuthService {
   }
 
   @override
+  Future<Result<void>> refreshSession() async {
+    if (failure != null) return Result.err(failure!);
+    // Nothing to refresh, and it has to say so truthfully: a fake that invented new claims
+    // would let a screen pass a test the server would fail.
+    _controller.add(_identity);
+    return const Result.ok(null);
+  }
+
+  @override
   Future<void> signOut() async {
     _identity = null;
     _state = AuthState.signedOut;
     _controller.add(null);
   }
+
+  /// One uid per number, stable across calls, so a test can say which account it means.
+  String _uidFor(String phone) => 'fake-uid-$phone';
 
   void dispose() => _controller.close();
 }

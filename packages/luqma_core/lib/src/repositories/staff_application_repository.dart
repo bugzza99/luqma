@@ -25,6 +25,22 @@ abstract interface class StaffApplicationRepository {
     required String name,
     required String phone,
     String? note,
+
+    /// The phone account the applicant just made. It carries no privileges — approval is
+    /// what writes the `staff` row — but without it there is nothing to approve *into*.
+    String? applicantUid,
+  });
+
+  /// Approves and creates what was asked for: the staff row, and for a shop the shop
+  /// itself, owned by the applicant and waiting for its details.
+  ///
+  /// [zoneId] for a restaurant or a home kitchen (the zone decides the city);
+  /// [merchantId] for a courier, the shop they start with.
+  Future<Result<void>> approve(
+    String id, {
+    String? zoneId,
+    String? merchantId,
+    String? note,
   });
 
   /// The open applications waiting for a phone call, newest first.
@@ -50,6 +66,7 @@ class SupabaseStaffApplicationRepository implements StaffApplicationRepository {
     required String name,
     required String phone,
     String? note,
+    String? applicantUid,
   }) async {
     return Result.guard(() async {
       try {
@@ -60,6 +77,7 @@ class SupabaseStaffApplicationRepository implements StaffApplicationRepository {
           'name': name.trim(),
           'phone': Phone.normalize(phone),
           if (note != null && note.trim().isNotEmpty) 'note': note.trim(),
+          'applicant_uid': ?applicantUid,
         });
       } on PostgrestException catch (e, st) {
         if (e.code == '23505' || e.message.contains('staff_applications_one_open')) {
@@ -104,6 +122,23 @@ class SupabaseStaffApplicationRepository implements StaffApplicationRepository {
       });
     });
   }
+
+  @override
+  Future<Result<void>> approve(
+    String id, {
+    String? zoneId,
+    String? merchantId,
+    String? note,
+  }) {
+    return Result.guard(() async {
+      await _db.rpc('approve_staff_application', params: {
+        'p_id': id,
+        'p_zone_id': zoneId,
+        'p_merchant_id': merchantId,
+        if (note != null && note.trim().isNotEmpty) 'p_note': note.trim(),
+      });
+    });
+  }
 }
 
 /// In-memory application queue, for tests and building screens above it.
@@ -139,6 +174,7 @@ class FakeStaffApplicationRepository implements StaffApplicationRepository {
     required String name,
     required String phone,
     String? note,
+    String? applicantUid,
   }) async {
     if (failure != null) return Result.err(failure!);
 
@@ -162,6 +198,7 @@ class FakeStaffApplicationRepository implements StaffApplicationRepository {
       name: name.trim(),
       phone: normalized,
       note: note?.trim().isEmpty == true ? null : note?.trim(),
+      applicantUid: applicantUid,
       status: StaffApplicationStatus.pending,
       createdAt: DateTime.now(),
     );
@@ -185,6 +222,21 @@ class FakeStaffApplicationRepository implements StaffApplicationRepository {
 
   @override
   Future<Result<void>> review(
+    String id, {
+    required StaffApplicationStatus status,
+    String? note,
+    String? staffUid,
+  }) {
+    // Approving through here is what left the first real merchant with no account, and the
+    // server refuses it now («approval makes the account now — update the admin app»). A
+    // fake that still allowed it would let a screen pass a test the database would fail.
+    if (status == StaffApplicationStatus.approved) {
+      return Future.value(const Result.err(ConflictFailure()));
+    }
+    return _decide(id, status: status, note: note, staffUid: staffUid);
+  }
+
+  Future<Result<void>> _decide(
     String id, {
     required StaffApplicationStatus status,
     String? note,
@@ -218,5 +270,50 @@ class FakeStaffApplicationRepository implements StaffApplicationRepository {
     );
     _notify();
     return const Result.ok(null);
+  }
+
+  /// What [approve] was asked, for assertions.
+  final List<(String id, String? zoneId, String? merchantId)> approvals = [];
+
+  /// The accounts approval has made: uid to the shop it was made against, mirroring the
+  /// `staff` rows the server writes. A uid appears once — a second approval for the same
+  /// person is what the server refuses with «that person already has a staff account».
+  final Map<String, String?> accounts = {};
+
+  @override
+  Future<Result<void>> approve(
+    String id, {
+    String? zoneId,
+    String? merchantId,
+    String? note,
+  }) async {
+    if (failure != null) return Result.err(failure!);
+    final existing = _applications[id];
+    if (existing == null || !existing.isPending) {
+      return const Result.err(NotFoundFailure());
+    }
+    // The server's rules: an application with no account cannot be approved, a shop needs a
+    // zone and a courier needs the shop they start with.
+    final uid = existing.applicantUid;
+    if (uid == null) return const Result.err(ValidationFailure());
+    if (accounts.containsKey(uid)) return const Result.err(ConflictFailure());
+    if (existing.kind == StaffApplicationKind.courier) {
+      if (merchantId == null) return const Result.err(ValidationFailure());
+    } else if (zoneId == null) {
+      return const Result.err(ValidationFailure());
+    }
+
+    approvals.add((id, zoneId, merchantId));
+    final decided =
+        await _decide(id, status: StaffApplicationStatus.approved, note: note, staffUid: uid);
+    // Recorded only once the write is accepted. The server does all of this in one
+    // transaction, so a refused approval leaves no account behind — and a fake that
+    // reserved the uid first would refuse the retry with «already has an account».
+    if (decided is Ok) {
+      // The account the server would have minted: an owner against the shop it just made
+      // (which this fake has no id for), or a courier against the shop they start with.
+      accounts[uid] = merchantId;
+    }
+    return decided;
   }
 }
