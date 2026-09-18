@@ -12,6 +12,7 @@ import 'package:merchant_app/src/orders/inbox_screen.dart';
 import 'package:merchant_app/src/orders/live_board_screen.dart';
 import 'package:merchant_app/src/shop/busy_toggle.dart';
 import 'package:merchant_app/src/shop/shop_screen.dart';
+import 'package:merchant_app/src/shop/subscription_screen.dart';
 
 /// An account that is approved between one look at the token and the next.
 ///
@@ -84,6 +85,9 @@ class _ApprovedOnRefresh implements AuthService {
 
 /// Getting into the app, and moving around it once inside.
 void main() {
+  setUp(() => LuqmaPush.tapped.value = null);
+  tearDown(() => LuqmaPush.tapped.value = null);
+
   const alwaysOpen = [
     OpeningWindow(weekday: DateTime.monday, openMinute: 0, closeMinute: 1440),
     OpeningWindow(weekday: DateTime.tuesday, openMinute: 0, closeMinute: 1440),
@@ -134,6 +138,8 @@ void main() {
               .overrideWithValue(FakeMerchantRepository(seed: [shopIs])),
           dailyMealRepositoryProvider
               .overrideWithValue(FakeDailyMealRepository()),
+          subscriptionRequestRepositoryProvider
+              .overrideWithValue(FakeSubscriptionRequestRepository()),
           billingRepositoryProvider.overrideWithValue(
             FakeBillingRepository(
               seedPlans: const [
@@ -519,6 +525,70 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('مطعم الشاطئ'), findsWidgets);
+    });
+  });
+
+  group('tapped notifications', () {
+    testWidgets('newOrder tap switches to the inbox tab', (tester) async {
+      await pump(tester);
+
+      await tester.tap(find.byKey(MerchantApp.shopTabKey));
+      await tester.pumpAndSettle();
+      expect(find.byType(ShopScreen), findsOneWidget);
+
+      LuqmaPush.tapped.value = const LuqmaTap(
+        kind: 'newOrder',
+        data: {'orderId': 'o-99'},
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byType(InboxScreen), findsOneWidget);
+    });
+
+    testWidgets('an orderId tap without newOrder kind also switches to the inbox tab',
+        (tester) async {
+      await pump(tester);
+
+      await tester.tap(find.byKey(MerchantApp.shopTabKey));
+      await tester.pumpAndSettle();
+      expect(find.byType(ShopScreen), findsOneWidget);
+
+      LuqmaPush.tapped.value = const LuqmaTap(
+        data: {'orderId': 'o-legacy'},
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byType(InboxScreen), findsOneWidget);
+    });
+
+    testWidgets('subscription_activated opens the subscription screen',
+        (tester) async {
+      await pump(tester);
+
+      LuqmaPush.tapped.value = const LuqmaTap(
+        kind: 'subscription_activated',
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byType(SubscriptionScreen), findsOneWidget);
+    });
+
+    testWidgets('unrelated notification does not switch tab or open screen',
+        (tester) async {
+      await pump(tester);
+
+      await tester.tap(find.byKey(MerchantApp.shopTabKey));
+      await tester.pumpAndSettle();
+      expect(find.byType(ShopScreen), findsOneWidget);
+
+      LuqmaPush.tapped.value = const LuqmaTap(
+        kind: 'promotion',
+        data: {'foo': 'bar'},
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byType(ShopScreen), findsOneWidget);
+      expect(find.byType(SubscriptionScreen), findsNothing);
     });
   });
 }

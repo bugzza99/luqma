@@ -62,6 +62,9 @@ describe('replacing a menu with nothing', () => {
       `insert into merchants (city_id,type,name,zone_id,phone,status)
        values ('edku','restaurant','مطعم',$1,'0100','approved') returning id`,
       [zone])).rows[0].id;
+    // A restaurant starts with four shelves since 20261006000000; this is about a menu of
+    // exactly two, so it starts from none.
+    await db.query('delete from menu_categories where merchant_id = $1', [merchant]);
     await db.query(
       `insert into menu_categories (merchant_id,name,sort_order)
        values ($1,'أطباق',0), ($1,'مشروبات',1)`, [merchant]);

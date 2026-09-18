@@ -10,7 +10,7 @@ export 'src/app/external_links.dart';
 export 'src/app/supabase_options.dart';
 export 'src/app/push.dart';
 export 'src/app/notification_banner.dart';
-export 'src/app/tapped_order.dart';
+export 'src/app/tapped_notification.dart';
 export 'src/app/telemetry.dart';
 export 'src/auth/auth_service.dart';
 export 'src/auth/staff_identity.dart';

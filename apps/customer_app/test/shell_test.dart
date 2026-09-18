@@ -379,15 +379,15 @@ void main() {
   });
 
   group('a tapped notification', () {
-    setUp(() => LuqmaPush.tappedOrder.value = null);
-    tearDown(() => LuqmaPush.tappedOrder.value = null);
+    setUp(() => LuqmaPush.tapped.value = null);
+    tearDown(() => LuqmaPush.tapped.value = null);
 
     // The launch case. The tap is recorded before any widget of this app exists, so a
     // shell that only listened for changes would never hear it — and until this existed,
     // nothing heard it at all: the customer tapped "الأوردر في الطريق" and the app came
     // forward on الرئيسية.
     testWidgets('from a cold start opens the order it was about', (tester) async {
-      LuqmaPush.tappedOrder.value = 'o-cold';
+      LuqmaPush.tapped.value = const LuqmaTap(data: {'orderId': 'o-cold'});
 
       await pump(tester);
 
@@ -397,7 +397,7 @@ void main() {
     testWidgets('while the app is open opens the order too', (tester) async {
       await pump(tester);
 
-      LuqmaPush.tappedOrder.value = 'o-live';
+      LuqmaPush.tapped.value = const LuqmaTap(data: {'orderId': 'o-live'});
       await tester.pumpAndSettle();
 
       expect(find.byType(OrderScreen), findsOneWidget);
@@ -406,13 +406,22 @@ void main() {
     // The tab moves as well as the route being pushed, so back from the order is طلباتي
     // — the list the order belongs to — rather than the home tab it was launched on.
     testWidgets('leaves طلباتي underneath it', (tester) async {
-      LuqmaPush.tappedOrder.value = 'o-cold';
+      LuqmaPush.tapped.value = const LuqmaTap(data: {'orderId': 'o-cold'});
       await pump(tester);
 
       tester.state<NavigatorState>(find.byType(Navigator).first).pop();
       await tester.pumpAndSettle();
 
       expect(find.byType(OrdersScreen), findsOneWidget);
+    });
+
+    testWidgets('a notification without an order id does not open an order', (tester) async {
+      await pump(tester);
+
+      LuqmaPush.tapped.value = const LuqmaTap(kind: 'promotion', data: {'promotionId': 'p1'});
+      await tester.pumpAndSettle();
+
+      expect(find.byType(OrderScreen), findsNothing);
     });
   });
 }

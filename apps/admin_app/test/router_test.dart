@@ -1,7 +1,9 @@
+import 'package:admin_app/src/applications/applications_screen.dart';
 import 'package:admin_app/src/app/router.dart';
 import 'package:admin_app/src/auth/admin_access.dart';
 import 'package:admin_app/src/auth/gate_screens.dart';
 import 'package:admin_app/src/auth/identity_provider.dart';
+import 'package:admin_app/src/dashboard/dashboard_screen.dart';
 import 'package:admin_app/src/dashboard/module_grid_screen.dart';
 import 'package:admin_app/src/places/places_screen.dart';
 import 'package:admin_app/src/settings/settings_screen.dart';
@@ -17,6 +19,9 @@ import 'package:luqma_core/luqma_core.dart';
 /// to the router and that each answer lands on a real screen. A redirect pointing at a
 /// path the router does not serve is a blank page with no error anywhere.
 void main() {
+  setUp(() => LuqmaPush.tapped.value = null);
+  tearDown(() => LuqmaPush.tapped.value = null);
+
   Future<void> pumpWith(
     WidgetTester tester,
     AdminAccess access, {
@@ -35,6 +40,12 @@ void main() {
           adminAccessProvider.overrideWithValue(access),
           geographyRepositoryProvider.overrideWithValue(
             FakeGeographyRepository(),
+          ),
+          adminRepositoryProvider.overrideWithValue(
+            FakeAdminRepository(),
+          ),
+          staffApplicationRepositoryProvider.overrideWithValue(
+            FakeStaffApplicationRepository(),
           ),
         ],
         child: Consumer(
@@ -156,6 +167,63 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(popped, isFalse);
+    });
+  });
+
+  group('tapped notifications', () {
+    testWidgets('a staffApplication tap lands on the applications screen',
+        (tester) async {
+      await pumpWith(tester, AdminAccess.granted);
+      expect(find.byType(ModuleGridScreen), findsOneWidget);
+
+      LuqmaPush.tapped.value = const LuqmaTap(
+        kind: 'staffApplication',
+        data: {'applicationId': 'app-1'},
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byType(ApplicationsScreen), findsOneWidget);
+    });
+
+    testWidgets('a needsAttention tap lands on today', (tester) async {
+      await pumpWith(tester, AdminAccess.granted);
+      expect(find.byType(ModuleGridScreen), findsOneWidget);
+
+      LuqmaPush.tapped.value = const LuqmaTap(
+        kind: 'needsAttention',
+        data: {'orderId': 'o-1'},
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byType(DashboardScreen), findsOneWidget);
+    });
+
+    testWidgets('a tap carrying an orderId without an explicit kind lands on today',
+        (tester) async {
+      await pumpWith(tester, AdminAccess.granted);
+      expect(find.byType(ModuleGridScreen), findsOneWidget);
+
+      LuqmaPush.tapped.value = const LuqmaTap(
+        data: {'orderId': 'o-fallback'},
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byType(DashboardScreen), findsOneWidget);
+    });
+
+    testWidgets('an unknown tap with no order id does not route', (tester) async {
+      await pumpWith(tester, AdminAccess.granted);
+      expect(find.byType(ModuleGridScreen), findsOneWidget);
+
+      LuqmaPush.tapped.value = const LuqmaTap(
+        kind: 'unknown_alert',
+        data: {'foo': 'bar'},
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byType(ModuleGridScreen), findsOneWidget);
+      expect(find.byType(DashboardScreen), findsNothing);
+      expect(find.byType(ApplicationsScreen), findsNothing);
     });
   });
 }

@@ -11,7 +11,9 @@ import '../providers/providers.dart';
 import '../theme/colors.dart';
 import '../theme/dimens.dart';
 import '../theme/typography.dart';
+import '../result.dart';
 import 'chip.dart';
+import 'error_view.dart';
 import 'luqma_image.dart';
 import 'media_picker.dart';
 
@@ -39,6 +41,9 @@ class MenuEditor extends ConsumerStatefulWidget {
   static const saveCategoryKey = Key('menu.saveCategory');
   static const allCategoriesChipKey = Key('menu.categoryChip.all');
   static const pendingReviewBannerKey = Key('menu.pendingReviewBanner');
+  static const emptyAddCategoryKey = Key('menu.emptyAddCategory');
+
+  static Key renameCategoryKey(String categoryId) => Key('menu.renameCategory.$categoryId');
 
   static Key categoryChipKey(String categoryId) =>
       Key('menu.categoryChip.$categoryId');
@@ -58,15 +63,48 @@ class _MenuEditorState extends ConsumerState<MenuEditor> {
   @override
   Widget build(BuildContext context) {
     final strings = LuqmaStrings.of(context);
-    final categories =
-        ref.watch(menuCategoriesProvider(widget.merchantId)).value ??
-        const <MenuCategory>[];
+    final categoriesAsync = ref.watch(menuCategoriesProvider(widget.merchantId));
+    // Loading and failing are not "this menu is empty". Treating them as empty offered the
+    // add button over a menu that had not arrived yet — harmless now that adding touches
+    // one row, but a lie about the shop either way.
+    if (categoriesAsync.hasError && !categoriesAsync.hasValue) {
+      return LuqmaErrorView(
+        failure: categoriesAsync.error,
+        onRetry: () => ref.invalidate(menuCategoriesProvider(widget.merchantId)),
+      );
+    }
+    if (!categoriesAsync.hasValue) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    final categories = categoriesAsync.value!;
     final items =
         ref.watch(menuItemsProvider(widget.merchantId)).value ??
         const <MenuItem>[];
 
+    // An empty menu used to be a sentence and nothing else: the add-category chip lives in
+    // the row of category chips, which is only drawn above a list that already has one. The
+    // first real shop opened this screen, in the partner app and in AdminApp, and had no
+    // way to start. The server gives a restaurant four shelves now, but a shop that deleted
+    // them all — or a home kitchen that wants one — must still find a way in.
     if (categories.isEmpty) {
-      return Center(child: Text(strings.menuNoCategories));
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(Space.xl),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(strings.menuNoCategories, textAlign: TextAlign.center),
+              const SizedBox(height: Space.lg),
+              FilledButton.icon(
+                key: MenuEditor.emptyAddCategoryKey,
+                onPressed: () => _addCategory(context, ref, widget.merchantId, categories),
+                icon: const Icon(Icons.add),
+                label: const Text('أضف قسم'),
+              ),
+            ],
+          ),
+        ),
+      );
     }
 
     final filteredCategories = _selectedCategoryId == null
@@ -174,16 +212,101 @@ class _MenuEditorState extends ConsumerState<MenuEditor> {
       final nextSort = categories.isEmpty
           ? 0
           : categories.map((c) => c.sortOrder).reduce((a, b) => a > b ? a : b) + 1;
-      final newCat = MenuCategory(
-        id: '',
-        name: newName,
-        sortOrder: nextSort,
-      );
-      await ref.read(menuRepositoryProvider).saveCategories(
-            merchantId,
-            [...categories, newCat],
-          );
+      // One row, not the whole list: see `MenuRepository.addCategory`.
+      final result = await ref
+          .read(menuRepositoryProvider)
+          .addCategory(merchantId, newName, nextSort);
+      if (result is Err && context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('مقدرناش نضيف القسم. اتأكد من النت وجرّب تاني.')),
+        );
+      }
     }
+  }
+}
+
+/// Renames through the same save the add path uses, so the server sees one list either way.
+extension on _CategorySection {
+  Future<void> _renameCategory(BuildContext context, WidgetRef ref) async {
+    final strings = LuqmaStrings.of(context);
+    final name = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => _RenameCategoryDialog(
+        initial: category.name,
+        label: strings.menuCategoryNameRequired,
+        cancel: strings.menuCancel,
+        save: strings.addressSave,
+      ),
+    );
+    // The section can vanish while the dialog is open — the other app deleted it, and the
+    // list rebuilt without it — and `ref` belongs to a widget that is gone by then.
+    if (!context.mounted) return;
+    final trimmed = name?.trim() ?? '';
+    if (trimmed.isEmpty || trimmed == category.name) return;
+
+    // One row, not the whole list: a list captured before the dialog opened would delete
+    // whatever the other app added while it was open.
+    final result = await ref
+        .read(menuRepositoryProvider)
+        .renameCategory(merchantId, category.id, trimmed);
+    if (result is Err && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('مقدرناش نغيّر اسم «${category.name}». جرّب تاني.')),
+      );
+    }
+  }
+}
+
+/// Owns its controller, so the controller outlives the closing animation rather than
+/// being disposed under a text field that is still on screen.
+class _RenameCategoryDialog extends StatefulWidget {
+  const _RenameCategoryDialog({
+    required this.initial,
+    required this.label,
+    required this.cancel,
+    required this.save,
+  });
+
+  final String initial;
+  final String label;
+  final String cancel;
+  final String save;
+
+  @override
+  State<_RenameCategoryDialog> createState() => _RenameCategoryDialogState();
+}
+
+class _RenameCategoryDialogState extends State<_RenameCategoryDialog> {
+  late final _controller = TextEditingController(text: widget.initial);
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('اسم القسم'),
+      content: TextField(
+        key: MenuEditor.categoryNameFieldKey,
+        controller: _controller,
+        autofocus: true,
+        decoration: InputDecoration(labelText: widget.label),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: Text(widget.cancel),
+        ),
+        FilledButton(
+          key: MenuEditor.saveCategoryKey,
+          onPressed: () => Navigator.of(context).pop(_controller.text),
+          child: Text(widget.save),
+        ),
+      ],
+    );
   }
 }
 
@@ -214,6 +337,14 @@ class _CategorySection extends ConsumerWidget {
             children: [
               Expanded(
                 child: Text(category.name, style: theme.textTheme.titleLarge),
+              ),
+              // The four shelves a restaurant starts with are a starting point, not a rule:
+              // a shop that sells sandwiches calls the first one what it is.
+              IconButton(
+                key: MenuEditor.renameCategoryKey(category.id),
+                tooltip: 'تغيير اسم القسم',
+                icon: const Icon(Icons.edit_outlined),
+                onPressed: () => _renameCategory(context, ref),
               ),
               TextButton(
                 key: MenuEditor.addItemKey(category.id),

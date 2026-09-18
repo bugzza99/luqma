@@ -34,13 +34,16 @@ void main() {
 
   late FakeMenuRepository repository;
 
-  Future<void> pump(WidgetTester tester) async {
+  Future<void> pump(
+    WidgetTester tester, {
+    List<MenuCategory> startingWith = categories,
+  }) async {
     tester.view.physicalSize = const Size(390 * 2, 844 * 2);
     tester.view.devicePixelRatio = 2.0;
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
 
-    repository = FakeMenuRepository(categories: categories, items: items);
+    repository = FakeMenuRepository(categories: startingWith, items: items);
     await tester.pumpWidget(
       ProviderScope(
         overrides: [menuRepositoryProvider.overrideWithValue(repository)],
@@ -228,5 +231,35 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(repository.categories.any((c) => c.name == 'سندوتشات'), isTrue);
+  });
+
+  // 2026-09-18: the first real shop opened an empty menu, in the partner app and in
+  // AdminApp, and the screen said there were no sections and offered nothing else.
+  testWidgets('an empty menu offers a way to start it', (tester) async {
+    await pump(tester, startingWith: const []);
+
+    await tester.tap(find.byKey(MenuEditor.emptyAddCategoryKey));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(MenuEditor.categoryNameFieldKey), 'الوجبات الأساسية');
+    await tester.tap(find.byKey(MenuEditor.saveCategoryKey));
+    await tester.pumpAndSettle();
+
+    expect(repository.categories.map((c) => c.name), ['الوجبات الأساسية']);
+  });
+
+  // The four shelves a restaurant starts with are a starting point, not a rule.
+  testWidgets('a section can be renamed, and keeps its place', (tester) async {
+    await pump(tester);
+
+    await tester.tap(find.byKey(MenuEditor.renameCategoryKey('c1')));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(MenuEditor.categoryNameFieldKey), 'سندوتشات');
+    await tester.tap(find.byKey(MenuEditor.saveCategoryKey));
+    await tester.pumpAndSettle();
+
+    final renamed = repository.categories.singleWhere((c) => c.id == 'c1');
+    expect(renamed.name, 'سندوتشات');
+    expect(renamed.sortOrder, 0);
+    expect(repository.categories, hasLength(2), reason: 'a rename is not a new section');
   });
 }

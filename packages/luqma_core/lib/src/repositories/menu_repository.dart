@@ -17,6 +17,17 @@ abstract interface class MenuRepository {
   Future<Result<MenuItem>> saveItem(MenuItem item);
   Future<Result<void>> deleteItem(String itemId);
   Future<Result<void>> saveCategories(String merchantId, List<MenuCategory> categories);
+
+  /// Adds one category, touching no other row.
+  ///
+  /// [saveCategories] replaces the whole list — whatever is missing from it is deleted — so
+  /// building a new list from what a screen happened to have loaded is how a category added
+  /// from the other app a minute ago disappears, and its dishes with it (they survive with
+  /// no category, which on every screen means invisible).
+  Future<Result<void>> addCategory(String merchantId, String name, int sortOrder);
+
+  /// Renames one category, touching no other row — for the same reason as [addCategory].
+  Future<Result<void>> renameCategory(String merchantId, String categoryId, String name);
 }
 
 class SupabaseMenuRepository implements MenuRepository {
@@ -104,6 +115,30 @@ class SupabaseMenuRepository implements MenuRepository {
             {'id': c.id, 'name': c.name, 'sort_order': c.sortOrder},
         ],
       }),
+    );
+  }
+
+  @override
+  Future<Result<void>> addCategory(String merchantId, String name, int sortOrder) {
+    return Result.guardWrite(
+      () => _db
+          .from('menu_categories')
+          .insert({'merchant_id': merchantId, 'name': name, 'sort_order': sortOrder})
+          .select('id'),
+      (_) {},
+    );
+  }
+
+  @override
+  Future<Result<void>> renameCategory(String merchantId, String categoryId, String name) {
+    return Result.guardWrite(
+      () => _db
+          .from('menu_categories')
+          .update({'name': name})
+          .eq('id', categoryId)
+          .eq('merchant_id', merchantId)
+          .select('id'),
+      (_) {},
     );
   }
 }
@@ -200,6 +235,30 @@ class FakeMenuRepository implements MenuRepository {
     _categories
       ..clear()
       ..addAll(categories);
+    _notify();
+    return const Result.ok(null);
+  }
+
+  @override
+  Future<Result<void>> addCategory(String merchantId, String name, int sortOrder) async {
+    if (failure != null) return Result.err(failure!);
+    _categories.add(MenuCategory(
+      id: 'generated-category-${_categories.length + 1}',
+      name: name,
+      sortOrder: sortOrder,
+    ));
+    _notify();
+    return const Result.ok(null);
+  }
+
+  @override
+  Future<Result<void>> renameCategory(String merchantId, String categoryId, String name) async {
+    if (failure != null) return Result.err(failure!);
+    final index = _categories.indexWhere((c) => c.id == categoryId);
+    // What the server says when the filter matches nothing: `guardWrite` refuses an empty
+    // answer rather than calling it saved.
+    if (index < 0) return const Result.err(NotFoundFailure());
+    _categories[index] = _categories[index].copyWith(name: name);
     _notify();
     return const Result.ok(null);
   }

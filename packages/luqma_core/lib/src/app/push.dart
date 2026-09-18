@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
@@ -72,6 +73,79 @@ enum LuqmaPushPermission {
   unavailable,
 }
 
+/// The payload behind a tapped push or local notification.
+class LuqmaTap {
+  const LuqmaTap({
+    this.kind,
+    this.data = const {},
+  });
+
+  /// The kind of notification, e.g. 'newOrder', 'staffApplication', 'subscription_request'.
+  final String? kind;
+
+  /// The stringified FCM / payload data map.
+  final Map<String, String> data;
+
+  /// Convenience getter for `data['orderId']`.
+  String? get orderId => data['orderId'];
+
+  /// Decodes a notification response payload into a [LuqmaTap].
+  ///
+  /// A JSON payload decodes into a [LuqmaTap] with its `kind` and stringified `data`.
+  /// A non-JSON payload (e.g. an older notification carrying a bare order ID)
+  /// becomes `LuqmaTap(kind: null, data: {'orderId': payload})`. Never throws.
+  static LuqmaTap decode(String payload) {
+    try {
+      final decoded = jsonDecode(payload);
+      if (decoded is Map) {
+        final stringData = <String, String>{
+          for (final entry in decoded.entries)
+            if (entry.value != null) entry.key.toString(): entry.value.toString(),
+        };
+        return LuqmaTap(
+          kind: stringData['kind'],
+          data: stringData,
+        );
+      }
+      return LuqmaTap(kind: null, data: {'orderId': payload});
+    } catch (_) {
+      return LuqmaTap(kind: null, data: {'orderId': payload});
+    }
+  }
+
+  /// Builds a [LuqmaTap] from an FCM data map.
+  static LuqmaTap fromData(Map<String, dynamic> raw) {
+    final stringData = <String, String>{
+      for (final entry in raw.entries)
+        if (entry.value != null) entry.key.toString(): entry.value.toString(),
+    };
+    return LuqmaTap(
+      kind: stringData['kind'],
+      data: stringData,
+    );
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is LuqmaTap &&
+          runtimeType == other.runtimeType &&
+          kind == other.kind &&
+          mapEquals(data, other.data);
+
+  @override
+  int get hashCode {
+    var hash = kind.hashCode;
+    for (final entry in data.entries) {
+      hash ^= Object.hash(entry.key, entry.value);
+    }
+    return hash;
+  }
+
+  @override
+  String toString() => 'LuqmaTap(kind: $kind, data: $data)';
+}
+
 abstract final class LuqmaPush {
   const LuqmaPush._();
 
@@ -134,12 +208,12 @@ abstract final class LuqmaPush {
     yield* FirebaseMessaging.instance.onTokenRefresh;
   }
 
-  /// The order behind the notification somebody just tapped, or null.
+  /// The payload behind the notification somebody just tapped, or null.
   ///
   /// A `ValueNotifier` rather than a route: the tap can arrive while the app is starting,
   /// from a terminated state, or in the background isolate, and none of those has a
-  /// navigator to push onto. The shell watches this and opens the order when it can.
-  static final tappedOrder = ValueNotifier<String?>(null);
+  /// navigator to push onto. The shell watches this and opens the screen when it can.
+  static final tapped = ValueNotifier<LuqmaTap?>(null);
 
   /// Starts Messaging and asks for permission.
   ///
@@ -210,7 +284,10 @@ abstract final class LuqmaPush {
     // order they were told about is not on the screen.
     final launch = await _local.getNotificationAppLaunchDetails();
     if (launch?.didNotificationLaunchApp ?? false) {
-      tappedOrder.value = launch!.notificationResponse?.payload;
+      final payload = launch!.notificationResponse?.payload;
+      if (payload != null && payload.isNotEmpty) {
+        tapped.value = LuqmaTap.decode(payload);
+      }
     }
 
     // The foreground. Android never draws a `notification` block itself while the app is
@@ -291,10 +368,10 @@ abstract final class LuqmaPush {
     }
   }
 
-  /// Records which order a tapped notification was about.
+  /// Records which destination a tapped notification was about.
   static void _openedFrom(RemoteMessage message) {
-    final id = message.data['orderId'];
-    if (id is String && id.isNotEmpty) tappedOrder.value = id;
+    if (message.data.isEmpty) return;
+    tapped.value = LuqmaTap.fromData(message.data);
   }
 
   /// Sets the plugin up. Safe to call twice, and called again in the background isolate,
@@ -304,8 +381,12 @@ abstract final class LuqmaPush {
       const InitializationSettings(
         android: AndroidInitializationSettings('@mipmap/ic_launcher'),
       ),
-      onDidReceiveNotificationResponse: (response) =>
-          tappedOrder.value = response.payload,
+      onDidReceiveNotificationResponse: (response) {
+        final payload = response.payload;
+        if (payload != null && payload.isNotEmpty) {
+          tapped.value = LuqmaTap.decode(payload);
+        }
+      },
     );
   }
 
@@ -352,7 +433,7 @@ abstract final class LuqmaPush {
           fullScreenIntent: alarm,
         ),
       ),
-      payload: data['orderId'],
+      payload: jsonEncode(data),
     );
   }
 }

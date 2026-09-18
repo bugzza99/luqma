@@ -119,11 +119,29 @@ GoRouter router(Ref ref) {
       GoRoute(path: Routes.signIn, builder: (_, _) => const SignInScreen()),
       GoRoute(path: Routes.noAccess, builder: (_, _) => const NoAccessScreen()),
       ShellRoute(
-        builder: (context, state, child) => LuqmaTappedOrder(
-          // AdminApp is told one thing about an order — that nobody answered it — and
-          // اليوم is the screen that lists exactly those. `push`, not `go`, so back
-          // returns to whatever the admin was in the middle of rather than exiting.
-          onOpen: (_) => context.push(Routes.today),
+        builder: (context, state, child) => LuqmaTappedNotification(
+          // Admin alerts route to the screen they are about:
+          // needsAttention → اليوم,
+          // staffApplication → طلبات الانضمام,
+          // subscription_request → الاشتراكات,
+          // promotionRequest → العروض.
+          // Any other alert carrying an orderId routes to اليوم as fallback.
+          // `push`, not `go`, so back returns to whatever the admin was in the
+          // middle of rather than exiting.
+          onOpen: (tap) {
+            final destination = switch (tap.kind) {
+              'needsAttention' => Routes.today,
+              'staffApplication' => Routes.applications,
+              'subscription_request' => Routes.subscriptions,
+              'promotionRequest' => Routes.promotions,
+              _ => (tap.orderId != null && tap.orderId!.isNotEmpty)
+                  ? Routes.today
+                  : null,
+            };
+            if (destination != null) {
+              context.push(destination);
+            }
+          },
           child: AdminShell(
             modules: _modules,
             currentRoute: state.matchedLocation,

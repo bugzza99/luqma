@@ -40,7 +40,9 @@ class _CustomerShellState extends ConsumerState<CustomerShell> {
   /// somebody on طلباتي rather than on whatever tab the app happened to be showing when
   /// the notification arrived — which, coming from a cold start, is الرئيسية and has
   /// nothing to do with why they opened the app.
-  void _openOrder(String orderId) {
+  void _openOrder(LuqmaTap tap) {
+    final orderId = tap.orderId;
+    if (orderId == null || orderId.isEmpty) return;
     ref.read(customerTabProvider.notifier).show(CustomerTab.orders);
     Navigator.of(context).push(
       MaterialPageRoute<void>(builder: (_) => OrderScreen(orderId: orderId)),
@@ -53,7 +55,7 @@ class _CustomerShellState extends ConsumerState<CustomerShell> {
     final tab = ref.watch(customerTabProvider);
     final colors = Theme.of(context).luqma;
 
-    return LuqmaTappedOrder(
+    return LuqmaTappedNotification(
       onOpen: _openOrder,
       child: LuqmaTabPopScope(
         currentIndex: tab,

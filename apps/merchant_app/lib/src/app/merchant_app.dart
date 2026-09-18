@@ -10,6 +10,7 @@ import '../menu/menu_screen.dart';
 import '../orders/inbox_screen.dart';
 import '../orders/live_board_screen.dart';
 import '../shop/shop_screen.dart';
+import '../shop/subscription_screen.dart';
 
 /// MerchantApp.
 ///
@@ -106,6 +107,34 @@ class _Shell extends ConsumerStatefulWidget {
 class _ShellState extends ConsumerState<_Shell> {
   int _tab = 0;
 
+  void _onNotificationOpen(LuqmaTap tap) {
+    final kind = tap.kind;
+    final hasOrderId = tap.orderId != null && tap.orderId!.isNotEmpty;
+
+    // There is no per-order screen in MerchantApp — an order lives in a list — so the
+    // destination is the list the alert was about. The alarm only ever fires for an
+    // order nobody has answered, and that is الجديد.
+    if (kind == 'newOrder' || hasOrderId) {
+      setState(() => _tab = 0);
+      return;
+    }
+
+    // Subscription status changes open the subscription screen directly.
+    if (kind == 'subscription_activated' ||
+        kind == 'subscription_rejected' ||
+        kind == 'subscription_expiring') {
+      final merchantId = ref.read(staffIdentityProvider).merchantId;
+      if (merchantId != null) {
+        Navigator.of(context).push(
+          MaterialPageRoute<void>(
+            builder: (_) => SubscriptionScreen(merchantId: merchantId),
+          ),
+        );
+      }
+      return;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).luqma;
@@ -118,11 +147,8 @@ class _ShellState extends ConsumerState<_Shell> {
         ref.watch(merchantProvider(merchantId)).value?.type ==
             MerchantType.homeKitchen;
 
-    return LuqmaTappedOrder(
-      // There is no per-order screen in MerchantApp — an order lives in a list — so the
-      // destination is the list the alert was about. The alarm only ever fires for an
-      // order nobody has answered, and that is الجديد.
-      onOpen: (_) => setState(() => _tab = 0),
+    return LuqmaTappedNotification(
+      onOpen: _onNotificationOpen,
       child: LuqmaTabPopScope(
         currentIndex: _tab,
         // Switching tabs never pushes a route — see the doc comment above — so back on
