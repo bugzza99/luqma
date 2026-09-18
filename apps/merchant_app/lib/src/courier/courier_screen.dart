@@ -168,6 +168,15 @@ class _CourierScreenState extends ConsumerState<CourierScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // A pickup notification is a delivery for any of the courier's shops; showing them all
+    // is what makes sure the one it announced is on the screen.
+    return LuqmaTappedNotification(
+      onOpen: (_) => setState(() => _selectedFilter = null),
+      child: _buildScreen(context),
+    );
+  }
+
+  Widget _buildScreen(BuildContext context) {
     final staff = ref.watch(staffIdentityProvider);
     final colors = Theme.of(context).luqma;
     final now = ref.watch(clockProvider)();

@@ -6,7 +6,7 @@ import 'sections/item_tile.dart';
 import 'sections/merchant_tile.dart';
 
 /// Which list this screen is the whole of.
-enum SeeAll { merchants, items }
+enum SeeAll { merchants, items, offers }
 
 /// Everything the shelf above only had room for a corner of.
 ///
@@ -52,6 +52,13 @@ class SeeAllScreen extends ConsumerWidget {
             empty: 'مفيش أكل لسه.',
             // Taller than it is wide: a 4:3 picture with a name, a shop and a price
             // underneath it.
+            aspectRatio: 0.78,
+            tile: (item) => ItemTile(item: item, width: double.infinity),
+          ),
+        SeeAll.offers => _Grid<MenuItem>(
+            value: ref.watch(allOfferItemsProvider),
+            onRetry: () => ref.invalidate(allOfferItemsProvider),
+            empty: 'مفيش عروض دلوقتي.',
             aspectRatio: 0.78,
             tile: (item) => ItemTile(item: item, width: double.infinity),
           ),

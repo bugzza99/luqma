@@ -62,7 +62,9 @@ class MerchantApp extends ConsumerWidget {
       home: LuqmaForceUpdateGate(
         app: LuqmaApp.merchant,
         currentVersion: currentVersion,
-        child: const _Gate(),
+        // An approval, a plan, a correction to the shop made from AdminApp reaches this
+        // phone without the merchant closing the app. See LuqmaLiveRefresh.
+        child: const LuqmaLiveRefresh(child: _Gate()),
       ),
     );
   }
@@ -85,9 +87,18 @@ class _Gate extends ConsumerWidget {
       AsyncValue(hasValue: true, :final value?) => switch (StaffIdentity.from(value)) {
           // A platform courier belongs to no merchant, so `ownsAMerchant` is false for
           // them and the role is what decides.
+          // CourierScreen takes its own taps: a pickup notification has to clear the shop
+          // filter, or the delivery it announced sits behind a filter for another shop.
           StaffIdentity(role: StaffRole.courier) => const CourierScreen(),
-            StaffIdentity(ownsAMerchant: true) => const _Shell(),
-          _ => const _NoAccess(),
+          StaffIdentity(ownsAMerchant: true) => const _Shell(),
+          _ => LuqmaTappedNotification(
+              onOpen: (tap) {
+                if (tap.kind == 'staffApproved') {
+                  ref.read(authServiceProvider).refreshSession();
+                }
+              },
+              child: const _NoAccess(),
+            ),
         },
       // Being unable to read the session means nobody is signed in, never that
       // somebody is.

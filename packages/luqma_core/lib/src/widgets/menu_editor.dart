@@ -44,6 +44,7 @@ class MenuEditor extends ConsumerStatefulWidget {
   static const emptyAddCategoryKey = Key('menu.emptyAddCategory');
 
   static Key renameCategoryKey(String categoryId) => Key('menu.renameCategory.$categoryId');
+  static Key offersHintKey(String categoryId) => Key('menu.offersHint.$categoryId');
 
   static Key categoryChipKey(String categoryId) =>
       Key('menu.categoryChip.$categoryId');
@@ -360,6 +361,19 @@ class _CategorySection extends ConsumerWidget {
               ),
             ],
           ),
+          // The shop cannot see the customer's home, so it is told here: this is the one
+          // shelf whose dishes leave the shop and appear on everybody's first screen.
+          if (category.isOffers)
+            Padding(
+              key: MenuEditor.offersHintKey(category.id),
+              padding: const EdgeInsets.only(top: Space.xs),
+              child: Text(
+                'اللي تحطه هنا بيظهر للعملاء في «العروض» في أول الصفحة الرئيسية.',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.luqma.textSecondary,
+                ),
+              ),
+            ),
           const SizedBox(height: Space.sm),
           for (final item in items)
             _ItemRow(

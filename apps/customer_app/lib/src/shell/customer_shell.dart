@@ -7,6 +7,7 @@ import '../cart/cart.dart';
 import '../cart/cart_controller.dart';
 import '../cart/open_cart.dart';
 import '../home/home_screen.dart';
+import '../merchant/open_merchant.dart';
 import '../orders/order_screen.dart';
 import '../orders/orders_screen.dart';
 import 'customer_tab.dart';
@@ -40,13 +41,23 @@ class _CustomerShellState extends ConsumerState<CustomerShell> {
   /// somebody on طلباتي rather than on whatever tab the app happened to be showing when
   /// the notification arrived — which, coming from a cold start, is الرئيسية and has
   /// nothing to do with why they opened the app.
-  void _openOrder(LuqmaTap tap) {
+  void _openTap(LuqmaTap tap) {
     final orderId = tap.orderId;
-    if (orderId == null || orderId.isEmpty) return;
-    ref.read(customerTabProvider.notifier).show(CustomerTab.orders);
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(builder: (_) => OrderScreen(orderId: orderId)),
-    );
+    if (orderId != null && orderId.isNotEmpty) {
+      ref.read(customerTabProvider.notifier).show(CustomerTab.orders);
+      Navigator.of(context).push(
+        MaterialPageRoute<void>(builder: (_) => OrderScreen(orderId: orderId)),
+      );
+      return;
+    }
+
+    if (tap.kind == 'promotion') {
+      final merchantId = tap.data['merchantId'];
+      if (merchantId != null && merchantId.isNotEmpty) {
+        openMerchant(context, merchantId);
+      }
+      return;
+    }
   }
 
   @override
@@ -56,7 +67,7 @@ class _CustomerShellState extends ConsumerState<CustomerShell> {
     final colors = Theme.of(context).luqma;
 
     return LuqmaTappedNotification(
-      onOpen: _openOrder,
+      onOpen: _openTap,
       child: LuqmaTabPopScope(
         currentIndex: tab,
         // Switching tabs never pushes a route — see the doc comment above — so back on

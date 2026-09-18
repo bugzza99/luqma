@@ -215,6 +215,8 @@ abstract class MenuCategory with _$MenuCategory {
     required String id,
     required String name,
     @Default(0) int sortOrder,
+    /// What is on this shelf reaches the customer's home, in «العروض». Survives a rename.
+    @Default(false) bool isOffers,
   }) = _MenuCategory;
 
   factory MenuCategory.fromJson(Map<String, dynamic> json) =>

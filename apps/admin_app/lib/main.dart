@@ -79,7 +79,9 @@ class AdminApp extends ConsumerWidget {
       builder: (context, child) => LuqmaForceUpdateGate(
         app: LuqmaApp.admin,
         currentVersion: currentVersion,
-        child: child ?? const SizedBox.shrink(),
+        // What the owner changes elsewhere — from another phone, or another tab of the
+        // browser — reaches this screen without a restart. See LuqmaLiveRefresh.
+        child: LuqmaLiveRefresh(child: child ?? const SizedBox.shrink()),
       ),
     );
   }

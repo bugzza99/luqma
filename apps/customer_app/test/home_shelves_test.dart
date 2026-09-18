@@ -3,6 +3,7 @@ import 'package:customer_app/src/merchant/merchant_screen.dart';
 import 'package:customer_app/src/home/sections/item_tile.dart';
 import 'package:customer_app/src/home/sections/merchant_list_section.dart';
 import 'package:customer_app/src/home/sections/merchant_tile.dart';
+import 'package:customer_app/src/home/section_registry.dart';
 import 'package:customer_app/src/home/sections/popular_items_section.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -61,6 +62,13 @@ void main() {
     sortOrder: 0,
     cityId: 'edku',
   );
+  const offersSection = HomeSection(
+    key: 'offers',
+    type: 'offers',
+    titleAr: 'العروض',
+    sortOrder: 1,
+    cityId: 'edku',
+  );
   const popular = HomeSection(
     key: 'popular',
     type: 'mostOrdered',
@@ -73,6 +81,7 @@ void main() {
     Widget child, {
     List<Merchant> merchants = const [],
     List<MenuItem> items = const [],
+    List<MenuItem> offers = const [],
     Failure? itemsFailure,
   }) async {
     // A phone's shape, not the 800x600 default: the grid is two across at a phone's
@@ -87,7 +96,11 @@ void main() {
           merchantRepositoryProvider
               .overrideWithValue(FakeMerchantRepository(seed: merchants)),
           popularItemsRepositoryProvider.overrideWithValue(
-            FakePopularItemsRepository(items: items, failure: itemsFailure),
+            FakePopularItemsRepository(
+              items: items,
+              offers: offers,
+              failure: itemsFailure,
+            ),
           ),
           promotionRepositoryProvider
               .overrideWithValue(FakePromotionRepository()),
@@ -239,6 +252,37 @@ void main() {
 
       expect(find.byType(ItemTile), findsNothing);
       expect(find.byType(LuqmaErrorView), findsNothing);
+    });
+  });
+
+  // 2026-09-18: every restaurant has an «العروض» shelf, and the owner asked for what is on
+  // those shelves to be the second thing a customer sees.
+  group('the offers shelf', () {
+    testWidgets('shows what the shops put on their offers shelves, not what sells most',
+        (tester) async {
+      await pump(
+        tester,
+        PopularItemsSection.offers(section: offersSection),
+        items: [dish('p1', 'الأكتر مبيعاً')],
+        offers: [dish('o1', 'وجبة توفير'), dish('o2', 'عرض العيلة')],
+      );
+
+      expect(find.byKey(PopularItemsSection.offersShelfKey), findsOneWidget);
+      expect(find.text('العروض'), findsOneWidget);
+      expect(find.text('وجبة توفير'), findsOneWidget);
+      expect(find.text('عرض العيلة'), findsOneWidget);
+      expect(find.text('الأكتر مبيعاً'), findsNothing);
+    });
+
+    testWidgets('no offers anywhere means no section, not an empty heading', (tester) async {
+      await pump(tester, PopularItemsSection.offers(section: offersSection));
+
+      expect(find.byKey(PopularItemsSection.offersShelfKey), findsNothing);
+      expect(find.text('العروض'), findsNothing);
+    });
+
+    test('the home knows how to draw it', () {
+      expect(HomeSectionRegistry.knows('offers'), isTrue);
     });
   });
 }

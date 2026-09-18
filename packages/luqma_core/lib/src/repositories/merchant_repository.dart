@@ -18,6 +18,14 @@ abstract interface class MerchantRepository {
 
   Future<Result<Merchant>> getMerchant(String id);
 
+  /// One merchant, and every change to it as it happens.
+  ///
+  /// The shop row is what the admin changes from the other side — status, plan, hours,
+  /// terms — and a merchant looking at their own shop screen used to see none of it until
+  /// they closed the app and opened it again. Errors with [NotFoundFailure] once the row
+  /// is gone or hidden.
+  Stream<Merchant> watchMerchant(String id);
+
   /// Pauses order intake until [until], or clears the pause when null.
   Future<Result<void>> setPausedUntil(String id, DateTime? until);
 
@@ -216,6 +224,20 @@ class SupabaseMerchantRepository implements MerchantRepository {
   }
 
   @override
+  Stream<Merchant> watchMerchant(String id) {
+    return watchRows(
+      db: _db,
+      table: 'merchants',
+      map: _toMerchant,
+      columns: _readColumns,
+      filters: [RowFilter('id', id)],
+    ).map((rows) {
+      if (rows.isEmpty) throw const NotFoundFailure();
+      return rows.first;
+    });
+  }
+
+  @override
   Future<Result<void>> setPausedUntil(String id, DateTime? until) {
     return Result.guardWrite(
       () => _db.from('merchants').update({
@@ -340,6 +362,14 @@ class FakeMerchantRepository implements MerchantRepository {
     final merchant = _merchants[id];
     if (merchant == null) return const Result.err(NotFoundFailure());
     return Result.ok(merchant);
+  }
+
+  @override
+  Stream<Merchant> watchMerchant(String id) {
+    if (failure != null) return Stream.error(failure!);
+    final merchant = _merchants[id];
+    if (merchant == null) return Stream.error(const NotFoundFailure());
+    return Stream.value(merchant);
   }
 
   @override

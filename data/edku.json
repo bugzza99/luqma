@@ -347,10 +347,17 @@
       "isVisible": true
     },
     {
+      "key": "offers",
+      "titleAr": "العروض",
+      "type": "offers",
+      "sortOrder": 1,
+      "isVisible": true
+    },
+    {
       "key": "top_banner",
       "titleAr": "",
       "type": "adSlot",
-      "sortOrder": 1,
+      "sortOrder": 2,
       "isVisible": true,
       "params": {
         "maxAds": 3,
@@ -361,21 +368,21 @@
       "key": "home_kitchen",
       "titleAr": "أكل بيتي النهارده",
       "type": "homeKitchenToday",
-      "sortOrder": 2,
+      "sortOrder": 3,
       "isVisible": true
     },
     {
       "key": "most_ordered",
       "titleAr": "الأكتر طلباً",
       "type": "mostOrdered",
-      "sortOrder": 3,
+      "sortOrder": 4,
       "isVisible": true
     },
     {
       "key": "all_merchants",
       "titleAr": "كل المطاعم",
       "type": "merchantList",
-      "sortOrder": 4,
+      "sortOrder": 5,
       "isVisible": true
     }
   ]

@@ -2,8 +2,10 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:luqma_core/luqma_core.dart';
 
+import '../auth/admin_access.dart';
 import '../billing/merchant_billing_screen.dart';
 import '../shell/layout.dart';
 import 'merchants_controller.dart';
@@ -476,16 +478,14 @@ class _MerchantHeader extends StatelessWidget {
                       color: colors.textSecondary,
                     ),
                     const SizedBox(width: Space.xs),
-                    Text(
-                      merchant.phone,
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: colors.textSecondary,
-                      ),
-                    ),
-                    Text(
-                      ' · $typeLabel',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: colors.textSecondary,
+                    Flexible(
+                      child: Text(
+                        '${merchant.phone} · $typeLabel',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: colors.textSecondary,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ),
                   ],
@@ -519,6 +519,23 @@ class _MerchantHeader extends StatelessWidget {
                         background: colors.surface,
                         foreground: colors.textPrimary,
                       ),
+                  ],
+                ),
+                const SizedBox(height: Space.xs),
+                Row(
+                  children: [
+                    ActionChip(
+                      key: MerchantCuisinesSheet.openKey,
+                      avatar: const Icon(Icons.category_outlined, size: 18),
+                      label: const Text('الفئات'),
+                      tooltip: 'الفئات',
+                      onPressed: () => showModalBottomSheet<void>(
+                        context: context,
+                        isScrollControlled: true,
+                        builder: (_) =>
+                            MerchantCuisinesSheet(merchant: merchant),
+                      ),
+                    ),
                   ],
                 ),
               ],
@@ -1015,6 +1032,226 @@ class _MerchantIdentitySheetState extends ConsumerState<MerchantIdentitySheet> {
                 const SizedBox(height: Space.sm),
               ],
             ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The category chips («شرائح الفئات») assigned to a merchant.
+///
+/// Backed by the `cuisines` table (city-wide, name + picture).
+/// Lists every chip of the merchant's city as [FilterChip]s (multi-select),
+/// pre-selected from `cuisinesOf`, with a save button that calls `setMerchantCuisines`.
+class MerchantCuisinesSheet extends ConsumerStatefulWidget {
+  const MerchantCuisinesSheet({super.key, required this.merchant});
+
+  final Merchant merchant;
+
+  static const openKey = Key('merchant.cuisines.open');
+  static Key chipKey(dynamic id) => Key('merchant.cuisines.chip.$id');
+  static const saveKey = Key('merchant.cuisines.save');
+
+  @override
+  ConsumerState<MerchantCuisinesSheet> createState() =>
+      _MerchantCuisinesSheetState();
+}
+
+class _MerchantCuisinesSheetState extends ConsumerState<MerchantCuisinesSheet> {
+  bool _loading = true;
+  Failure? _loadFailure;
+  List<Cuisine> _cuisines = const [];
+  Set<String> _selected = const {};
+  bool _saving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    setState(() {
+      _loading = true;
+      _loadFailure = null;
+    });
+
+    final repo = ref.read(cuisineRepositoryProvider);
+    final results = await Future.wait([
+      repo.forCity(widget.merchant.cityId),
+      repo.cuisinesOf(widget.merchant.id),
+    ]);
+    if (!mounted) return;
+
+    final cityResult = results[0] as Result<List<Cuisine>>;
+    final ofResult = results[1] as Result<Set<String>>;
+
+    if (cityResult case Err(:final failure)) {
+      setState(() {
+        _loading = false;
+        _loadFailure = failure;
+      });
+      return;
+    }
+    if (ofResult case Err(:final failure)) {
+      setState(() {
+        _loading = false;
+        _loadFailure = failure;
+      });
+      return;
+    }
+
+    setState(() {
+      _loading = false;
+      _cuisines = cityResult.valueOrNull ?? [];
+      _selected = {...(ofResult.valueOrNull ?? {})};
+    });
+  }
+
+  Future<void> _save() async {
+    setState(() => _saving = true);
+    final repo = ref.read(cuisineRepositoryProvider);
+    final result =
+        await repo.setMerchantCuisines(widget.merchant.id, _selected);
+    if (!mounted) return;
+    setState(() => _saving = false);
+
+    switch (result) {
+      case Ok():
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('اتحفظت الفئات')),
+        );
+        if (Navigator.of(context).canPop()) {
+          Navigator.of(context).pop();
+        }
+      case Err(:final failure):
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(switch (failure) {
+              OfflineFailure() => 'مفيش نت — جرّب تاني.',
+              _ => 'مقدرناش نحفظ. جرّب تاني.',
+            }),
+          ),
+        );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = theme.luqma;
+
+    return Padding(
+      padding: EdgeInsets.only(
+        left: Space.gutter,
+        right: Space.gutter,
+        top: Space.xl,
+        bottom: MediaQuery.viewInsetsOf(context).bottom + Space.xl,
+      ),
+      child: SafeArea(
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text('فئات المحل', style: theme.textTheme.titleLarge),
+                  IconButton(
+                    icon: const Icon(Icons.close),
+                    tooltip: 'إغلاق',
+                    onPressed: () => Navigator.of(context).pop(),
+                  ),
+                ],
+              ),
+              const SizedBox(height: Space.xs),
+              Text(
+                'اختر الفئات اللي بيظهر فيها المحل في تطبيق العميل',
+                style: theme.textTheme.bodySmall
+                    ?.copyWith(color: colors.textSecondary),
+              ),
+              const SizedBox(height: Space.lg),
+              if (_loading)
+                const Center(
+                  child: Padding(
+                    padding: EdgeInsets.all(Space.xxl),
+                    child: CircularProgressIndicator(),
+                  ),
+                )
+              else if (_loadFailure != null)
+                LuqmaErrorView(
+                  failure: _loadFailure,
+                  onRetry: _load,
+                )
+              else if (_cuisines.isEmpty)
+                Center(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: Space.xl),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          'مفيش فئات لسه',
+                          style: theme.textTheme.titleMedium,
+                        ),
+                        const SizedBox(height: Space.xs),
+                        Text(
+                          'المدينة دي لسه مفيهاش أي شرائح فئات. تقدر تضيفها من شاشة شرائح الفئات.',
+                          textAlign: TextAlign.center,
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            color: colors.textSecondary,
+                          ),
+                        ),
+                        const SizedBox(height: Space.lg),
+                        FilledButton(
+                          onPressed: () {
+                            try {
+                              context.push(Routes.cuisines);
+                            } catch (_) {}
+                          },
+                          child: const Text('شرائح الفئات'),
+                        ),
+                      ],
+                    ),
+                  ),
+                )
+              else ...[
+                Wrap(
+                  spacing: Space.sm,
+                  runSpacing: Space.sm,
+                  children: [
+                    for (final cuisine in _cuisines)
+                      FilterChip(
+                        key: MerchantCuisinesSheet.chipKey(cuisine.id),
+                        label: Text(cuisine.name),
+                        selected: _selected.contains(cuisine.id),
+                        onSelected: (selected) {
+                          setState(() {
+                            final next = {..._selected};
+                            if (selected) {
+                              next.add(cuisine.id);
+                            } else {
+                              next.remove(cuisine.id);
+                            }
+                            _selected = next;
+                          });
+                        },
+                      ),
+                  ],
+                ),
+                const SizedBox(height: Space.xl),
+                FilledButton(
+                  key: MerchantCuisinesSheet.saveKey,
+                  onPressed: _saving ? null : _save,
+                  style: FilledButton.styleFrom(
+                    minimumSize: const Size.fromHeight(Sizes.minTarget),
+                  ),
+                  child: Text(_saving ? 'جاري…' : 'احفظ'),
+                ),
+              ],
+            ],
           ),
         ),
       ),

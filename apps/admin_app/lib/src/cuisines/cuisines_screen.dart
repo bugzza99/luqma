@@ -24,7 +24,7 @@ class CuisinesScreen extends ConsumerWidget {
     final colors = theme.luqma;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('الأقسام')),
+      appBar: AppBar(title: const Text('شرائح الفئات')),
       floatingActionButton: FloatingActionButton.extended(
         key: addKey,
         onPressed: () => _edit(context, ref, null),
@@ -40,7 +40,7 @@ class CuisinesScreen extends ConsumerWidget {
               child: Padding(
                 padding: const EdgeInsets.all(Space.xl),
                 child: Text(
-                  'مفيش أقسام لسه. الأقسام هي الدواير اللي فوق في تطبيق العميل.',
+                  'مفيش أقسام لسه. أضف أي فئة — مطاعم، صيدليات، سوبرماركت — وحط فيها المحلات من صفحة المحل (الدواير اللي فوق في تطبيق العميل).',
                   textAlign: TextAlign.center,
                   style: theme.textTheme.bodyMedium
                       ?.copyWith(color: colors.textSecondary),

@@ -81,7 +81,8 @@ void main() {
           // Holds `merchantProvider` in `AsyncLoading` for as long as the test wants.
           // Last, so it replaces the repository-backed answer above.
           if (merchantInFlight != null)
-            merchantProvider('m1').overrideWith((ref) => merchantInFlight.future),
+            merchantProvider('m1')
+                .overrideWith((ref) => Stream.fromFuture(merchantInFlight.future)),
         ],
         child: MaterialApp(
           theme: LuqmaTheme.light,

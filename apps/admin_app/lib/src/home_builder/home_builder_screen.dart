@@ -42,6 +42,7 @@ class HomeBuilderScreen extends ConsumerWidget {
     'merchantList',
     'topRated',
     'mostOrdered',
+    'offers',
   ];
 
   static const typeNames = {
@@ -51,6 +52,7 @@ class HomeBuilderScreen extends ConsumerWidget {
     'merchantList': 'قائمة المطاعم',
     'topRated': 'الأعلى تقييماً',
     'mostOrdered': 'الأكثر طلباً',
+    'offers': 'عروض المحلات',
   };
 
   @override

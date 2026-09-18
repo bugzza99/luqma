@@ -32,6 +32,9 @@ abstract interface class CuisineRepository {
   /// beside it, so what it knows is the final set. Two calls to add and remove would
   /// leave a half-applied state if the second one failed.
   Future<Result<void>> setMerchantCuisines(String merchantId, Set<String> cuisineIds);
+
+  /// The cuisines [merchantId] belongs to.
+  Future<Result<Set<String>>> cuisinesOf(String merchantId);
 }
 
 class SupabaseCuisineRepository implements CuisineRepository {
@@ -122,13 +125,25 @@ class SupabaseCuisineRepository implements CuisineRepository {
     String merchantId,
     Set<String> cuisineIds,
   ) {
+    // One function, one transaction. It was a delete and then an insert, and a failure
+    // between the two left the shop in no chip at all under a screen saying the save had
+    // failed — which is exactly when somebody would believe nothing had changed.
     return Result.guard(() async {
-      await _db.from('merchant_cuisines').delete().eq('merchant_id', merchantId);
-      if (cuisineIds.isEmpty) return;
+      await _db.rpc('set_merchant_cuisines', params: {
+        'p_merchant_id': merchantId,
+        'p_cuisine_ids': cuisineIds.toList(),
+      });
+    });
+  }
 
-      await _db.from('merchant_cuisines').insert([
-        for (final id in cuisineIds) {'merchant_id': merchantId, 'cuisine_id': id},
-      ]);
+  @override
+  Future<Result<Set<String>>> cuisinesOf(String merchantId) {
+    return Result.guard(() async {
+      final rows = await _db
+          .from('merchant_cuisines')
+          .select('cuisine_id')
+          .eq('merchant_id', merchantId);
+      return rows.map((r) => r['cuisine_id'] as String).toSet();
     });
   }
 }
@@ -207,5 +222,17 @@ class FakeCuisineRepository implements CuisineRepository {
       (_members[id] ??= {}).add(merchantId);
     }
     return const Result.ok(null);
+  }
+
+  @override
+  Future<Result<Set<String>>> cuisinesOf(String merchantId) async {
+    if (failure != null) return Result.err(failure!);
+    final result = <String>{};
+    for (final entry in _members.entries) {
+      if (entry.value.contains(merchantId)) {
+        result.add(entry.key);
+      }
+    }
+    return Result.ok(result);
   }
 }

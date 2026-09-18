@@ -37,6 +37,10 @@ class SelectedCuisine extends Notifier<String?> {
 /// show the whole city under a circle that should have been empty.
 final merchantsInSelectedCuisineProvider = FutureProvider<Set<String>?>((ref) async {
   final selected = ref.watch(selectedCuisineProvider);
+  // Tied to the chips, so the refresh that re-reads them (LuqmaLiveRefresh) re-reads who is
+  // in them too: a shop the admin just put in «صيدليات» appears under the pressed chip
+  // without the customer closing the app.
+  ref.watch(cuisinesProvider);
   if (selected == null) return null;
 
   final result = await ref.watch(cuisineRepositoryProvider).merchantsIn(selected);

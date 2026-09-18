@@ -17,6 +17,10 @@ abstract interface class PopularItemsRepository {
   /// than here: a screen that has to know when to ask a second question is a screen that
   /// forgets on the one day it matters.
   Future<Result<List<MenuItem>>> forCity(String cityId, {int limit});
+
+  /// What the city's shops have put on their «العروض» shelves, newest first — the
+  /// second section of the customer's home.
+  Future<Result<List<MenuItem>>> offers(String cityId, {int limit});
 }
 
 class SupabasePopularItemsRepository implements PopularItemsRepository {
@@ -37,14 +41,33 @@ class SupabasePopularItemsRepository implements PopularItemsRepository {
       ];
     });
   }
+
+  @override
+  Future<Result<List<MenuItem>>> offers(String cityId, {int limit = 20}) {
+    return Result.guard(() async {
+      final rows = await _db.rpc<List<dynamic>>(
+        'offer_items',
+        params: {'p_city_id': cityId, 'p_limit': limit},
+      );
+      return [
+        for (final row in rows)
+          MenuItem.fromRow(Map<String, dynamic>.from(row as Map)),
+      ];
+    });
+  }
 }
 
 /// In-memory, for the screens that draw the shelf.
 class FakePopularItemsRepository implements PopularItemsRepository {
-  FakePopularItemsRepository({List<MenuItem> items = const [], this.failure})
-      : _items = List.of(items);
+  FakePopularItemsRepository({
+    List<MenuItem> items = const [],
+    List<MenuItem> offers = const [],
+    this.failure,
+  })  : _items = List.of(items),
+        _offers = List.of(offers);
 
   final List<MenuItem> _items;
+  final List<MenuItem> _offers;
   final Failure? failure;
 
   @override
@@ -58,5 +81,13 @@ class FakePopularItemsRepository implements PopularItemsRepository {
         return b.ratingAvg.compareTo(a.ratingAvg);
       });
     return Result.ok(sorted.take(limit).toList());
+  }
+
+  @override
+  Future<Result<List<MenuItem>>> offers(String cityId, {int limit = 20}) async {
+    if (failure != null) return Result.err(failure!);
+    // The server already filters to approved shops and available dishes; the fake is handed
+    // exactly what it should return, and keeps only the limit and the availability rule.
+    return Result.ok(_offers.where((i) => i.isAvailable).take(limit).toList());
   }
 }

@@ -22,6 +22,7 @@ abstract final class HomeSectionRegistry {
     'adSlot': (s) => AdSlotSection(section: s),
     'homeKitchenToday': (s) => HomeKitchenSection(section: s),
     'mostOrdered': (s) => PopularItemsSection(section: s),
+    'offers': (s) => PopularItemsSection.offers(section: s),
     'merchantList': (s) => MerchantListSection(section: s),
     'topRated': (s) => MerchantListSection(section: s, topRated: true),
   };

@@ -97,7 +97,9 @@ class CustomerApp extends ConsumerWidget {
       home: LuqmaForceUpdateGate(
         app: LuqmaApp.customer,
         currentVersion: currentVersion,
-        child: const _Start(),
+        // What the admin changes — a shop's status, the chips, the plans — reaches the
+        // customer without closing the app. See LuqmaLiveRefresh.
+        child: const LuqmaLiveRefresh(child: _Start()),
       ),
     );
   }

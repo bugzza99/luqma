@@ -215,6 +215,13 @@ abstract final class LuqmaPush {
   /// navigator to push onto. The shell watches this and opens the screen when it can.
   static final tapped = ValueNotifier<LuqmaTap?>(null);
 
+  /// Every message that arrives while the app is on screen.
+  ///
+  /// A notification is nearly always the server saying something just changed — an
+  /// approval, a plan, an order moving on. The screens listening to realtime already know;
+  /// the ones that read once do not, and this is how [LuqmaLiveRefresh] finds out.
+  static final received = StreamController<LuqmaTap>.broadcast();
+
   /// Starts Messaging and asks for permission.
   ///
   /// It deliberately does **not** register a token. The ownership RPC takes its uid from
@@ -293,7 +300,12 @@ abstract final class LuqmaPush {
     // The foreground. Android never draws a `notification` block itself while the app is
     // on screen, so this is the one case where the app has to — and it is also the case
     // where it can do better than the system, because it knows which screen is open.
-    FirebaseMessaging.onMessage.listen(_show);
+    FirebaseMessaging.onMessage.listen((message) {
+      if (message.data.isNotEmpty && !received.isClosed) {
+        received.add(LuqmaTap.fromData(message.data));
+      }
+      _show(message);
+    });
 
     // Still registered, and it is the *tap* this earns rather than the drawing.
     // `getInitialMessage` and this handler are how the app learns which order somebody

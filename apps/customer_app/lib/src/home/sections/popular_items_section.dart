@@ -18,19 +18,30 @@ import 'section_gap.dart';
 /// below it is the whole list. A grid here would push everything else off the screen and
 /// make the home one long ranking.
 class PopularItemsSection extends ConsumerWidget {
-  const PopularItemsSection({super.key, required this.section});
+  const PopularItemsSection({super.key, required this.section})
+      : _offers = false;
+
+  /// The shops' offers: the same shelf, filled from every shop's «العروض» shelf rather
+  /// than from what the city orders. One widget for both, because a dish tile that looks
+  /// different in the second section of the home than in the fourth is a design nobody
+  /// chose.
+  const PopularItemsSection.offers({super.key, required this.section})
+      : _offers = true;
 
   final HomeSection section;
+  final bool _offers;
 
   static const shelfKey = Key('popularItems.shelf');
+  static const offersShelfKey = Key('offers.shelf');
   static const emptyKey = Key('popularItems.empty');
 
-  String get _title =>
-      section.titleAr.isNotEmpty ? section.titleAr : 'الأكتر طلباً';
+  String get _title => section.titleAr.isNotEmpty
+      ? section.titleAr
+      : (_offers ? 'العروض' : 'الأكتر طلباً');
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final shelf = ref.watch(popularItemsProvider);
+    final shelf = ref.watch(_offers ? offerItemsProvider : popularItemsProvider);
 
     // A shelf that cannot be read is not the same as an empty one, and on this screen
     // both come to the same thing: the home has five other sections working, and an
@@ -49,14 +60,19 @@ class PopularItemsSection extends ConsumerWidget {
         children: [
           SectionHeader(
             title: _title,
+            // The shelf holds twenty; «see all» is every offer in the city, so a shop
+            // whose offer did not fit on the shelf is still one tap away.
             onSeeAll: () => Navigator.of(context).push(
               MaterialPageRoute<void>(
-                builder: (_) => SeeAllScreen(title: _title, showing: SeeAll.items),
+                builder: (_) => SeeAllScreen(
+                  title: _title,
+                  showing: _offers ? SeeAll.offers : SeeAll.items,
+                ),
               ),
             ),
           ),
           SizedBox(
-            key: shelfKey,
+            key: _offers ? offersShelfKey : shelfKey,
             height: 206,
             child: ListView.separated(
               scrollDirection: Axis.horizontal,

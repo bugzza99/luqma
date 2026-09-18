@@ -56,7 +56,7 @@ void main() {
               .overrideWithValue(FakeAuthService(restoring: signedInAs)),
           addressRepositoryProvider.overrideWithValue(addresses),
           if (merchant != null)
-            merchantProvider(merchant.id).overrideWith((ref) async => merchant),
+            merchantProvider(merchant.id).overrideWith((ref) => Stream.value(merchant)),
           appConfigProvider.overrideWithValue(LuqmaConfig.from(MapConfigSource({
             'delivery_fee_min': 1000, 'delivery_fee_max': 2000,
           }))),

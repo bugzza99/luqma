@@ -764,6 +764,39 @@ void main() {
       expect(find.byKey(CourierScreen.cardKey('o1')), findsOneWidget);
       expect(find.byKey(CourierScreen.cardKey('o2')), findsOneWidget);
     });
+
+    // A pickup notification is a delivery for any of the courier's shops. Filtered to one
+    // shop, the one it announced for another sat behind the filter.
+    testWidgets('a tapped pickup notification clears the filter so the delivery shows',
+        (tester) async {
+      addTearDown(() => LuqmaPush.tapped.value = null);
+      await pump(
+        tester,
+        seed: [
+          order(id: 'o1', number: 101).copyWith(
+            merchantId: 'm1',
+            merchantName: 'مطعم الشاطئ',
+          ),
+          order(id: 'o2', number: 102).copyWith(
+            merchantId: 'm2',
+            merchantName: 'بيتزا روما',
+          ),
+        ],
+        carriedMerchants: {'m1', 'm2'},
+      );
+
+      await tester.ensureVisible(find.byKey(CourierScreen.filterMerchantKey('m1')));
+      await tester.tap(find.byKey(CourierScreen.filterMerchantKey('m1')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(CourierScreen.cardKey('o2')), findsNothing);
+
+      LuqmaPush.tapped.value =
+          const LuqmaTap(kind: 'pickup', data: {'orderId': 'o2'});
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(CourierScreen.cardKey('o2')), findsOneWidget);
+      expect(LuqmaPush.tapped.value, isNull);
+    });
   });
 
   group('the platform courier', () {

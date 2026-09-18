@@ -590,5 +590,46 @@ void main() {
       expect(find.byType(ShopScreen), findsOneWidget);
       expect(find.byType(SubscriptionScreen), findsNothing);
     });
+
+    testWidgets(
+        'a staffApproved tap on the no-access screen calls refreshSession',
+        (tester) async {
+      await pump(
+        tester,
+        signedInAs: const LuqmaIdentity(uid: 'u1', phone: '01000000000'),
+        signingIn: _ApprovedOnRefresh(
+          const LuqmaIdentity(uid: 'u1', phone: '01000000000'),
+          owner,
+        ),
+      );
+
+      expect(find.byKey(MerchantApp.noAccessKey), findsOneWidget);
+
+      LuqmaPush.tapped.value = const LuqmaTap(kind: 'staffApproved');
+      await tester.pumpAndSettle();
+
+      expect(find.byType(InboxScreen), findsOneWidget);
+      expect(find.byKey(MerchantApp.noAccessKey), findsNothing);
+    });
+
+    testWidgets('a pickup tap on the courier screen is cleared', (tester) async {
+      await pump(
+        tester,
+        signedInAs: const LuqmaIdentity(
+          uid: 'c1',
+          claims: {'role': 'courier', 'scope': 'merchant', 'merchantId': 'm1'},
+        ),
+      );
+
+      expect(find.byType(CourierScreen), findsOneWidget);
+
+      LuqmaPush.tapped.value = const LuqmaTap(
+        kind: 'pickup',
+        data: {'orderId': 'o-pickup'},
+      );
+      await tester.pumpAndSettle();
+
+      expect(LuqmaPush.tapped.value, isNull);
+    });
   });
 }

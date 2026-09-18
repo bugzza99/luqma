@@ -423,5 +423,27 @@ void main() {
 
       expect(find.byType(OrderScreen), findsNothing);
     });
+
+    testWidgets('a promotion tap with merchantId opens the merchant screen', (tester) async {
+      await pump(tester);
+
+      LuqmaPush.tapped.value = const LuqmaTap(
+        kind: 'promotion',
+        data: {'promotionId': 'p1', 'merchantId': 'm1'},
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byType(MerchantScreen), findsOneWidget);
+    });
+
+    testWidgets('an unknown kind does nothing', (tester) async {
+      await pump(tester);
+
+      LuqmaPush.tapped.value = const LuqmaTap(kind: 'unknownKind', data: {'foo': 'bar'});
+      await tester.pumpAndSettle();
+
+      expect(find.byType(OrderScreen), findsNothing);
+      expect(find.byType(MerchantScreen), findsNothing);
+    });
   });
 }

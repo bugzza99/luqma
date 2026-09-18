@@ -165,6 +165,28 @@ Future<List<MenuItem>> popularItems(Ref ref) async {
   return result.valueOrThrow;
 }
 
+/// The shops' offers, for the second section of the home.
+///
+/// Auto-disposed for the same reason as [popularItems]: a shop that put an offer up this
+/// morning should not wait for somebody to restart the app to be seen.
+@riverpod
+Future<List<MenuItem>> offerItems(Ref ref) async {
+  final result = await ref
+      .watch(popularItemsRepositoryProvider)
+      .offers(ref.watch(currentCityProvider));
+  return result.valueOrThrow;
+}
+
+/// Every offer in the city, for «عرض الكل» under the offers shelf — the shelf itself
+/// shows the first twenty, one per shop before any shop's second.
+@riverpod
+Future<List<MenuItem>> allOfferItems(Ref ref) async {
+  final result = await ref
+      .watch(popularItemsRepositoryProvider)
+      .offers(ref.watch(currentCityProvider), limit: 200);
+  return result.valueOrThrow;
+}
+
 @Riverpod(keepAlive: true)
 SearchRepository searchRepository(Ref ref) =>
     SupabaseSearchRepository(ref.watch(supabaseProvider));
@@ -273,16 +295,16 @@ Stream<List<MenuItem>> menuItems(Ref ref, String merchantId) =>
 Stream<List<Merchant>> merchants(Ref ref, String cityId) =>
     ref.watch(merchantRepositoryProvider).watchMerchants(cityId: cityId);
 
-/// One merchant, by id.
+/// One merchant, by id — live.
 ///
-/// Throws the [Failure] rather than surfacing a `Result`, so the screen above reads it
-/// as an `AsyncValue` and gets loading, data and error from one `switch` — the same
-/// shape every other read on the screen already has.
+/// It was a one-shot fetch, so everything the admin changes on a shop — approving it,
+/// putting it on a plan, correcting its hours — reached the merchant's own screens only
+/// after they closed the app and opened it again. The row is in the realtime publication;
+/// this listens to it. Errors arrive as the [Failure] they are, so a screen reads loading,
+/// data and error from one `switch` as before.
 @riverpod
-Future<Merchant> merchant(Ref ref, String id) async {
-  final result = await ref.watch(merchantRepositoryProvider).getMerchant(id);
-  return result.valueOrThrow;
-}
+Stream<Merchant> merchant(Ref ref, String id) =>
+    ref.watch(merchantRepositoryProvider).watchMerchant(id);
 
 /// Where a picture comes from.
 ///
