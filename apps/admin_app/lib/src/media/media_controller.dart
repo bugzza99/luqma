@@ -9,6 +9,17 @@ part 'media_controller.g.dart';
 Stream<List<Media>> pendingMedia(Ref ref) =>
     ref.watch(mediaRepositoryProvider).watchPending();
 
+/// Whose each waiting picture is — shop, dish, uploader — named by the server in one call.
+/// A failure names nobody rather than failing the queue: the picture can still be judged.
+@riverpod
+Future<Map<String, MediaContext>> pendingMediaContext(Ref ref) async {
+  final pending = await ref.watch(pendingMediaProvider.future);
+  final result = await ref
+      .read(mediaRepositoryProvider)
+      .contextOf([for (final m in pending) m.id]);
+  return result.valueOrNull ?? const {};
+}
+
 /// Kept alive for the same reason as the merchant actions: nothing watches a commands
 /// object, so an auto-disposed one is thrown away while its command is still running.
 /// Kept alive for the same reason as the merchant actions: nothing watches a commands
@@ -23,22 +34,28 @@ class MediaActions extends _$MediaActions {
   @override
   String? build() => ref.watch(currentIdentityProvider).value?.uid;
 
-  Future<void> approve(String id) async {
-    await ref.read(mediaRepositoryProvider).setStatus(
+  Future<Result<void>> approve(String id) async {
+    final res = await ref.read(mediaRepositoryProvider).setStatus(
           id,
           MediaStatus.approved,
           reviewedBy: state,
         );
-    ref.invalidate(pendingMediaProvider);
+    if (res.isOk) {
+      ref.invalidate(pendingMediaProvider);
+    }
+    return res;
   }
 
-  Future<void> reject(String id, String reason) async {
-    await ref.read(mediaRepositoryProvider).setStatus(
+  Future<Result<void>> reject(String id, String reason) async {
+    final res = await ref.read(mediaRepositoryProvider).setStatus(
           id,
           MediaStatus.rejected,
           reviewedBy: state,
           note: reason,
         );
-    ref.invalidate(pendingMediaProvider);
+    if (res.isOk) {
+      ref.invalidate(pendingMediaProvider);
+    }
+    return res;
   }
 }

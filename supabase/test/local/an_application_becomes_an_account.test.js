@@ -123,7 +123,9 @@ describe('an application becomes an account', () => {
     assert.equal(shop.status, 'pending');
     assert.equal(shop.city_id, 'edku');
     assert.equal(shop.zone_id, zoneId);
-    assert.equal(shop.revenue_value, 0);
+    // The one rate every shop follows (20261010000000), not zero.
+    assert.equal(shop.revenue_model, 'commission');
+    assert.equal(shop.revenue_value, 500);
 
     const staff = (await db.query('select * from staff where uid = $1', [APPLICANT])).rows[0];
     assert.equal(staff.role, 'owner');

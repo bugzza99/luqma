@@ -42,6 +42,7 @@ class LandmarkSuggestion {
     required List<LandmarkNote> notes,
     required List<Landmark> known,
     int minCount = 2,
+    Set<String> dismissed = const {},
   }) {
     // What is already on the map, per zone, in folded form — so a landmark spelled one
     // way on the map and another way by a customer is still recognised as known.
@@ -63,6 +64,8 @@ class LandmarkSuggestion {
       final folded = ArabicText.normalize(text);
       if (folded.length < _minLength) continue;
       if (onTheMap[note.zoneId]?.contains(folded) ?? false) continue;
+      // Turned down by the owner: gone for good, whichever spelling it comes back in.
+      if (dismissed.contains('${note.zoneId}|$folded')) continue;
 
       final spellings = groups.putIfAbsent(
         (zoneId: note.zoneId, folded: folded),

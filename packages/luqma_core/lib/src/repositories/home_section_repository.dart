@@ -27,6 +27,9 @@ abstract interface class HomeSectionRepository {
   Future<Result<void>> setVisible(String key, bool isVisible,
       {required String cityId});
   Future<Result<void>> reorder(List<String> keysInOrder, {required String cityId});
+
+  /// Removes a block added by mistake. Hiding keeps it in the builder; this does not.
+  Future<Result<void>> delete(String key, {required String cityId});
 }
 
 class SupabaseHomeSectionRepository implements HomeSectionRepository {
@@ -70,6 +73,19 @@ class SupabaseHomeSectionRepository implements HomeSectionRepository {
   }
 
   @override
+  Future<Result<void>> delete(String key, {required String cityId}) {
+    return Result.guardWrite(
+      () => _db
+          .from('home_sections')
+          .delete()
+          .eq('key', key)
+          .eq('city_id', cityId)
+          .select('key'),
+      (_) {},
+    );
+  }
+
+  @override
   Future<Result<void>> reorder(List<String> keysInOrder,
       {required String cityId}) {
     return Result.guard(
@@ -86,7 +102,7 @@ class FakeHomeSectionRepository implements HomeSectionRepository {
       : _sections = List.of(seed);
 
   final List<HomeSection> _sections;
-  final Failure? failure;
+  Failure? failure;
 
   final _changed = StreamController<void>.broadcast();
 
@@ -135,6 +151,16 @@ class FakeHomeSectionRepository implements HomeSectionRepository {
     final i = _sections.indexWhere((s) => s.key == key && s.cityId == cityId);
     if (i < 0) return const Result.err(NotFoundFailure());
     _sections[i] = _sections[i].copyWith(isVisible: isVisible);
+    _notify();
+    return const Result.ok(null);
+  }
+
+  @override
+  Future<Result<void>> delete(String key, {required String cityId}) async {
+    if (failure != null) return Result.err(failure!);
+    final before = _sections.length;
+    _sections.removeWhere((s) => s.key == key && s.cityId == cityId);
+    if (_sections.length == before) return const Result.err(NotFoundFailure());
     _notify();
     return const Result.ok(null);
   }

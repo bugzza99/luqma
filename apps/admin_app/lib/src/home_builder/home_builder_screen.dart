@@ -14,7 +14,7 @@ import '../shell/layout.dart';
 ///
 /// So a type is *chosen from a list*, never typed. A string typed here would be a typo
 /// that renders as a blank space on every phone in the city.
-class HomeBuilderScreen extends ConsumerWidget {
+class HomeBuilderScreen extends ConsumerStatefulWidget {
   const HomeBuilderScreen({super.key});
 
   static const emptyKey = Key('homeBuilder.empty');
@@ -28,6 +28,7 @@ class HomeBuilderScreen extends ConsumerWidget {
   static Key upKey(String key) => Key('homeBuilder.up.$key');
   static Key downKey(String key) => Key('homeBuilder.down.$key');
   static Key typeKey(String type) => Key('homeBuilder.type.$type');
+  static Key deleteKey(String key) => Key('homeBuilder.delete.$key');
 
   /// The types CustomerApp actually registered.
   ///
@@ -46,7 +47,7 @@ class HomeBuilderScreen extends ConsumerWidget {
   ];
 
   static const typeNames = {
-    'categoryChips': 'شرائح الفئات',
+    'categoryChips': 'تصنيفات المحلات',
     'adSlot': 'مكان إعلان',
     'homeKitchenToday': 'أكل بيتي النهارده',
     'merchantList': 'قائمة المطاعم',
@@ -55,12 +56,38 @@ class HomeBuilderScreen extends ConsumerWidget {
     'offers': 'عروض المحلات',
   };
 
+  static const typeDescriptions = {
+    'categoryChips': 'دوائر تصنيفات المحلات في أعلى الشاشة',
+    'adSlot': 'بانر بيلف على كل إعلانات «بانر الرئيسية» الشغالة. مكانين يعني نفس الإعلانات بتظهر في مكانين، مش حملات مختلفة.',
+    'homeKitchenToday': 'وجبات ومطابخ الأكل البيتي المتاحة اليوم',
+    'merchantList': 'قائمة بكل المحلات والمطاعم المتاحة',
+    'topRated': 'المحلات الأعلى تقييماً من العملاء',
+    'mostOrdered': 'الأصناف اللي اتطلبت أكتر في الطلبات المتسلّمة',
+    'offers': 'صف أصناف قسم «العروض» من منيو كل المحلات',
+  };
+
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<HomeBuilderScreen> createState() => _HomeBuilderScreenState();
+}
+
+class _HomeBuilderScreenState extends ConsumerState<HomeBuilderScreen> {
+  bool _busy = false;
+  List<HomeSection>? _localSections;
+
+  @override
+  Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colors = theme.luqma;
     final strings = LuqmaStrings.of(context);
-    final sections = ref.watch(homeSectionsProvider);
+    final sectionsAsync = ref.watch(homeSectionsProvider);
+
+    final remoteSections = sectionsAsync.value;
+    final List<HomeSection>? displaySections;
+    if (_localSections != null) {
+      displaySections = _localSections;
+    } else {
+      displaySections = remoteSections;
+    }
 
     return Scaffold(
       backgroundColor: colors.background,
@@ -102,7 +129,7 @@ class HomeBuilderScreen extends ConsumerWidget {
             ),
             Expanded(
               child: LuqmaAsyncView(
-                value: sections,
+                value: sectionsAsync,
                 errorKey: HomeBuilderScreen.errorKey,
                 onRetry: () => ref.invalidate(homeSectionsProvider),
                 empty: LuqmaEmptyView(
@@ -111,25 +138,33 @@ class HomeBuilderScreen extends ConsumerWidget {
                   message:
                       'ضيف بلوك واحد على الأقل، وإلا العميل هيفتح على شاشة فاضية.',
                 ),
-                isEmpty: (value) => value.isEmpty,
-                builder: (context, value) => ListView.separated(
-                  padding: const EdgeInsets.all(Space.gutter),
-                  itemCount: value.length,
-                  separatorBuilder: (_, _) => const SizedBox(height: Space.sm),
-                  itemBuilder: (context, i) => _Row(
-                    section: value[i],
-                    order: value.map((s) => s.key).toList(),
-                    index: i,
-                  ),
-                ),
+                isEmpty: (value) => (displaySections ?? value).isEmpty,
+                builder: (context, value) {
+                  final list = displaySections ?? value;
+                  final order = list.map((s) => s.key).toList();
+                  return ListView.separated(
+                    padding: const EdgeInsets.all(Space.gutter),
+                    itemCount: list.length,
+                    separatorBuilder: (_, _) => const SizedBox(height: Space.sm),
+                    itemBuilder: (context, i) => _Row(
+                      section: list[i],
+                      order: order,
+                      index: i,
+                      busy: _busy,
+                      onToggleVisibility: () => _toggleVisibility(list[i]),
+                      onDelete: () => _delete(list[i]),
+                      onMove: (to) => _move(order, i, to),
+                    ),
+                  );
+                },
               ),
             ),
           ],
         ),
       ),
       floatingActionButton: FloatingActionButton.extended(
-        key: addKey,
-        onPressed: () => _add(context, ref, sections.value ?? const []),
+        key: HomeBuilderScreen.addKey,
+        onPressed: _busy ? null : () => _add(context, displaySections ?? const []),
         icon: const Icon(Icons.add_rounded),
         label: const Text('ضيف بلوك', style: TextStyle(fontWeight: FontWeight.bold)),
         backgroundColor: colors.brand,
@@ -138,156 +173,307 @@ class HomeBuilderScreen extends ConsumerWidget {
     );
   }
 
-  Future<void> _add(
-    BuildContext context,
-    WidgetRef ref,
-    List<HomeSection> existing,
-  ) async {
-    final colors = Theme.of(context).luqma;
-    final strings = LuqmaStrings.of(context);
-
-    final type = await showModalBottomSheet<String>(
+  /// A block added by mistake. Hiding keeps it in this list; this removes it.
+  Future<void> _delete(HomeSection section) async {
+    if (_busy) return;
+    final name = HomeBuilderScreen.typeNames[section.type] ?? 'البلوك';
+    final sure = await showDialog<bool>(
       context: context,
-      isScrollControlled: true,
-      backgroundColor: colors.card,
-      shape: const RoundedRectangleBorder(borderRadius: Radii.sheetTop),
-      builder: (sheetContext) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(Space.gutter),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Center(
-                child: Container(
-                  width: 40,
-                  height: 4,
-                  margin: const EdgeInsets.only(bottom: Space.md),
-                  decoration: BoxDecoration(
-                    color: colors.hairline,
-                    borderRadius: Radii.pillAll,
-                  ),
-                ),
-              ),
-              Text(
-                strings.homeBuilderAddTitle,
-                style: Theme.of(sheetContext).textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.bold,
-                    ),
-              ),
-              const SizedBox(height: Space.xs),
-              Text(
-                strings.homeBuilderAddSubtitle,
-                style: LuqmaType.bodySmall.copyWith(
-                  color: colors.textSecondary,
-                ),
-              ),
-              const SizedBox(height: Space.md),
-              Flexible(
-                child: SingleChildScrollView(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      for (final type in knownTypes)
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: Sizes.targetGap),
-                          child: OutlinedButton(
-                            key: typeKey(type),
-                            onPressed: () =>
-                                Navigator.of(sheetContext).pop(type),
-                            style: OutlinedButton.styleFrom(
-                              minimumSize: const Size.fromHeight(56),
-                              side: BorderSide(color: colors.hairline),
-                              shape: const RoundedRectangleBorder(
-                                borderRadius: Radii.cardAll,
-                              ),
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: Space.md,
-                                vertical: Space.sm,
-                              ),
-                            ),
-                            child: Row(
-                              children: [
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        typeNames[type] ?? type,
-                                        style: Theme.of(sheetContext)
-                                            .textTheme
-                                            .titleMedium
-                                            ?.copyWith(
-                                              fontWeight: FontWeight.w600,
-                                              color: colors.textPrimary,
-                                            ),
-                                      ),
-                                      Text(
-                                        type,
-                                        style: LuqmaType.caption.copyWith(
-                                          color: colors.textSecondary,
-                                          fontFamily: 'monospace',
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                Icon(
-                                  Icons.add_circle_outline_rounded,
-                                  color: colors.brand,
-                                  size: Sizes.iconMd,
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
-              ),
-            ],
+      builder: (dialogContext) => AlertDialog(
+        title: Text('حذف «$name»'),
+        content: const Text('هيختفي من الرئيسية عند كل العملاء ومن القائمة دي. تقدر تضيفه تاني.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('رجوع'),
           ),
-        ),
+          FilledButton(
+            key: const Key('homeBuilder.confirmDelete'),
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('احذف'),
+          ),
+        ],
       ),
     );
+    if (sure != true || !mounted) return;
+    setState(() => _busy = true);
+    final messenger = ScaffoldMessenger.of(context);
+    final result = await ref
+        .read(homeSectionRepositoryProvider)
+        .delete(section.key, cityId: ref.read(currentCityProvider));
+    if (!mounted) return;
+    setState(() {
+      _busy = false;
+      _localSections = null;
+    });
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(result is Ok ? 'اتحذف البلوك' : 'مقدرناش نحذفه. جرّب تاني.'),
+      ),
+    );
+  }
 
-    if (type == null || !context.mounted) return;
+  Future<void> _toggleVisibility(HomeSection section) async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    final messenger = ScaffoldMessenger.of(context);
+    final result = await ref.read(homeSectionRepositoryProvider).setVisible(
+      section.key,
+      !section.isVisible,
+      cityId: ref.read(currentCityProvider),
+    );
+    if (!mounted) return;
+    setState(() => _busy = false);
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(switch (result) {
+          Ok() => !section.isVisible ? 'البلوك هيظهر للعملاء.' : 'البلوك بقى مخفي عن العملاء.',
+          Err(:final failure) => switch (failure) {
+            OfflineFailure() => 'مفيش نت — جرّب تاني.',
+            PermissionFailure() => 'مش مسموحلك تعدّل البلوك.',
+            _ => 'معرفناش نعدّل ظهور البلوك. جرّب تاني.',
+          },
+        }),
+      ),
+    );
+  }
 
-    // Two ad slots on one screen is a real arrangement — one near the top, one further
-    // down — so a second block of a type gets its own key rather than overwriting the
-    // first. The key is the identity; the type is only what it draws.
-    final taken = existing.map((s) => s.key).toSet();
+  Future<void> _move(List<String> currentOrder, int fromIndex, int toIndex) async {
+    if (_busy) return;
+    final currentSections = _localSections ?? ref.read(homeSectionsProvider).value ?? [];
+    final previousSections = List<HomeSection>.from(currentSections);
+
+    final nextSections = List<HomeSection>.from(currentSections);
+    final movedItem = nextSections.removeAt(fromIndex);
+    nextSections.insert(toIndex, movedItem);
+
+    final nextOrder = List<String>.from(currentOrder)
+      ..removeAt(fromIndex)
+      ..insert(toIndex, movedItem.key);
+
+    setState(() {
+      _busy = true;
+      _localSections = nextSections;
+    });
+
+    final messenger = ScaffoldMessenger.of(context);
+    final result = await ref.read(homeSectionRepositoryProvider).reorder(
+      nextOrder,
+      cityId: ref.read(currentCityProvider),
+    );
+
+    if (!mounted) return;
+    if (result case Err(:final failure)) {
+      setState(() {
+        _localSections = previousSections;
+        _busy = false;
+      });
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(switch (failure) {
+            OfflineFailure() => 'مفيش نت — جرّب تاني.',
+            PermissionFailure() => 'مش مسموحلك تعدّل الترتيب.',
+            _ => 'معرفناش نغيّر الترتيب. جرّب تاني.',
+          }),
+        ),
+      );
+    } else {
+      setState(() {
+        _busy = false;
+        _localSections = null;
+      });
+    }
+  }
+
+  Future<void> _add(BuildContext context, List<HomeSection> existing) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Theme.of(context).luqma.card,
+      shape: const RoundedRectangleBorder(borderRadius: Radii.sheetTop),
+      builder: (sheetContext) => _AddSheet(existing: existing),
+    );
+  }
+}
+
+class _AddSheet extends ConsumerStatefulWidget {
+  const _AddSheet({required this.existing});
+
+  final List<HomeSection> existing;
+
+  @override
+  ConsumerState<_AddSheet> createState() => _AddSheetState();
+}
+
+class _AddSheetState extends ConsumerState<_AddSheet> {
+  bool _saving = false;
+
+  Future<void> _selectType(String type) async {
+    if (_saving) return;
+    setState(() => _saving = true);
+
+    final taken = widget.existing.map((s) => s.key).toSet();
     var key = type;
     for (var n = 2; taken.contains(key); n++) {
       key = '$type$n';
     }
 
-    await ref.read(homeSectionRepositoryProvider).save(
-          HomeSection(
-            key: key,
-            type: type,
-            // Added at the bottom rather than the top: an owner adding a block is not
-            // saying it is the most important thing on the screen.
-            sortOrder: existing.length,
-            cityId: ref.read(currentCityProvider),
+    final result = await ref.read(homeSectionRepositoryProvider).save(
+      HomeSection(
+        key: key,
+        type: type,
+        sortOrder: widget.existing.length,
+        cityId: ref.read(currentCityProvider),
+      ),
+    );
+
+    if (!mounted) return;
+    setState(() => _saving = false);
+
+    switch (result) {
+      case Ok():
+        Navigator.of(context).pop();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('البلوك اتضاف.')),
+        );
+      case Err(:final failure):
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(switch (failure) {
+              OfflineFailure() => 'مفيش نت — جرّب تاني.',
+              PermissionFailure() => 'مش مسموحلك تضيف بلوك.',
+              _ => 'معرفناش نضيف البلوك. جرّب تاني.',
+            }),
           ),
         );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).luqma;
+    final strings = LuqmaStrings.of(context);
+
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.all(Space.gutter),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                margin: const EdgeInsets.only(bottom: Space.md),
+                decoration: BoxDecoration(
+                  color: colors.hairline,
+                  borderRadius: Radii.pillAll,
+                ),
+              ),
+            ),
+            Text(
+              strings.homeBuilderAddTitle,
+              style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+            ),
+            const SizedBox(height: Space.xs),
+            Text(
+              strings.homeBuilderAddSubtitle,
+              style: LuqmaType.bodySmall.copyWith(
+                color: colors.textSecondary,
+              ),
+            ),
+            const SizedBox(height: Space.md),
+            Flexible(
+              child: SingleChildScrollView(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    for (final type in HomeBuilderScreen.knownTypes)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: Sizes.targetGap),
+                        child: OutlinedButton(
+                          key: HomeBuilderScreen.typeKey(type),
+                          onPressed: _saving ? null : () => _selectType(type),
+                          style: OutlinedButton.styleFrom(
+                            minimumSize: const Size.fromHeight(56),
+                            side: BorderSide(color: colors.hairline),
+                            shape: const RoundedRectangleBorder(
+                              borderRadius: Radii.cardAll,
+                            ),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: Space.md,
+                              vertical: Space.sm,
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      HomeBuilderScreen.typeNames[type] ?? type,
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .titleMedium
+                                          ?.copyWith(
+                                            fontWeight: FontWeight.w600,
+                                            color: colors.textPrimary,
+                                          ),
+                                    ),
+                                    Text(
+                                      HomeBuilderScreen.typeDescriptions[type] ?? type,
+                                      style: LuqmaType.caption.copyWith(
+                                        color: colors.textSecondary,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              Icon(
+                                Icons.add_circle_outline_rounded,
+                                color: colors.brand,
+                                size: Sizes.iconMd,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
 
-class _Row extends ConsumerWidget {
+class _Row extends StatelessWidget {
   const _Row({
     required this.section,
     required this.order,
     required this.index,
+    required this.busy,
+    required this.onToggleVisibility,
+    required this.onDelete,
+    required this.onMove,
   });
 
   final HomeSection section;
   final List<String> order;
   final int index;
+  final bool busy;
+  final VoidCallback onToggleVisibility;
+  final VoidCallback onDelete;
+  final ValueChanged<int> onMove;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colors = theme.luqma;
     final known = HomeBuilderScreen.knownTypes.contains(section.type);
@@ -305,12 +491,6 @@ class _Row extends ConsumerWidget {
         ),
         child: Row(
           children: [
-            Icon(
-              Icons.drag_handle_rounded,
-              color: colors.textSecondary,
-              size: 20,
-            ),
-            const SizedBox(width: Space.sm),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -324,12 +504,9 @@ class _Row extends ConsumerWidget {
                   ),
                   const SizedBox(height: 2),
                   Text(
-                    section.key == section.type
-                        ? section.type
-                        : '${section.type} • ${section.key}',
+                    HomeBuilderScreen.typeDescriptions[section.type] ?? 'بلوك في الصفحة الرئيسية',
                     style: LuqmaType.caption.copyWith(
                       color: colors.textSecondary,
-                      fontFamily: 'monospace',
                     ),
                   ),
                   if (!section.isVisible)
@@ -346,9 +523,6 @@ class _Row extends ConsumerWidget {
                           const SizedBox(width: 4),
                           Expanded(
                             child: Text(
-                              // Hidden is not deleted. Hiding the home-kitchen band on a day
-                              // nobody is cooking and putting it back tomorrow keeps its
-                              // settings.
                               'مخفي عن العملاء',
                               style: LuqmaType.bodySmall.copyWith(
                                 color: colors.textSecondary,
@@ -372,8 +546,6 @@ class _Row extends ConsumerWidget {
                           const SizedBox(width: 4),
                           Expanded(
                             child: Text(
-                              // It renders as nothing on the customer's phone. An admin who
-                              // cannot see it here cannot fix it anywhere.
                               'النوع ده التطبيق مش عارفه — مش هيظهر لحد',
                               style: LuqmaType.bodySmall.copyWith(
                                 color: colors.danger,
@@ -397,44 +569,29 @@ class _Row extends ConsumerWidget {
                     ? colors.success
                     : colors.textSecondary,
               ),
-              onPressed: () => ref
-                  .read(homeSectionRepositoryProvider)
-                  .setVisible(section.key, !section.isVisible,
-                      cityId: ref.read(currentCityProvider)),
+              onPressed: busy ? null : onToggleVisibility,
+            ),
+            IconButton(
+              key: HomeBuilderScreen.deleteKey(section.key),
+              tooltip: 'احذف البلوك',
+              icon: Icon(Icons.delete_outline_rounded, color: colors.danger),
+              onPressed: busy ? null : onDelete,
             ),
             IconButton(
               key: HomeBuilderScreen.upKey(section.key),
               tooltip: 'اطلع فوق',
               icon: const Icon(Icons.arrow_upward_rounded),
-              onPressed: index == 0 ? null : () => _move(ref, index - 1),
+              onPressed: (busy || index == 0) ? null : () => onMove(index - 1),
             ),
             IconButton(
               key: HomeBuilderScreen.downKey(section.key),
               tooltip: 'انزل تحت',
               icon: const Icon(Icons.arrow_downward_rounded),
-              onPressed:
-                  index == order.length - 1 ? null : () => _move(ref, index + 1),
+              onPressed: (busy || index == order.length - 1) ? null : () => onMove(index + 1),
             ),
           ],
         ),
       ),
     );
   }
-
-  /// Moves this block to [to], rewriting the whole order.
-  ///
-  /// The whole list rather than two documents, because sort orders that drift apart are
-  /// how two blocks end up claiming the same position and the screen settles on
-  /// whichever loaded first.
-  Future<void> _move(WidgetRef ref, int to) async {
-    final next = [...order]
-      ..removeAt(index)
-      ..insert(to, section.key);
-    await ref.read(homeSectionRepositoryProvider).reorder(
-          next,
-          cityId: ref.read(currentCityProvider),
-        );
-  }
 }
-
-

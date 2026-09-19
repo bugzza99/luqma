@@ -56,17 +56,19 @@ class _PlacesScreenState extends ConsumerState<PlacesScreen> {
                 value: state,
                 onRetry: () => ref.invalidate(placesControllerProvider),
                 builder: (context, value) => switch (_tab) {
-                    _Tab.zones => _Zones(
-                        zones: value.zones,
-                        landmarks: value.landmarks,
-                      ),
-                    _Tab.landmarks =>
-                      _Landmarks(zones: value.zones, landmarks: value.landmarks),
-                    _Tab.suggestions => _Suggestions(
-                        suggestions: value.suggestions,
-                        zones: value.zones,
-                      ),
-                  },
+                  _Tab.zones => _Zones(
+                    zones: value.zones,
+                    landmarks: value.landmarks,
+                  ),
+                  _Tab.landmarks => _Landmarks(
+                    zones: value.zones,
+                    landmarks: value.landmarks,
+                  ),
+                  _Tab.suggestions => _Suggestions(
+                    suggestions: value.suggestions,
+                    zones: value.zones,
+                  ),
+                },
               ),
             ),
           ],
@@ -74,22 +76,18 @@ class _PlacesScreenState extends ConsumerState<PlacesScreen> {
       ),
       floatingActionButton: switch (_tab) {
         _Tab.zones => FloatingActionButton.extended(
-            key: PlacesScreen.addZoneKey,
-            onPressed: () => _editZone(context, ref, null),
-            icon: const Icon(Icons.add),
-            label: const Text('منطقة'),
-          ),
+          key: PlacesScreen.addZoneKey,
+          onPressed: () => _editZone(context, ref, null),
+          icon: const Icon(Icons.add),
+          label: const Text('منطقة'),
+        ),
         _Tab.landmarks => FloatingActionButton.extended(
-            key: PlacesScreen.addLandmarkKey,
-            onPressed: () => _editLandmark(
-              context,
-              ref,
-              null,
-              state.value?.zones ?? const [],
-            ),
-            icon: const Icon(Icons.add),
-            label: const Text('علامة'),
-          ),
+          key: PlacesScreen.addLandmarkKey,
+          onPressed: () =>
+              _editLandmark(context, ref, null, state.value?.zones ?? const []),
+          icon: const Icon(Icons.add),
+          label: const Text('علامة'),
+        ),
         // Nothing to add by hand here — the list is what customers already told us.
         _Tab.suggestions => null,
       },
@@ -112,122 +110,221 @@ class _Tabs extends StatelessWidget {
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.all(Space.gutter),
-      child: Row(
-        children: [
-          LuqmaChip(
-            key: PlacesScreen.zonesTabKey,
-            label: 'المناطق',
-            selected: current == _Tab.zones,
-            onTap: () => onChanged(_Tab.zones),
-          ),
-          const SizedBox(width: Space.sm),
-          LuqmaChip(
-            key: PlacesScreen.landmarksTabKey,
-            label: 'العلامات',
-            selected: current == _Tab.landmarks,
-            onTap: () => onChanged(_Tab.landmarks),
-          ),
-          const SizedBox(width: Space.sm),
-          LuqmaChip(
-            key: PlacesScreen.suggestionsTabKey,
-            // The count carries the whole message: there is work waiting, and how much.
-            label: suggestionCount > 0 ? 'مقترحة ($suggestionCount)' : 'مقترحة',
-            selected: current == _Tab.suggestions,
-            onTap: () => onChanged(_Tab.suggestions),
-          ),
-        ],
+      // A Wrap: on a narrow phone the third tab moves to a second line rather than
+      // leaving the screen.
+      child: Align(
+        alignment: AlignmentDirectional.centerStart,
+        child: Wrap(
+          spacing: Space.sm,
+          runSpacing: Space.sm,
+          children: [
+            LuqmaChip(
+              key: PlacesScreen.zonesTabKey,
+              label: 'المناطق',
+              selected: current == _Tab.zones,
+              onTap: () => onChanged(_Tab.zones),
+            ),
+            LuqmaChip(
+              key: PlacesScreen.landmarksTabKey,
+              label: 'العلامات',
+              selected: current == _Tab.landmarks,
+              onTap: () => onChanged(_Tab.landmarks),
+            ),
+            LuqmaChip(
+              key: PlacesScreen.suggestionsTabKey,
+              // The count carries the whole message: there is work waiting, and how much.
+              label: suggestionCount > 0
+                  ? 'مقترحة ($suggestionCount)'
+                  : 'مقترحة',
+              selected: current == _Tab.suggestions,
+              onTap: () => onChanged(_Tab.suggestions),
+            ),
+          ],
+        ),
       ),
     );
   }
 }
 
-class _Zones extends ConsumerWidget {
+class _Zones extends StatelessWidget {
   const _Zones({required this.zones, required this.landmarks});
 
   final List<Zone> zones;
   final List<Landmark> landmarks;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final theme = Theme.of(context);
-    final colors = theme.luqma;
-    final strings = LuqmaStrings.of(context);
-
+  Widget build(BuildContext context) {
     return ListView.separated(
-      padding: const EdgeInsets.symmetric(horizontal: Space.gutter),
+      padding: const EdgeInsets.only(
+        left: Space.gutter,
+        right: Space.gutter,
+        top: Space.sm,
+        bottom: 88,
+      ),
       itemCount: zones.length,
       separatorBuilder: (_, _) => const SizedBox(height: Space.sm),
       itemBuilder: (context, i) {
         final zone = zones[i];
-        final zoneLandmarks =
-            landmarks.where((l) => l.zoneId == zone.id).toList();
+        final zoneLandmarks = landmarks
+            .where((l) => l.zoneId == zone.id)
+            .toList();
+        return _ZoneCard(zone: zone, landmarks: zoneLandmarks, allZones: zones);
+      },
+    );
+  }
+}
 
-        return Container(
-          decoration: BoxDecoration(
-            color: colors.card,
-            borderRadius: Radii.cardAll,
-            border: Border.all(color: colors.hairline),
-            boxShadow: Elevations.card,
-          ),
-          padding: const EdgeInsets.all(Space.md),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              InkWell(
-                onTap: () => _editZone(context, ref, zone),
-                borderRadius: Radii.cardAll,
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+class _ZoneCard extends StatefulWidget {
+  const _ZoneCard({
+    required this.zone,
+    required this.landmarks,
+    required this.allZones,
+  });
+
+  final Zone zone;
+  final List<Landmark> landmarks;
+  final List<Zone> allZones;
+
+  @override
+  State<_ZoneCard> createState() => _ZoneCardState();
+}
+
+class _ZoneCardState extends State<_ZoneCard> {
+  late bool _isExpanded;
+
+  @override
+  void initState() {
+    super.initState();
+    _isExpanded = widget.landmarks.length <= 8;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = theme.luqma;
+    final strings = LuqmaStrings.of(context);
+
+    return Container(
+      decoration: BoxDecoration(
+        color: colors.card,
+        borderRadius: Radii.cardAll,
+        border: Border.all(color: colors.hairline),
+        boxShadow: Elevations.card,
+      ),
+      padding: const EdgeInsets.all(Space.md),
+      child: Consumer(
+        builder: (context, ref, _) => Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            InkWell(
+              onTap: () => _editZone(context, ref, widget.zone),
+              borderRadius: Radii.cardAll,
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          widget.zone.name,
+                          style: theme.textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        const SizedBox(height: Space.xs),
+                        Text(
+                          'إدكو',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: colors.textSecondary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Text(
+                    strings.price(widget.zone.defaultDeliveryFee),
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      color: colors.price,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: Space.sm),
+            Divider(height: 1, color: colors.hairline),
+            const SizedBox(height: Space.sm),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Flexible(
+                  child: Text(
+                    strings.placesLandmarksHeader,
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: colors.textSecondary,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                if (widget.landmarks.isNotEmpty)
+                  InkWell(
+                    onTap: () => setState(() => _isExpanded = !_isExpanded),
+                    borderRadius: Radii.pillAll,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: Space.xs,
+                        vertical: 2,
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
                         children: [
                           Text(
-                            zone.name,
-                            style: theme.textTheme.titleMedium?.copyWith(
+                            _isExpanded
+                                ? (widget.landmarks.length > 8
+                                      ? 'إخفاء (${widget.landmarks.length})'
+                                      : '${widget.landmarks.length} علامة')
+                                : '${widget.landmarks.length} علامة',
+                            style: theme.textTheme.labelSmall?.copyWith(
+                              color: colors.brand,
                               fontWeight: FontWeight.w700,
                             ),
                           ),
-                          const SizedBox(height: Space.xs),
-                          Text(
-                            'إدكو',
-                            style: theme.textTheme.bodySmall?.copyWith(
-                              color: colors.textSecondary,
-                            ),
+                          Icon(
+                            _isExpanded
+                                ? Icons.keyboard_arrow_up
+                                : Icons.keyboard_arrow_down,
+                            size: 18,
+                            color: colors.brand,
                           ),
                         ],
                       ),
                     ),
-                    Text(
-                      strings.price(zone.defaultDeliveryFee),
-                      style: theme.textTheme.titleSmall?.copyWith(
-                        color: colors.price,
-                        fontWeight: FontWeight.w700,
-                      ),
+                  )
+                else
+                  Text(
+                    '${widget.landmarks.length} علامة',
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: colors.textSecondary,
                     ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: Space.sm),
-              Divider(height: 1, color: colors.hairline),
-              const SizedBox(height: Space.sm),
-              Text(
-                strings.placesLandmarksHeader,
-                style: theme.textTheme.labelSmall?.copyWith(
-                  color: colors.textSecondary,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
+                  ),
+              ],
+            ),
+            if (_isExpanded) ...[
               const SizedBox(height: Space.xs),
               Wrap(
                 spacing: Space.xs,
                 runSpacing: Space.xs,
                 children: [
-                  for (final landmark in zoneLandmarks)
+                  for (final landmark in widget.landmarks)
                     LuqmaChip(
                       label: '📍 ${landmark.name}',
                       selected: false,
-                      onTap: () => _editLandmark(context, ref, landmark, zones),
+                      onTap: () => _editLandmark(
+                        context,
+                        ref,
+                        landmark,
+                        widget.allZones,
+                      ),
                     ),
                   LuqmaChip(
                     label: strings.placesAddLandmarkChip,
@@ -237,63 +334,158 @@ class _Zones extends ConsumerWidget {
                       context,
                       ref,
                       null,
-                      zones,
-                      initialZoneId: zone.id,
+                      widget.allZones,
+                      initialZoneId: widget.zone.id,
                     ),
                   ),
                 ],
               ),
             ],
-          ),
-        );
-      },
+          ],
+        ),
+      ),
     );
   }
 }
 
-class _Landmarks extends ConsumerWidget {
+class _Landmarks extends StatefulWidget {
   const _Landmarks({required this.zones, required this.landmarks});
 
   final List<Zone> zones;
   final List<Landmark> landmarks;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    return ListView(
-      padding: const EdgeInsets.symmetric(horizontal: Space.gutter),
-      children: [
-        for (final zone in zones) ...[
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: Space.sm),
-            child: Text(
-              zone.name,
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
-            ),
+  State<_Landmarks> createState() => _LandmarksState();
+}
+
+class _LandmarksState extends State<_Landmarks> {
+  String _searchQuery = '';
+
+  @override
+  Widget build(BuildContext context) {
+    if (widget.zones.isEmpty) {
+      return Consumer(
+        builder: (context, ref, _) => LuqmaEmptyView(
+          message: 'ضيف منطقة الأول',
+          action: FilledButton(
+            onPressed: () => _editZone(context, ref, null),
+            child: const Text('إضافة منطقة'),
           ),
-          for (final landmark in landmarks.where((l) => l.zoneId == zone.id))
-            Padding(
-              padding: const EdgeInsets.only(bottom: Space.sm),
-              child: _Row(
-                title: landmark.name,
-                onTap: () => _editLandmark(context, ref, landmark, zones),
+        ),
+      );
+    }
+
+    final query = ArabicText.normalize(_searchQuery.trim());
+    final filteredLandmarks = query.isEmpty
+        ? widget.landmarks
+        : widget.landmarks
+              .where((l) => ArabicText.normalize(l.name).contains(query))
+              .toList();
+
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(
+            Space.gutter,
+            Space.sm,
+            Space.gutter,
+            Space.xs,
+          ),
+          child: TextField(
+            decoration: InputDecoration(
+              hintText: 'بحث في العلامات…',
+              prefixIcon: const Icon(Icons.search),
+              isDense: true,
+              filled: true,
+              border: OutlineInputBorder(
+                borderRadius: Radii.fieldAll,
+                borderSide: BorderSide(color: Theme.of(context).luqma.hairline),
               ),
             ),
-        ],
+            onChanged: (v) => setState(() => _searchQuery = v),
+          ),
+        ),
+        Expanded(
+          child: Consumer(
+            builder: (context, ref, _) {
+              return ListView(
+                padding: const EdgeInsets.only(
+                  left: Space.gutter,
+                  right: Space.gutter,
+                  bottom: 88,
+                ),
+                children: [
+                  for (final zone in widget.zones) ...[
+                    if (query.isEmpty) ...[
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: Space.sm),
+                        child: Text(
+                          zone.name,
+                          style: Theme.of(context).textTheme.titleMedium
+                              ?.copyWith(fontWeight: FontWeight.w700),
+                        ),
+                      ),
+                      for (final landmark in filteredLandmarks.where(
+                        (l) => l.zoneId == zone.id,
+                      ))
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: Space.sm),
+                          child: _Row(
+                            title: landmark.name,
+                            onTap: () => _editLandmark(
+                              context,
+                              ref,
+                              landmark,
+                              widget.zones,
+                            ),
+                          ),
+                        ),
+                    ] else if (filteredLandmarks.any(
+                      (l) => l.zoneId == zone.id,
+                    )) ...[
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: Space.sm),
+                        child: Text(
+                          zone.name,
+                          style: Theme.of(context).textTheme.titleMedium
+                              ?.copyWith(fontWeight: FontWeight.w700),
+                        ),
+                      ),
+                      for (final landmark in filteredLandmarks.where(
+                        (l) => l.zoneId == zone.id,
+                      ))
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: Space.sm),
+                          child: _Row(
+                            title: landmark.name,
+                            onTap: () => _editLandmark(
+                              context,
+                              ref,
+                              landmark,
+                              widget.zones,
+                            ),
+                          ),
+                        ),
+                    ],
+                  ],
+                ],
+              );
+            },
+          ),
+        ),
       ],
     );
   }
 }
 
-class _Suggestions extends ConsumerWidget {
+class _Suggestions extends StatelessWidget {
   const _Suggestions({required this.suggestions, required this.zones});
 
   final List<LandmarkSuggestion> suggestions;
   final List<Zone> zones;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     if (suggestions.isEmpty) {
       return const LuqmaEmptyView(
         key: PlacesScreen.noSuggestionsKey,
@@ -303,24 +495,152 @@ class _Suggestions extends ConsumerWidget {
     }
 
     return ListView.separated(
-      padding: const EdgeInsets.symmetric(horizontal: Space.gutter),
+      padding: const EdgeInsets.only(
+        left: Space.gutter,
+        right: Space.gutter,
+        top: Space.sm,
+        bottom: 88,
+      ),
       itemCount: suggestions.length,
       separatorBuilder: (_, _) => const SizedBox(height: Space.sm),
       itemBuilder: (context, i) {
-        final suggestion = suggestions[i];
-        final zone = zones.where((z) => z.id == suggestion.zoneId).firstOrNull;
+        return _SuggestionRow(suggestion: suggestions[i], zones: zones);
+      },
+    );
+  }
+}
 
+class _SuggestionRow extends StatefulWidget {
+  const _SuggestionRow({required this.suggestion, required this.zones});
+
+  final LandmarkSuggestion suggestion;
+  final List<Zone> zones;
+
+  @override
+  State<_SuggestionRow> createState() => _SuggestionRowState();
+}
+
+class _SuggestionRowState extends State<_SuggestionRow> {
+  bool _isSubmitting = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final suggestion = widget.suggestion;
+    final zone = widget.zones
+        .where((z) => z.id == suggestion.zoneId)
+        .firstOrNull;
+
+    return Consumer(
+      builder: (context, ref, _) {
         return _Row(
           title: suggestion.name,
-          // Where and how often — the two things that decide whether it is real.
-          subtitle: '${zone?.name ?? suggestion.zoneId} · '
+          subtitle:
+              '${zone?.name ?? suggestion.zoneId} · '
               'اتكتبت ${suggestion.count} مرة',
-          trailing: FilledButton(
-            key: PlacesScreen.acceptSuggestionKey(suggestion.name),
-            onPressed: () => ref
-                .read(placesControllerProvider.notifier)
-                .acceptSuggestion(suggestion),
-            child: const Text('أضف'),
+          // Below the name rather than beside it: three buttons beside a place name left
+          // the name a column one letter wide on a phone.
+          footer: Wrap(
+            alignment: WrapAlignment.end,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: Space.xs,
+            runSpacing: Space.xs,
+            children: [
+              IconButton(
+                key: Key('places.dismiss.${suggestion.name}'),
+                tooltip: 'رفض الاقتراح',
+                icon: const Icon(Icons.close_rounded),
+                onPressed: _isSubmitting
+                    ? null
+                    : () async {
+                        final sure = await showDialog<bool>(
+                          context: context,
+                          builder: (dialogContext) => AlertDialog(
+                            title: Text('رفض «${suggestion.name}»'),
+                            content: const Text(
+                              'مش هيظهر هنا تاني حتى لو العملاء كتبوه تاني.',
+                            ),
+                            actions: [
+                              TextButton(
+                                onPressed: () =>
+                                    Navigator.of(dialogContext).pop(false),
+                                child: const Text('رجوع'),
+                              ),
+                              FilledButton(
+                                key: const Key('places.confirmDismiss'),
+                                onPressed: () =>
+                                    Navigator.of(dialogContext).pop(true),
+                                child: const Text('ارفض'),
+                              ),
+                            ],
+                          ),
+                        );
+                        if (sure != true || !context.mounted) return;
+                        setState(() => _isSubmitting = true);
+                        final messenger = ScaffoldMessenger.of(context);
+                        final res = await ref
+                            .read(placesControllerProvider.notifier)
+                            .dismissSuggestion(suggestion);
+                        if (mounted) setState(() => _isSubmitting = false);
+                        messenger.showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              res.isOk
+                                  ? 'اترفض الاقتراح'
+                                  : 'مقدرناش نرفضه. جرّب تاني.',
+                            ),
+                          ),
+                        );
+                      },
+              ),
+              OutlinedButton(
+                key: Key('places.editAccept.${suggestion.name}'),
+                onPressed: _isSubmitting
+                    ? null
+                    : () => _editLandmark(
+                        context,
+                        ref,
+                        null,
+                        widget.zones,
+                        initialZoneId: suggestion.zoneId,
+                        initialName: suggestion.name,
+                      ),
+                child: const Text('عدّل واقبل'),
+              ),
+              const SizedBox(width: Space.xs),
+              FilledButton(
+                key: PlacesScreen.acceptSuggestionKey(suggestion.name),
+                onPressed: _isSubmitting
+                    ? null
+                    : () async {
+                        setState(() => _isSubmitting = true);
+                        final messenger = ScaffoldMessenger.of(context);
+                        final res = await ref
+                            .read(placesControllerProvider.notifier)
+                            .acceptSuggestion(suggestion);
+                        if (mounted) {
+                          setState(() => _isSubmitting = false);
+                        }
+                        if (res.isOk) {
+                          messenger.showSnackBar(
+                            const SnackBar(
+                              content: Text('تمت إضافة العلامة بنجاح'),
+                            ),
+                          );
+                        } else {
+                          messenger.showSnackBar(
+                            const SnackBar(content: Text('فشل إضافة العلامة')),
+                          );
+                        }
+                      },
+                child: _isSubmitting
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Text('أضف'),
+              ),
+            ],
           ),
         );
       },
@@ -329,11 +649,27 @@ class _Suggestions extends ConsumerWidget {
 }
 
 class _Row extends StatelessWidget {
-  const _Row({required this.title, this.subtitle, this.trailing, this.onTap});
+  const _Row({
+    required this.title,
+    this.subtitle,
+    this.footer,
+    this.onTap,
+  });
 
   final String title;
   final String? subtitle;
-  final Widget? trailing;
+  final Widget? footer;
+
+  Widget _withFooter(Widget row) => footer == null
+      ? row
+      : Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            row,
+            const SizedBox(height: Space.sm),
+            footer!,
+          ],
+        );
   final VoidCallback? onTap;
 
   @override
@@ -353,31 +689,33 @@ class _Row extends StatelessWidget {
           border: Border.all(color: colors.hairline),
           boxShadow: Elevations.card,
         ),
-        child: Row(
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  if (subtitle != null) ...[
-                    const SizedBox(height: Space.xs),
+        child: _withFooter(
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
                     Text(
-                      subtitle!,
-                      style: theme.textTheme.bodySmall
-                          ?.copyWith(color: colors.textSecondary),
+                      title,
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
+                    if (subtitle != null) ...[
+                      const SizedBox(height: Space.xs),
+                      Text(
+                        subtitle!,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: colors.textSecondary,
+                        ),
+                      ),
+                    ],
                   ],
-                ],
+                ),
               ),
-            ),
-            ?trailing,
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -390,14 +728,20 @@ Future<void> _editZone(BuildContext context, WidgetRef ref, Zone? existing) {
     builder: (dialogContext) => _EditDialog(
       title: existing == null ? 'منطقة جديدة' : 'تعديل المنطقة',
       initialName: existing?.name,
-      initialFee: existing == null ? null : Money.format(existing.defaultDeliveryFee),
+      initialFee: existing == null
+          ? null
+          : Money.format(existing.defaultDeliveryFee),
       onSave: (name, fee, _) async {
-        await ref.read(placesControllerProvider.notifier).saveZone(
-              existing: existing,
-              name: name,
-              deliveryFee: fee ?? 0,
-            );
-        if (dialogContext.mounted) Navigator.of(dialogContext).pop();
+        final res = await ref
+            .read(placesControllerProvider.notifier)
+            .saveZone(existing: existing, name: name, deliveryFee: fee ?? 0);
+        if (res.isOk && dialogContext.mounted) {
+          Navigator.of(dialogContext).pop();
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(const SnackBar(content: Text('تم حفظ المنطقة بنجاح')));
+        }
+        return res;
       },
     ),
   );
@@ -409,29 +753,98 @@ Future<void> _editLandmark(
   Landmark? existing,
   List<Zone> zones, {
   String? initialZoneId,
+  String? initialName,
 }) {
+  if (zones.isEmpty) {
+    return showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('ضيف منطقة الأول'),
+        content: const Text('لازم تضيف منطقة قبل ما تضيف علامة.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('إلغاء'),
+          ),
+          FilledButton(
+            onPressed: () {
+              Navigator.of(dialogContext).pop();
+              _editZone(context, ref, null);
+            },
+            child: const Text('إضافة منطقة'),
+          ),
+        ],
+      ),
+    );
+  }
+
   return showDialog<void>(
     context: context,
     builder: (dialogContext) => _EditDialog(
       title: existing == null ? 'علامة جديدة' : 'تعديل العلامة',
-      initialName: existing?.name,
+      initialName: existing?.name ?? initialName,
       zones: zones,
-      initialZoneId: existing?.zoneId ?? initialZoneId ?? zones.firstOrNull?.id,
+      initialZoneId:
+          zones.any((z) => z.id == (existing?.zoneId ?? initialZoneId))
+          ? (existing?.zoneId ?? initialZoneId)
+          : zones.firstOrNull?.id,
       onDelete: existing == null
           ? null
           : () async {
-              await ref
+              final confirmed = await showDialog<bool>(
+                context: dialogContext,
+                builder: (confirmContext) => AlertDialog(
+                  title: Text('حذف ${existing.name}'),
+                  content: Text(
+                    'هل أنت متأكد من حذف "${existing.name}"؟ العناوين اللي استخدمتها هتحتفظ بالنص لكن هتفقد ربط العلامة.',
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.of(confirmContext).pop(false),
+                      child: const Text('إلغاء'),
+                    ),
+                    TextButton(
+                      onPressed: () => Navigator.of(confirmContext).pop(true),
+                      style: TextButton.styleFrom(
+                        foregroundColor: Theme.of(confirmContext).luqma.danger,
+                      ),
+                      child: const Text('حذف'),
+                    ),
+                  ],
+                ),
+              );
+              if (confirmed != true) return null;
+
+              final res = await ref
                   .read(placesControllerProvider.notifier)
                   .deleteLandmark(existing.id);
-              if (dialogContext.mounted) Navigator.of(dialogContext).pop();
+              if (res.isOk && dialogContext.mounted) {
+                Navigator.of(dialogContext).pop();
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('تم حذف العلامة بنجاح')),
+                );
+              } else if (!res.isOk && dialogContext.mounted) {
+                ScaffoldMessenger.of(dialogContext).showSnackBar(
+                  const SnackBar(content: Text('فشل حذف العلامة')),
+                );
+              }
+              return res;
             },
       onSave: (name, _, zoneId) async {
-        await ref.read(placesControllerProvider.notifier).saveLandmark(
+        final res = await ref
+            .read(placesControllerProvider.notifier)
+            .saveLandmark(
               existing: existing,
               name: name,
-              zoneId: zoneId ?? zones.first.id,
+              zoneId: zoneId ?? zones.firstOrNull?.id ?? '',
             );
-        if (dialogContext.mounted) Navigator.of(dialogContext).pop();
+        if (res.isOk && dialogContext.mounted) {
+          Navigator.of(dialogContext).pop();
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(const SnackBar(content: Text('تم حفظ العلامة بنجاح')));
+        }
+        return res;
       },
     ),
   );
@@ -453,8 +866,9 @@ class _EditDialog extends StatefulWidget {
   final String? initialFee;
   final List<Zone>? zones;
   final String? initialZoneId;
-  final Future<void> Function(String name, int? fee, String? zoneId) onSave;
-  final Future<void> Function()? onDelete;
+  final Future<Result<dynamic>> Function(String name, int? fee, String? zoneId)
+  onSave;
+  final Future<Result<dynamic>?> Function()? onDelete;
 
   @override
   State<_EditDialog> createState() => _EditDialogState();
@@ -466,6 +880,9 @@ class _EditDialogState extends State<_EditDialog> {
   late String _name = widget.initialName ?? '';
   late String _fee = widget.initialFee ?? '';
   late String? _zoneId = widget.initialZoneId;
+  bool _isSubmitting = false;
+  bool _saving = false;
+  String? _errorMessage;
 
   @override
   Widget build(BuildContext context) {
@@ -477,7 +894,15 @@ class _EditDialogState extends State<_EditDialog> {
         key: _formKey,
         child: Column(
           mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            if (_errorMessage != null) ...[
+              Text(
+                _errorMessage!,
+                style: TextStyle(color: Theme.of(context).luqma.danger),
+              ),
+              const SizedBox(height: Space.sm),
+            ],
             TextFormField(
               key: PlacesScreen.nameFieldKey,
               initialValue: _name,
@@ -494,9 +919,11 @@ class _EditDialogState extends State<_EditDialog> {
                 initialValue: _fee,
                 decoration: const InputDecoration(labelText: 'التوصيل بالجنيه'),
                 keyboardType: TextInputType.number,
-                validator: (v) =>
-                    Money.parse(v ?? '') == null ? 'اكتب رقم صحيح' : null,
-                onSaved: (v) => _fee = v!,
+                validator: (v) {
+                  final folded = ArabicDigits.fold(v ?? '');
+                  return Money.parse(folded) == null ? 'اكتب رقم صحيح' : null;
+                },
+                onSaved: (v) => _fee = ArabicDigits.fold(v ?? ''),
               ),
             ],
             if (widget.zones != null) ...[
@@ -518,24 +945,68 @@ class _EditDialogState extends State<_EditDialog> {
       actions: [
         if (widget.onDelete != null)
           TextButton(
-            onPressed: widget.onDelete,
+            onPressed: _isSubmitting
+                ? null
+                : () async {
+                    setState(() {
+                      _isSubmitting = true;
+                      _errorMessage = null;
+                    });
+                    final res = await widget.onDelete!();
+                    if (res == null) {
+                      if (mounted) setState(() => _isSubmitting = false);
+                      return;
+                    }
+                    if (mounted && !res.isOk) {
+                      setState(() {
+                        _isSubmitting = false;
+                        _errorMessage = 'فشل الحذف';
+                      });
+                    }
+                  },
             style: TextButton.styleFrom(
               foregroundColor: Theme.of(context).luqma.danger,
             ),
             child: const Text('احذف'),
           ),
         TextButton(
-          onPressed: () => Navigator.of(context).pop(),
+          onPressed: _isSubmitting ? null : () => Navigator.of(context).pop(),
           child: const Text('إلغاء'),
         ),
         FilledButton(
           key: PlacesScreen.saveKey,
-          onPressed: () {
-            if (!_formKey.currentState!.validate()) return;
-            _formKey.currentState!.save();
-            widget.onSave(_name, Money.parse(_fee), _zoneId);
-          },
-          child: const Text('احفظ'),
+          onPressed: _isSubmitting
+              ? null
+              : () async {
+                  if (!_formKey.currentState!.validate()) return;
+                  _formKey.currentState!.save();
+                  setState(() {
+                    _isSubmitting = true;
+                    _saving = true;
+                    _errorMessage = null;
+                  });
+                  final res = await widget.onSave(
+                    _name,
+                    Money.parse(_fee),
+                    _zoneId,
+                  );
+                  if (mounted && !res.isOk) {
+                    setState(() {
+                      _isSubmitting = false;
+                      _saving = false;
+                      _errorMessage = 'فشل الحفظ، حاول مرة أخرى';
+                    });
+                  }
+                },
+          // Spins only for a save: a delete waits on its own confirmation first, and a
+          // spinner under that question read as if the save had started.
+          child: _isSubmitting && _saving
+              ? const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Text('احفظ'),
         ),
       ],
     );

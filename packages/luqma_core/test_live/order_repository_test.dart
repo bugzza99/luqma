@@ -378,9 +378,17 @@ void main() {
     });
 
     test('an unserved zone is refused; a served one carries the fee', () async {
+      // A zone of its own: a shop always serves the zone it stands in (20260912), so an
+      // address there is never «unserved».
+      final farZone = await live.client
+          .from('zones')
+          .insert({'city_id': cityId, 'name': 'بعيد', 'default_delivery_fee': 1500})
+          .select()
+          .single()
+          .then((row) => row['id'] as String);
       final addressId = await live.client.from('addresses').insert({
         'user_id': customerUid,
-        'zone_id': zoneId,
+        'zone_id': farZone,
         'label': 'البيت',
         'street': 'شارع الميناء',
       }).select().single().then((row) => row['id'] as String);
@@ -410,7 +418,7 @@ void main() {
 
       await live.client.from('merchant_served_zones').insert({
         'merchant_id': merchantId,
-        'zone_id': zoneId,
+        'zone_id': farZone,
       });
 
       final accepted = await customerRepository.placeOrder(toAddress());

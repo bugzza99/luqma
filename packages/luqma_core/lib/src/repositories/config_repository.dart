@@ -15,12 +15,33 @@ abstract interface class ConfigRepository {
   /// Upserts the given keys and returns the full persisted config. Keys absent from
   /// [values] are left alone.
   Future<Result<Map<String, Object>>> setValues(Map<String, Object> values);
+
+  /// The one commission rate and the alert line, together — and every shop that follows
+  /// the rate moves with it (`admin_set_commission_policy`). Returns how many moved.
+  Future<Result<int>> setCommissionPolicy({
+    required double percent,
+    required int alertPounds,
+  });
 }
 
 class SupabaseConfigRepository implements ConfigRepository {
   SupabaseConfigRepository(this._db);
 
   final SupabaseClient _db;
+
+  @override
+  Future<Result<int>> setCommissionPolicy({
+    required double percent,
+    required int alertPounds,
+  }) {
+    return Result.guard(() async {
+      final r = await _db.rpc('admin_set_commission_policy', params: {
+        'p_percent': percent,
+        'p_alert_pounds': alertPounds,
+      });
+      return ((r as Map)['shopsMoved'] as num?)?.toInt() ?? 0;
+    });
+  }
 
   @override
   Future<Result<Map<String, Object>>> readAll() {
@@ -70,6 +91,25 @@ class FakeConfigRepository implements ConfigRepository {
 
   /// Every [setValues] call, so a test can assert exactly what the screen wrote.
   final List<Map<String, Object>> setCalls = [];
+
+  @override
+  Future<Result<int>> setCommissionPolicy({
+    required double percent,
+    required int alertPounds,
+  }) async {
+    if (failure != null) return Result.err(failure!);
+    if (setFailure != null) return Result.err(setFailure!);
+    if (percent < 0 || percent > 50 || alertPounds < 0) {
+      return const Result.err(ValidationFailure());
+    }
+    _values['default_commission_percent'] = percent;
+    _values['commission_alert_pounds'] = alertPounds;
+    setCalls.add({
+      'default_commission_percent': percent,
+      'commission_alert_pounds': alertPounds,
+    });
+    return const Result.ok(0);
+  }
 
   @override
   Future<Result<Map<String, Object>>> readAll() async {

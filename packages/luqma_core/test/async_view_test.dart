@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -113,5 +115,43 @@ void main() {
     // reads as the app losing their place.
     expect(find.text('rows: 1'), findsOneWidget);
     expect(find.byType(CircularProgressIndicator), findsNothing);
+  });
+
+  // Keeping the old rows was right; saying nothing was not. An order list that stopped
+  // updating looked exactly like one with nothing new (QA review 2026-09-19).
+  testWidgets('a refresh that fails over loaded data keeps the data and says so',
+      (tester) async {
+    final rows = StreamController<List<String>>();
+    addTearDown(rows.close);
+    final source = StreamProvider<List<String>>((ref) => rows.stream);
+    var retried = 0;
+
+    await tester.pumpWidget(
+      ProviderScope(
+        child: MaterialApp(
+          theme: LuqmaTheme.light,
+          locale: const Locale('ar'),
+          localizationsDelegates: LuqmaStrings.localizationsDelegates,
+          supportedLocales: LuqmaStrings.supportedLocales,
+          home: Scaffold(
+            body: Consumer(
+              builder: (context, ref, _) =>
+                  view(ref.watch(source), onRetry: () => retried++),
+            ),
+          ),
+        ),
+      ),
+    );
+    rows.add(['a', 'b']);
+    await tester.pump();
+    expect(find.byKey(LuqmaAsyncView.staleKey), findsNothing);
+
+    rows.addError(const OfflineFailure());
+    await tester.pump();
+
+    expect(find.text('rows: 2'), findsOneWidget);
+    expect(find.byKey(LuqmaAsyncView.staleKey), findsOneWidget);
+    await tester.tap(find.text('حاول تاني'));
+    expect(retried, 1);
   });
 }

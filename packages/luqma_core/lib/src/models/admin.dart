@@ -212,7 +212,13 @@ class AdminToday {
     required this.moneyToday,
     required this.needsAttention,
     required this.openIssues,
+    this.platformToday = 0,
   });
+
+  /// Piastres: what the platform itself took today — the commission settled on today's
+  /// deliveries, charges taken back left out. [moneyToday] is the shops' takings; this is
+  /// the figure the owner collects.
+  final int platformToday;
 
   /// Orders placed today that were not refused or cancelled.
   final int ordersToday;
@@ -243,6 +249,7 @@ class AdminToday {
         NeedsAttentionItem.fromJson(Map<String, dynamic>.from(item as Map)),
     ],
     openIssues: (json['openIssues'] as num?)?.toInt() ?? 0,
+    platformToday: (json['platformToday'] as num?)?.toInt() ?? 0,
   );
 }
 

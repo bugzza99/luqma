@@ -31,6 +31,8 @@ const configBounds = <String, ConfigBound>{
   'splash_min_millis': ConfigBound(0, 5000),
   'delivery_fee_min': ConfigBound(0, 100000),
   'delivery_fee_max': ConfigBound(0, 100000),
+  // In pounds: what a shop may owe before it and the owner are told (20261010000000).
+  'commission_alert_pounds': ConfigBound(0, 1000000),
 };
 
 /// A plain map. Used by tests, and as the empty source on the very first cold start.
@@ -73,6 +75,8 @@ class LuqmaConfig {
     required this.adminUpdateUrl,
     required this.updateMessage,
     required this.supportWhatsapp,
+    this.defaultCommissionPercent = 5,
+    this.commissionAlertPounds = 500,
     this.aboutDescription,
     this.developerName,
     this.developerBio,
@@ -119,6 +123,13 @@ class LuqmaConfig {
   final String? adminUpdateUrl;
   final String updateMessage;
   final String supportWhatsapp;
+
+  /// The one commission rate every shop follows unless the owner agreed it another
+  /// (`merchants.commission_custom`). A percentage of the food, never of delivery.
+  final double defaultCommissionPercent;
+
+  /// Owed above this many pounds, a shop and the owner are told.
+  final int commissionAlertPounds;
 
   /// «حول لقمة» — the product, in the owner's words. Edited from AdminApp.
   final String? aboutDescription;
@@ -233,6 +244,15 @@ class LuqmaConfig {
           text('support_whatsapp') ??
           text('supportWhatsapp') ??
           defaults.supportWhatsapp,
+      defaultCommissionPercent: () {
+        final value = source.read('default_commission_percent');
+        if (value is num && value >= 0 && value <= 50) return value.toDouble();
+        return defaults.defaultCommissionPercent;
+      }(),
+      commissionAlertPounds: ranged(
+        'commission_alert_pounds',
+        defaults.commissionAlertPounds,
+      ),
       aboutDescription: text('about_description'),
       developerName: text('developer_name'),
       developerBio: text('developer_bio'),

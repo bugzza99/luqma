@@ -78,10 +78,12 @@ class ModuleGridScreen extends ConsumerWidget {
                   gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
                     // Two columns on a phone, more as the window grows. An extent rather than a
                     // count, so the tablet and the browser are the same code.
-                    maxCrossAxisExtent: 200,
-                    mainAxisSpacing: Space.md,
-                    crossAxisSpacing: Space.md,
-                    childAspectRatio: 1.15,
+                    // Three across on a phone: seventeen sections were nine rows of two tall
+                    // tiles, most of each tile empty (QA review 2026-09-19).
+                    maxCrossAxisExtent: 140,
+                    mainAxisSpacing: Space.sm,
+                    crossAxisSpacing: Space.sm,
+                    childAspectRatio: 1.05,
                   ),
                   itemCount: modules.length,
                   itemBuilder: (context, i) => _Tile(
@@ -121,6 +123,10 @@ class _Tile extends StatelessWidget {
       // read out on its own — "three" — tells a screen-reader user nothing, and eleven
       // of them competing is worse than none.
       label: hasWork ? '${module.label}، $count في الانتظار' : module.label,
+      // The tap lives here too: the node a screen reader lands on is this one, and the
+      // InkWell's own action is excluded below along with its label, so double-tapping a
+      // tile used to do nothing at all.
+      onTap: () => context.push(module.route),
       child: ExcludeSemantics(
         child: Material(
           color: colors.card,
@@ -136,7 +142,7 @@ class _Tile extends StatelessWidget {
             onTap: () => context.push(module.route),
             borderRadius: Radii.cardAll,
             child: Container(
-              padding: const EdgeInsets.all(Space.md),
+              padding: const EdgeInsets.all(Space.sm),
               decoration: BoxDecoration(
                 borderRadius: Radii.cardAll,
                 border: Border.all(color: colors.hairline),
@@ -144,12 +150,14 @@ class _Tile extends StatelessWidget {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(module.icon, size: 32, color: colors.brand),
-                  const SizedBox(height: Space.sm),
+                  Icon(module.icon, size: 28, color: colors.brand),
+                  const SizedBox(height: Space.xs),
                   Text(
                     module.label,
                     textAlign: TextAlign.center,
-                    style: theme.textTheme.titleMedium,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.titleSmall,
                   ),
                   const SizedBox(height: Space.xs),
                   // Nothing at all when there is nothing waiting. A row of tiles each

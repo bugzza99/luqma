@@ -29,6 +29,9 @@ void main() => luqmaBootstrap(() async {
       // The same shape the customer app shows on حسابي. Read here by the config screen,
       // which must not let a minimum version be set above the newest one that exists.
       appVersionProvider.overrideWithValue('${info.version} (${info.buildNumber})'),
+      // The owner's own photographs are on the product the moment they upload; the
+      // database allows it from an admin and from nobody else.
+      uploadsArriveApprovedProvider.overrideWithValue(true),
     ],
   );
 

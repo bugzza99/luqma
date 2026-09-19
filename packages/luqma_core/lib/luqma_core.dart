@@ -61,6 +61,7 @@ export 'src/repositories/media_repository.dart';
 export 'src/repositories/menu_repository.dart';
 export 'src/repositories/merchant_order_repository.dart';
 export 'src/repositories/order_repository.dart';
+export 'src/support/order_helper.dart';
 export 'src/repositories/popular_items_repository.dart';
 export 'src/repositories/merchant_sales_repository.dart';
 export 'src/repositories/profile_repository.dart';

@@ -1,7 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:luqma_core/luqma_core.dart';
+import 'package:url_launcher/url_launcher.dart';
 
+import '../billing/merchant_billing_screen.dart';
+import '../merchants/merchants_controller.dart';
 import '../shell/layout.dart';
 import 'dashboard_controller.dart';
 
@@ -11,45 +16,99 @@ import 'dashboard_controller.dart';
 /// here are the four things a problem shows up in: orders, money, the escalator queue and
 /// the ticket queue. Restyled to match the A2_Dashboard KPI cards and attention banner
 /// while preserving the exact underlying data model and keys.
-class DashboardScreen extends ConsumerWidget {
+class DashboardScreen extends ConsumerStatefulWidget {
   const DashboardScreen({super.key});
 
   static const needsAttentionKey = Key('dashboard.needsAttention');
   static const ordersKey = Key('dashboard.orders');
+  static const platformKey = Key('dashboard.platform');
+  static const updatedKey = Key('dashboard.updated');
   static const moneyKey = Key('dashboard.money');
   static const issuesKey = Key('dashboard.issues');
+  static const owedKey = Key('dashboard.owed');
+  static Key owedRowKey(String merchantId) => Key('dashboard.owed.$merchantId');
+  static Key attentionRowKey(String orderId) => Key('dashboard.attention.$orderId');
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<DashboardScreen> createState() => _DashboardScreenState();
+}
+
+class _DashboardScreenState extends ConsumerState<DashboardScreen> {
+  Timer? _tick;
+  DateTime? _updatedAt;
+
+  @override
+  void initState() {
+    super.initState();
+    // Coming back to a screen whose figures are cached: they were read before, and when.
+    if (ref.read(adminTodayProvider).hasValue) _updatedAt = ref.read(clockProvider)();
+    // The numbers were read once, so an order that went unanswered while the owner watched
+    // this screen never appeared on it. Asked again every minute while it is open.
+    _tick = Timer.periodic(const Duration(minutes: 1), (_) {
+      if (mounted) ref.invalidate(adminTodayProvider);
+    });
+  }
+
+  @override
+  void dispose() {
+    _tick?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final today = ref.watch(adminTodayProvider);
+    // When the figures on screen were read. A number that refreshes itself should say
+    // how fresh it is, or a dead connection reads as a quiet day (QA review 2026-09-19).
+    ref.listen(adminTodayProvider, (_, next) {
+      if (next.hasValue && !next.isLoading && !next.hasError) {
+        setState(() => _updatedAt = ref.read(clockProvider)());
+      }
+    });
 
     return Scaffold(
-      appBar: AppBar(title: const LuqmaLockup.appBar()),
+      // Named: the lockup said «لقمة» on a screen the grid calls «اليوم».
+      appBar: AppBar(title: const Text('اليوم')),
       body: AdminContent(
-        child: LuqmaAsyncView(
-          value: today,
-          onRetry: () => ref.invalidate(adminTodayProvider),
-          builder: (context, value) => _Body(today: value),
+        child: RefreshIndicator(
+          onRefresh: () async {
+            ref.invalidate(adminTodayProvider);
+            ref.invalidate(allMerchantsProvider);
+            await ref.read(adminTodayProvider.future).catchError((_) => today.value!);
+          },
+          child: LuqmaAsyncView(
+            value: today,
+            onRetry: () => ref.invalidate(adminTodayProvider),
+            builder: (context, value) => _Body(today: value, updatedAt: _updatedAt),
+          ),
         ),
       ),
     );
   }
 }
 
-class _Body extends StatelessWidget {
-  const _Body({required this.today});
+class _Body extends ConsumerWidget {
+  const _Body({required this.today, this.updatedAt});
 
   final AdminToday today;
+  final DateTime? updatedAt;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final colors = theme.luqma;
     final strings = LuqmaStrings.of(context);
+    // Every shop that owes commission, most first — the weekly collection round.
+    final owing = [
+      ...?ref.watch(allMerchantsProvider).asData?.value.where((m) => m.commissionOwed > 0),
+    ]..sort((a, b) => b.commissionOwed.compareTo(a.commissionOwed));
+    final alertAt = ref.watch(appConfigProvider).commissionAlertPounds * 100;
 
     final hasAttention = today.needsAttention.isNotEmpty || today.openIssues > 0;
 
     return ListView(
+      // Always scrollable, so pull-to-refresh works on a screen with little on it.
+      physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.all(Space.gutter),
       children: [
         const LuqmaNotificationBanner(
@@ -89,8 +148,8 @@ class _Body extends StatelessWidget {
                   Expanded(
                     child: _KpiCard(
                       key: DashboardScreen.moneyKey,
-                      label: 'فلوس النهارده',
-                      value: strings.price(today.moneyToday),
+                      label: 'قيمة الأوردرات المتسلّمة',
+                      value: strings.amount(today.moneyToday),
                       icon: Icons.payments_outlined,
                       isPrice: true,
                     ),
@@ -123,10 +182,12 @@ class _Body extends StatelessWidget {
                   ],
                 ),
                 const SizedBox(height: Space.sm),
+                // What was delivered today, food and delivery — not the platform's cut,
+                // which the old label «فلوس النهارده» could be read as.
                 _KpiCard(
                   key: DashboardScreen.moneyKey,
-                  label: 'فلوس النهارده',
-                  value: strings.price(today.moneyToday),
+                  label: 'قيمة الأوردرات المتسلّمة',
+                  value: strings.amount(today.moneyToday),
                   icon: Icons.payments_outlined,
                   isPrice: true,
                 ),
@@ -134,6 +195,23 @@ class _Body extends StatelessWidget {
             );
           },
         ),
+        const SizedBox(height: Space.sm),
+        // The shops' takings above; this is what the platform itself took from them.
+        _KpiCard(
+          key: DashboardScreen.platformKey,
+          label: 'عمولة لقمة النهارده',
+          value: strings.amount(today.platformToday),
+          icon: Icons.account_balance_wallet_outlined,
+          isPrice: true,
+        ),
+        if (updatedAt != null) ...[
+          const SizedBox(height: Space.xs),
+          Text(
+            'آخر تحديث ${_clock(updatedAt!)} — بيتحدّث لوحده كل دقيقة، واسحب لتحت للتحديث دلوقتي.',
+            key: DashboardScreen.updatedKey,
+            style: theme.textTheme.bodySmall?.copyWith(color: colors.textSecondary),
+          ),
+        ],
         const SizedBox(height: Space.xl),
         _SectionHeader(
           title: 'محتاجين اهتمام',
@@ -154,6 +232,56 @@ class _Body extends StatelessWidget {
               padding: const EdgeInsets.only(bottom: Space.sm),
               child: _QueueRow(item: item),
             ),
+          ),
+        const SizedBox(height: Space.xl),
+        _SectionHeader(title: 'عليهم عمولة', count: owing.length),
+        const SizedBox(height: Space.sm),
+        if (owing.isEmpty)
+          Text(
+            'مفيش محل عليه عمولة دلوقتي.',
+            style: theme.textTheme.bodyMedium?.copyWith(color: colors.textSecondary),
+          )
+        else
+          Column(
+            key: DashboardScreen.owedKey,
+            children: [
+              for (final shop in owing)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: Space.sm),
+                  child: Material(
+                    color: colors.card,
+                    borderRadius: Radii.cardAll,
+                    child: ListTile(
+                      key: DashboardScreen.owedRowKey(shop.id),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: Radii.cardAll,
+                        side: BorderSide(
+                          color: shop.commissionOwed >= alertAt && alertAt > 0
+                              ? colors.danger
+                              : colors.hairline,
+                        ),
+                      ),
+                      title: Text(shop.name),
+                      subtitle: shop.commissionOwed >= alertAt && alertAt > 0
+                          ? Text(
+                              'عدّى حد التنبيه',
+                              style: TextStyle(color: colors.danger),
+                            )
+                          : null,
+                      trailing: Text(
+                        strings.amount(shop.commissionOwed),
+                        style: LuqmaType.priceSmall.copyWith(color: colors.price),
+                      ),
+                      // Straight to where the cash is recorded.
+                      onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) => MerchantBillingScreen(merchantId: shop.id),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+            ],
           ),
       ],
     );
@@ -318,17 +446,86 @@ class _SectionHeader extends StatelessWidget {
 }
 
 /// One order waiting on the escalator queue, styled with an urgent danger stripe.
-class _QueueRow extends StatelessWidget {
+class _QueueRow extends ConsumerWidget {
   const _QueueRow({required this.item});
 
   final NeedsAttentionItem item;
 
+  /// An order nobody answered: the owner's two moves are to ring the shop, or to cancel it
+  /// so the customer is not left waiting. The row used to show both facts and offer neither.
+  Future<void> _act(BuildContext context, WidgetRef ref) async {
+    final shop = ref.read(merchantProvider(item.merchantId)).value;
+    await showModalBottomSheet<void>(
+      context: context,
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              title: Text('أوردر #${item.number} — ${item.merchantName}'),
+              subtitle: const Text('محدش ردّ عليه في الوقت.'),
+            ),
+            if (shop != null && shop.phone.isNotEmpty)
+              ListTile(
+                leading: const Icon(Icons.call_outlined),
+                title: Text('كلّم المحل (${shop.phone})'),
+                onTap: () => launchUrl(Uri.parse('tel:${shop.phone}')),
+              ),
+            ListTile(
+              key: const Key('dashboard.cancelOrder'),
+              leading: Icon(Icons.cancel_outlined, color: Theme.of(context).luqma.danger),
+              title: const Text('إلغي الأوردر'),
+              subtitle: const Text('العميل هيوصله إن الأوردر اتلغى.'),
+              onTap: () async {
+                Navigator.of(sheetContext).pop();
+                final sure = await showDialog<bool>(
+                  context: context,
+                  builder: (dialogContext) => AlertDialog(
+                    title: Text('إلغاء أوردر #${item.number}'),
+                    content: const Text('المحل مردّش على الأوردر. هيتلغي والعميل هيتبلّغ.'),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.of(dialogContext).pop(false),
+                        child: const Text('رجوع'),
+                      ),
+                      FilledButton(
+                        onPressed: () => Navigator.of(dialogContext).pop(true),
+                        child: const Text('إلغي'),
+                      ),
+                    ],
+                  ),
+                );
+                if (sure != true) return;
+                final result = await ref
+                    .read(orderRepositoryProvider)
+                    .cancel(item.id, reason: 'المحل مردّش على الأوردر');
+                ref.invalidate(adminTodayProvider);
+                if (!context.mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(result is Ok
+                        ? 'اتلغى أوردر #${item.number}'
+                        : 'مقدرناش نلغيه. جرّب تاني.'),
+                  ),
+                );
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final colors = theme.luqma;
 
-    return Container(
+    return InkWell(
+      key: DashboardScreen.attentionRowKey(item.id),
+      onTap: () => _act(context, ref),
+      borderRadius: Radii.cardAll,
+      child: Container(
       constraints: const BoxConstraints(minHeight: Sizes.minTarget),
       decoration: BoxDecoration(
         color: colors.card,
@@ -378,6 +575,13 @@ class _QueueRow extends StatelessWidget {
           ],
         ),
       ),
+      ),
     );
   }
+}
+
+/// «9:05» — the hour on a twelve-hour clock, the way the owner reads one.
+String _clock(DateTime at) {
+  final hour = at.hour % 12 == 0 ? 12 : at.hour % 12;
+  return '$hour:${at.minute.toString().padLeft(2, '0')}';
 }

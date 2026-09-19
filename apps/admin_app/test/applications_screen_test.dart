@@ -112,6 +112,9 @@ void main() {
       final approveButton = find.byKey(ApplicationsScreen.approveKey('app-new'));
       expect(approveButton, findsOneWidget);
 
+      // The card carries the applicant's whole note now; the buttons sit below the fold.
+      await tester.ensureVisible(approveButton);
+      await tester.pumpAndSettle();
       await tester.tap(approveButton);
       await tester.pumpAndSettle();
 
@@ -223,5 +226,35 @@ void main() {
       final confirm = tester.widget<FilledButton>(find.byKey(ApplicationsScreen.confirmKey));
       expect(confirm.onPressed, isNull);
     });
+  });
+
+  // A call from last month had nowhere to be looked up (QA review 2026-09-19).
+  testWidgets('decided applications can be found again, with the reason written then',
+      (tester) async {
+    final refused = StaffApplication(
+      id: 'app-done',
+      kind: StaffApplicationKind.homeKitchen,
+      name: 'مطبخ أم محمد',
+      phone: '01000000009',
+      status: StaffApplicationStatus.rejected,
+      reviewedAt: DateTime(2026, 8, 30),
+      reviewNote: 'مفيش ترخيص لسه',
+    );
+    await pump(tester, seed: [appOld, appNew, refused]);
+
+    await tester.tap(find.byKey(ApplicationsScreen.historyTabKey));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(ApplicationsScreen.decidedKey('app-done')), findsOneWidget);
+    expect(find.text('مفيش ترخيص لسه'), findsOneWidget);
+    expect(find.byKey(ApplicationsScreen.decidedKey('app-old')), findsNothing);
+
+    await tester.enterText(find.byKey(ApplicationsScreen.historySearchKey), '٠١٠٠٠٠٠٠٠٠٩');
+    await tester.pumpAndSettle();
+    expect(find.byKey(ApplicationsScreen.decidedKey('app-done')), findsOneWidget);
+
+    await tester.enterText(find.byKey(ApplicationsScreen.historySearchKey), 'حد تاني');
+    await tester.pumpAndSettle();
+    expect(find.byKey(ApplicationsScreen.decidedKey('app-done')), findsNothing);
   });
 }

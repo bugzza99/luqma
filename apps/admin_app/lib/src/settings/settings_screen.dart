@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:luqma_core/luqma_core.dart';
 
@@ -10,8 +11,10 @@ import '../shell/layout.dart';
 /// Config, plans and the "حول لقمة" content are set once, not every day, so they live
 /// behind one door rather than crowding the rail the owner uses hourly. Each pushes a
 /// route so the back affordance returns here.
-class SettingsScreen extends StatelessWidget {
+class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
+
+  static const signOutKey = Key('settings.signOut');
 
   static const configKey = Key('settings.config');
   static const plansKey = Key('settings.plans');
@@ -19,7 +22,7 @@ class SettingsScreen extends StatelessWidget {
   static const developerKey = Key('settings.developer');
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return Scaffold(
       appBar: AppBar(title: const Text('الإعدادات')),
       body: AdminContent(
@@ -56,6 +59,35 @@ class SettingsScreen extends StatelessWidget {
               title: 'عن المطور',
               subtitle: 'صورتك واسمك ونبذة عنك والروابط',
               onTap: () => context.push(Routes.developer),
+            ),
+            const SizedBox(height: Space.xl),
+            // There was no way to sign out of an admin account except on the screen that
+            // refuses access — so a phone handed to somebody else stayed signed in as the
+            // owner (QA review 2026-09-19).
+            OutlinedButton.icon(
+              key: signOutKey,
+              onPressed: () async {
+                final sure = await showDialog<bool>(
+                  context: context,
+                  builder: (dialogContext) => AlertDialog(
+                    title: const Text('تسجيل الخروج'),
+                    content: const Text('هتحتاج الإيميل وكلمة السر عشان تدخل تاني.'),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.of(dialogContext).pop(false),
+                        child: const Text('رجوع'),
+                      ),
+                      FilledButton(
+                        onPressed: () => Navigator.of(dialogContext).pop(true),
+                        child: const Text('اخرج'),
+                      ),
+                    ],
+                  ),
+                );
+                if (sure == true) await ref.read(authServiceProvider).signOut();
+              },
+              icon: const Icon(Icons.logout_rounded),
+              label: const Text('تسجيل الخروج'),
             ),
           ],
         ),

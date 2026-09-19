@@ -179,4 +179,43 @@ void main() {
     await tester.pumpAndSettle();
     expect(requests.activations.last, ('r2', null));
   });
+
+  testWidgets('shops tab search box filters shops by typed name', (tester) async {
+    await pump(tester, rows: [
+      SubscriptionOverviewRow(
+        merchantId: 'm1',
+        merchantName: 'مطعم البحر',
+        planId: 'basic',
+        planName: 'أساسية',
+        planExpiresAt: DateTime(2026, 11, 1),
+      ),
+      SubscriptionOverviewRow(
+        merchantId: 'm2',
+        merchantName: 'بيتزا الميدان',
+        planId: 'basic',
+        planName: 'أساسية',
+        planExpiresAt: DateTime(2026, 9, 19),
+      ),
+    ]);
+
+    await tester.tap(find.byKey(SubscriptionsScreen.shopsTabKey));
+    await tester.pumpAndSettle();
+
+    expect(find.text('مطعم البحر'), findsOneWidget);
+    expect(find.text('بيتزا الميدان'), findsOneWidget);
+
+    await tester.enterText(find.byKey(SubscriptionsScreen.shopSearchKey), 'بيتزا');
+    await tester.pumpAndSettle();
+
+    expect(find.text('مطعم البحر'), findsNothing);
+    expect(find.text('بيتزا الميدان'), findsOneWidget);
+  });
+
+  testWidgets('pull to refresh reloads the screen', (tester) async {
+    await pump(tester, rows: rows);
+
+    expect(find.byType(RefreshIndicator), findsWidgets);
+    await tester.fling(find.byType(ListView).first, const Offset(0, 300), 1000);
+    await tester.pumpAndSettle();
+  });
 }

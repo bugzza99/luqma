@@ -336,7 +336,7 @@ class FakeOrderRepository implements OrderRepository {
 
   final Map<String, Order> _orders;
   final Map<String, String> _clientOrders = {};
-  final Failure? failure;
+  Failure? failure;
 
   /// Every draft, issue and rating this repository was handed, so a test can assert on
   /// what a screen produced rather than on what it displayed.

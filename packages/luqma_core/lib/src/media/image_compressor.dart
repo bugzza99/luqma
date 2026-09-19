@@ -69,4 +69,19 @@ abstract final class ImageCompressor {
 
     return Uint8List.fromList(img.encodeJpg(fitted, quality: quality));
   }
+
+  /// Width and height of an encoded picture, read from its header rather than by decoding
+  /// the pixels. `(0, 0)` when the header cannot be read — the column's own default.
+  ///
+  /// The moderation card printed «0 × 0» for every upload because nothing measured one
+  /// (QA review 2026-09-19).
+  static (int, int) dimensionsOf(Uint8List bytes) {
+    try {
+      final info = img.findDecoderForData(bytes)?.startDecode(bytes);
+      if (info == null) return (0, 0);
+      return (info.width, info.height);
+    } catch (_) {
+      return (0, 0);
+    }
+  }
 }

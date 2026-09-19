@@ -123,4 +123,54 @@ void main() {
     expect(result.valueOrNull, isEmpty,
         reason: 'a customer with no orders reads as none, not as a broken screen');
   });
+
+  // The page boundary is a time *and* an id: 51 orders placed in the same instant must all
+  // be reachable, the 51st on the second page — a cursor on the time alone lost it
+  // (Astra's review, 2026-09-19).
+  test('history pages past fifty, even across orders placed in the same instant', () async {
+    final cityId = await live.makeCity();
+    addTearDown(() async => live.dropCity(cityId));
+    final zoneId = await live.client
+        .from('zones')
+        .insert({'city_id': cityId, 'name': 'المعمورة', 'default_delivery_fee': 1500})
+        .select()
+        .single()
+        .then((row) => row['id'] as String);
+    final merchantId = await live.client.from('merchants').insert({
+      'city_id': cityId,
+      'type': 'restaurant',
+      'name': 'مطعم البحر',
+      'zone_id': zoneId,
+      'phone': '01000000000',
+      'status': 'approved',
+    }).select().single().then((row) => row['id'] as String);
+    final uid = await customer(name: 'زبون قديم', phone: '01099887708');
+    final instant = DateTime.utc(2026, 9, 1, 12).toIso8601String();
+    await live.client.from('orders').insert([
+      for (var i = 0; i < historyPage + 1; i++)
+        {
+          'city_id': cityId,
+          'customer_uid': uid,
+          'customer_name': 'زبون قديم',
+          'customer_phone': '01099887708',
+          'merchant_id': merchantId,
+          'merchant_name': 'مطعم البحر',
+          'zone_id': zoneId,
+          'type': 'instant',
+          'items': [],
+          'pricing': {'subtotal': 1000, 'deliveryFee': 0, 'total': 1000},
+          'status': 'delivered',
+          'placed_at': instant,
+        },
+    ]);
+
+    final firstResult = await repository.history(uid);
+    expect(firstResult.failureOrNull, isNull);
+    final first = firstResult.valueOrNull!;
+    expect(first, hasLength(historyPage));
+    final second = (await repository.history(uid, after: first.last)).valueOrNull!;
+    expect(second, hasLength(1));
+    final ids = {...first.map((o) => o.id), ...second.map((o) => o.id)};
+    expect(ids, hasLength(historyPage + 1), reason: 'every order reachable, none twice');
+  });
 }

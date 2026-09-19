@@ -29,6 +29,8 @@ class ShopScreen extends ConsumerWidget {
   static const feedbackKey = Key('shop.feedback');
   static const billingKey = Key('shop.billing');
   static const statementKey = Key('shop.statement');
+  static const owedKey = Key('shop.owed');
+  static const owedAlertKey = Key('shop.owedAlert');
   static const analyticsKey = Key('shop.analytics');
   static const salesKey = analyticsKey;
   static const walletKey = Key('shop.wallet');
@@ -541,6 +543,11 @@ class _Billing extends ConsumerWidget {
     // moment has to be one a test can choose.
     final now = ref.watch(clockProvider)();
     final canAfford = Revenue.canAffordAnOrder(merchant);
+    // A plan that is running is what the shop pays, whatever the model underneath says:
+    // the model only applies once the plan lapses.
+    final planRunning =
+        merchant.planId != null && subscription != null && subscription.isActiveAt(now);
+    final alertAt = ref.watch(appConfigProvider).commissionAlertPounds * 100;
 
     return Container(
       key: ShopScreen.billingKey,
@@ -574,7 +581,9 @@ class _Billing extends ConsumerWidget {
           // The terms in one line. Without it the card was a plan name over a lone link,
           // and said nothing about what the shop actually pays.
           Text(
-            switch (merchant.revenueModel) {
+            planRunning
+                ? 'مبلغ ثابت كل شهر، ومفيش عمولة على الطلبات لحد ما الاشتراك يخلص.'
+                : switch (merchant.revenueModel) {
               RevenueModel.subscription =>
                 'مبلغ ثابت كل شهر، ومفيش عمولة على الطلبات.',
               RevenueModel.commission =>
@@ -584,6 +593,40 @@ class _Billing extends ConsumerWidget {
             },
             style: LuqmaType.bodySmall.copyWith(color: colors.textSecondary),
           ),
+          // What the shop owes the platform, said in words and in the shop's own card —
+          // and loudly once it passes the line the owner set (20261010000000).
+          if (merchant.commissionOwed > 0) ...[
+            const SizedBox(height: Space.sm),
+            Row(
+              key: ShopScreen.owedKey,
+              children: [
+                Expanded(
+                  child: Text(
+                    'عليك عمولة للقمة',
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: colors.textSecondary,
+                    ),
+                  ),
+                ),
+                Text(
+                  strings.amount(merchant.commissionOwed),
+                  style: LuqmaType.priceSmall.copyWith(
+                    color: alertAt > 0 && merchant.commissionOwed >= alertAt
+                        ? colors.danger
+                        : colors.price,
+                  ),
+                ),
+              ],
+            ),
+            if (alertAt > 0 && merchant.commissionOwed >= alertAt) ...[
+              const SizedBox(height: Space.xs),
+              Text(
+                key: ShopScreen.owedAlertKey,
+                'المبلغ عدّى ${strings.amount(alertAt)}. لقمة هتكلمك تتفقوا على ميعاد التحصيل.',
+                style: LuqmaType.bodySmall.copyWith(color: colors.danger),
+              ),
+            ],
+          ],
           if (merchant.revenueModel == RevenueModel.prepaid) ...[
             const SizedBox(height: Space.sm),
             Row(

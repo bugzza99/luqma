@@ -118,6 +118,11 @@ void main() {
           geographyRepositoryProvider.overrideWithValue(geography),
           externalLinksProvider.overrideWithValue(externalLinks),
           clockProvider.overrideWithValue(() => fixedClock),
+          // Salma also runs a shop: her staff row says so.
+          staffRepositoryProvider.overrideWithValue(FakeStaffRepository(seed: const [
+            StaffMember(
+                uid: 'u2', scope: 'merchant', role: 'owner', isActive: true, merchantId: 'm1'),
+          ])),
         ],
         child: MaterialApp(
           theme: LuqmaTheme.light,
@@ -163,6 +168,16 @@ void main() {
     expect(find.text('120 ج'), findsWidgets);
     expect(find.text('رفض'), findsOneWidget);
     expect(find.text('0'), findsOneWidget);
+  });
+
+  // A shop owner who also orders turned up among customers with nothing to say so
+  // (QA review 2026-09-19).
+  testWidgets('an account that is also staff says so on its row', (tester) async {
+    await pump(tester);
+    await search(tester, 'سلمى');
+
+    expect(find.byKey(CustomersScreen.staffNoteKey('u2')), findsOneWidget);
+    expect(find.textContaining('صاحب محل'), findsOneWidget);
   });
 
   testWidgets('renders avatar with initial letter and blocked badge when customer is blocked', (tester) async {
@@ -416,8 +431,30 @@ void main() {
       await tester.tap(find.byKey(CustomerDetailScreen.blockKey));
       await tester.pumpAndSettle();
 
+      expect(find.text('أحمد محمود مش هيقدر يطلب لحد ما تفك الحظر.'), findsOneWidget);
+      await tester.tap(find.widgetWithText(FilledButton, 'حظر'));
+      await tester.pumpAndSettle();
+
       expect(customers.blockCalls, [('u1', true)]);
       expect(find.text('فك الحظر'), findsOneWidget);
+    });
+
+    testWidgets('shows notice when 50 results come back', (tester) async {
+      final fifty = List.generate(
+        50,
+        (i) => CustomerSummary(
+          id: 'user_$i',
+          name: 'عميل $i',
+          phone: '010000000$i',
+          isBlocked: false,
+          rejectedOrdersCount: 0,
+          createdAt: DateTime(2026, 8, 1),
+        ),
+      );
+      await pump(tester, seed: fifty);
+      await search(tester, 'عميل');
+
+      expect(find.text('بيظهر أول 50 — اكتب رقم أدق'), findsOneWidget);
     });
 
     testWidgets('call button launches tel: uri or alerts when dialer is unavailable', (tester) async {
@@ -493,6 +530,7 @@ void main() {
           geographyRepositoryProvider.overrideWithValue(geography),
           externalLinksProvider.overrideWithValue(externalLinks),
           clockProvider.overrideWithValue(() => fixedClock),
+          staffRepositoryProvider.overrideWithValue(FakeStaffRepository()),
         ],
         child: MaterialApp(
           theme: LuqmaTheme.light,
@@ -532,7 +570,12 @@ void main() {
   group('the customer history', () {
     List<Order> manyOrders(int n) => [
           for (var i = 0; i < n; i++)
-            ahmedOrder.copyWith(id: 'o$i', orderNumber: 2000 + i),
+            ahmedOrder.copyWith(
+              id: 'o$i',
+              orderNumber: 2000 + i,
+              // Newest first, a minute apart, as the server pages them.
+              placedAt: DateTime(2026, 9, 1, 12).subtract(Duration(minutes: i)),
+            ),
         ];
 
     Future<void> open(WidgetTester tester, List<Order> history) async {
@@ -547,6 +590,7 @@ void main() {
             geographyRepositoryProvider.overrideWithValue(geography),
             externalLinksProvider.overrideWithValue(externalLinks),
             clockProvider.overrideWithValue(() => fixedClock),
+            staffRepositoryProvider.overrideWithValue(FakeStaffRepository()),
           ],
           child: MaterialApp(
             theme: LuqmaTheme.light,
@@ -594,6 +638,33 @@ void main() {
       await open(tester, manyOrders(50));
       expect(find.textContaining('آخر 50'), findsWidgets);
     });
+
+    // A support call about a months-old order stopped at the newest fifty.
+    testWidgets('older orders past the first fifty can be fetched', (tester) async {
+      await open(tester, manyOrders(55));
+      final scrollable = find
+          .descendant(
+            of: find.byType(CustomerDetailScreen),
+            matching: find.byType(Scrollable),
+          )
+          .first;
+
+      final showAll = find.byKey(CustomerDetailScreen.showAllOrdersKey);
+      await tester.scrollUntilVisible(showAll, 300, scrollable: scrollable);
+      await tester.tap(showAll);
+      await tester.pumpAndSettle();
+
+      final older = find.byKey(CustomerDetailScreen.olderOrdersKey);
+      await tester.scrollUntilVisible(older, 600, scrollable: scrollable);
+      await tester.tap(older);
+      await tester.pumpAndSettle();
+
+      await tester.scrollUntilVisible(find.textContaining('#2054'), 600,
+          scrollable: scrollable);
+      expect(find.textContaining('#2054'), findsWidgets);
+      expect(find.byKey(CustomerDetailScreen.olderOrdersKey), findsNothing,
+          reason: 'a short last page means there is nothing older');
+    });
   });
 }
 
@@ -613,7 +684,7 @@ class _SlowCustomers implements CustomerRepository {
   Future<Result<List<CustomerSummary>>> search(String query) async => Result.ok(_seed);
 
   @override
-  Future<Result<List<Order>>> history(String uid) =>
+  Future<Result<List<Order>>> history(String uid, {Order? after}) =>
       (_pending[uid] = Completer<Result<List<Order>>>()).future;
 
   @override

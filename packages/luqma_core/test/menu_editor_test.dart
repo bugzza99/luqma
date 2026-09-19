@@ -262,4 +262,120 @@ void main() {
     expect(renamed.sortOrder, 0);
     expect(repository.categories, hasLength(2), reason: 'a rename is not a new section');
   });
+
+  // A menu of a hundred dishes: finding the one to change was most of the work
+  // (QA review 2026-09-19).
+  testWidgets('search narrows the dishes across every section, with Arabic spellings folded',
+      (tester) async {
+    await pump(tester);
+
+    // «مشويه» for «مشوية»: the same word typed without the dots.
+    await tester.enterText(find.byKey(MenuEditor.searchKey), 'فراخ مشويه');
+    await tester.pumpAndSettle();
+    expect(find.text('فراخ مشوية'), findsOneWidget);
+    expect(find.text('عصير مانجو'), findsNothing);
+
+    await tester.enterText(find.byKey(MenuEditor.searchKey), '');
+    await tester.pumpAndSettle();
+    expect(find.text('عصير مانجو'), findsOneWidget);
+  });
+
+  // Sections that loaded over dishes that did not used to read as a menu with nothing in
+  // it, and the owner would start typing the whole menu again.
+  testWidgets('dishes that fail to load are an error with a retry, not an empty menu',
+      (tester) async {
+    tester.view.physicalSize = const Size(390 * 2, 844 * 2);
+    tester.view.devicePixelRatio = 2.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    repository = FakeMenuRepository(categories: categories, items: items);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          menuRepositoryProvider.overrideWithValue(repository),
+          menuItemsProvider('m1')
+              .overrideWith((ref) => Stream.error(const OfflineFailure())),
+        ],
+        child: MaterialApp(
+          theme: LuqmaTheme.light,
+          locale: const Locale('ar'),
+          localizationsDelegates: LuqmaStrings.localizationsDelegates,
+          supportedLocales: LuqmaStrings.supportedLocales,
+          home: const Scaffold(body: MenuEditor(merchantId: 'm1')),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byType(LuqmaErrorView), findsOneWidget);
+    expect(find.text('مشويات'), findsNothing);
+  });
+
+  // A dish typed on a weak connection vanished with the sheet: it closed whatever the
+  // save said (QA review 2026-09-19).
+  testWidgets('a save that fails keeps the sheet open with what was typed', (tester) async {
+    await pump(tester);
+    repository.failure = const OfflineFailure();
+
+    await tester.tap(find.byKey(MenuEditor.addItemKey('c1')));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(MenuEditor.nameFieldKey), 'كفتة');
+    await tester.enterText(find.byKey(MenuEditor.priceFieldKey), '85');
+    await tester.ensureVisible(find.byKey(MenuEditor.saveItemKey));
+    await tester.tap(find.byKey(MenuEditor.saveItemKey));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(MenuEditor.itemErrorKey), findsOneWidget);
+    expect(find.text('كفتة'), findsOneWidget);
+  });
+
+  testWidgets('closing a sheet with something typed asks before throwing it away',
+      (tester) async {
+    await pump(tester);
+
+    await tester.tap(find.byKey(MenuEditor.addItemKey('c1')));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(MenuEditor.nameFieldKey), 'كفتة');
+    await tester.tap(find.byTooltip('إغلاق'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('تسيب التعديلات؟'), findsOneWidget);
+    await tester.tap(find.text('كمّل تعديل'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(MenuEditor.nameFieldKey), findsOneWidget);
+
+    await tester.tap(find.byTooltip('إغلاق'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(MenuEditor.discardKey));
+    await tester.pumpAndSettle();
+    expect(find.byKey(MenuEditor.nameFieldKey), findsNothing);
+  });
+
+  testWidgets('closing an untouched sheet does not ask', (tester) async {
+    await pump(tester);
+
+    await tester.tap(find.byKey(MenuEditor.addItemKey('c1')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('إغلاق'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('تسيب التعديلات؟'), findsNothing);
+    expect(find.byKey(MenuEditor.nameFieldKey), findsNothing);
+  });
+
+  // The drinks fridge is broken: one switch for the whole section (QA review 2026-09-19).
+  testWidgets('a whole section can be switched off at once', (tester) async {
+    await pump(tester);
+
+    await tester.tap(find.byKey(MenuEditor.bulkKey('c1')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('وقّف كل القسم'));
+    await tester.pumpAndSettle();
+
+    final saved = repository.items;
+    expect(saved.where((i) => i.categoryId == 'c1').every((i) => !i.isAvailable), isTrue);
+    expect(saved.firstWhere((i) => i.id == 'i2').isAvailable, isFalse,
+        reason: 'the other section is untouched');
+  });
 }

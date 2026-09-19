@@ -41,6 +41,17 @@ abstract interface class PromotionRepository {
   /// started: a live campaign taken dark to fix a typo is a worse answer than the typo.
   Future<Result<Promotion>> editRequest(Promotion promotion);
 
+  /// The admin corrects a placement's words or ground, approved or running, without
+  /// sending it back to the queue — the admin is the approval. Only `admin_promotions`
+  /// lets this through (QA review 2026-09-19: a typo on a live banner had no way out but
+  /// stopping it).
+  Future<Result<void>> adminEdit(
+    String promotionId, {
+    required String title,
+    required String body,
+    String? backgroundColor,
+  });
+
   /// Moves when a placement appears and disappears. The admin's, and only theirs.
   Future<Result<void>> reschedule(
     String promotionId, {
@@ -242,6 +253,23 @@ class SupabasePromotionRepository implements PromotionRepository {
           .eq('id', asked.id)
           .select();
     }, _toPromotion);
+  }
+
+  @override
+  Future<Result<void>> adminEdit(
+    String promotionId, {
+    required String title,
+    required String body,
+    String? backgroundColor,
+  }) {
+    return Result.guardWrite(
+      () => _db.from('promotions').update({
+        'title': title,
+        'body': body,
+        'background_color': backgroundColor,
+      }).eq('id', promotionId).select('id'),
+      (_) {},
+    );
   }
 
   @override
@@ -506,6 +534,25 @@ class FakePromotionRepository implements PromotionRepository {
     _promotions[asked.id] = asked;
     _notify();
     return Result.ok(asked);
+  }
+
+  @override
+  Future<Result<void>> adminEdit(
+    String promotionId, {
+    required String title,
+    required String body,
+    String? backgroundColor,
+  }) async {
+    if (failure != null) return Result.err(failure!);
+    final existing = _promotions[promotionId];
+    if (existing == null) return const Result.err(NotFoundFailure());
+    _promotions[promotionId] = existing.copyWith(
+      title: title,
+      body: body,
+      backgroundColor: backgroundColor,
+    );
+    _notify();
+    return const Result.ok(null);
   }
 
   @override

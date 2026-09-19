@@ -67,7 +67,7 @@ const _modules = [
   ),
   AdminModule(label: 'العملاء', icon: Icons.people, route: Routes.customers),
   AdminModule(label: 'الأماكن', icon: Icons.place, route: Routes.zones),
-  AdminModule(label: 'المطبخ', icon: Icons.restaurant_menu, route: Routes.cuisines),
+  AdminModule(label: 'تصنيفات المحلات', icon: Icons.restaurant_menu, route: Routes.cuisines),
   AdminModule(label: 'الصفحة الرئيسية', icon: Icons.dashboard, route: Routes.home),
   AdminModule(label: 'الإحصائيات', icon: Icons.bar_chart, route: Routes.statistics),
   AdminModule(
@@ -134,6 +134,7 @@ GoRouter router(Ref ref) {
               'staffApplication' => Routes.applications,
               'subscription_request' => Routes.subscriptions,
               'promotionRequest' => Routes.promotions,
+              'commissionDue' => Routes.today,
               _ => (tap.orderId != null && tap.orderId!.isNotEmpty)
                   ? Routes.today
                   : null,

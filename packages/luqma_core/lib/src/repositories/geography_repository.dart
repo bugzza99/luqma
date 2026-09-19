@@ -4,6 +4,7 @@ import '../data/column_names.dart';
 import '../models/geography.dart';
 import '../models/landmark_suggestion.dart';
 import '../result.dart';
+import '../util/arabic_text.dart';
 
 /// Zones and landmarks — the addressing layer the admin maintains.
 ///
@@ -32,6 +33,13 @@ abstract interface class GeographyRepository {
     required String cityId,
     int limit,
   });
+
+  /// Turns a suggestion down for good: that name, folded, in that zone.
+  Future<Result<void>> dismissSuggestion(String zoneId, String name);
+
+  /// Every suggestion turned down, as `zoneId|folded name` — the key
+  /// [LandmarkSuggestion.from] groups by.
+  Future<Result<Set<String>>> dismissedSuggestions();
 }
 
 class SupabaseGeographyRepository implements GeographyRepository {
@@ -125,6 +133,27 @@ class SupabaseGeographyRepository implements GeographyRepository {
   }
 
   @override
+  Future<Result<void>> dismissSuggestion(String zoneId, String name) {
+    return Result.guard(() async {
+      await _db.from('dismissed_landmark_suggestions').upsert({
+        'zone_id': zoneId,
+        'folded_name': ArabicText.normalize(name),
+        'dismissed_by': _db.auth.currentUser?.id,
+      }, onConflict: 'zone_id,folded_name');
+    });
+  }
+
+  @override
+  Future<Result<Set<String>>> dismissedSuggestions() {
+    return Result.guard(() async {
+      final rows = await _db
+          .from('dismissed_landmark_suggestions')
+          .select('zone_id, folded_name');
+      return {for (final r in rows) '${r['zone_id']}|${r['folded_name']}'};
+    });
+  }
+
+  @override
   Future<Result<List<LandmarkNote>>> landmarkNotes({
     required String cityId,
     int limit = 500,
@@ -176,7 +205,7 @@ class FakeGeographyRepository implements GeographyRepository {
   final List<LandmarkNote> _notes;
 
   /// When set, every call fails with this, so the offline path can be exercised.
-  final Failure? failure;
+  Failure? failure;
 
   int _nextId = 1;
 
@@ -254,5 +283,20 @@ class FakeGeographyRepository implements GeographyRepository {
   }) async {
     if (failure != null) return Result.err(failure!);
     return Result.ok(_notes.take(limit).toList());
+  }
+
+  final Set<String> _dismissed = {};
+
+  @override
+  Future<Result<void>> dismissSuggestion(String zoneId, String name) async {
+    if (failure != null) return Result.err(failure!);
+    _dismissed.add('$zoneId|${ArabicText.normalize(name)}');
+    return const Result.ok(null);
+  }
+
+  @override
+  Future<Result<Set<String>>> dismissedSuggestions() async {
+    if (failure != null) return Result.err(failure!);
+    return Result.ok(Set.of(_dismissed));
   }
 }

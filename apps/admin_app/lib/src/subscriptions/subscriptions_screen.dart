@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:luqma_core/luqma_core.dart';
@@ -23,15 +25,24 @@ class SubscriptionsScreen extends ConsumerStatefulWidget {
   static const confirmKey = Key('subscriptions.confirm');
   static const requestsTabKey = Key('subscriptions.tab.requests');
   static const shopsTabKey = Key('subscriptions.tab.shops');
+  static const shopSearchKey = Key('subscriptions.shops.search');
 
   @override
-  ConsumerState<SubscriptionsScreen> createState() => _SubscriptionsScreenState();
+  ConsumerState<SubscriptionsScreen> createState() =>
+      _SubscriptionsScreenState();
 }
 
 class _SubscriptionsScreenState extends ConsumerState<SubscriptionsScreen> {
-  Future<(Result<List<SubscriptionRequest>>, Result<List<SubscriptionOverviewRow>>)>? _load;
-  (Result<List<SubscriptionRequest>>, Result<List<SubscriptionOverviewRow>>)? _last;
+  Future<
+    (Result<List<SubscriptionRequest>>, Result<List<SubscriptionOverviewRow>>)
+  >?
+  _load;
+  (Result<List<SubscriptionRequest>>, Result<List<SubscriptionOverviewRow>>)?
+  _last;
   PlanStanding? _filter;
+  final _shopSearchController = TextEditingController();
+  String _shopQuery = '';
+  Timer? _timer;
 
   /// Requests with an answer on its way. A second tap on «فعّل» while the first is still
   /// going would send a second request — the server's lock refuses it, but the admin would
@@ -42,30 +53,43 @@ class _SubscriptionsScreenState extends ConsumerState<SubscriptionsScreen> {
   void initState() {
     super.initState();
     _reload();
+    _timer = Timer.periodic(const Duration(seconds: 60), (_) {
+      if (mounted) _reload();
+    });
   }
 
-  void _reload() {
+  @override
+  void dispose() {
+    _timer?.cancel();
+    _shopSearchController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _reload() async {
     final repo = ref.read(subscriptionRequestRepositoryProvider);
-    Future<(Result<List<SubscriptionRequest>>, Result<List<SubscriptionOverviewRow>>)>
-        both() async => (await repo.pending(), await repo.overview());
+    Future<
+      (Result<List<SubscriptionRequest>>, Result<List<SubscriptionOverviewRow>>)
+    >
+    both() async => (await repo.pending(), await repo.overview());
     final load = both();
     setState(() {
       _load = load;
     });
+    await load;
   }
 
   static String _date(DateTime d) => '${d.day}/${d.month}/${d.year}';
 
-  static String _pounds(int piastres) =>
-      piastres % 100 == 0 ? '${piastres ~/ 100}' : (piastres / 100).toStringAsFixed(2);
+  static String _pounds(int piastres) => piastres % 100 == 0
+      ? '${piastres ~/ 100}'
+      : (piastres / 100).toStringAsFixed(2);
 
   /// A typed amount in pounds into piastres. Not `Money.parse`: that caps at a meal's price,
   /// and a year of a plan is legitimately more than any meal.
   static int? _amount(String raw) {
-    final text = ArabicDigits.fold(raw)
-        .replaceAll(ArabicDigits.decimalSeparator, '.')
-        .replaceAll('ج', '')
-        .trim();
+    final text = ArabicDigits.fold(
+      raw,
+    ).replaceAll(ArabicDigits.decimalSeparator, '.').replaceAll('ج', '').trim();
     if (!RegExp(r'^\d{1,7}(\.\d{1,2})?$').hasMatch(text)) return null;
     final parts = text.split('.');
     final fraction = parts.length == 2 ? parts[1].padRight(2, '0') : '00';
@@ -85,13 +109,18 @@ class _SubscriptionsScreenState extends ConsumerState<SubscriptionsScreen> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text('المطلوب ${strings.price(request.quotedAmount)}. لو عملت خصم اكتب المبلغ اللي اتدفع.'),
+              Text(
+                'المطلوب ${strings.price(request.quotedAmount)}. لو عملت خصم اكتب المبلغ اللي اتدفع.',
+              ),
               const SizedBox(height: Space.md),
               TextField(
                 key: SubscriptionsScreen.amountKey,
                 controller: amount,
                 keyboardType: TextInputType.number,
-                decoration: InputDecoration(labelText: 'المبلغ اللي اتدفع بالجنيه', errorText: error),
+                decoration: InputDecoration(
+                  labelText: 'المبلغ اللي اتدفع بالجنيه',
+                  errorText: error,
+                ),
               ),
             ],
           ),
@@ -120,7 +149,9 @@ class _SubscriptionsScreenState extends ConsumerState<SubscriptionsScreen> {
     // frames, and a disposed controller throws. It goes with the closure.
     if (piastres == null || !mounted || !_answering.add(request.id)) return;
     setState(() {});
-    final result = await ref.read(subscriptionRequestRepositoryProvider).activate(
+    final result = await ref
+        .read(subscriptionRequestRepositoryProvider)
+        .activate(
           request.id,
           amount: piastres == request.quotedAmount ? null : piastres,
         );
@@ -167,7 +198,9 @@ class _SubscriptionsScreenState extends ConsumerState<SubscriptionsScreen> {
     );
     if (text == null || !mounted || !_answering.add(request.id)) return;
     setState(() {});
-    final result = await ref.read(subscriptionRequestRepositoryProvider).reject(request.id, text);
+    final result = await ref
+        .read(subscriptionRequestRepositoryProvider)
+        .reject(request.id, text);
     _answering.remove(request.id);
     _answered(result, 'الطلب اترفض');
   }
@@ -180,7 +213,9 @@ class _SubscriptionsScreenState extends ConsumerState<SubscriptionsScreen> {
       Err(failure: OfflineFailure()) => 'مفيش نت. جرّب تاني.',
       Err() => 'مقدرناش نحفظ. جرّب تاني.',
     };
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
     _reload();
   }
 
@@ -191,7 +226,8 @@ class _SubscriptionsScreenState extends ConsumerState<SubscriptionsScreen> {
     final strings = LuqmaStrings.of(context);
     final now = ref.watch(clockProvider)();
     final plans = ref.watch(plansProvider).value ?? const <Plan>[];
-    String planName(String id) => plans.where((p) => p.id == id).firstOrNull?.name ?? id;
+    String planName(String id) =>
+        plans.where((p) => p.id == id).firstOrNull?.name ?? id;
 
     return DefaultTabController(
       length: 2,
@@ -211,7 +247,9 @@ class _SubscriptionsScreenState extends ConsumerState<SubscriptionsScreen> {
             builder: (context, snapshot) {
               if (snapshot.data != null) _last = snapshot.data;
               final data = snapshot.data ?? _last;
-              if (data == null) return const Center(child: CircularProgressIndicator());
+              if (data == null) {
+                return const Center(child: CircularProgressIndicator());
+              }
               final (requestsResult, rowsResult) = data;
               if (requestsResult case Err(:final failure)) {
                 return LuqmaErrorView(failure: failure, onRetry: _reload);
@@ -222,155 +260,253 @@ class _SubscriptionsScreenState extends ConsumerState<SubscriptionsScreen> {
               final pending = requestsResult.valueOrNull!;
               final rows = rowsResult.valueOrNull!;
               String shopName(String id) =>
-                  rows.where((r) => r.merchantId == id).firstOrNull?.merchantName ?? 'محل';
+                  rows
+                      .where((r) => r.merchantId == id)
+                      .firstOrNull
+                      ?.merchantName ??
+                  'محل';
 
-              final filtered = _filter == null
-                  ? rows
-                  : rows.where((r) => r.standingAt(now) == _filter).toList();
+              final filtered = rows.where((r) {
+                if (_filter != null && r.standingAt(now) != _filter) {
+                  return false;
+                }
+                if (_shopQuery.isNotEmpty &&
+                    !r.merchantName.toLowerCase().contains(
+                      _shopQuery.toLowerCase(),
+                    )) {
+                  return false;
+                }
+                return true;
+              }).toList();
 
               Widget card(Widget child) => Container(
-                    padding: const EdgeInsets.all(Space.md),
-                    decoration: BoxDecoration(
-                      color: colors.card,
-                      borderRadius: Radii.cardAll,
-                      border: Border.all(color: colors.hairline),
-                    ),
-                    child: child,
-                  );
+                padding: const EdgeInsets.all(Space.md),
+                decoration: BoxDecoration(
+                  color: colors.card,
+                  borderRadius: Radii.cardAll,
+                  border: Border.all(color: colors.hairline),
+                ),
+                child: child,
+              );
 
               return TabBarView(
                 children: [
                   // Requests.
-                  pending.isEmpty
-                      ? Center(
-                          child: Padding(
-                            padding: const EdgeInsets.all(Space.xl),
-                            child: Text(
-                              'مفيش طلبات اشتراك مستنية. المحلات بتطلب من «الاشتراك» في لقمة شريك.',
-                              textAlign: TextAlign.center,
-                              style: theme.textTheme.bodyMedium
-                                  ?.copyWith(color: colors.textSecondary),
-                            ),
-                          ),
-                        )
-                      : ListView.separated(
-                          padding: const EdgeInsets.all(Space.gutter),
-                          itemCount: pending.length,
-                          separatorBuilder: (_, _) => const SizedBox(height: Space.sm),
-                          itemBuilder: (context, i) {
-                            final r = pending[i];
-                            return card(
-                              Column(
-                                crossAxisAlignment: CrossAxisAlignment.stretch,
-                                children: [
-                                  Text(shopName(r.merchantId), style: theme.textTheme.titleMedium),
-                                  Text(
-                                    'باقة ${planName(r.planId)} · '
-                                    '${r.months == 1 ? 'شهر' : '${r.months} شهور'} · '
-                                    '${strings.price(r.quotedAmount)}',
-                                    style: theme.textTheme.bodyMedium,
-                                  ),
-                                  Text(
-                                    r.paymentMethod == SubscriptionPaymentMethod.cash
-                                        ? 'كاش — لسه هتحصّل'
-                                        : 'تحويل${r.transferReference == null ? ' — من غير رقم عملية' : ' — رقم العملية ${r.transferReference}'}',
-                                    style: theme.textTheme.bodySmall
-                                        ?.copyWith(color: colors.textSecondary),
-                                  ),
-                                  const SizedBox(height: Space.sm),
-                                  Row(
-                                    children: [
-                                      Expanded(
-                                        child: FilledButton(
-                                          key: SubscriptionsScreen.activateKey(r.id),
-                                          onPressed:
-                                              _answering.contains(r.id) ? null : () => _activate(r),
-                                          style: FilledButton.styleFrom(
-                                            minimumSize: const Size.fromHeight(Sizes.minTarget),
-                                          ),
-                                          child: const Text('فعّل'),
-                                        ),
-                                      ),
-                                      const SizedBox(width: Space.sm),
-                                      Expanded(
-                                        child: OutlinedButton(
-                                          key: SubscriptionsScreen.rejectKey(r.id),
-                                          onPressed:
-                                              _answering.contains(r.id) ? null : () => _reject(r),
-                                          style: OutlinedButton.styleFrom(
-                                            foregroundColor: colors.danger,
-                                            minimumSize: const Size.fromHeight(Sizes.minTarget),
-                                          ),
-                                          child: const Text('ارفض'),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ],
-                              ),
-                            );
-                          },
-                        ),
-
-                  // Shops.
-                  ListView(
-                    padding: const EdgeInsets.all(Space.gutter),
-                    children: [
-                      Wrap(
-                        spacing: Space.sm,
-                        runSpacing: Space.sm,
-                        children: [
-                          for (final (standing, label) in const [
-                            (null, 'الكل'),
-                            (PlanStanding.active, 'شغالة'),
-                            (PlanStanding.endingSoon, 'بتخلص قريب'),
-                            (PlanStanding.expired, 'خلصت'),
-                            (PlanStanding.none, 'من غير باقة'),
-                          ])
-                            ChoiceChip(
-                              key: SubscriptionsScreen.filterKey(standing),
-                              label: Text(label),
-                              selected: _filter == standing,
-                              onSelected: (_) => setState(() => _filter = standing),
-                            ),
-                        ],
-                      ),
-                      const SizedBox(height: Space.md),
-                      for (final row in filtered) ...[
-                        InkWell(
-                          borderRadius: Radii.cardAll,
-                          onTap: () => Navigator.of(context).push(
-                            MaterialPageRoute<void>(
-                              builder: (_) => MerchantBillingScreen(merchantId: row.merchantId),
-                            ),
-                          ),
-                          child: card(
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text(row.merchantName, style: theme.textTheme.titleMedium),
-                                      Text(
-                                        switch (row.standingAt(now)) {
-                                          PlanStanding.none => 'من غير باقة',
-                                          _ => 'باقة ${row.planName ?? row.planId} · لحد ${_date(row.planExpiresAt!)}',
-                                        },
-                                        style: theme.textTheme.bodySmall
-                                            ?.copyWith(color: colors.textSecondary),
-                                      ),
-                                    ],
+                  RefreshIndicator(
+                    onRefresh: _reload,
+                    child: pending.isEmpty
+                        ? ListView(
+                            physics: const AlwaysScrollableScrollPhysics(),
+                            children: [
+                              Padding(
+                                padding: const EdgeInsets.all(Space.xl),
+                                child: Text(
+                                  'مفيش طلبات اشتراك مستنية. المحلات بتطلب من «الاشتراك» في لقمة شريك.',
+                                  textAlign: TextAlign.center,
+                                  style: theme.textTheme.bodyMedium?.copyWith(
+                                    color: colors.textSecondary,
                                   ),
                                 ),
-                                _StandingChip(standing: row.standingAt(now)),
-                              ],
-                            ),
+                              ),
+                            ],
+                          )
+                        : ListView.separated(
+                            physics: const AlwaysScrollableScrollPhysics(),
+                            padding: const EdgeInsets.all(Space.gutter),
+                            itemCount: pending.length,
+                            separatorBuilder: (_, _) =>
+                                const SizedBox(height: Space.sm),
+                            itemBuilder: (context, i) {
+                              final r = pending[i];
+                              return card(
+                                Column(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.stretch,
+                                  children: [
+                                    Text(
+                                      shopName(r.merchantId),
+                                      style: theme.textTheme.titleMedium,
+                                    ),
+                                    Text(
+                                      'باقة ${planName(r.planId)} · '
+                                      '${r.months == 1 ? 'شهر' : '${r.months} شهور'} · '
+                                      '${strings.price(r.quotedAmount)}',
+                                      style: theme.textTheme.bodyMedium,
+                                    ),
+                                    Text(
+                                      r.paymentMethod ==
+                                              SubscriptionPaymentMethod.cash
+                                          ? 'كاش — لسه هتحصّل'
+                                          : 'تحويل${r.transferReference == null ? ' — من غير رقم عملية' : ' — رقم العملية ${r.transferReference}'}',
+                                      style: theme.textTheme.bodySmall
+                                          ?.copyWith(
+                                            color: colors.textSecondary,
+                                          ),
+                                    ),
+                                    const SizedBox(height: Space.sm),
+                                    Row(
+                                      children: [
+                                        Expanded(
+                                          child: FilledButton(
+                                            key:
+                                                SubscriptionsScreen.activateKey(
+                                                  r.id,
+                                                ),
+                                            onPressed: _answering.contains(r.id)
+                                                ? null
+                                                : () => _activate(r),
+                                            style: FilledButton.styleFrom(
+                                              minimumSize:
+                                                  const Size.fromHeight(
+                                                    Sizes.minTarget,
+                                                  ),
+                                            ),
+                                            child: const Text('فعّل'),
+                                          ),
+                                        ),
+                                        const SizedBox(width: Space.sm),
+                                        Expanded(
+                                          child: OutlinedButton(
+                                            key: SubscriptionsScreen.rejectKey(
+                                              r.id,
+                                            ),
+                                            onPressed: _answering.contains(r.id)
+                                                ? null
+                                                : () => _reject(r),
+                                            style: OutlinedButton.styleFrom(
+                                              foregroundColor: colors.danger,
+                                              minimumSize:
+                                                  const Size.fromHeight(
+                                                    Sizes.minTarget,
+                                                  ),
+                                            ),
+                                            child: const Text('ارفض'),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                              );
+                            },
                           ),
+                  ),
+
+                  // Shops.
+                  RefreshIndicator(
+                    onRefresh: _reload,
+                    child: ListView(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      padding: const EdgeInsets.all(Space.gutter),
+                      children: [
+                        TextField(
+                          key: SubscriptionsScreen.shopSearchKey,
+                          controller: _shopSearchController,
+                          decoration: InputDecoration(
+                            prefixIcon: const Icon(Icons.search),
+                            labelText: 'ابحث باسم المحل',
+                            suffixIcon: _shopQuery.isNotEmpty
+                                ? IconButton(
+                                    icon: const Icon(Icons.clear),
+                                    tooltip: 'مسح',
+                                    onPressed: () {
+                                      _shopSearchController.clear();
+                                      setState(() => _shopQuery = '');
+                                    },
+                                  )
+                                : null,
+                          ),
+                          onChanged: (v) =>
+                              setState(() => _shopQuery = v.trim()),
                         ),
                         const SizedBox(height: Space.sm),
+                        // A Wrap: five filters do not fit one line of a phone, and a filter
+                        // scrolled out of sight is one nobody knows is there.
+                        Wrap(
+                          spacing: Space.xs,
+                          runSpacing: Space.xs,
+                          children: [
+                            for (final (standing, label) in const [
+                              (null, 'كله'),
+                              (PlanStanding.active, 'شغّال'),
+                              (PlanStanding.endingSoon, 'قرب يخلص (7 أيام)'),
+                              (PlanStanding.expired, 'خلص'),
+                              (PlanStanding.none, 'من غير باقة'),
+                            ]) ...[
+                              ChoiceChip(
+                                key: SubscriptionsScreen.filterKey(standing),
+                                label: Text(label),
+                                selected: _filter == standing,
+                                onSelected: (_) =>
+                                    setState(() => _filter = standing),
+                              ),
+                            ],
+                          ],
+                        ),
+                        const SizedBox(height: Space.md),
+                        if (filtered.isEmpty)
+                          Padding(
+                            padding: const EdgeInsets.all(Space.xl),
+                            child: Text(
+                              'مفيش محلات مطابقة للبحث.',
+                              textAlign: TextAlign.center,
+                              style: theme.textTheme.bodyMedium?.copyWith(
+                                color: colors.textSecondary,
+                              ),
+                            ),
+                          )
+                        else
+                          for (final row in filtered) ...[
+                            InkWell(
+                              borderRadius: Radii.cardAll,
+                              onTap: () async {
+                                await Navigator.of(context).push(
+                                  MaterialPageRoute<void>(
+                                    builder: (_) => MerchantBillingScreen(
+                                      merchantId: row.merchantId,
+                                    ),
+                                  ),
+                                );
+                                if (mounted) _reload();
+                              },
+                              child: card(
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            row.merchantName,
+                                            style: theme.textTheme.titleMedium,
+                                          ),
+                                          Text(
+                                            switch (row.standingAt(now)) {
+                                              PlanStanding.none =>
+                                                'من غير باقة',
+                                              _ =>
+                                                'باقة ${row.planName ?? row.planId} · لحد ${_date(row.planExpiresAt!)}',
+                                            },
+                                            style: theme.textTheme.bodySmall
+                                                ?.copyWith(
+                                                  color: colors.textSecondary,
+                                                ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    _StandingChip(
+                                      standing: row.standingAt(now),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: Space.sm),
+                          ],
                       ],
-                    ],
+                    ),
                   ),
                 ],
               );
@@ -397,7 +533,10 @@ class _StandingChip extends StatelessWidget {
       PlanStanding.none => ('من غير باقة', colors.textSecondary),
     };
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: Space.sm, vertical: Space.xs),
+      padding: const EdgeInsets.symmetric(
+        horizontal: Space.sm,
+        vertical: Space.xs,
+      ),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(999),
         border: Border.all(color: color),

@@ -16,6 +16,9 @@ class CuisinesScreen extends ConsumerWidget {
   static const addKey = Key('cuisines.add');
   static const rowKey = Key('cuisines.row');
   static const emptyKey = Key('cuisines.empty');
+  static const deleteKey = Key('cuisines.delete');
+  static const deleteConfirmKey = Key('cuisines.delete.confirm');
+  static const deleteCancelKey = Key('cuisines.delete.cancel');
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -24,44 +27,44 @@ class CuisinesScreen extends ConsumerWidget {
     final colors = theme.luqma;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('شرائح الفئات')),
+      appBar: AppBar(title: const Text('تصنيفات المحلات')),
       floatingActionButton: FloatingActionButton.extended(
         key: addKey,
         onPressed: () => _edit(context, ref, null),
         icon: const Icon(Icons.add),
-        label: const Text('قسم جديد'),
+        label: const Text('تصنيف جديد'),
       ),
       body: AdminContent(
         child: LuqmaAsyncView(
           value: cuisines,
           onRetry: () => ref.invalidate(cuisinesProvider),
           empty: Center(
-              key: emptyKey,
-              child: Padding(
-                padding: const EdgeInsets.all(Space.xl),
-                child: Text(
-                  'مفيش أقسام لسه. أضف أي فئة — مطاعم، صيدليات، سوبرماركت — وحط فيها المحلات من صفحة المحل (الدواير اللي فوق في تطبيق العميل).',
-                  textAlign: TextAlign.center,
-                  style: theme.textTheme.bodyMedium
-                      ?.copyWith(color: colors.textSecondary),
-                ),
+            key: emptyKey,
+            child: Padding(
+              padding: const EdgeInsets.all(Space.xl),
+              child: Text(
+                'مفيش تصنيفات محلات لسه. أضف أي تصنيف — مطاعم، صيدليات، سوبرماركت — وحط فيه المحلات من صفحة المحل (الدواير اللي فوق في تطبيق العميل).',
+                textAlign: TextAlign.center,
+                style: theme.textTheme.bodyMedium
+                    ?.copyWith(color: colors.textSecondary),
               ),
             ),
+          ),
           isEmpty: (value) => value.isEmpty,
           builder: (context, value) => ListView.separated(
-              padding: const EdgeInsets.fromLTRB(
-                Space.gutter,
-                Space.gutter,
-                Space.gutter,
-                Space.xxxl + Space.xl,
-              ),
-              itemCount: value.length,
-              separatorBuilder: (_, _) => const SizedBox(height: Space.sm),
-              itemBuilder: (context, i) => _Row(
-                cuisine: value[i],
-                onTap: () => _edit(context, ref, value[i]),
-              ),
-            )
+            padding: const EdgeInsets.fromLTRB(
+              Space.gutter,
+              Space.gutter,
+              Space.gutter,
+              Space.xxxl + Space.xl,
+            ),
+            itemCount: value.length,
+            separatorBuilder: (_, _) => const SizedBox(height: Space.sm),
+            itemBuilder: (context, i) => _Row(
+              cuisine: value[i],
+              onTap: () => _edit(context, ref, value[i]),
+            ),
+          ),
         ),
       ),
     );
@@ -166,13 +169,15 @@ class _CuisineSheetState extends ConsumerState<_CuisineSheet> {
       _failure = null;
     });
 
+    final order = int.parse(ArabicDigits.fold(_sortOrder.text.trim()));
+
     final result = await ref.read(cuisineRepositoryProvider).save(
           Cuisine(
             id: widget.existing?.id ?? '',
             cityId: ref.read(currentCityProvider),
             name: _name.trim(),
             mediaId: _mediaId,
-            sortOrder: int.tryParse(_sortOrder.text.trim()) ?? 0,
+            sortOrder: order,
           ),
         );
     if (!mounted) return;
@@ -180,11 +185,86 @@ class _CuisineSheetState extends ConsumerState<_CuisineSheet> {
     switch (result) {
       case Ok():
         Navigator.of(context).pop(true);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('تم حفظ التصنيف.')),
+        );
       case Err(:final failure):
         setState(() {
           _busy = false;
           _failure = failure;
         });
+    }
+  }
+
+  Future<void> _delete() async {
+    final existing = widget.existing;
+    if (existing == null) return;
+
+    setState(() => _busy = true);
+    final shopsResult = await ref.read(cuisineRepositoryProvider).merchantsIn(existing.id);
+    if (!mounted) return;
+    setState(() => _busy = false);
+
+    final count = (shopsResult.valueOrNull ?? {}).length;
+    final colors = Theme.of(context).luqma;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text('احذف تصنيف «${existing.name}»'),
+        content: Text(
+          count == 0
+              ? 'التصنيف ده مفيهوش أي محلات حالياً. الحذف نهائي وهيشيل التصنيف من التطبيق.'
+              : 'التصنيف ده فيه $count ${count == 1 ? 'محل' : count == 2 ? 'محلين' : count <= 10 ? 'محلات' : 'محل'}، وهيخرجوا من التصنيف ده بس مش هيتحذفوا.',
+        ),
+        actions: [
+          TextButton(
+            key: CuisinesScreen.deleteCancelKey,
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('رجوع'),
+          ),
+          FilledButton(
+            key: CuisinesScreen.deleteConfirmKey,
+            style: FilledButton.styleFrom(
+              backgroundColor: colors.danger,
+            ),
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('احذف'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    setState(() {
+      _busy = true;
+      _failure = null;
+    });
+
+    final result = await ref.read(cuisineRepositoryProvider).delete(existing.id);
+    if (!mounted) return;
+
+    switch (result) {
+      case Ok():
+        Navigator.of(context).pop(true);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('تم حذف التصنيف.')),
+        );
+      case Err(:final failure):
+        setState(() {
+          _busy = false;
+          _failure = failure;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(switch (failure) {
+              OfflineFailure() => 'مفيش نت — جرّب تاني.',
+              PermissionFailure() => 'مش مسموحلك تحذف التصنيف.',
+              _ => 'معرفناش نحذف التصنيف. جرّب تاني.',
+            }),
+          ),
+        );
     }
   }
 
@@ -209,9 +289,9 @@ class _CuisineSheetState extends ConsumerState<_CuisineSheet> {
             children: [
               TextFormField(
                 initialValue: _name,
-                decoration: const InputDecoration(labelText: 'اسم القسم'),
+                decoration: const InputDecoration(labelText: 'اسم التصنيف'),
                 validator: (v) =>
-                    (v ?? '').trim().isEmpty ? 'اكتب اسم القسم' : null,
+                    (v ?? '').trim().isEmpty ? 'اكتب اسم التصنيف' : null,
                 onSaved: (v) => _name = v ?? '',
               ),
               const SizedBox(height: Space.md),
@@ -222,24 +302,36 @@ class _CuisineSheetState extends ConsumerState<_CuisineSheet> {
                   labelText: 'الترتيب',
                   helperText: 'الأصغر بيظهر الأول',
                 ),
+                validator: (v) {
+                  final text = (v ?? '').trim();
+                  if (text.isEmpty) return 'اكتب رقم';
+                  final folded = ArabicDigits.fold(text);
+                  if (int.tryParse(folded) == null) return 'اكتب رقم';
+                  return null;
+                },
               ),
               const SizedBox(height: Space.lg),
-              MediaPicker(
-                kind: MediaKind.cuisine,
-                url: _mediaUrl,
-                name: _name.isEmpty ? 'قسم' : _name,
-                ownerId: widget.existing?.id,
-                onUploaded: (media) => setState(() {
-                  _mediaId = media.id;
-                  _mediaUrl = media.url;
-                }),
+              Center(
+                child: SizedBox(
+                  width: 160,
+                  child: MediaPicker(
+                    kind: MediaKind.cuisine,
+                    url: _mediaUrl,
+                    name: _name.isEmpty ? 'تصنيف' : _name,
+                    ownerId: widget.existing?.id,
+                    onUploaded: (media) => setState(() {
+                      _mediaId = media.id;
+                      _mediaUrl = media.url;
+                    }),
+                  ),
+                ),
               ),
               if (_failure != null) ...[
                 const SizedBox(height: Space.md),
                 Text(
                   switch (_failure!) {
                     OfflineFailure() => 'مفيش نت — جرّب تاني.',
-                    ConflictFailure() => 'فيه قسم بنفس الاسم بالفعل.',
+                    ConflictFailure() => 'فيه تصنيف بنفس الاسم بالفعل.',
                     _ => 'مقدرناش نحفظ. جرّب تاني.',
                   },
                   style:
@@ -254,6 +346,19 @@ class _CuisineSheetState extends ConsumerState<_CuisineSheet> {
                 ),
                 child: Text(_busy ? 'جاري…' : 'احفظ'),
               ),
+              if (widget.existing != null) ...[
+                const SizedBox(height: Space.md),
+                OutlinedButton(
+                  key: CuisinesScreen.deleteKey,
+                  onPressed: _busy ? null : _delete,
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: colors.danger,
+                    side: BorderSide(color: colors.danger),
+                    minimumSize: const Size.fromHeight(Sizes.minTarget),
+                  ),
+                  child: const Text('احذف التصنيف'),
+                ),
+              ],
             ],
           ),
         ),

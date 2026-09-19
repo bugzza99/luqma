@@ -578,6 +578,21 @@ DATABASE_URL=<luqma-test session pooler> npm --prefix supabase run test:stack
   apps have no self-serve reset. The way back stays a phone call to an admin, who issues
   a new password through `reset-customer-password`. Do not reopen this as a gap.
 - **Cash on delivery only.** The model is payment-method aware for later, nothing more.
+- **One commission rate for every shop, collected in cash weekly.** Settled 2026-09-19 by
+  the owner: 5% of the food (never the delivery fee) to start, set in AdminApp's
+  الإعدادات (`default_commission_percent`); changing it moves every shop not marked
+  `commission_custom`, and a shop can be given its own rate from its billing screen. A new
+  shop starts on the default whatever its row says. The owner collects cash once a week and
+  records it (`record_commission_payment`); a Saturday cron reminds shops that owe, and
+  crossing `commission_alert_pounds` (500 ج) pushes the shop and the admins once —
+  **a notice only, never an automatic suspension**: the owner decides.
+- **The complaints assistant is rules, not a model.** «مساعد لقمة» in CustomerApp answers
+  from the order itself (`OrderHelper`: status, deadline, bill) and anything it cannot
+  settle becomes an ordinary `order_issues` ticket with the topic first. Free and unable to
+  invent anything — the owner's choice over a paid AI (2026-09-19).
+- **A payment is recorded once.** `top_up_wallet` and `record_subscription_payment` take a
+  `p_receipt_id` the screen generates once per payment; a retry after a lost reply returns
+  the stored result instead of charging twice (`payment_receipts`).
 - **A courier is paid outside the app, and the app's job is the facts.** Settled
   2026-09-11 when the earnings screen was specified and it turned out nothing in the
   product knew what a courier earns — no table, no column, no rule, only a colour note in
@@ -1238,6 +1253,19 @@ DATABASE_URL=<luqma-test session pooler> npm --prefix supabase run test:stack
 - Rules read claims with **`token.get('x', default)`**. A bare `token.admin` errors on a
   token with no custom claims — every customer — and fails the branch it sits in for a
   reason unrelated to access.
+
+- **`luqma-test` fell 34 migrations behind production, and that hid a real bug for a
+  week.** Nothing pushed migrations to it after 2026-09-11, so the stack and live suites
+  kept passing against an old schema. When it was brought up to date on 2026-09-19 they
+  found `hold_prepaid_credit` releasing a prepaid hold without declaring server mode — so
+  no prepaid order could be delivered, refused or cancelled by the person doing it — and a
+  coupon guard that refused the service key. **Push every migration to `luqma-test` before
+  production** (`npx supabase db push --db-url <luqma-test session pooler>`), and run
+  `toolun_tests.ps1`; a green suite against a stale schema proves nothing.
+- **A function that writes a table nobody is granted must be `security definer`.**
+  `payment_receipts` grants no insert, by design; `top_up_wallet` ran as the caller and so
+  every receipt-bearing payment from a real admin token failed, while every owner-run test
+  passed. Test money paths through `set role authenticated`.
 
 ## Coupons
 

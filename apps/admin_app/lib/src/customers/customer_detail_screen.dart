@@ -37,6 +37,7 @@ class CustomerDetailScreen extends ConsumerStatefulWidget {
   static const resetBlockKey = Key('customer_detail.reset_block');
   static const verificationFactsKey = Key('customer_detail.verification_facts');
   static const showAllOrdersKey = Key('customer_detail.show_all_orders');
+  static const olderOrdersKey = Key('customer_detail.older_orders');
   static const noVerificationFactsKey = Key('customer_detail.no_verification_facts');
 
   @override
@@ -99,6 +100,35 @@ class _CustomerDetailScreenState extends ConsumerState<CustomerDetailScreen> {
 
   bool _showAllOrders = false;
 
+  /// The last page came back full, so there may be older orders on the server.
+  bool _mayHaveOlder = false;
+  bool _loadingOlder = false;
+
+  Future<void> _loadOlder() async {
+    final orders = _orders;
+    final oldest = orders?.lastOrNull;
+    if (orders == null || oldest == null || _loadingOlder) return;
+    setState(() => _loadingOlder = true);
+    final result = await ref
+        .read(customerRepositoryProvider)
+        .history(_customer.id, after: oldest);
+    if (!mounted) return;
+    switch (result) {
+      case Ok(:final value):
+        setState(() {
+          _orders = [...orders, ...value];
+          _mayHaveOlder = value.length >= historyPage;
+          _showAllOrders = true;
+          _loadingOlder = false;
+        });
+      case Err():
+        setState(() => _loadingOlder = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('مقدرناش نجيب الطلبات الأقدم. جرّب تاني.')),
+        );
+    }
+  }
+
   Future<void> _load() async {
     final generation = ++_loadGeneration;
     final uid = _customer.id;
@@ -133,6 +163,7 @@ class _CustomerDetailScreenState extends ConsumerState<CustomerDetailScreen> {
 
     setState(() {
       _orders = (historyResult as Ok<List<Order>>).value;
+      _mayHaveOlder = _orders!.length >= historyPage;
       _addresses = (addressesResult as Ok<List<Address>>).value;
       _loading = false;
     });
@@ -140,12 +171,34 @@ class _CustomerDetailScreenState extends ConsumerState<CustomerDetailScreen> {
 
   Future<void> _toggleBlock() async {
     final newBlocked = !_customer.isBlocked;
+    if (newBlocked) {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('حظر العميل'),
+          content: Text('${_customer.name} مش هيقدر يطلب لحد ما تفك الحظر.'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('إلغاء'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: const Text('حظر'),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true || !mounted) return;
+    }
+
     final result = await ref.read(customerRepositoryProvider).setBlocked(
           _customer.id,
           blocked: newBlocked,
         );
     if (!mounted) return;
 
+    final messenger = ScaffoldMessenger.of(context);
     if (result is Ok) {
       setState(() {
         _customer = CustomerSummary(
@@ -157,7 +210,20 @@ class _CustomerDetailScreenState extends ConsumerState<CustomerDetailScreen> {
           createdAt: _customer.createdAt,
         );
       });
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(newBlocked ? 'تم حظر العميل' : 'تم فك حظر العميل'),
+        ),
+      );
       widget.onCustomerUpdated?.call();
+    } else if (result case Err(:final failure)) {
+      final reason = switch (failure) {
+        PermissionFailure() => 'مش مسموحلك تعدل حالة العميل.',
+        NotFoundFailure() => 'العميل مش موجود.',
+        OfflineFailure() => 'مفيش نت — جرّب تاني.',
+        _ => 'معرفناش نغير حالة الحظر. جرّب تاني.',
+      };
+      messenger.showSnackBar(SnackBar(content: Text(reason)));
     }
   }
 
@@ -748,6 +814,13 @@ class _CustomerDetailScreenState extends ConsumerState<CustomerDetailScreen> {
             key: CustomerDetailScreen.showAllOrdersKey,
             onPressed: () => setState(() => _showAllOrders = !_showAllOrders),
             child: Text(_showAllOrders ? 'عرض أقل' : 'عرض الكل (${orders.length})'),
+          ),
+        // Older than the newest fifty: a support call about an old order has to reach it.
+        if (_mayHaveOlder && (_showAllOrders || orders.length <= 5))
+          TextButton(
+            key: CustomerDetailScreen.olderOrdersKey,
+            onPressed: _loadingOlder ? null : _loadOlder,
+            child: Text(_loadingOlder ? 'لحظة…' : 'اعرض طلبات أقدم'),
           ),
 
         const SizedBox(height: Space.xl),

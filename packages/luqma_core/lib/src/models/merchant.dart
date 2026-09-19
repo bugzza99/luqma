@@ -124,6 +124,10 @@ abstract class Merchant with _$Merchant {
     /// Remaining prepaid credit, in piastres. Only ever moved by the server.
     @Default(0) int walletBalance,
 
+    /// The owner agreed this shop its own commission rate. False: it follows the one rate
+    /// in «الإعدادات», and moves when that moves.
+    @Default(false) bool commissionCustom,
+
     /// What this merchant owes the platform under `commission`, in piastres.
     ///
     /// A running total the settlement maintains on delivery, and absent from `_row` for

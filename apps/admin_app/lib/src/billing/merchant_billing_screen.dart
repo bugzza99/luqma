@@ -38,6 +38,11 @@ class MerchantBillingScreen extends ConsumerWidget {
   static const confirmCollectKey = Key('billing.confirmCollect');
   static const collectedKey = Key('billing.collected');
   static const creditKey = Key('billing.credit');
+  static const confirmModelKey = Key('billing.confirmModel');
+  static const customRateKey = Key('billing.customRate');
+  static const toppedUpKey = Key('billing.toppedUp');
+  static const recordedKey = Key('billing.recorded');
+  static const paymentSummaryKey = Key('billing.paymentSummary');
 
   static Key modelKey(RevenueModel model) => Key('billing.model.${model.name}');
   static Key currentModelKey(RevenueModel model) => Key('billing.current.${model.name}');
@@ -51,7 +56,7 @@ class MerchantBillingScreen extends ConsumerWidget {
 
   static const _modelNotes = {
     RevenueModel.subscription: 'مبلغ ثابت في الشهر. مفيش حساب على الأوردرات.',
-    RevenueModel.commission: 'نسبة من كل أوردر يتسلّم.',
+    RevenueModel.commission: 'نسبة من أكل كل أوردر يتسلّم — مش من التوصيل.',
     RevenueModel.prepaid:
         'مبلغ ثابت بيتخصم من الرصيد على كل أوردر. لما الرصيد يخلص، '
         'المطعم بيوقف استقبال طلبات.',
@@ -59,7 +64,8 @@ class MerchantBillingScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final merchant = ref.watch(merchantProvider(merchantId)).value;
+    final merchantAsync = ref.watch(merchantProvider(merchantId));
+    final merchant = merchantAsync.value;
     final colors = Theme.of(context).luqma;
     // Watched, not merely read when a payment is recorded: every entry on this screen
     // is stamped with who wrote it down, so the session has to be live and resolved
@@ -69,8 +75,15 @@ class MerchantBillingScreen extends ConsumerWidget {
     return Scaffold(
       backgroundColor: colors.background,
       appBar: AppBar(title: Text(merchant?.name ?? 'الحساب')),
+      // Failing is not loading: a shop that could not be read used to spin here for ever,
+      // on the one screen where the owner is standing with cash in his hand.
       body: merchant == null
-          ? const Center(child: CircularProgressIndicator())
+          ? (merchantAsync.hasError
+              ? LuqmaErrorView(
+                  failure: merchantAsync.error,
+                  onRetry: () => ref.invalidate(merchantProvider(merchantId)),
+                )
+              : const Center(child: CircularProgressIndicator()))
           : AdminContent(
               child: ListView(
                 // Keyed so a test can scroll *this* list. The screen has several nested
@@ -112,8 +125,27 @@ class _Model extends ConsumerStatefulWidget {
 }
 
 class _ModelState extends ConsumerState<_Model> {
-  late RevenueModel _chosen = widget.merchant.revenueModel;
+  // A shop that still says 'subscription' is on commission underneath its plan: a plan is
+  // what means a monthly amount now (20261010000000), and the model is what applies once it
+  // lapses. So the choice here is commission or prepaid, never subscription.
+  late RevenueModel _chosen = widget.merchant.revenueModel == RevenueModel.subscription
+      ? RevenueModel.commission
+      : widget.merchant.revenueModel;
+  late bool _custom = widget.merchant.commissionCustom;
   late final _rate = TextEditingController(text: _initialRate());
+  String? _rateError;
+  bool _saving = false;
+
+  /// Switching between a percentage and a fee in pounds must not carry the number across:
+  /// «10» means ten percent under one and ten pounds under the other.
+  void _choose(RevenueModel model) {
+    if (model == _chosen) return;
+    setState(() {
+      _chosen = model;
+      _rateError = null;
+      _rate.text = model == widget.merchant.revenueModel ? _initialRate() : '';
+    });
+  }
 
   String _initialRate() {
     final merchant = widget.merchant;
@@ -131,7 +163,8 @@ class _ModelState extends ConsumerState<_Model> {
   ///
   /// A subscription has no rate. Asking for one would be asking a question with no right
   /// answer, and storing whatever came back would be worse.
-  bool get _needsRate => _chosen != RevenueModel.subscription;
+  bool get _needsRate =>
+      _chosen == RevenueModel.prepaid || (_chosen == RevenueModel.commission && _custom);
 
   @override
   void dispose() {
@@ -146,21 +179,73 @@ class _ModelState extends ConsumerState<_Model> {
       final typed = ArabicDigits.fold(_rate.text).trim();
       if (_chosen == RevenueModel.commission) {
         final percent = double.tryParse(typed);
-        if (percent == null || percent < 0 || percent > 100) return;
+        if (percent == null || percent < 0 || percent > 100) {
+          // Said beside the field. The button used to do nothing at all, which reads as a
+          // broken screen rather than as a wrong number.
+          setState(() => _rateError = 'اكتب نسبة من 0 لـ 100');
+          return;
+        }
         value = (percent * 100).round();
       } else {
         final fee = Money.parse(_rate.text);
-        if (fee == null || fee <= 0) return;
+        if (fee == null || fee <= 0) {
+          setState(() => _rateError = 'اكتب مبلغ صحيح بالجنيه');
+          return;
+        }
         value = fee;
       }
     }
+    setState(() => _rateError = null);
 
-    await ref
-        .read(merchantRepositoryProvider)
-        .saveMerchant(
-          widget.merchant.copyWith(revenueModel: _chosen, revenueValue: value),
-        );
+    // What is about to change, in one sentence, before it changes: this is how the shop is
+    // charged from the next order on.
+    final rate = ref.read(appConfigProvider).defaultCommissionPercent;
+    final summary = switch (_chosen) {
+      RevenueModel.commission when !_custom =>
+        '${MerchantBillingScreen._modelNames[_chosen]} — النسبة الموحّدة ${_percent(rate)}%',
+      RevenueModel.commission =>
+        '${MerchantBillingScreen._modelNames[_chosen]} — نسبة خاصة ${value / 100}%',
+      RevenueModel.prepaid =>
+        '${MerchantBillingScreen._modelNames[_chosen]} — ${Money.format(value)} ج على كل أوردر',
+      RevenueModel.subscription => MerchantBillingScreen._modelNames[_chosen]!,
+    };
+    final sure = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('تغيير طريقة الحساب'),
+        content: Text('من الأوردر الجاي، ${widget.merchant.name} هيتحاسب بـ: $summary'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('رجوع'),
+          ),
+          FilledButton(
+            key: MerchantBillingScreen.confirmModelKey,
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('غيّر'),
+          ),
+        ],
+      ),
+    );
+    if (sure != true || !mounted) return;
+
+    setState(() => _saving = true);
+    // Only the two columns this card is about: a full save from the copy this screen loaded
+    // would put back whatever else the shop looked like then.
+    final repo = ref.read(merchantRepositoryProvider);
+    final result = _chosen == RevenueModel.commission
+        ? await repo.setShopCommission(widget.merchant.id, customBps: _custom ? value : null)
+        : await repo.setRevenueModel(widget.merchant.id, _chosen, value);
+    if (!mounted) return;
+    setState(() => _saving = false);
     ref.invalidate(merchantProvider(widget.merchant.id));
+    ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+      SnackBar(
+        content: Text(result is Ok
+            ? 'اتحفظت طريقة الحساب'
+            : 'مااتحفظتش. اتأكد من النت وجرّب تاني.'),
+      ),
+    );
   }
 
   @override
@@ -172,11 +257,11 @@ class _ModelState extends ConsumerState<_Model> {
       title: 'طريقة الحساب',
       child: RadioGroup<RevenueModel>(
         groupValue: _chosen,
-        onChanged: (v) => setState(() => _chosen = v ?? _chosen),
+        onChanged: (v) => _choose(v ?? _chosen),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            for (final model in RevenueModel.values)
+            for (final model in const [RevenueModel.commission, RevenueModel.prepaid])
               RadioListTile<RevenueModel>(
                 key: MerchantBillingScreen.modelKey(model),
                 value: model,
@@ -210,6 +295,28 @@ class _ModelState extends ConsumerState<_Model> {
                   style: LuqmaType.bodySmall.copyWith(color: colors.textSecondary),
                 ),
               ),
+            if (_chosen == RevenueModel.commission) ...[
+              const SizedBox(height: Space.sm),
+              SwitchListTile(
+                key: MerchantBillingScreen.customRateKey,
+                contentPadding: EdgeInsets.zero,
+                value: _custom,
+                onChanged: (v) => setState(() {
+                  _custom = v;
+                  _rateError = null;
+                  if (!v) _rate.text = '';
+                }),
+                title: const Text('نسبة خاصة للمحل ده'),
+                subtitle: Text(
+                  _custom
+                      ? 'النسبة دي للمحل ده بس، ومش هتتغير لما تغيّر النسبة الموحّدة.'
+                      : 'بيتبع النسبة الموحّدة: '
+                          '${_percent(ref.watch(appConfigProvider).defaultCommissionPercent)}%'
+                          ' — بتتغير من «الإعدادات».',
+                  style: LuqmaType.bodySmall.copyWith(color: colors.textSecondary),
+                ),
+              ),
+            ],
             if (_needsRate) ...[
               const SizedBox(height: Space.md),
               TextField(
@@ -224,13 +331,14 @@ class _ModelState extends ConsumerState<_Model> {
                       ? 'النسبة'
                       : 'الخصم على كل أوردر',
                   suffixText: _chosen == RevenueModel.commission ? '%' : 'ج',
+                  errorText: _rateError,
                 ),
               ),
             ],
             const SizedBox(height: Space.md),
             FilledButton(
               key: MerchantBillingScreen.saveModelKey,
-              onPressed: _save,
+              onPressed: _saving ? null : _save,
               style: FilledButton.styleFrom(
                 minimumSize: const Size.fromHeight(Sizes.minTarget),
               ),
@@ -331,10 +439,33 @@ class _Wallet extends ConsumerWidget {
     final by = ref.read(currentIdentityProvider).value?.uid;
     if (by == null) return;
 
-    await ref
-        .read(billingRepositoryProvider)
-        .topUpWallet(merchantId: merchant.id, amount: amount, recordedBy: by);
-    ref.invalidate(merchantProvider(merchant.id));
+    // One id for this top-up, made before the first attempt and reused by every retry: the
+    // server credits a receipt once. Without it a reply lost on the shop's wifi, then «جرّب
+    // تاني», credited the same cash twice.
+    final receipt = newClientOrderId();
+    Future<void> attempt() async {
+      final result = await ref.read(billingRepositoryProvider).topUpWallet(
+            merchantId: merchant.id,
+            amount: amount,
+            recordedBy: by,
+            receiptId: receipt,
+          );
+      ref.invalidate(merchantProvider(merchant.id));
+      if (!context.mounted) return;
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+        result is Ok
+            ? SnackBar(
+                key: MerchantBillingScreen.toppedUpKey,
+                content: Text('اتسجّل شحن ${LuqmaStrings.of(context).price(amount)}'),
+              )
+            : SnackBar(
+                content: const Text('الشحن مااتسجّلش. جرّب تاني — مش هيتسجّل مرتين.'),
+                action: SnackBarAction(label: 'جرّب تاني', onPressed: attempt),
+              ),
+      );
+    }
+
+    await attempt();
   }
 }
 
@@ -349,8 +480,33 @@ class _Term extends ConsumerWidget {
     final colors = theme.luqma;
     final strings = LuqmaStrings.of(context);
 
-    final subscription = ref.watch(subscriptionProvider(merchantId)).value;
-    final plans = ref.watch(plansProvider).value ?? const <Plan>[];
+    final subscriptionAsync = ref.watch(subscriptionProvider(merchantId));
+    final plansAsync = ref.watch(plansProvider);
+    final subscription = subscriptionAsync.value;
+    final plans = plansAsync.value ?? const <Plan>[];
+
+    // A term that could not be read must not be shown as «لسه مدفعش اشتراك»: that is a
+    // sentence the owner might repeat to the shop.
+    if (subscriptionAsync.hasError && !subscriptionAsync.hasValue ||
+        plansAsync.hasError && !plansAsync.hasValue) {
+      return _Card(
+        title: 'الاشتراك',
+        child: LuqmaErrorView(
+          failure: subscriptionAsync.error ?? plansAsync.error,
+          compact: true,
+          onRetry: () {
+            ref.invalidate(subscriptionProvider(merchantId));
+            ref.invalidate(plansProvider);
+          },
+        ),
+      );
+    }
+    if (!subscriptionAsync.hasValue) {
+      return const _Card(
+        title: 'الاشتراك',
+        child: Center(child: CircularProgressIndicator()),
+      );
+    }
     // The same rule as the merchant's own view of this: an expiry is judged against the
     // injected clock, so both screens can be tested at the day the term lapses.
     final now = ref.watch(clockProvider)();
@@ -388,7 +544,7 @@ class _Term extends ConsumerWidget {
             const SizedBox(height: Space.xs),
             if (subscription.isActiveAt(now))
               Text(
-                'فاضل ${strings.orderCount(subscription.daysLeftAt(now)).replaceAll('طلب', 'يوم').replaceAll('طلبات', 'أيام').replaceAll('طلبًا', 'يومًا')}',
+                'فاضل ${_days(subscription.daysLeftAt(now))}',
                 style: LuqmaType.bodySmall.copyWith(color: colors.textSecondary),
               )
             else
@@ -423,9 +579,16 @@ class _Term extends ConsumerWidget {
   }
 
   Future<void> _record(BuildContext context, WidgetRef ref, List<Plan> plans) async {
+    final now = ref.read(clockProvider)();
+    final current = ref.read(subscriptionProvider(merchantId)).value;
     final payment = await showDialog<({String planId, int amount, int months})>(
       context: context,
-      builder: (_) => _PaymentDialog(plans: plans),
+      builder: (_) => _PaymentDialog(
+        plans: plans,
+        // Where the new term starts: after the current one if it is still running, which is
+        // what the server does, so the date the dialog promises is the date that happens.
+        startsAt: current != null && current.isActiveAt(now) ? current.expiresAt : now,
+      ),
     );
 
     if (payment == null || !context.mounted) return;
@@ -433,23 +596,65 @@ class _Term extends ConsumerWidget {
     final by = ref.read(currentIdentityProvider).value?.uid;
     if (by == null) return;
 
-    await ref
-        .read(billingRepositoryProvider)
-        .recordPayment(
-          merchantId: merchantId,
-          planId: payment.planId,
-          amount: payment.amount,
-          months: payment.months,
-          recordedBy: by,
-        );
-    ref.invalidate(merchantProvider(merchantId));
+    // One receipt for this payment, reused by every retry: the server records it once.
+    final receipt = newClientOrderId();
+    Future<void> attempt() async {
+      final result = await ref.read(billingRepositoryProvider).recordPayment(
+            merchantId: merchantId,
+            planId: payment.planId,
+            amount: payment.amount,
+            months: payment.months,
+            recordedBy: by,
+            receiptId: receipt,
+          );
+      ref.invalidate(merchantProvider(merchantId));
+      if (!context.mounted) return;
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+        result is Ok
+            ? SnackBar(
+                key: MerchantBillingScreen.recordedKey,
+                content: Text(
+                  'اتسجّلت الدفعة — الاشتراك لحد ${_date((result as Ok<Subscription>).value.expiresAt)}',
+                ),
+              )
+            : SnackBar(
+                content: const Text('الدفعة مااتسجّلتش. جرّب تاني — مش هتتسجّل مرتين.'),
+                action: SnackBarAction(label: 'جرّب تاني', onPressed: attempt),
+              ),
+      );
+    }
+
+    await attempt();
   }
 }
 
+String _percent(double p) =>
+    p == p.roundToDouble() ? p.toInt().toString() : p.toString();
+
+/// «يوم واحد», «يومين», «3 أيام», «11 يوم» — Arabic counts days differently at each size,
+/// and the old string-replace on an order count could produce «يومات».
+String _days(int n) => switch (n) {
+      <= 0 => 'أقل من يوم',
+      1 => 'يوم واحد',
+      2 => 'يومين',
+      >= 3 && <= 10 => '$n أيام',
+      _ => '$n يوم',
+    };
+
+String _date(DateTime at) {
+  const months = [
+    'يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو',
+    'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر',
+  ];
+  final local = at.toLocal();
+  return '${local.day} ${months[local.month - 1]} ${local.year}';
+}
+
 class _PaymentDialog extends StatefulWidget {
-  const _PaymentDialog({required this.plans});
+  const _PaymentDialog({required this.plans, required this.startsAt});
 
   final List<Plan> plans;
+  final DateTime startsAt;
 
   @override
   State<_PaymentDialog> createState() => _PaymentDialogState();
@@ -458,6 +663,12 @@ class _PaymentDialog extends StatefulWidget {
 class _PaymentDialogState extends State<_PaymentDialog> {
   final _months = TextEditingController(text: '1');
   String? _planId;
+  String? _error;
+
+  int? get _monthsValue {
+    final months = int.tryParse(ArabicDigits.fold(_months.text).trim());
+    return months == null || months < 1 ? null : months;
+  }
 
   @override
   void dispose() {
@@ -467,8 +678,11 @@ class _PaymentDialogState extends State<_PaymentDialog> {
 
   void _confirm() {
     final planId = _planId;
-    final months = int.tryParse(ArabicDigits.fold(_months.text).trim());
-    if (planId == null || months == null || months < 1) return;
+    final months = _monthsValue;
+    if (planId == null || months == null) {
+      setState(() => _error = planId == null ? 'اختار الخطة' : 'اكتب عدد شهور صحيح');
+      return;
+    }
 
     final plan = widget.plans.firstWhere((p) => p.id == planId);
     Navigator.of(context).pop((
@@ -515,8 +729,31 @@ class _PaymentDialogState extends State<_PaymentDialog> {
               key: MerchantBillingScreen.monthsKey,
               controller: _months,
               keyboardType: TextInputType.number,
+              onChanged: (_) => setState(() => _error = null),
               decoration: const InputDecoration(labelText: 'كام شهر'),
             ),
+            // The money and the dates, together, before anything is recorded: what the shop
+            // hands over and until when it is paid.
+            if (_planId != null && _monthsValue != null) ...[
+              const SizedBox(height: Space.md),
+              Text(
+                key: MerchantBillingScreen.paymentSummaryKey,
+                () {
+                  final plan = widget.plans.firstWhere((p) => p.id == _planId);
+                  final months = _monthsValue!;
+                  final ends = widget.startsAt.add(Duration(days: 30 * months));
+                  return 'المبلغ: ${Money.format(plan.priceMonthly * months)} ج\n'
+                      'الاشتراك هيبقى لحد ${_date(ends)}';
+                }(),
+              ),
+            ],
+            if (_error != null) ...[
+              const SizedBox(height: Space.sm),
+              Text(
+                _error!,
+                style: TextStyle(color: Theme.of(context).luqma.danger),
+              ),
+            ],
           ],
         ),
       ),
@@ -554,6 +791,7 @@ class _AmountDialog extends StatefulWidget {
 
 class _AmountDialogState extends State<_AmountDialog> {
   final _amount = TextEditingController();
+  String? _error;
 
   @override
   void dispose() {
@@ -570,7 +808,12 @@ class _AmountDialogState extends State<_AmountDialog> {
         controller: _amount,
         keyboardType: TextInputType.number,
         inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9٠-٩.,]'))],
-        decoration: InputDecoration(labelText: widget.label, suffixText: 'ج'),
+        onChanged: (_) => setState(() => _error = null),
+        decoration: InputDecoration(
+          labelText: widget.label,
+          suffixText: 'ج',
+          errorText: _error,
+        ),
       ),
       actions: [
         TextButton(
@@ -581,7 +824,10 @@ class _AmountDialogState extends State<_AmountDialog> {
           key: widget.confirmKey,
           onPressed: () {
             final amount = Money.parse(_amount.text);
-            if (amount == null || amount <= 0) return;
+            if (amount == null || amount <= 0) {
+              setState(() => _error = 'اكتب مبلغ صحيح بالجنيه');
+              return;
+            }
             Navigator.of(context).pop(amount);
           },
           child: const Text('سجّل'),

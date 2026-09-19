@@ -41,6 +41,26 @@ abstract interface class MerchantRepository {
 
   Future<Result<void>> setStatus(String id, MerchantStatus status);
 
+  /// How the platform charges this shop, and nothing else.
+  ///
+  /// [saveMerchant] writes every column the form knows about from whatever the screen
+  /// loaded — so a billing change made from a stale copy of the shop would put back an
+  /// old status, old hours, an old description. These two write only what they are about.
+  Future<Result<void>> setRevenueModel(String id, RevenueModel model, int value);
+
+  /// Commission for this shop: its own rate in basis points, or null to follow the one
+  /// rate in «الإعدادات» (`admin_set_shop_commission`).
+  Future<Result<void>> setShopCommission(String id, {int? customBps});
+
+  /// The shop's face — its logo, its cover and the line under its name — and nothing else.
+  /// Null clears a picture or the description.
+  Future<Result<void>> setIdentity(
+    String id, {
+    required String? logoMediaId,
+    required String? coverMediaId,
+    required String? description,
+  });
+
   /// Removes a merchant that has never traded.
   ///
   /// The database owns the rule — `orders.merchant_id` is `on delete restrict`, so a
@@ -284,6 +304,44 @@ class SupabaseMerchantRepository implements MerchantRepository {
   }
 
   @override
+  Future<Result<void>> setRevenueModel(String id, RevenueModel model, int value) {
+    return Result.guardWrite(
+      () => _db.from('merchants').update({
+        'revenue_model': model.name,
+        'revenue_value': value,
+      }).eq('id', id).select('id'),
+      (_) {},
+    );
+  }
+
+  @override
+  Future<Result<void>> setShopCommission(String id, {int? customBps}) {
+    return Result.guard(() async {
+      await _db.rpc('admin_set_shop_commission', params: {
+        'p_merchant_id': id,
+        'p_custom_bps': customBps,
+      });
+    });
+  }
+
+  @override
+  Future<Result<void>> setIdentity(
+    String id, {
+    required String? logoMediaId,
+    required String? coverMediaId,
+    required String? description,
+  }) {
+    return Result.guardWrite(
+      () => _db.from('merchants').update({
+        'logo_media_id': logoMediaId,
+        'cover_media_id': coverMediaId,
+        'description': description,
+      }).eq('id', id).select('id'),
+      (_) {},
+    );
+  }
+
+  @override
   Future<Result<void>> setStatus(String id, MerchantStatus status) {
     return Result.guardWrite(
       () => _db.from('merchants').update({
@@ -304,11 +362,12 @@ class SupabaseMerchantRepository implements MerchantRepository {
   @override
   Future<Result<int>> orderCount(String merchantId) {
     return Result.guard(() async {
-      final rows = await _db
+      // Counted by the database. Fetching every id to take the length was a download per
+      // shop row and stopped at the server's row cap (QA review 2026-09-19).
+      return await _db
           .from('orders')
-          .select('id')
+          .count(CountOption.exact)
           .eq('merchant_id', merchantId);
-      return rows.length;
     });
   }
 }
@@ -402,6 +461,55 @@ class FakeMerchantRepository implements MerchantRepository {
         : merchant;
     _merchants[saved.id] = saved;
     return Result.ok(saved);
+  }
+
+  @override
+  Future<Result<void>> setRevenueModel(String id, RevenueModel model, int value) async {
+    if (failure != null) return Result.err(failure!);
+    if (saveFailure != null) return Result.err(saveFailure!);
+    final merchant = _merchants[id];
+    if (merchant == null) return const Result.err(NotFoundFailure());
+    _merchants[id] = merchant.copyWith(revenueModel: model, revenueValue: value);
+    return const Result.ok(null);
+  }
+
+  /// The rate a shop that follows the one rate gets, in this fake.
+  int defaultCommissionBps = 500;
+
+  @override
+  Future<Result<void>> setShopCommission(String id, {int? customBps}) async {
+    if (failure != null) return Result.err(failure!);
+    if (saveFailure != null) return Result.err(saveFailure!);
+    final merchant = _merchants[id];
+    if (merchant == null) return const Result.err(NotFoundFailure());
+    if (customBps != null && (customBps < 0 || customBps > 5000)) {
+      return const Result.err(ValidationFailure());
+    }
+    _merchants[id] = merchant.copyWith(
+      revenueModel: RevenueModel.commission,
+      revenueValue: customBps ?? defaultCommissionBps,
+      commissionCustom: customBps != null,
+    );
+    return const Result.ok(null);
+  }
+
+  @override
+  Future<Result<void>> setIdentity(
+    String id, {
+    required String? logoMediaId,
+    required String? coverMediaId,
+    required String? description,
+  }) async {
+    if (failure != null) return Result.err(failure!);
+    if (saveFailure != null) return Result.err(saveFailure!);
+    final merchant = _merchants[id];
+    if (merchant == null) return const Result.err(NotFoundFailure());
+    _merchants[id] = merchant.copyWith(
+      logoMediaId: logoMediaId,
+      coverMediaId: coverMediaId,
+      description: description,
+    );
+    return const Result.ok(null);
   }
 
   @override

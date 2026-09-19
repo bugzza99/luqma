@@ -13,13 +13,20 @@ import 'staff_repository.dart';
 /// interface exposes deliberately is not a write at all: [setBlocked] calls a server
 /// function, because a flag that decides who may sign in must not be editable by
 /// whoever holds the client.
+/// How many orders one page of a customer's history holds.
+const historyPage = 50;
+
 abstract interface class CustomerRepository {
   /// Matches name or phone; an empty query returns the newest accounts.
   Future<Result<List<CustomerSummary>>> search(String query);
 
-  /// One customer's orders, newest first. The admin reads them all through the same
-  /// policy the dashboard does.
-  Future<Result<List<Order>>> history(String uid);
+  /// One customer's orders, newest first, [historyPage] at a time. The admin reads them
+  /// all through the same policy the dashboard does. [after] is the last order already
+  /// shown, and asks for the page older than it — a support call about a months-old order
+  /// used to stop at the newest fifty (QA review 2026-09-19). The cursor is the time *and*
+  /// the id: two orders placed in the same instant at a page boundary would otherwise
+  /// lose one of them for good.
+  Future<Result<List<Order>>> history(String uid, {Order? after});
 
   /// Blocks or unblocks. Blocked customers fail at sign-in.
   Future<Result<void>> setBlocked(String uid, {required bool blocked});
@@ -61,14 +68,21 @@ class SupabaseCustomerRepository implements CustomerRepository {
   }
 
   @override
-  Future<Result<List<Order>>> history(String uid) {
+  Future<Result<List<Order>>> history(String uid, {Order? after}) {
     return Result.guard(() async {
-      final rows = await _db
-          .from('orders')
-          .select()
-          .eq('customer_uid', uid)
-          .order('created_at', ascending: false)
-          .limit(50);
+      var request = _db.from('orders').select().eq('customer_uid', uid);
+      final at = after?.placedAt?.toUtc().toIso8601String();
+      if (after != null && at != null) {
+        request = request.or(
+          'placed_at.lt.$at,and(placed_at.eq.$at,id.lt.${after.id})',
+        );
+      }
+      // `placed_at` then `id`, the same order the cursor reads — `orders_customer_idx`
+      // covers the first.
+      final rows = await request
+          .order('placed_at', ascending: false)
+          .order('id', ascending: false)
+          .limit(historyPage);
       return rows.map(_toOrder).toList();
     });
   }
@@ -180,9 +194,12 @@ class FakeCustomerRepository implements CustomerRepository {
   }
 
   @override
-  Future<Result<List<Order>>> history(String uid) async {
+  Future<Result<List<Order>>> history(String uid, {Order? after}) async {
     if (failure != null) return Result.err(failure!);
-    return Result.ok(_histories[uid] ?? const []);
+    // Seeded newest first, as the server answers; the page starts after [after].
+    final all = _histories[uid] ?? const <Order>[];
+    final start = after == null ? 0 : all.indexWhere((o) => o.id == after.id) + 1;
+    return Result.ok(all.skip(start).take(historyPage).toList());
   }
 
   @override

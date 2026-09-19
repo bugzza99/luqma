@@ -47,6 +47,10 @@ void main() {
           staffApplicationRepositoryProvider.overrideWithValue(
             FakeStaffApplicationRepository(),
           ),
+          // «اليوم» lists the shops that owe commission.
+          merchantRepositoryProvider.overrideWithValue(FakeMerchantRepository()),
+          remoteConfigServiceProvider
+              .overrideWithValue(RemoteConfigService(FakeConfigFetcher({}))),
         ],
         child: Consumer(
           builder: (context, ref, _) => MaterialApp.router(

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:luqma_core/luqma_core.dart';
@@ -16,6 +18,11 @@ class CouponsScreen extends ConsumerStatefulWidget {
 
   static const addKey = Key('coupons.add');
   static const emptyKey = Key('coupons.empty');
+  static const searchKey = Key('coupons.search');
+  static const filterAllKey = Key('coupons.filter.all');
+  static const filterActiveKey = Key('coupons.filter.active');
+  static const filterExpiredKey = Key('coupons.filter.expired');
+  static const shopFilterKey = Key('coupons.filter.shop');
 
   @override
   ConsumerState<CouponsScreen> createState() => _CouponsScreenState();
@@ -30,17 +37,34 @@ class _CouponsScreenState extends ConsumerState<CouponsScreen> {
   /// coupon does not blank the list behind a spinner.
   Result<List<Coupon>>? _last;
 
+  Timer? _timer;
+  final _searchController = TextEditingController();
+  String _searchQuery = '';
+  String _statusFilter = 'all'; // 'all', 'active', 'expired'
+  String? _selectedShopId;
+
   @override
   void initState() {
     super.initState();
     _reload();
+    _timer = Timer.periodic(const Duration(seconds: 60), (_) {
+      if (mounted) _reload();
+    });
   }
 
-  void _reload() {
+  @override
+  void dispose() {
+    _timer?.cancel();
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _reload() async {
     final load = ref.read(couponRepositoryProvider).listAll();
     setState(() {
       _load = load;
     });
+    await load;
   }
 
   Future<void> _edit(Coupon? existing, List<Merchant> shops) async {
@@ -86,6 +110,7 @@ class _CouponsScreenState extends ConsumerState<CouponsScreen> {
     final theme = Theme.of(context);
     final colors = theme.luqma;
     final shops = ref.watch(allMerchantsProvider).value ?? const <Merchant>[];
+    final now = ref.watch(clockProvider)();
 
     return Scaffold(
       appBar: AppBar(title: const Text('الكوبونات')),
@@ -104,40 +129,155 @@ class _CouponsScreenState extends ConsumerState<CouponsScreen> {
             if (result == null) return const Center(child: CircularProgressIndicator());
             return switch (result) {
               Err(:final failure) => LuqmaErrorView(failure: failure, onRetry: _reload),
-              Ok(:final value) when value.isEmpty => Center(
-                  key: CouponsScreen.emptyKey,
-                  child: Padding(
-                    padding: const EdgeInsets.all(Space.xl),
-                    child: Text(
-                      'مفيش كوبونات لسه. كوبونات المحلات بتظهر هنا أول ما يعملوها.',
-                      textAlign: TextAlign.center,
-                      style: theme.textTheme.bodyMedium
-                          ?.copyWith(color: colors.textSecondary),
-                    ),
+              Ok(:final value) when value.isEmpty => RefreshIndicator(
+                  onRefresh: _reload,
+                  child: ListView(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    children: [
+                      Center(
+                        key: CouponsScreen.emptyKey,
+                        child: Padding(
+                          padding: const EdgeInsets.all(Space.xl),
+                          child: Text(
+                            'مفيش كوبونات لسه. كوبونات المحلات بتظهر هنا أول ما يعملوها.',
+                            textAlign: TextAlign.center,
+                            style: theme.textTheme.bodyMedium
+                                ?.copyWith(color: colors.textSecondary),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-              Ok(:final value) => ListView.separated(
-                  padding: const EdgeInsets.fromLTRB(
-                    Space.gutter,
-                    Space.gutter,
-                    Space.gutter,
-                    Space.xxxl + Space.xl,
+              Ok(:final value) => RefreshIndicator(
+                  onRefresh: _reload,
+                  child: Builder(
+                    builder: (context) {
+                      final filtered = value.where((c) {
+                        if (_searchQuery.isNotEmpty &&
+                            !c.code.toLowerCase().contains(_searchQuery.toLowerCase())) {
+                          return false;
+                        }
+                        final isExpired =
+                            !c.isActive || (c.validUntil != null && c.validUntil!.isBefore(now));
+                        if (_statusFilter == 'active' && isExpired) return false;
+                        if (_statusFilter == 'expired' && !isExpired) return false;
+
+                        if (_selectedShopId != null) {
+                          if (_selectedShopId == 'platform' && c.merchantId != null) return false;
+                          if (_selectedShopId != 'platform' && c.merchantId != _selectedShopId) {
+                            return false;
+                          }
+                        }
+                        return true;
+                      }).toList();
+
+                      return ListView(
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        padding: const EdgeInsets.fromLTRB(
+                          Space.gutter,
+                          Space.gutter,
+                          Space.gutter,
+                          Space.xxxl + Space.xl,
+                        ),
+                        children: [
+                          TextField(
+                            key: CouponsScreen.searchKey,
+                            controller: _searchController,
+                            decoration: InputDecoration(
+                              prefixIcon: const Icon(Icons.search),
+                              labelText: 'ابحث بكود الكوبون',
+                              suffixIcon: _searchQuery.isNotEmpty
+                                  ? IconButton(
+                                      icon: const Icon(Icons.clear),
+                                      tooltip: 'مسح',
+                                      onPressed: () {
+                                        _searchController.clear();
+                                        setState(() => _searchQuery = '');
+                                      },
+                                    )
+                                  : null,
+                            ),
+                            onChanged: (v) => setState(() => _searchQuery = v.trim()),
+                          ),
+                          const SizedBox(height: Space.sm),
+                          SingleChildScrollView(
+                            scrollDirection: Axis.horizontal,
+                            child: Row(
+                              children: [
+                                ChoiceChip(
+                                  key: CouponsScreen.filterAllKey,
+                                  label: const Text('كله'),
+                                  selected: _statusFilter == 'all',
+                                  onSelected: (_) => setState(() => _statusFilter = 'all'),
+                                ),
+                                const SizedBox(width: Space.xs),
+                                ChoiceChip(
+                                  key: CouponsScreen.filterActiveKey,
+                                  label: const Text('شغّال'),
+                                  selected: _statusFilter == 'active',
+                                  onSelected: (_) => setState(() => _statusFilter = 'active'),
+                                ),
+                                const SizedBox(width: Space.xs),
+                                ChoiceChip(
+                                  key: CouponsScreen.filterExpiredKey,
+                                  label: const Text('منتهي'),
+                                  selected: _statusFilter == 'expired',
+                                  onSelected: (_) => setState(() => _statusFilter = 'expired'),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: Space.sm),
+                          DropdownButtonFormField<String?>(
+                            key: CouponsScreen.shopFilterKey,
+                            initialValue: _selectedShopId,
+                            isExpanded: true,
+                            decoration: const InputDecoration(labelText: 'تصفية حسب المحل'),
+                            items: [
+                              const DropdownMenuItem(value: null, child: Text('كل المحلات والمنصة')),
+                              const DropdownMenuItem(value: 'platform', child: Text('المنصة فقط')),
+                              for (final shop in shops)
+                                DropdownMenuItem(value: shop.id, child: Text(shop.name)),
+                            ],
+                            onChanged: (v) => setState(() => _selectedShopId = v),
+                          ),
+                          const SizedBox(height: Space.md),
+                          if (filtered.isEmpty)
+                            Padding(
+                              padding: const EdgeInsets.all(Space.xl),
+                              child: Text(
+                                'مفيش كوبونات مطابقة.',
+                                textAlign: TextAlign.center,
+                                style: theme.textTheme.bodyMedium
+                                    ?.copyWith(color: colors.textSecondary),
+                              ),
+                            )
+                          else
+                            for (final coupon in filtered) ...[
+                              Builder(
+                                builder: (context) {
+                                  final owner = coupon.merchantId == null
+                                      ? 'المنصة'
+                                      : shops
+                                              .where((m) => m.id == coupon.merchantId)
+                                              .firstOrNull
+                                              ?.name ??
+                                          'محل';
+                                  return CouponTile(
+                                    coupon: coupon,
+                                    owner: owner,
+                                    onTap: () => _edit(coupon, shops),
+                                    onActiveChanged: (active) => _setActive(coupon, active),
+                                  );
+                                },
+                              ),
+                              const SizedBox(height: Space.sm),
+                            ],
+                        ],
+                      );
+                    },
                   ),
-                  itemCount: value.length,
-                  separatorBuilder: (_, _) => const SizedBox(height: Space.sm),
-                  itemBuilder: (context, i) {
-                    final coupon = value[i];
-                    final owner = coupon.merchantId == null
-                        ? 'المنصة'
-                        : shops.where((m) => m.id == coupon.merchantId).firstOrNull?.name ??
-                            'محل';
-                    return CouponTile(
-                      coupon: coupon,
-                      owner: owner,
-                      onTap: () => _edit(coupon, shops),
-                      onActiveChanged: (active) => _setActive(coupon, active),
-                    );
-                  },
                 ),
             };
           },

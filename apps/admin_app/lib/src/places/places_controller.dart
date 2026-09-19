@@ -34,60 +34,92 @@ class PlacesController extends _$PlacesController {
         .valueOrThrow;
     final landmarks = (await repository.landmarks(cityId: cityId)).valueOrThrow;
     final notes = (await repository.landmarkNotes(cityId: cityId)).valueOrThrow;
+    // Unreadable refusals hide nothing rather than failing the screen.
+    final dismissed = (await repository.dismissedSuggestions()).valueOrNull ?? const {};
 
     return PlacesState(
       zones: zones,
       landmarks: landmarks,
-      suggestions: LandmarkSuggestion.from(notes: notes, known: landmarks),
+      suggestions: LandmarkSuggestion.from(
+        notes: notes,
+        known: landmarks,
+        dismissed: dismissed,
+      ),
     );
   }
 
-  Future<void> saveZone({
+  Future<Result<Zone>> saveZone({
     Zone? existing,
     required String name,
     required int deliveryFee,
   }) async {
     final cityId = ref.read(currentCityProvider);
-    await ref.read(geographyRepositoryProvider).saveZone(
+    final result = await ref.read(geographyRepositoryProvider).saveZone(
           (existing ?? Zone(id: '', cityId: cityId, name: name)).copyWith(
             name: name,
             defaultDeliveryFee: deliveryFee,
           ),
         );
-    ref.invalidateSelf();
-    await future;
+    if (result.isOk) {
+      ref.invalidateSelf();
+      await future;
+    }
+    return result;
   }
 
-  Future<void> saveLandmark({
+  Future<Result<Landmark>> saveLandmark({
     Landmark? existing,
     required String name,
     required String zoneId,
   }) async {
     final cityId = ref.read(currentCityProvider);
-    await ref.read(geographyRepositoryProvider).saveLandmark(
+    final result = await ref.read(geographyRepositoryProvider).saveLandmark(
           (existing ?? Landmark(id: '', cityId: cityId, zoneId: zoneId, name: name))
               .copyWith(name: name, zoneId: zoneId),
         );
-    ref.invalidateSelf();
-    await future;
+    if (result.isOk) {
+      ref.invalidateSelf();
+      await future;
+    }
+    return result;
   }
 
-  Future<void> deleteLandmark(String landmarkId) async {
-    await ref.read(geographyRepositoryProvider).deleteLandmark(landmarkId);
-    ref.invalidateSelf();
-    await future;
+  Future<Result<void>> deleteLandmark(String landmarkId) async {
+    final result =
+        await ref.read(geographyRepositoryProvider).deleteLandmark(landmarkId);
+    if (result.isOk) {
+      ref.invalidateSelf();
+      await future;
+    }
+    return result;
+  }
+
+  /// Turns a suggestion down for good. Reloading drops it from the list, and every later
+  /// spelling of the same name in that zone stays dropped.
+  Future<Result<void>> dismissSuggestion(LandmarkSuggestion suggestion) async {
+    final result = await ref
+        .read(geographyRepositoryProvider)
+        .dismissSuggestion(suggestion.zoneId, suggestion.name);
+    if (result.isOk) {
+      ref.invalidateSelf();
+      await future;
+    }
+    return result;
   }
 
   /// Promotes a place customers kept naming into a real landmark.
   ///
   /// Reloading afterwards is what makes it leave the suggestion list: it is now known, so
   /// the next pass filters it out. Nothing has to remember to remove it.
-  Future<void> acceptSuggestion(LandmarkSuggestion suggestion) async {
+  Future<Result<Landmark>> acceptSuggestion(LandmarkSuggestion suggestion) async {
     final cityId = ref.read(currentCityProvider);
-    await ref.read(geographyRepositoryProvider).saveLandmark(
+    final result = await ref.read(geographyRepositoryProvider).saveLandmark(
           suggestion.toLandmark(id: '', cityId: cityId),
         );
-    ref.invalidateSelf();
-    await future;
+    if (result.isOk) {
+      ref.invalidateSelf();
+      await future;
+    }
+    return result;
   }
 }

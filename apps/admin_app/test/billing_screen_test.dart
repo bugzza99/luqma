@@ -121,11 +121,10 @@ void main() {
       );
 
   group('how this merchant pays', () {
-    testWidgets('the three models are offered', (tester) async {
+    // Two, since 2026-09-19: a monthly amount is a plan, recorded from «الاشتراكات».
+    testWidgets('commission and prepaid are offered', (tester) async {
       await pump(tester);
 
-      expect(find.byKey(MerchantBillingScreen.modelKey(RevenueModel.subscription)),
-          findsOneWidget);
       expect(find.byKey(MerchantBillingScreen.modelKey(RevenueModel.commission)),
           findsOneWidget);
       expect(find.byKey(MerchantBillingScreen.modelKey(RevenueModel.prepaid)),
@@ -148,8 +147,14 @@ void main() {
         find.byKey(MerchantBillingScreen.modelKey(RevenueModel.commission)),
       );
       await tester.pumpAndSettle();
+      // Its own rate: the one agreed with this shop, not the one every shop follows.
+      await tester.tap(find.byKey(MerchantBillingScreen.customRateKey));
+      await tester.pumpAndSettle();
       await tester.enterText(find.byKey(MerchantBillingScreen.rateKey), '12');
       await tester.tap(find.byKey(MerchantBillingScreen.saveModelKey));
+      await tester.pumpAndSettle();
+      // How a shop is charged from the next order on is said back before it changes.
+      await tester.tap(find.byKey(MerchantBillingScreen.confirmModelKey));
       await tester.pumpAndSettle();
 
       final saved = (await merchants.getMerchant('m1')).valueOrNull!;
@@ -158,17 +163,36 @@ void main() {
       expect(saved.revenueValue, 1200);
     });
 
-    // A subscription has no rate. Asking for one would be asking a question with no
-    // right answer, and storing whatever came back would be worse.
-    testWidgets('a subscription asks for no rate', (tester) async {
-      await pump(tester, seed: merchant(model: RevenueModel.commission, value: 1000));
+    // 2026-09-19: one rate for every shop. A shop that follows it has nothing to type, and
+    // saving puts it back on the one rate.
+    testWidgets('following the one rate asks for no rate and saves as following',
+        (tester) async {
+      await pump(tester, seed: merchant(model: RevenueModel.prepaid, value: 500));
 
       await tester.tap(
-        find.byKey(MerchantBillingScreen.modelKey(RevenueModel.subscription)),
+        find.byKey(MerchantBillingScreen.modelKey(RevenueModel.commission)),
       );
       await tester.pumpAndSettle();
-
       expect(find.byKey(MerchantBillingScreen.rateKey), findsNothing);
+      expect(find.textContaining('النسبة الموحّدة'), findsWidgets);
+
+      await tester.tap(find.byKey(MerchantBillingScreen.saveModelKey));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(MerchantBillingScreen.confirmModelKey));
+      await tester.pumpAndSettle();
+
+      final saved = (await merchants.getMerchant('m1')).valueOrNull!;
+      expect(saved.revenueModel, RevenueModel.commission);
+      expect(saved.commissionCustom, isFalse);
+      expect(saved.revenueValue, 500);
+    });
+
+    testWidgets('a monthly amount is not a choice here — plans are', (tester) async {
+      await pump(tester);
+      expect(
+        find.byKey(MerchantBillingScreen.modelKey(RevenueModel.subscription)),
+        findsNothing,
+      );
     });
   });
 
@@ -588,6 +612,107 @@ void main() {
           findsOneWidget);
       expect(find.byKey(MerchantBillingScreen.collectKey, skipOffstage: offstage),
           findsOneWidget);
+    });
+  });
+
+  // QA review 2026-09-19: money written from this screen could be written twice, and a
+  // wrong number made the button silently do nothing.
+  group('money is said back, and written once', () {
+    testWidgets('a wrong rate is said beside the field, and nothing is saved', (tester) async {
+      await pump(tester);
+
+      await tester.tap(
+        find.byKey(MerchantBillingScreen.modelKey(RevenueModel.commission)),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(MerchantBillingScreen.customRateKey));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(MerchantBillingScreen.rateKey), '150');
+      await tester.tap(find.byKey(MerchantBillingScreen.saveModelKey));
+      await tester.pumpAndSettle();
+
+      expect(find.text('اكتب نسبة من 0 لـ 100'), findsOneWidget);
+      expect(find.byKey(MerchantBillingScreen.confirmModelKey), findsNothing);
+    });
+
+    testWidgets('switching from a percentage to a fee does not carry the number across',
+        (tester) async {
+      await pump(
+        tester,
+        seed: merchant(model: RevenueModel.commission, value: 1000)
+            .copyWith(commissionCustom: true),
+      );
+
+      await tester.tap(find.byKey(MerchantBillingScreen.modelKey(RevenueModel.prepaid)));
+      await tester.pumpAndSettle();
+
+      final field = tester.widget<TextField>(find.byKey(MerchantBillingScreen.rateKey));
+      expect(field.controller!.text, isEmpty);
+    });
+
+    testWidgets('a top-up says it was recorded', (tester) async {
+      await pump(
+        tester,
+        seed: merchant(model: RevenueModel.prepaid, value: 500, wallet: 2000),
+      );
+      await tester.scrollUntilVisible(
+        find.byKey(MerchantBillingScreen.topUpKey),
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(MerchantBillingScreen.topUpKey));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(MerchantBillingScreen.amountKey), '50');
+      await tester.tap(find.byKey(MerchantBillingScreen.confirmTopUpKey));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(MerchantBillingScreen.toppedUpKey), findsOneWidget);
+    });
+
+    testWidgets('a failed top-up offers a retry, and the retry credits once', (tester) async {
+      await pump(
+        tester,
+        seed: merchant(model: RevenueModel.prepaid, value: 500, wallet: 2000),
+      );
+      billing.failure = const OfflineFailure();
+      await tester.scrollUntilVisible(
+        find.byKey(MerchantBillingScreen.topUpKey),
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(MerchantBillingScreen.topUpKey));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(MerchantBillingScreen.amountKey), '50');
+      await tester.tap(find.byKey(MerchantBillingScreen.confirmTopUpKey));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('مااتسجّلش'), findsOneWidget);
+      expect(billing.walletOf('m1'), 2000);
+
+      billing.failure = null;
+      await tester.tap(find.text('جرّب تاني'));
+      await tester.pumpAndSettle();
+      expect(billing.walletOf('m1'), 7000);
+    });
+
+    testWidgets('a payment shows the amount and the new end date before recording',
+        (tester) async {
+      await pump(tester);
+
+      await tester.ensureVisible(find.byKey(MerchantBillingScreen.recordKey));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(MerchantBillingScreen.recordKey));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(MerchantBillingScreen.planChoiceKey('basic')));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(MerchantBillingScreen.monthsKey), '2');
+      await tester.pumpAndSettle();
+
+      final summary = tester.widget<Text>(find.byKey(MerchantBillingScreen.paymentSummaryKey));
+      expect(summary.data, contains('500 ج'));
+      expect(summary.data, contains('لحد'));
     });
   });
 }

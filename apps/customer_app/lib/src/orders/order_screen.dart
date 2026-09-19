@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:luqma_core/luqma_core.dart';
 
+import 'order_help_sheet.dart';
 import 'order_time.dart';
 
 /// One order, followed live.
@@ -170,96 +171,49 @@ class _Loaded extends ConsumerWidget {
   }
 
   Future<void> _reportIssue(BuildContext context, WidgetRef ref) async {
-    final reason = await showModalBottomSheet<String>(
+    // The assistant first: most questions — "where is my food", "what do I owe" — are
+    // answered by the order itself, and a ticket for each of them is a person's evening
+    // spent reading what the screen already knew (the owner's decision, 2026-09-19).
+    final outcome = await showModalBottomSheet<HelpOutcome>(
       context: context,
       isScrollControlled: true,
-      builder: (_) => const _IssueSheet(),
-    );
-
-    if (reason == null || !context.mounted) return;
-    final customerUid = order.customerUid;
-    // A retained order can outlive its account. It is unreachable from that deleted
-    // customer's signed-out app, but keeping the guard here means a historic row can
-    // never turn a nullable database reference into a crash.
-    if (customerUid == null) return;
-
-    await ref.read(orderRepositoryProvider).raiseIssue(
-          orderId: order.id,
-          customerUid: customerUid,
-          merchantId: order.merchantId,
-          reason: reason,
-        );
-
-    if (!context.mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('وصلتنا شكواك، هنراجعها.')),
-    );
-  }
-}
-
-/// The complaint form.
-///
-/// A widget rather than a closure holding a controller: a sheet keeps rebuilding while
-/// it animates away, so a controller disposed the moment `showModalBottomSheet` returns
-/// is a controller the field is still using.
-class _IssueSheet extends StatefulWidget {
-  const _IssueSheet();
-
-  @override
-  State<_IssueSheet> createState() => _IssueSheetState();
-}
-
-class _IssueSheetState extends State<_IssueSheet> {
-  final _reason = TextEditingController();
-
-  @override
-  void dispose() {
-    _reason.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
-      child: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(Space.gutter),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text('إيه اللي حصل؟', style: Theme.of(context).textTheme.titleLarge),
-              const SizedBox(height: Space.md),
-              TextField(
-                key: OrderScreen.issueTextKey,
-                controller: _reason,
-                maxLines: 3,
-                maxLength: 300,
-                autofocus: true,
-                decoration: const InputDecoration(
-                  hintText: 'الأكل وصل بارد، ناقص صنف، اتأخر…',
-                ),
-              ),
-              const SizedBox(height: Space.md),
-              FilledButton(
-                key: OrderScreen.sendIssueKey,
-                // An empty complaint tells an admin nothing and wastes the reply.
-                onPressed: () {
-                  final text = _reason.text.trim();
-                  if (text.isEmpty) return;
-                  Navigator.of(context).pop(text);
-                },
-                style: FilledButton.styleFrom(
-                  minimumSize: const Size.fromHeight(Sizes.minTarget),
-                ),
-                child: const Text('ابعت'),
-              ),
-            ],
-          ),
-        ),
+      builder: (_) => OrderHelpSheet(
+        order: order,
+        shopPhone: ref.read(merchantProvider(order.merchantId)).value?.phone,
       ),
     );
+    if (outcome == null || !context.mounted) return;
+
+    switch (outcome) {
+      case CancelRequested():
+        await _confirmCancel(context, ref);
+      case ComplaintWritten(:final text):
+        final customerUid = order.customerUid;
+        // A retained order can outlive its account. It is unreachable from that deleted
+        // customer's signed-out app, but keeping the guard here means a historic row can
+        // never turn a nullable database reference into a crash.
+        if (customerUid == null) return;
+
+        final result = await ref.read(orderRepositoryProvider).raiseIssue(
+              orderId: order.id,
+              customerUid: customerUid,
+              merchantId: order.merchantId,
+              reason: text,
+            );
+
+        if (!context.mounted) return;
+        // It used to say «وصلتنا» whatever happened — a complaint lost to a dead
+        // connection was thanked for.
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              result.isOk
+                  ? 'وصلتنا شكواك، هنراجعها ونرد عليك.'
+                  : 'الشكوى موصلتش — اتأكد من النت وجرّب تاني.',
+            ),
+          ),
+        );
+    }
   }
 }
 

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../theme/colors.dart';
+import '../theme/dimens.dart';
 import 'error_view.dart';
 
 /// The three states every screen in this product has, decided in one place.
@@ -58,6 +60,9 @@ class LuqmaAsyncView<T> extends StatelessWidget {
   /// is a test that stops testing.
   final Key? errorKey;
 
+  /// The notice drawn over data that a refresh failed to update.
+  static const staleKey = Key('asyncView.stale');
+
   @override
   Widget build(BuildContext context) {
     // `hasError` first, and before any check on the value: this is the whole point.
@@ -71,9 +76,53 @@ class LuqmaAsyncView<T> extends StatelessWidget {
     if (value.hasValue) {
       final loaded = value.value as T;
       final blank = empty != null && (isEmpty?.call(loaded) ?? false);
-      return blank ? empty! : builder(context, loaded);
+      final content = blank ? empty! : builder(context, loaded);
+      if (!value.hasError) return content;
+      // A refresh failed over data already on screen. Keeping the data is right; keeping
+      // quiet about it was not — an order list that stopped updating looked exactly like
+      // one with nothing new (QA review 2026-09-19).
+      final notice = _StaleNotice(onRetry: onRetry);
+      return LayoutBuilder(
+        builder: (context, constraints) => constraints.hasBoundedHeight
+            ? Column(children: [notice, Expanded(child: content)])
+            : Column(mainAxisSize: MainAxisSize.min, children: [notice, content]),
+      );
     }
 
     return loading ?? const Center(child: CircularProgressIndicator());
+  }
+}
+
+/// «مقدرناش نحدّث» over data that is still shown, with the way to try again.
+class _StaleNotice extends StatelessWidget {
+  const _StaleNotice({this.onRetry});
+
+  final VoidCallback? onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = theme.luqma;
+    return Material(
+      key: LuqmaAsyncView.staleKey,
+      color: colors.surface,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: Space.gutter, vertical: Space.xs),
+        child: Row(
+          children: [
+            Icon(Icons.cloud_off_rounded, size: Sizes.iconSm, color: colors.textSecondary),
+            const SizedBox(width: Space.sm),
+            Expanded(
+              child: Text(
+                'مقدرناش نحدّث — اللي قدامك آخر حاجة اتحمّلت.',
+                style: theme.textTheme.bodySmall?.copyWith(color: colors.textSecondary),
+              ),
+            ),
+            if (onRetry != null)
+              TextButton(onPressed: onRetry, child: const Text('حاول تاني')),
+          ],
+        ),
+      ),
+    );
   }
 }

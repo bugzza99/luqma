@@ -67,5 +67,67 @@ void main() {
     expect(written['developer_name'], 'محمد رمضان');
     expect(written['developer_bio'], 'من إدكو.');
     expect(written.keys.where((k) => k.startsWith('about_')), isEmpty);
+    expect(find.text('اتحفظ'), findsOneWidget);
+  });
+
+  testWidgets('validates facebook, instagram and whatsapp with inline errors', (tester) async {
+    await pump(tester);
+
+    await tester.enterText(find.byKey(DeveloperEditorScreen.facebookKey), 'http://facebook.com/me');
+    await tester.enterText(find.byKey(DeveloperEditorScreen.instagramKey), 'instagram.com/me');
+    await tester.enterText(find.byKey(DeveloperEditorScreen.whatsappKey), '12345');
+    await save(tester);
+
+    expect(find.text('الرابط لازم يبدأ بـ https://'), findsNWidgets(2));
+    expect(find.text('اكتب رقم موبايل مصري صحيح'), findsOneWidget);
+    expect(config.setCalls, isEmpty);
+
+    // Fix them with valid inputs
+    await tester.enterText(find.byKey(DeveloperEditorScreen.facebookKey), 'https://facebook.com/me');
+    await tester.enterText(find.byKey(DeveloperEditorScreen.instagramKey), 'https://instagram.com/me');
+    await tester.enterText(find.byKey(DeveloperEditorScreen.whatsappKey), '01012345678');
+    await save(tester);
+
+    expect(find.text('الرابط لازم يبدأ بـ https://'), findsNothing);
+    expect(find.text('اكتب رقم موبايل مصري صحيح'), findsNothing);
+    expect(config.setCalls, hasLength(1));
+    expect(config.setCalls.first['developer_facebook'], 'https://facebook.com/me');
+    expect(config.setCalls.first['developer_instagram'], 'https://instagram.com/me');
+    expect(config.setCalls.first['developer_whatsapp'], '01012345678');
+    expect(find.text('اتحفظ'), findsOneWidget);
+  });
+
+  testWidgets('leaving with unsaved changes shows confirmation dialog', (tester) async {
+    await pump(tester, seed: {'developer_name': 'علي'});
+
+    await tester.enterText(find.byKey(DeveloperEditorScreen.nameKey), 'عمر');
+    await tester.pump();
+
+    final dynamic widgetsAppState = tester.state(find.byType(WidgetsApp));
+    await widgetsAppState.didPopRoute();
+    await tester.pumpAndSettle();
+
+    expect(find.text('تسيب التعديلات من غير حفظ؟'), findsOneWidget);
+  });
+
+  // A typo in a link used to be found by a customer (QA review 2026-09-19).
+  testWidgets('the page can be previewed as typed, before it is saved', (tester) async {
+    await pump(tester);
+    await tester.enterText(find.byKey(DeveloperEditorScreen.nameKey), 'أحمد المطور');
+    await tester.enterText(
+        find.byKey(DeveloperEditorScreen.facebookKey), 'https://facebook.com/ahmed');
+    await tester.tap(find.byKey(DeveloperEditorScreen.previewKey));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(DeveloperEditorScreen.previewDialogKey), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byKey(DeveloperEditorScreen.previewDialogKey),
+        matching: find.text('أحمد المطور'),
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('جرّب رابط فيسبوك'), findsOneWidget);
+    expect(find.text('جرّب رابط واتساب'), findsNothing);
   });
 }

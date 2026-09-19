@@ -44,6 +44,9 @@ dependencies:
   luqma_core:
     path: ../../packages/luqma_core
 
+  # Calling a shop or an applicant from the screen that says to call them.
+  url_launcher: ^6.3.2
+
   # The gallery. Lives here rather than in luqma_core because it is a platform plugin —
   # a FileProvider entry and, on some Androids, a camera permission — and CustomerApp
   # uploads nothing, so it should carry none of that.

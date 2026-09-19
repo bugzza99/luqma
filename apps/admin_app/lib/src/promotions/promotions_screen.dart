@@ -29,6 +29,9 @@ class PromotionsScreen extends ConsumerWidget {
   static const saveDatesKey = Key('promotions.dates.save');
 
   static Key datesKey(String id) => Key('promotions.dates.$id');
+  static Key editKey(String id) => Key('promotions.edit.$id');
+  static const editTitleKey = Key('promotions.editTitle');
+  static const editSaveKey = Key('promotions.editSave');
 
   static const createKey = Key('promotions.create');
   static const formMerchantKey = Key('promotions.form.merchant');
@@ -40,6 +43,13 @@ class PromotionsScreen extends ConsumerWidget {
   static Key cardKey(String id) => Key('promotions.card.$id');
   static Key approveKey(String id) => Key('promotions.approve.$id');
   static Key rejectKey(String id) => Key('promotions.reject.$id');
+  static Key stopKey(String id) => Key('promotions.stop.$id');
+  static const stopConfirmKey = Key('promotions.stop.confirm');
+  static const stopCancelKey = Key('promotions.stop.cancel');
+  static const pushConfirmKey = Key('promotions.push.confirm');
+  static const pushCancelKey = Key('promotions.push.cancel');
+  static const formStartDateKey = Key('promotions.form.startDate');
+  static const formEndDateKey = Key('promotions.form.endDate');
   static Key pushWarningKey(String id) => Key('promotions.push.$id');
   static Key pushNotSentKey(String id) => Key('promotions.push.notSent.$id');
   static Key pushEmptyKey(String id) => Key('promotions.push.empty.$id');
@@ -130,53 +140,37 @@ class PromotionsScreen extends ConsumerWidget {
   }
 
   Future<void> _create(BuildContext context, WidgetRef ref) async {
-    final messenger = ScaffoldMessenger.of(context);
-    final draft = await showModalBottomSheet<Promotion>(
+    await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
       builder: (_) => const _CreateForm(),
     );
-    if (draft == null || !context.mounted) return;
-
-    // Stamped with the admin who made it, exactly as an approval is: "who put this up"
-    // has to be answerable months later, and an approval nobody signed is not one.
-    final by = ref.read(currentIdentityProvider).value?.uid;
-    if (by == null) return;
-
-    final made = await ref
-        .read(promotionRepositoryProvider)
-        .createApproved(draft, approvedBy: by);
-
-    messenger.showSnackBar(
-      SnackBar(
-        content: Text(switch (made) {
-          Ok() => 'الإعلان اتحط.',
-          // Silence after a tap is indistinguishable from a broken button.
-          Err(:final failure) => switch (failure) {
-            PermissionFailure() => 'مش مسموحلك تحط إعلانات.',
-            OfflineFailure() => 'مفيش نت — جرّب تاني.',
-            _ => 'معرفناش نحط الإعلان. جرّب تاني.',
-          },
-        }),
-      ),
-    );
   }
 }
 
-class _Request extends ConsumerWidget {
+class _Request extends ConsumerStatefulWidget {
   const _Request({required this.promotion});
 
   final Promotion promotion;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_Request> createState() => _RequestState();
+}
+
+class _RequestState extends ConsumerState<_Request> {
+  bool _busy = false;
+
+  @override
+  Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colors = theme.luqma;
     final strings = LuqmaStrings.of(context);
-    final merchant = ref.watch(merchantProvider(promotion.merchantId)).value;
+    final merchant = ref
+        .watch(merchantProvider(widget.promotion.merchantId))
+        .value;
 
     return Container(
-      key: PromotionsScreen.cardKey(promotion.id),
+      key: PromotionsScreen.cardKey(widget.promotion.id),
       padding: const EdgeInsets.all(Space.md),
       decoration: BoxDecoration(
         color: colors.card,
@@ -191,7 +185,7 @@ class _Request extends ConsumerWidget {
             children: [
               Expanded(
                 child: Text(
-                  merchant?.name ?? promotion.merchantId,
+                  merchant?.name ?? widget.promotion.merchantId,
                   style: theme.textTheme.titleMedium?.copyWith(
                     fontWeight: FontWeight.w700,
                   ),
@@ -232,13 +226,13 @@ class _Request extends ConsumerWidget {
           ),
           const SizedBox(height: Space.xs),
           Text(
-            PromotionsScreen.channelNames[promotion.channel]!,
+            PromotionsScreen.channelNames[widget.promotion.channel]!,
             style: LuqmaType.caption.copyWith(color: colors.textSecondary),
           ),
-          if (promotion.channel == PromotionChannel.push) ...[
+          if (widget.promotion.channel == PromotionChannel.push) ...[
             const SizedBox(height: Space.sm),
             Container(
-              key: PromotionsScreen.pushWarningKey(promotion.id),
+              key: PromotionsScreen.pushWarningKey(widget.promotion.id),
               padding: const EdgeInsets.all(Space.sm),
               decoration: BoxDecoration(
                 color: colors.accent,
@@ -273,15 +267,15 @@ class _Request extends ConsumerWidget {
           ],
           const SizedBox(height: Space.sm),
           Text(
-            promotion.title,
+            widget.promotion.title,
             style: theme.textTheme.titleMedium?.copyWith(
               fontWeight: FontWeight.bold,
             ),
           ),
-          if (promotion.body.isNotEmpty) ...[
+          if (widget.promotion.body.isNotEmpty) ...[
             const SizedBox(height: Space.xs),
             Text(
-              promotion.body,
+              widget.promotion.body,
               style: theme.textTheme.bodyMedium?.copyWith(
                 color: colors.textSecondary,
               ),
@@ -296,17 +290,23 @@ class _Request extends ConsumerWidget {
                 color: colors.price,
               ),
               const SizedBox(width: Space.xs),
-              Text(
-                'من ${_day(promotion.startAt)} لـ ${_day(promotion.endAt)}'
-                // Whether there is a price to agree at all: a placement inside the shop's
-                // plan is already paid for by the subscription (2026-09-17).
-                // «مفيش سعر مسجّل» rather than "agree a price": a placement the admin put
-                // up themselves also carries zero, and calling that one unpaid would be
-                // wrong (found in review).
-                '${promotion.includedInPlan ? ' · ضمن الباقة' : promotion.price > 0 ? ' · ${strings.price(promotion.price)}' : ' · مفيش سعر مسجّل'}',
-                style: LuqmaType.bodySmall.copyWith(
-                  color: colors.price,
-                  fontWeight: FontWeight.w700,
+              Flexible(
+                child: Text(
+                  'من ${_day(widget.promotion.startAt)} لـ ${_day(widget.promotion.endAt)}'
+                  // Whether there is a price to agree at all: a placement inside the shop's
+                  // plan is already paid for by the subscription (2026-09-17).
+                  // «مفيش سعر مسجّل» rather than "agree a price": a placement the admin put
+                  // up themselves also carries zero, and calling that one unpaid would be
+                  // wrong (found in review).
+                  '${widget.promotion.includedInPlan
+                      ? ' · ضمن الباقة'
+                      : widget.promotion.price > 0
+                      ? ' · ${strings.price(widget.promotion.price)}'
+                      : ' · مفيش سعر مسجّل'}',
+                  style: LuqmaType.bodySmall.copyWith(
+                    color: colors.price,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
               ),
             ],
@@ -316,8 +316,8 @@ class _Request extends ConsumerWidget {
             children: [
               Expanded(
                 child: OutlinedButton(
-                  key: PromotionsScreen.rejectKey(promotion.id),
-                  onPressed: () => _reject(context, ref),
+                  key: PromotionsScreen.rejectKey(widget.promotion.id),
+                  onPressed: _busy ? null : () => _reject(context, ref),
                   style: OutlinedButton.styleFrom(
                     foregroundColor: colors.danger,
                     side: BorderSide(color: colors.danger),
@@ -330,8 +330,8 @@ class _Request extends ConsumerWidget {
               Expanded(
                 flex: 2,
                 child: FilledButton(
-                  key: PromotionsScreen.approveKey(promotion.id),
-                  onPressed: () => _approve(context, ref),
+                  key: PromotionsScreen.approveKey(widget.promotion.id),
+                  onPressed: _busy ? null : () => _approve(context, ref),
                   style: FilledButton.styleFrom(
                     minimumSize: const Size.fromHeight(Sizes.minTarget),
                   ),
@@ -353,29 +353,22 @@ class _Request extends ConsumerWidget {
 
     final now = ref.read(clockProvider)();
 
-    // A request dated in the future is approved into that future date, and the admin
-    // sees nothing happen. That is correct — `startAt` decides, and a campaign meant for
-    // next week must not jump the queue — but it is also exactly what the owner hit:
-    // they approved a banner and it stayed invisible with no way to move it.
-    //
-    // So they are asked, once, and only when it matters. A request that already starts
-    // now goes straight through without a dialog.
     DateTime? startAt;
     DateTime? endAt;
-    if (promotion.startAt.isAfter(now)) {
+    if (widget.promotion.startAt.isAfter(now)) {
       final startNow = await showDialog<bool>(
         context: context,
         builder: (dialogContext) => AlertDialog(
           title: const Text('يبدأ إمتى؟'),
           content: Text(
-            'الطلب ده مكتوب إنه يبدأ ${_day(promotion.startAt)}. '
+            'الطلب ده مكتوب إنه يبدأ ${_day(widget.promotion.startAt)}. '
             'تحب يشتغل من دلوقتي؟',
           ),
           actions: [
             TextButton(
               key: PromotionsScreen.keepDateKey,
               onPressed: () => Navigator.of(dialogContext).pop(false),
-              child: Text('سيبه ${_day(promotion.startAt)}'),
+              child: Text('سيبه ${_day(widget.promotion.startAt)}'),
             ),
             FilledButton(
               key: PromotionsScreen.startNowKey,
@@ -385,18 +378,41 @@ class _Request extends ConsumerWidget {
           ],
         ),
       );
-      if (startNow == null) return;
+      if (startNow == null || !mounted) return;
       if (startNow) {
         startAt = now;
-        // The window keeps the length the merchant asked for rather than ending on the
-        // original date, which would otherwise shorten a campaign for being approved.
-        endAt = now.add(promotion.endAt.difference(promotion.startAt));
+        endAt = now.add(
+          widget.promotion.endAt.difference(widget.promotion.startAt),
+        );
       }
     }
 
-    await ref
+    setState(() => _busy = true);
+    final result = await ref
         .read(promotionRepositoryProvider)
-        .approve(promotion.id, approvedBy: by, startAt: startAt, endAt: endAt);
+        .approve(
+          widget.promotion.id,
+          approvedBy: by,
+          startAt: startAt,
+          endAt: endAt,
+        );
+
+    if (!mounted) return;
+    setState(() => _busy = false);
+    if (!context.mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(switch (result) {
+          Ok() => 'تمت الموافقة على الإعلان.',
+          Err(:final failure) => switch (failure) {
+            OfflineFailure() => 'مفيش نت — جرّب تاني.',
+            PermissionFailure() => 'مش مسموحلك توافق على الإعلانات.',
+            _ => 'معرفناش نوافق على الإعلان. جرّب تاني.',
+          },
+        }),
+      ),
+    );
   }
 
   Future<void> _reject(BuildContext context, WidgetRef ref) async {
@@ -410,9 +426,27 @@ class _Request extends ConsumerWidget {
     final by = ref.read(currentIdentityProvider).value?.uid;
     if (by == null) return;
 
-    await ref
+    setState(() => _busy = true);
+    final result = await ref
         .read(promotionRepositoryProvider)
-        .reject(promotion.id, reason: reason, by: by);
+        .reject(widget.promotion.id, reason: reason, by: by);
+
+    if (!mounted) return;
+    setState(() => _busy = false);
+    if (!context.mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(switch (result) {
+          Ok() => 'تم رفض الإعلان.',
+          Err(:final failure) => switch (failure) {
+            OfflineFailure() => 'مفيش نت — جرّب تاني.',
+            PermissionFailure() => 'مش مسموحلك ترفض الإعلانات.',
+            _ => 'معرفناش نرفض الإعلان. جرّب تاني.',
+          },
+        }),
+      ),
+    );
   }
 }
 
@@ -422,33 +456,42 @@ class _Request extends ConsumerWidget {
 /// decisions are already taken — and repeating them would give an admin two places to
 /// make the same call and two answers when they disagree. What is here is the one thing
 /// only they can do: decide when it appears and when it goes away.
-class _Placement extends ConsumerWidget {
+class _Placement extends ConsumerStatefulWidget {
   const _Placement({required this.promotion});
 
   final Promotion promotion;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_Placement> createState() => _PlacementState();
+}
+
+class _PlacementState extends ConsumerState<_Placement> {
+  bool _stopping = false;
+
+  @override
+  Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colors = theme.luqma;
     final now = ref.watch(clockProvider)();
-    final merchant = ref.watch(merchantProvider(promotion.merchantId)).value;
+    final merchant = ref
+        .watch(merchantProvider(widget.promotion.merchantId))
+        .value;
 
     // Approved is not live, and the board is the one screen where that distinction has
     // to be legible at a glance — it is the whole reason a scheduled banner looked to
     // the owner like a broken one.
-    final (tone, label) = switch (promotion.status) {
+    final (tone, label) = switch (widget.promotion.status) {
       PromotionStatus.requested => (colors.textSecondary, 'مستني مراجعة'),
       PromotionStatus.approved || PromotionStatus.active =>
-        promotion.isLiveAt(now)
+        widget.promotion.isLiveAt(now)
             ? (colors.success, 'شغال دلوقتي')
-            : (colors.textSecondary, 'هيبدأ ${_day(promotion.startAt)}'),
+            : (colors.textSecondary, 'هيبدأ ${_day(widget.promotion.startAt)}'),
       PromotionStatus.rejected => (colors.danger, 'مرفوض'),
       PromotionStatus.ended => (colors.textSecondary, 'خلص'),
     };
 
     return Container(
-      key: PromotionsScreen.cardKey(promotion.id),
+      key: PromotionsScreen.cardKey(widget.promotion.id),
       padding: const EdgeInsets.all(Space.md),
       decoration: BoxDecoration(
         color: colors.card,
@@ -463,7 +506,7 @@ class _Placement extends ConsumerWidget {
             children: [
               Expanded(
                 child: Text(
-                  merchant?.name ?? promotion.merchantId,
+                  merchant?.name ?? widget.promotion.merchantId,
                   style: theme.textTheme.titleMedium?.copyWith(
                     fontWeight: FontWeight.w700,
                   ),
@@ -504,27 +547,29 @@ class _Placement extends ConsumerWidget {
           ),
           const SizedBox(height: Space.xs),
           Text(
-            PromotionsScreen.channelNames[promotion.channel]!,
+            PromotionsScreen.channelNames[widget.promotion.channel]!,
             style: LuqmaType.caption.copyWith(color: colors.textSecondary),
           ),
-          if (promotion.title.isNotEmpty) ...[
+          if (widget.promotion.title.isNotEmpty) ...[
             const SizedBox(height: Space.xs),
             Text(
-              promotion.title,
+              widget.promotion.title,
               style: theme.textTheme.titleMedium?.copyWith(
                 fontWeight: FontWeight.bold,
               ),
             ),
           ],
-          if (promotion.channel == PromotionChannel.push) ...[
+          if (widget.promotion.channel == PromotionChannel.push) ...[
             const SizedBox(height: Space.sm),
-            if (promotion.pushedAt == null)
-              _PushNotSent(promotionId: promotion.id)
+            if (widget.promotion.pushedAt == null)
+              _PushNotSent(promotionId: widget.promotion.id)
             else
-              _PushReport(promotionId: promotion.id),
+              _PushReport(promotionId: widget.promotion.id),
           ],
           const SizedBox(height: Space.sm),
-          Row(
+          // A Wrap: the dates and two buttons beside them did not fit a phone's width.
+          Wrap(
+            crossAxisAlignment: WrapCrossAlignment.center,
             children: [
               Icon(
                 Icons.calendar_today_outlined,
@@ -532,9 +577,10 @@ class _Placement extends ConsumerWidget {
                 color: colors.price,
               ),
               const SizedBox(width: Space.xs),
-              Expanded(
+              Padding(
+                padding: const EdgeInsetsDirectional.only(end: Space.sm),
                 child: Text(
-                  'من ${_day(promotion.startAt)} لـ ${_day(promotion.endAt)}',
+                  'من ${_day(widget.promotion.startAt)} لـ ${_day(widget.promotion.endAt)}',
                   style: LuqmaType.bodySmall.copyWith(
                     color: colors.price,
                     fontWeight: FontWeight.w700,
@@ -542,7 +588,7 @@ class _Placement extends ConsumerWidget {
                 ),
               ),
               TextButton.icon(
-                key: PromotionsScreen.datesKey(promotion.id),
+                key: PromotionsScreen.datesKey(widget.promotion.id),
                 onPressed: () => _moveDates(context, ref),
                 icon: const Icon(Icons.event_outlined, size: Sizes.iconSm),
                 label: const Text('المواعيد'),
@@ -550,9 +596,108 @@ class _Placement extends ConsumerWidget {
                   minimumSize: const Size(Sizes.minTarget, Sizes.minTarget),
                 ),
               ),
+              // A boost carries no words to correct.
+              if (widget.promotion.channel != PromotionChannel.boost)
+                TextButton.icon(
+                  key: PromotionsScreen.editKey(widget.promotion.id),
+                  onPressed: () => _edit(context, ref),
+                  icon: const Icon(Icons.edit_outlined, size: Sizes.iconSm),
+                  label: const Text('عدّل الكلام'),
+                  style: TextButton.styleFrom(
+                    minimumSize: const Size(Sizes.minTarget, Sizes.minTarget),
+                  ),
+                ),
+              if (widget.promotion.isLiveAt(now)) ...[
+                const SizedBox(width: Space.xs),
+                TextButton.icon(
+                  key: PromotionsScreen.stopKey(widget.promotion.id),
+                  onPressed: _stopping ? null : () => _stop(context, ref),
+                  icon: Icon(
+                    Icons.stop_circle_outlined,
+                    size: Sizes.iconSm,
+                    color: colors.danger,
+                  ),
+                  label: Text('إيقاف', style: TextStyle(color: colors.danger)),
+                  style: TextButton.styleFrom(
+                    foregroundColor: colors.danger,
+                    minimumSize: const Size(Sizes.minTarget, Sizes.minTarget),
+                  ),
+                ),
+              ],
             ],
           ),
         ],
+      ),
+    );
+  }
+
+  /// Corrects the words and the ground of an approved or running placement in place. A
+  /// typo on a live banner used to have no way out but stopping it (QA review 2026-09-19).
+  Future<void> _edit(BuildContext context, WidgetRef ref) async {
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (_) => _EditWordsDialog(promotion: widget.promotion),
+    );
+    if (saved == true && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('اتعدّل الإعلان.')),
+      );
+    }
+  }
+
+  Future<void> _stop(BuildContext context, WidgetRef ref) async {
+    final title = widget.promotion.title.trim();
+    final thingName = title.isNotEmpty ? '«$title»' : 'الإعلان';
+    final messenger = ScaffoldMessenger.of(context);
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text('إيقاف $thingName'),
+        content: const Text(
+          'الإعلان هيختفي فوراً من التطبيق ومش هيظهر للعملاء تاني.',
+        ),
+        actions: [
+          TextButton(
+            key: PromotionsScreen.stopCancelKey,
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('رجوع'),
+          ),
+          FilledButton(
+            key: PromotionsScreen.stopConfirmKey,
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(dialogContext).luqma.danger,
+            ),
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('إيقاف'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    setState(() => _stopping = true);
+    final now = ref.read(clockProvider)();
+    final stopped = await ref
+        .read(promotionRepositoryProvider)
+        .reschedule(
+          widget.promotion.id,
+          startAt: widget.promotion.startAt,
+          endAt: now,
+        );
+
+    if (!mounted) return;
+    setState(() => _stopping = false);
+
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(switch (stopped) {
+          Ok() => 'تم إيقاف الإعلان.',
+          Err(:final failure) => switch (failure) {
+            OfflineFailure() => 'مفيش نت — جرّب تاني.',
+            PermissionFailure() => 'مش مسموحلك توقف الإعلانات.',
+            _ => 'معرفناش نوقف الإعلان. جرّب تاني.',
+          },
+        }),
       ),
     );
   }
@@ -562,13 +707,17 @@ class _Placement extends ConsumerWidget {
     final window = await showModalBottomSheet<({DateTime start, DateTime end})>(
       context: context,
       isScrollControlled: true,
-      builder: (_) => _DatesSheet(promotion: promotion),
+      builder: (_) => _DatesSheet(promotion: widget.promotion),
     );
     if (window == null) return;
 
     final moved = await ref
         .read(promotionRepositoryProvider)
-        .reschedule(promotion.id, startAt: window.start, endAt: window.end);
+        .reschedule(
+          widget.promotion.id,
+          startAt: window.start,
+          endAt: window.end,
+        );
 
     messenger.showSnackBar(
       SnackBar(
@@ -871,9 +1020,19 @@ class _CreateFormState extends ConsumerState<_CreateForm> {
 
   String? _merchantId;
   PromotionChannel _channel = PromotionChannel.homeBanner;
-
-  /// The ground the words sit on. Null is the brand gradient.
   String? _backgroundColor;
+  bool _saving = false;
+
+  late DateTime _startAt;
+  late DateTime _endAt;
+
+  @override
+  void initState() {
+    super.initState();
+    final now = ref.read(clockProvider)();
+    _startAt = now;
+    _endAt = now.add(const Duration(days: 7));
+  }
 
   /// A boost lifts a shop in the ranking and shows no words at all, so asking for a
   /// headline it will never render would be asking for nothing.
@@ -886,30 +1045,126 @@ class _CreateFormState extends ConsumerState<_CreateForm> {
     super.dispose();
   }
 
-  void _submit() {
+  Future<void> _pickDate({required bool start}) async {
+    final current = start ? _startAt : _endAt;
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: current,
+      firstDate: DateTime(current.year - 1),
+      lastDate: DateTime(current.year + 2),
+    );
+    if (picked == null) return;
+    setState(() {
+      if (start) {
+        _startAt = DateTime(
+          picked.year,
+          picked.month,
+          picked.day,
+          _startAt.hour,
+          _startAt.minute,
+        );
+        if (!_endAt.isAfter(_startAt)) {
+          _endAt = _startAt.add(const Duration(days: 7));
+        }
+      } else {
+        _endAt = DateTime(picked.year, picked.month, picked.day, 23, 59, 59);
+      }
+    });
+  }
+
+  Future<void> _submit() async {
     if (!_form.currentState!.validate()) return;
     final merchantId = _merchantId;
     if (merchantId == null) return;
 
-    final now = ref.read(clockProvider)();
-    Navigator.of(context).pop(
-      Promotion(
-        id: '',
-        cityId: ref.read(currentCityProvider),
-        merchantId: merchantId,
-        channel: _channel,
-        // Text only. An admin putting up a quick announcement has no artwork to hand,
-        // and `promotions_image_has_media` refuses a row whose mode promises a picture
-        // it does not carry — so the mode follows what is actually here.
-        renderMode: PromotionRender.text,
-        backgroundColor: _needsText ? _backgroundColor : null,
-        title: _title.text.trim(),
-        body: _body.text.trim(),
-        startAt: now,
-        endAt: now.add(const Duration(days: 7)),
-        requestedBy: ref.read(currentIdentityProvider).value?.uid ?? '',
-      ),
+    if (!_endAt.isAfter(_startAt)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('تاريخ النهاية لازم يكون بعد تاريخ البداية.'),
+        ),
+      );
+      return;
+    }
+
+    if (_channel == PromotionChannel.push) {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: Text(_title.text.trim()),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (_body.text.trim().isNotEmpty) ...[
+                Text(_body.text.trim()),
+                const SizedBox(height: Space.md),
+              ],
+              const Text('هيوصل لكل عملاء المدينة اللي مفعّلين الإشعارات'),
+            ],
+          ),
+          actions: [
+            TextButton(
+              key: PromotionsScreen.pushCancelKey,
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('رجوع'),
+            ),
+            FilledButton(
+              key: PromotionsScreen.pushConfirmKey,
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: const Text('ابعت'),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true || !mounted) return;
+    }
+
+    final by = ref.read(currentIdentityProvider).value?.uid;
+    if (by == null) return;
+
+    setState(() => _saving = true);
+
+    final draft = Promotion(
+      id: '',
+      cityId: ref.read(currentCityProvider),
+      merchantId: merchantId,
+      channel: _channel,
+      // Text only. An admin putting up a quick announcement has no artwork to hand,
+      // and `promotions_image_has_media` refuses a row whose mode promises a picture
+      // it does not carry — so the mode follows what is actually here.
+      renderMode: PromotionRender.text,
+      backgroundColor: _needsText ? _backgroundColor : null,
+      title: _title.text.trim(),
+      body: _body.text.trim(),
+      startAt: _startAt,
+      endAt: _endAt,
+      requestedBy: by,
     );
+
+    final result = await ref
+        .read(promotionRepositoryProvider)
+        .createApproved(draft, approvedBy: by);
+
+    if (!mounted) return;
+    setState(() => _saving = false);
+
+    switch (result) {
+      case Ok():
+        Navigator.of(context).pop(true);
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('الإعلان اتحط.')));
+      case Err(:final failure):
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(switch (failure) {
+              PermissionFailure() => 'مش مسموحلك تحط إعلانات.',
+              OfflineFailure() => 'مفيش نت — جرّب تاني.',
+              _ => 'معرفناش نحط الإعلان. جرّب تاني.',
+            }),
+          ),
+        );
+    }
   }
 
   @override
@@ -971,12 +1226,39 @@ class _CreateFormState extends ConsumerState<_CreateForm> {
                     decoration: const InputDecoration(labelText: 'المكان'),
                     items: [
                       for (final entry in PromotionsScreen.channelNames.entries)
-                        DropdownMenuItem(
-                          value: entry.key,
-                          child: Text(entry.value),
-                        ),
+                        if (entry.key != PromotionChannel.categoryBanner)
+                          DropdownMenuItem(
+                            value: entry.key,
+                            child: Text(entry.value),
+                          ),
                     ],
                     onChanged: (c) => setState(() => _channel = c ?? _channel),
+                  ),
+                  const SizedBox(height: Space.md),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: ListTile(
+                          key: PromotionsScreen.formStartDateKey,
+                          contentPadding: EdgeInsets.zero,
+                          leading: const Icon(Icons.play_arrow_outlined),
+                          title: const Text('من'),
+                          subtitle: Text(_day(_startAt)),
+                          onTap: () => _pickDate(start: true),
+                        ),
+                      ),
+                      const SizedBox(width: Space.md),
+                      Expanded(
+                        child: ListTile(
+                          key: PromotionsScreen.formEndDateKey,
+                          contentPadding: EdgeInsets.zero,
+                          leading: const Icon(Icons.stop_outlined),
+                          title: const Text('لحد'),
+                          subtitle: Text(_day(_endAt)),
+                          onTap: () => _pickDate(start: false),
+                        ),
+                      ),
+                    ],
                   ),
                   if (_needsText) ...[
                     const SizedBox(height: Space.md),
@@ -1012,8 +1294,8 @@ class _CreateFormState extends ConsumerState<_CreateForm> {
                   const SizedBox(height: Space.lg),
                   FilledButton(
                     key: PromotionsScreen.formSubmitKey,
-                    onPressed: _submit,
-                    child: const Text('حط الإعلان'),
+                    onPressed: _saving ? null : _submit,
+                    child: Text(_saving ? 'جاري الحفظ…' : 'حط الإعلان'),
                   ),
                   const SizedBox(height: Space.sm),
                 ],
@@ -1022,6 +1304,110 @@ class _CreateFormState extends ConsumerState<_CreateForm> {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _EditWordsDialog extends ConsumerStatefulWidget {
+  const _EditWordsDialog({required this.promotion});
+
+  final Promotion promotion;
+
+  @override
+  ConsumerState<_EditWordsDialog> createState() => _EditWordsDialogState();
+}
+
+class _EditWordsDialogState extends ConsumerState<_EditWordsDialog> {
+  late final _title = TextEditingController(text: widget.promotion.title);
+  late final _body = TextEditingController(text: widget.promotion.body);
+  late String? _color = widget.promotion.backgroundColor;
+  bool _saving = false;
+  String? _error;
+
+  @override
+  void dispose() {
+    _title.dispose();
+    _body.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    if (_title.text.trim().isEmpty) {
+      setState(() => _error = 'اكتب العنوان');
+      return;
+    }
+    setState(() {
+      _saving = true;
+      _error = null;
+    });
+    final result = await ref.read(promotionRepositoryProvider).adminEdit(
+          widget.promotion.id,
+          title: _title.text.trim(),
+          body: _body.text.trim(),
+          // A picture banner keeps no ground; only words sit on a colour.
+          backgroundColor:
+              widget.promotion.renderMode == PromotionRender.text ? _color : null,
+        );
+    if (!mounted) return;
+    if (result.isOk) {
+      Navigator.of(context).pop(true);
+    } else {
+      setState(() {
+        _saving = false;
+        _error = 'مقدرناش نحفظ التعديل — اللي كتبته لسه هنا. جرّب تاني.';
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return AlertDialog(
+      title: const Text('تعديل كلام الإعلان'),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            TextField(
+              key: PromotionsScreen.editTitleKey,
+              controller: _title,
+              decoration: const InputDecoration(labelText: 'العنوان'),
+            ),
+            const SizedBox(height: Space.sm),
+            TextField(
+              controller: _body,
+              maxLines: 3,
+              decoration: const InputDecoration(labelText: 'التفاصيل'),
+            ),
+            if (widget.promotion.renderMode == PromotionRender.text) ...[
+              const SizedBox(height: Space.md),
+              BannerColorPicker(
+                selected: _color,
+                onPicked: (hex) => setState(() => _color = hex),
+              ),
+            ],
+            if (_error != null) ...[
+              const SizedBox(height: Space.sm),
+              Text(
+                _error!,
+                style: theme.textTheme.bodyMedium?.copyWith(color: theme.luqma.danger),
+              ),
+            ],
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: _saving ? null : () => Navigator.of(context).pop(false),
+          child: const Text('رجوع'),
+        ),
+        FilledButton(
+          key: PromotionsScreen.editSaveKey,
+          onPressed: _saving ? null : _save,
+          child: Text(_saving ? 'لحظة…' : 'احفظ'),
+        ),
+      ],
     );
   }
 }

@@ -57,41 +57,40 @@ void main() {
     );
   });
 
-  testWidgets('unfinished launch controls are visible but cannot be changed', (
-    tester,
-  ) async {
-    await pump(
-      tester,
-      seed: {'marketing_push_per_week': 3, 'otp_enabled': true},
-    );
+  // QA review 2026-09-19: the weekly marketing limit was greyed out as «غير متاح» long after
+  // marketing pushes started working, and four switches that could not be switched each
+  // showed a raw database key.
+  testWidgets('the marketing limit can be changed, and is saved', (tester) async {
+    await pump(tester, seed: {'marketing_push_per_week': 3});
 
-    final otp = tester.widget<SwitchListTile>(
-      find.widgetWithText(SwitchListTile, 'تفعيل الـ OTP'),
-    );
     final push = tester.widget<TextField>(find.byKey(ConfigScreen.pushKey));
-
-    expect(otp.onChanged, isNull);
-    expect(push.enabled, isFalse);
-    expect(find.textContaining('غير متاح في الإصدار الحالي'), findsWidgets);
+    expect(push.enabled, isNot(isFalse));
+    expect(find.textContaining('غير متاح في الإصدار الحالي'), findsNothing);
   });
 
-  testWidgets('feature-flag keys are shown in monospace face LTR with warning banner', (
-    tester,
-  ) async {
+  testWidgets('what does not exist yet is one sentence, with no database keys', (tester) async {
     await pump(tester);
 
     expect(
       find.textContaining('أي تعديل هنا بيوصل للتطبيقات أول ما تتفتح'),
       findsOneWidget,
     );
+    expect(find.byKey(ConfigScreen.unavailableKey), findsOneWidget);
+    expect(find.text('otp_enabled'), findsNothing);
+    expect(find.text('min_ratings_to_show'), findsNothing);
+  });
 
-    final otpKeyText = tester.widget<Text>(find.text('otp_enabled'));
-    expect(otpKeyText.textDirection, TextDirection.ltr);
-    expect(otpKeyText.style?.fontFamily, 'monospace');
+  testWidgets('the one commission rate shows, and a wrong one is said under it', (tester) async {
+    await pump(tester, seed: {'default_commission_percent': 5, 'commission_alert_pounds': 500});
 
-    final admobKeyText = tester.widget<Text>(find.text('admob_enabled'));
-    expect(admobKeyText.textDirection, TextDirection.ltr);
-    expect(admobKeyText.style?.fontFamily, 'monospace');
+    final field = tester.widget<TextField>(find.byKey(ConfigScreen.commissionKey));
+    expect(field.controller!.text, '5');
+
+    await tester.enterText(find.byKey(ConfigScreen.commissionKey), '80');
+    await tester.ensureVisible(find.byKey(ConfigScreen.saveCommissionKey));
+    await tester.tap(find.byKey(ConfigScreen.saveCommissionKey));
+    await tester.pumpAndSettle();
+    expect(find.text('اكتب نسبة من 0 لـ 50'), findsOneWidget);
   });
 
   testWidgets('shows all per-app version and update URL fields', (
@@ -114,11 +113,9 @@ void main() {
     expect(find.textContaining('رابط تحديث تطبيق الأدمن'), findsOneWidget);
 
     TextField fieldFor(String labelPart) => tester.widget<TextField>(
-      find.descendant(
-        of: find.ancestor(
-          of: find.textContaining(labelPart),
-          matching: find.byType(ListTile),
-        ),
+      // The label is the field's own now, so the field is the label's ancestor.
+      find.ancestor(
+        of: find.textContaining(labelPart),
         matching: find.byType(TextField),
       ),
     );
@@ -307,11 +304,8 @@ void main() {
   /// exists, and that is the ceiling.
   group('a minimum version nobody can install', () {
     Future<void> setField(WidgetTester tester, String labelPart, String value) async {
-      final field = find.descendant(
-        of: find.ancestor(
-          of: find.textContaining(labelPart),
-          matching: find.byType(ListTile),
-        ),
+      final field = find.ancestor(
+        of: find.textContaining(labelPart),
         matching: find.byType(TextField),
       );
       await tester.ensureVisible(field);

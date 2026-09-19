@@ -23,17 +23,22 @@ void main() {
 
   Future<void> pump(
     WidgetTester tester, {
+    List<Zone> customZones = zones,
+    List<Landmark> customLandmarks = landmarks,
     List<LandmarkNote> notes = const [],
-    Size size = const Size(1400, 1000),
+    Failure? failure,
+    Size size = const Size(1080, 2340),
+    double devicePixelRatio = 3.0,
   }) async {
     tester.view.physicalSize = size;
-    tester.view.devicePixelRatio = 1.0;
+    tester.view.devicePixelRatio = devicePixelRatio;
     addTearDown(tester.view.reset);
 
     repository = FakeGeographyRepository(
-      zones: zones,
-      landmarks: landmarks,
+      zones: customZones,
+      landmarks: customLandmarks,
       notes: notes,
+      failure: failure,
     );
 
     await tester.pumpWidget(
@@ -167,5 +172,176 @@ void main() {
 
       expect(find.byKey(PlacesScreen.noSuggestionsKey), findsOneWidget);
     });
+
+    testWidgets('عدّل واقبل opens the landmark form prefilled', (tester) async {
+      await pump(tester, notes: notes);
+      await openSuggestions(tester);
+
+      await tester.tap(find.byKey(const Key('places.editAccept.صيدلية النور')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('علامة جديدة'), findsOneWidget);
+      expect(find.text('صيدلية النور'), findsWidgets);
+    });
+  });
+
+  group('QA review findings', () {
+    testWidgets('blocking landmark creation until a zone exists', (tester) async {
+      await pump(tester, customZones: const [], customLandmarks: const []);
+
+      await tester.tap(find.byKey(PlacesScreen.landmarksTabKey));
+      await tester.pumpAndSettle();
+      expect(find.text('ضيف منطقة الأول'), findsOneWidget);
+
+      await tester.tap(find.byKey(PlacesScreen.addLandmarkKey));
+      await tester.pumpAndSettle();
+
+      expect(find.text('ضيف منطقة الأول'), findsWidgets);
+      expect(find.text('إضافة منطقة'), findsWidgets);
+
+      await tester.tap(find.widgetWithText(FilledButton, 'إضافة منطقة').last);
+      await tester.pumpAndSettle();
+
+      expect(find.text('منطقة جديدة'), findsOneWidget);
+    });
+
+    testWidgets('deleting landmark requires confirmation naming it and consequences', (tester) async {
+      await pump(tester);
+      await tester.tap(find.byKey(PlacesScreen.landmarksTabKey));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('مسجد الفتح'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('احذف'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('حذف مسجد الفتح'), findsOneWidget);
+      expect(
+        find.textContaining('العناوين اللي استخدمتها هتحتفظ بالنص لكن هتفقد ربط العلامة'),
+        findsOneWidget,
+      );
+
+      // Cancelling keeps the landmark. The form under the question has its own «إلغاء»,
+      // so the one meant is the question's — the last one built.
+      await tester.tap(find.text('إلغاء').last);
+      await tester.pumpAndSettle();
+      expect(find.text('تعديل العلامة'), findsOneWidget);
+
+      // Confirming deletes it
+      await tester.tap(find.text('احذف'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(TextButton, 'حذف'));
+      await tester.pumpAndSettle();
+
+      final saved = (await repository.landmarks(cityId: 'edku')).valueOrNull!;
+      expect(saved.map((l) => l.name), isNot(contains('مسجد الفتح')));
+    });
+
+    testWidgets('zone card is collapsible when having more than 8 landmarks', (tester) async {
+      final manyLandmarks = List.generate(
+        10,
+        (i) => Landmark(id: 'l$i', cityId: 'edku', zoneId: 'z1', name: 'علامة $i'),
+      );
+      await pump(tester, customLandmarks: manyLandmarks);
+
+      expect(find.text('10 علامة'), findsOneWidget);
+      expect(find.text('📍 علامة 0'), findsNothing);
+
+      await tester.tap(find.text('10 علامة'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('📍 علامة 0'), findsOneWidget);
+      expect(find.text('إخفاء (10)'), findsOneWidget);
+    });
+
+    testWidgets('search field filters landmarks in landmarks tab', (tester) async {
+      await pump(tester);
+      await tester.tap(find.byKey(PlacesScreen.landmarksTabKey));
+      await tester.pumpAndSettle();
+
+      expect(find.text('مسجد الفتح'), findsOneWidget);
+
+      await tester.enterText(find.byType(TextField), 'مستشفى');
+      await tester.pumpAndSettle();
+
+      expect(find.text('مسجد الفتح'), findsNothing);
+    });
+
+    testWidgets('saving zone keeps form open on failure', (tester) async {
+      await pump(tester);
+      // The screen loads; only the write that follows fails.
+      repository.failure = const OfflineFailure();
+
+      await tester.tap(find.byKey(PlacesScreen.addZoneKey));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(PlacesScreen.nameFieldKey), 'منطقة تجريبية');
+      await tester.enterText(find.byKey(PlacesScreen.feeFieldKey), '15');
+      await tester.tap(find.byKey(PlacesScreen.saveKey));
+      await tester.pumpAndSettle();
+
+      expect(find.text('منطقة جديدة'), findsOneWidget);
+      expect(find.text('فشل الحفظ، حاول مرة أخرى'), findsOneWidget);
+    });
+
+    testWidgets('saving landmark keeps form open on failure', (tester) async {
+      await pump(tester);
+      // The screen loads; only the write that follows fails.
+      repository.failure = const OfflineFailure();
+
+      await tester.tap(find.byKey(PlacesScreen.landmarksTabKey));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(PlacesScreen.addLandmarkKey));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(find.byKey(PlacesScreen.nameFieldKey), 'علامة فاشلة');
+      await tester.tap(find.byKey(PlacesScreen.saveKey));
+      await tester.pumpAndSettle();
+
+      expect(find.text('علامة جديدة'), findsOneWidget);
+      expect(find.text('فشل الحفظ، حاول مرة أخرى'), findsOneWidget);
+    });
+
+    testWidgets('deleting landmark failure keeps form open and shows error', (tester) async {
+      await pump(tester);
+      // The screen loads; only the write that follows fails.
+      repository.failure = const OfflineFailure();
+
+      await tester.tap(find.byKey(PlacesScreen.landmarksTabKey));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('مسجد الفتح'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('احذف'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.widgetWithText(TextButton, 'حذف'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('تعديل العلامة'), findsOneWidget);
+      expect(find.text('فشل الحذف'), findsOneWidget);
+    });
+
+    testWidgets('zone card with <= 8 landmarks can be collapsed and expanded', (tester) async {
+      await pump(tester);
+
+      // Initially expanded
+      expect(find.text('📍 مسجد الفتح'), findsOneWidget);
+
+      // Tap to collapse
+      await tester.tap(find.text('1 علامة'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('📍 مسجد الفتح'), findsNothing);
+
+      // Tap to expand again
+      await tester.tap(find.text('1 علامة'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('📍 مسجد الفتح'), findsOneWidget);
+    });
   });
 }
+

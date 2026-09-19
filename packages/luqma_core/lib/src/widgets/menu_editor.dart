@@ -12,6 +12,7 @@ import '../theme/colors.dart';
 import '../theme/dimens.dart';
 import '../theme/typography.dart';
 import '../result.dart';
+import '../util/arabic_text.dart';
 import 'chip.dart';
 import 'error_view.dart';
 import 'luqma_image.dart';
@@ -24,6 +25,7 @@ import 'media_picker.dart';
 /// so two implementations would be two sets of validation rules over the same data, and
 /// they would drift. The only thing that differs is where [merchantId] comes from.
 class MenuEditor extends ConsumerStatefulWidget {
+  static const searchKey = Key('menuEditor.search');
   const MenuEditor({super.key, required this.merchantId});
 
   final String merchantId;
@@ -33,6 +35,9 @@ class MenuEditor extends ConsumerStatefulWidget {
   static const descriptionFieldKey = Key('menu.description');
   static const availableSwitchKey = Key('menu.available');
   static const saveItemKey = Key('menu.saveItem');
+  static Key bulkKey(String categoryId) => Key('menu.bulk.$categoryId');
+  static const itemErrorKey = Key('menu.itemError');
+  static const discardKey = Key('menu.discard');
   static const deleteItemKey = Key('menu.deleteItem');
   static const confirmDeleteKey = Key('menu.confirmDelete');
   static const itemPhotoKey = Key('menu.itemPhoto');
@@ -43,8 +48,10 @@ class MenuEditor extends ConsumerStatefulWidget {
   static const pendingReviewBannerKey = Key('menu.pendingReviewBanner');
   static const emptyAddCategoryKey = Key('menu.emptyAddCategory');
 
-  static Key renameCategoryKey(String categoryId) => Key('menu.renameCategory.$categoryId');
-  static Key offersHintKey(String categoryId) => Key('menu.offersHint.$categoryId');
+  static Key renameCategoryKey(String categoryId) =>
+      Key('menu.renameCategory.$categoryId');
+  static Key offersHintKey(String categoryId) =>
+      Key('menu.offersHint.$categoryId');
 
   static Key categoryChipKey(String categoryId) =>
       Key('menu.categoryChip.$categoryId');
@@ -60,27 +67,61 @@ class MenuEditor extends ConsumerStatefulWidget {
 
 class _MenuEditorState extends ConsumerState<MenuEditor> {
   String? _selectedCategoryId;
+  String _query = '';
+
+  @override
+  void didUpdateWidget(MenuEditor old) {
+    super.didUpdateWidget(old);
+    // A section filter picked on one shop must not follow the owner to the next one: on a
+    // wide screen the editor stays mounted while the shop changes, and a shop whose
+    // sections were hidden behind somebody else's filter looked empty (QA 2026-09-19).
+    if (old.merchantId != widget.merchantId) {
+      _selectedCategoryId = null;
+      _query = '';
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final strings = LuqmaStrings.of(context);
-    final categoriesAsync = ref.watch(menuCategoriesProvider(widget.merchantId));
+    final categoriesAsync = ref.watch(
+      menuCategoriesProvider(widget.merchantId),
+    );
     // Loading and failing are not "this menu is empty". Treating them as empty offered the
     // add button over a menu that had not arrived yet — harmless now that adding touches
     // one row, but a lie about the shop either way.
     if (categoriesAsync.hasError && !categoriesAsync.hasValue) {
       return LuqmaErrorView(
         failure: categoriesAsync.error,
-        onRetry: () => ref.invalidate(menuCategoriesProvider(widget.merchantId)),
+        onRetry: () =>
+            ref.invalidate(menuCategoriesProvider(widget.merchantId)),
       );
     }
     if (!categoriesAsync.hasValue) {
       return const Center(child: CircularProgressIndicator());
     }
     final categories = categoriesAsync.value!;
-    final items =
-        ref.watch(menuItemsProvider(widget.merchantId)).value ??
-        const <MenuItem>[];
+    final itemsAsync = ref.watch(menuItemsProvider(widget.merchantId));
+    // The same for the dishes: sections that loaded over dishes that did not used to show
+    // as a menu with nothing in it.
+    if (itemsAsync.hasError && !itemsAsync.hasValue) {
+      return LuqmaErrorView(
+        failure: itemsAsync.error,
+        onRetry: () => ref.invalidate(menuItemsProvider(widget.merchantId)),
+      );
+    }
+    if (!itemsAsync.hasValue) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    final allItems = itemsAsync.value!;
+    // A search across every section, for a menu of a hundred dishes where scrolling to the
+    // one to change is most of the work.
+    final folded = ArabicText.normalize(_query.trim());
+    final items = folded.isEmpty
+        ? allItems
+        : allItems
+              .where((i) => ArabicText.normalize(i.name).contains(folded))
+              .toList();
 
     // An empty menu used to be a sentence and nothing else: the add-category chip lives in
     // the row of category chips, which is only drawn above a list that already has one. The
@@ -98,7 +139,8 @@ class _MenuEditorState extends ConsumerState<MenuEditor> {
               const SizedBox(height: Space.lg),
               FilledButton.icon(
                 key: MenuEditor.emptyAddCategoryKey,
-                onPressed: () => _addCategory(context, ref, widget.merchantId, categories),
+                onPressed: () =>
+                    _addCategory(context, ref, widget.merchantId, categories),
                 icon: const Icon(Icons.add),
                 label: const Text('أضف قسم'),
               ),
@@ -114,6 +156,23 @@ class _MenuEditorState extends ConsumerState<MenuEditor> {
 
     return Column(
       children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(
+            Space.gutter,
+            Space.sm,
+            Space.gutter,
+            0,
+          ),
+          child: TextField(
+            key: MenuEditor.searchKey,
+            onChanged: (value) => setState(() => _query = value),
+            decoration: const InputDecoration(
+              prefixIcon: Icon(Icons.search_rounded),
+              hintText: 'دوّر على صنف',
+              isDense: true,
+            ),
+          ),
+        ),
         // Category filter chips across the top (M03)
         SingleChildScrollView(
           scrollDirection: Axis.horizontal,
@@ -136,7 +195,8 @@ class _MenuEditorState extends ConsumerState<MenuEditor> {
                   label:
                       '${category.name} (${items.where((i) => i.categoryId == category.id).length})',
                   selected: _selectedCategoryId == category.id,
-                  onTap: () => setState(() => _selectedCategoryId = category.id),
+                  onTap: () =>
+                      setState(() => _selectedCategoryId = category.id),
                 ),
                 const SizedBox(width: Space.sm),
               ],
@@ -145,29 +205,27 @@ class _MenuEditorState extends ConsumerState<MenuEditor> {
                 label: strings.menuAddCategory,
                 selected: false,
                 dashed: true,
-                onTap: () => _addCategory(
-                  context,
-                  ref,
-                  widget.merchantId,
-                  categories,
-                ),
+                onTap: () =>
+                    _addCategory(context, ref, widget.merchantId, categories),
               ),
             ],
           ),
         ),
         const Divider(height: 1),
         Expanded(
-          child: ListView(
+          // Built lazily: a shop with six hundred dishes laid every section out at once.
+          child: ListView.builder(
             padding: const EdgeInsets.all(Space.gutter),
-            children: [
-              for (final category in filteredCategories)
-                _CategorySection(
-                  merchantId: widget.merchantId,
-                  category: category,
-                  categories: categories,
-                  items: items.where((i) => i.categoryId == category.id).toList(),
-                ),
-            ],
+            itemCount: filteredCategories.length,
+            itemBuilder: (context, index) {
+              final category = filteredCategories[index];
+              return _CategorySection(
+                merchantId: widget.merchantId,
+                category: category,
+                categories: categories,
+                items: items.where((i) => i.categoryId == category.id).toList(),
+              );
+            },
           ),
         ),
       ],
@@ -212,14 +270,17 @@ class _MenuEditorState extends ConsumerState<MenuEditor> {
       final newName = controller.text.trim();
       final nextSort = categories.isEmpty
           ? 0
-          : categories.map((c) => c.sortOrder).reduce((a, b) => a > b ? a : b) + 1;
+          : categories.map((c) => c.sortOrder).reduce((a, b) => a > b ? a : b) +
+                1;
       // One row, not the whole list: see `MenuRepository.addCategory`.
       final result = await ref
           .read(menuRepositoryProvider)
           .addCategory(merchantId, newName, nextSort);
       if (result is Err && context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('مقدرناش نضيف القسم. اتأكد من النت وجرّب تاني.')),
+          const SnackBar(
+            content: Text('مقدرناش نضيف القسم. اتأكد من النت وجرّب تاني.'),
+          ),
         );
       }
     }
@@ -252,7 +313,9 @@ extension on _CategorySection {
         .renameCategory(merchantId, category.id, trimmed);
     if (result is Err && context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('مقدرناش نغيّر اسم «${category.name}». جرّب تاني.')),
+        SnackBar(
+          content: Text('مقدرناش نغيّر اسم «${category.name}». جرّب تاني.'),
+        ),
       );
     }
   }
@@ -324,6 +387,26 @@ class _CategorySection extends ConsumerWidget {
   final List<MenuCategory> categories;
   final List<MenuItem> items;
 
+  Future<void> _setAll(BuildContext context, WidgetRef ref, bool available) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final repository = ref.read(menuRepositoryProvider);
+    var failed = 0;
+    for (final item in items) {
+      if (item.isAvailable == available) continue;
+      final result = await repository.saveItem(item.copyWith(isAvailable: available));
+      if (!result.isOk) failed++;
+    }
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(
+          failed == 0
+              ? (available ? 'كل «${category.name}» متاح دلوقتي' : 'اتوقف كل «${category.name}»')
+              : 'فيه $failed صنف متغيّروش — اتأكد من النت وجرّب تاني.',
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
@@ -347,6 +430,20 @@ class _CategorySection extends ConsumerWidget {
                 icon: const Icon(Icons.edit_outlined),
                 onPressed: () => _renameCategory(context, ref),
               ),
+              // A whole section at once: the grill is out of charcoal, the drinks fridge
+              // is broken. One by one across a long menu was the only way (QA review
+              // 2026-09-19).
+              if (items.isNotEmpty)
+                PopupMenuButton<bool>(
+                  key: MenuEditor.bulkKey(category.id),
+                  tooltip: 'كل أصناف القسم',
+                  icon: const Icon(Icons.checklist_rounded),
+                  onSelected: (available) => _setAll(context, ref, available),
+                  itemBuilder: (_) => const [
+                    PopupMenuItem(value: true, child: Text('خلّي كل القسم متاح')),
+                    PopupMenuItem(value: false, child: Text('وقّف كل القسم')),
+                  ],
+                ),
               TextButton(
                 key: MenuEditor.addItemKey(category.id),
                 onPressed: () => _editItem(
@@ -437,10 +534,7 @@ class _ItemRow extends ConsumerWidget {
                 child: SizedBox(
                   width: 48,
                   height: 48,
-                  child: LuqmaImage(
-                    url: item.imageUrl,
-                    name: item.name,
-                  ),
+                  child: LuqmaImage(url: item.imageUrl, name: item.name),
                 ),
               ),
               const SizedBox(width: Space.md),
@@ -452,9 +546,7 @@ class _ItemRow extends ConsumerWidget {
                     const SizedBox(height: 2),
                     Text(
                       strings.price(item.price),
-                      style: LuqmaType.priceSmall.copyWith(
-                        color: colors.price,
-                      ),
+                      style: LuqmaType.priceSmall.copyWith(color: colors.price),
                     ),
                     if (!item.isAvailable)
                       Padding(
@@ -580,13 +672,10 @@ Future<void> _editItem(
       categoryId: categoryId,
       categories: categories,
       existing: existing,
-      onSave: (item) async {
-        await ref.read(menuRepositoryProvider).saveItem(item);
-        if (sheetContext.mounted) Navigator.of(sheetContext).pop();
-      },
-      onDelete: (itemId) async {
-        await ref.read(menuRepositoryProvider).deleteItem(itemId);
-      },
+      // The sheet closes itself only when the write landed: it used to close whatever
+      // happened, and a dish typed on a weak connection vanished with the sheet.
+      onSave: (item) => ref.read(menuRepositoryProvider).saveItem(item),
+      onDelete: (itemId) => ref.read(menuRepositoryProvider).deleteItem(itemId),
     ),
   );
 }
@@ -605,8 +694,8 @@ class _ItemSheet extends StatefulWidget {
   final String categoryId;
   final List<MenuCategory> categories;
   final MenuItem? existing;
-  final Future<void> Function(MenuItem) onSave;
-  final Future<void> Function(String)? onDelete;
+  final Future<Result<Object?>> Function(MenuItem) onSave;
+  final Future<Result<void>> Function(String)? onDelete;
 
   @override
   State<_ItemSheet> createState() => _ItemSheetState();
@@ -630,238 +719,310 @@ class _ItemSheetState extends State<_ItemSheet> {
   String? _mediaUrl;
   bool _photoPendingReview = false;
 
+  /// Something was typed or changed. Closing then asks first: a dish's name, price and
+  /// description were lost to a stray tap outside the sheet (QA review 2026-09-19).
+  bool _dirty = false;
+  bool _saving = false;
+  String? _error;
+
+  Future<void> _close() async {
+    if (!_dirty) {
+      Navigator.of(context).pop();
+      return;
+    }
+    final discard = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('تسيب التعديلات؟'),
+        content: const Text('اللي كتبته في الصنف ده مش هيتحفظ.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('كمّل تعديل'),
+          ),
+          FilledButton(
+            key: MenuEditor.discardKey,
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('سيبها'),
+          ),
+        ],
+      ),
+    );
+    if (discard == true && mounted) {
+      _dirty = false;
+      Navigator.of(context).pop();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colors = theme.luqma;
     final strings = LuqmaStrings.of(context);
 
-    return Padding(
-      padding: EdgeInsets.only(
-        left: Space.gutter,
-        right: Space.gutter,
-        top: Space.xl,
-        bottom: MediaQuery.viewInsetsOf(context).bottom + Space.xl,
-      ),
-      // Scrolls, because the sheet carries a photograph, form fields, and buttons,
-      // and soft keyboards consume half the vertical viewport.
-      child: SingleChildScrollView(
-        child: Form(
-          key: _formKey,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              // Header with title and close action (M04)
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      widget.existing == null
-                          ? strings.menuNewItem
-                          : strings.menuEditItem,
-                      style: theme.textTheme.titleLarge,
-                    ),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.close),
-                    tooltip: 'إغلاق',
-                    onPressed: () => Navigator.of(context).pop(),
-                  ),
-                ],
-              ),
-              const SizedBox(height: Space.md),
-
-              // Photo slot card with pending review banner (M04)
-              Container(
-                padding: const EdgeInsets.all(Space.md),
-                decoration: BoxDecoration(
-                  color: colors.card,
-                  borderRadius: Radii.cardAll,
-                  border: Border.all(color: colors.hairline),
-                  boxShadow: Elevations.card,
-                ),
-                child: Column(
-                  children: [
-                    MediaPicker(
-                      key: MenuEditor.itemPhotoKey,
-                      kind: MediaKind.menuItem,
-                      url: _mediaUrl ?? widget.existing?.imageUrl,
-                      name: _name.isEmpty ? (widget.existing?.name ?? '') : _name,
-                      ownerId: widget.existing?.id,
-                      onUploaded: (media) => setState(() {
-                        _mediaId = media.id;
-                        _mediaUrl = media.url;
-                        _photoPendingReview = true;
-                      }),
-                    ),
-                    if (_photoPendingReview) ...[
-                      const SizedBox(height: Space.sm),
-                      Container(
-                        key: MenuEditor.pendingReviewBannerKey,
-                        width: double.infinity,
-                        padding: const EdgeInsets.all(Space.sm),
-                        // Tokens, not two amber literals. `CLAUDE.md` is explicit that no
-                        // colour is written in a screen, and these two were invented
-                        // here — a wash and an ink that exist nowhere else in the
-                        // product and that nothing keeps in step with either theme.
-                        // A photograph waiting for approval is exactly what the accent
-                        // is for, and `priceStrong` is the ink the palette already
-                        // records as passing on a pale ground.
-                        decoration: BoxDecoration(
-                          color: colors.accent.withValues(alpha: .12),
-                          borderRadius: Radii.fieldAll,
-                        ),
-                        child: Text(
-                          strings.menuItemUnderReview,
-                          style: LuqmaType.bodySmall
-                              .copyWith(color: colors.price),
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-              const SizedBox(height: Space.md),
-
-              // Name field
-              TextFormField(
-                key: MenuEditor.nameFieldKey,
-                initialValue: _name,
-                decoration: InputDecoration(labelText: strings.menuItemName),
-                validator: (v) => (v == null || v.trim().isEmpty)
-                    ? strings.menuNameRequired
-                    : null,
-                onSaved: (v) => _name = v!.trim(),
-              ),
-              const SizedBox(height: Space.md),
-
-              // Category selector if multiple categories exist
-              if (widget.categories.length > 1) ...[
-                DropdownButtonFormField<String>(
-                  initialValue: _categoryId,
-                  decoration: const InputDecoration(labelText: 'الفئة'),
-                  items: [
-                    for (final cat in widget.categories)
-                      DropdownMenuItem(
-                        value: cat.id,
-                        child: Text(cat.name),
-                      ),
-                  ],
-                  onChanged: (val) {
-                    if (val != null) setState(() => _categoryId = val);
-                  },
-                ),
-                const SizedBox(height: Space.md),
-              ],
-
-              // Description field
-              TextFormField(
-                key: MenuEditor.descriptionFieldKey,
-                initialValue: _description,
-                decoration: InputDecoration(
-                  labelText: strings.menuItemDescription,
-                ),
-                maxLines: 2,
-                onSaved: (v) => _description = v,
-              ),
-              const SizedBox(height: Space.md),
-
-              // Price field
-              TextFormField(
-                key: MenuEditor.priceFieldKey,
-                initialValue: _price,
-                decoration: InputDecoration(
-                  labelText: strings.menuItemPrice,
-                  suffixText: 'ج',
-                ),
-                keyboardType: TextInputType.number,
-                validator: (v) => Money.parse(v ?? '') == null
-                    ? strings.menuPriceInvalid
-                    : null,
-                onSaved: (v) => _price = v!,
-              ),
-              const SizedBox(height: Space.md),
-
-              // Availability toggle card (M04)
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: Space.md,
-                  vertical: Space.sm,
-                ),
-                decoration: BoxDecoration(
-                  color: colors.card,
-                  borderRadius: Radii.fieldAll,
-                  border: Border.all(color: colors.hairline),
-                ),
-                child: Row(
+    return PopScope(
+      canPop: !_dirty,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _close();
+      },
+      child: Padding(
+        padding: EdgeInsets.only(
+          left: Space.gutter,
+          right: Space.gutter,
+          top: Space.xl,
+          bottom: MediaQuery.viewInsetsOf(context).bottom + Space.xl,
+        ),
+        // Scrolls, because the sheet carries a photograph, form fields, and buttons,
+        // and soft keyboards consume half the vertical viewport.
+        child: SingleChildScrollView(
+          child: Form(
+            key: _formKey,
+            onChanged: () => _dirty = true,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // Header with title and close action (M04)
+                Row(
                   children: [
                     Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            strings.menuItemAvailableTitle,
-                            style: theme.textTheme.titleMedium,
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            strings.menuItemAvailableSubtitle,
-                            style: theme.textTheme.bodySmall?.copyWith(
-                              color: colors.textSecondary,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    Switch(
-                      key: MenuEditor.availableSwitchKey,
-                      value: _available,
-                      activeThumbColor: colors.success,
-                      onChanged: (v) => setState(() => _available = v),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: Space.lg),
-
-              // Action buttons (M04: Delete + Save)
-              Row(
-                children: [
-                  if (widget.existing != null) ...[
-                    Expanded(
-                      flex: 1,
-                      child: OutlinedButton(
-                        key: MenuEditor.deleteItemKey,
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: colors.danger,
-                          side: BorderSide(color: colors.danger),
-                          minimumSize: const Size.fromHeight(Sizes.minTarget),
-                        ),
-                        onPressed: () => _confirmDelete(context),
-                        child: Text(strings.menuDeleteItem),
-                      ),
-                    ),
-                    const SizedBox(width: Space.md),
-                  ],
-                  Expanded(
-                    flex: 2,
-                    child: FilledButton(
-                      key: MenuEditor.saveItemKey,
-                      style: FilledButton.styleFrom(
-                        minimumSize: const Size.fromHeight(Sizes.minTarget),
-                      ),
-                      onPressed: _submit,
                       child: Text(
                         widget.existing == null
-                            ? strings.menuSaveItem
-                            : strings.menuSaveItemChanges,
+                            ? strings.menuNewItem
+                            : strings.menuEditItem,
+                        style: theme.textTheme.titleLarge,
                       ),
                     ),
+                    IconButton(
+                      icon: const Icon(Icons.close),
+                      tooltip: 'إغلاق',
+                      onPressed: _close,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: Space.md),
+
+                // Photo slot card with pending review banner (M04)
+                Container(
+                  padding: const EdgeInsets.all(Space.md),
+                  decoration: BoxDecoration(
+                    color: colors.card,
+                    borderRadius: Radii.cardAll,
+                    border: Border.all(color: colors.hairline),
+                    boxShadow: Elevations.card,
                   ),
+                  child: Column(
+                    children: [
+                      MediaPicker(
+                        key: MenuEditor.itemPhotoKey,
+                        kind: MediaKind.menuItem,
+                        url: _mediaUrl ?? widget.existing?.imageUrl,
+                        name: _name.isEmpty
+                            ? (widget.existing?.name ?? '')
+                            : _name,
+                        ownerId: widget.existing?.id,
+                        onUploaded: (media) => setState(() {
+                          _mediaId = media.id;
+                          _mediaUrl = media.url;
+                          _photoPendingReview =
+                              media.status != MediaStatus.approved;
+                          _dirty = true;
+                        }),
+                      ),
+                      if (_photoPendingReview) ...[
+                        const SizedBox(height: Space.sm),
+                        Container(
+                          key: MenuEditor.pendingReviewBannerKey,
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(Space.sm),
+                          // Tokens, not two amber literals. `CLAUDE.md` is explicit that no
+                          // colour is written in a screen, and these two were invented
+                          // here — a wash and an ink that exist nowhere else in the
+                          // product and that nothing keeps in step with either theme.
+                          // A photograph waiting for approval is exactly what the accent
+                          // is for, and `priceStrong` is the ink the palette already
+                          // records as passing on a pale ground.
+                          decoration: BoxDecoration(
+                            color: colors.accent.withValues(alpha: .12),
+                            borderRadius: Radii.fieldAll,
+                          ),
+                          child: Text(
+                            strings.menuItemUnderReview,
+                            style: LuqmaType.bodySmall.copyWith(
+                              color: colors.price,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                const SizedBox(height: Space.md),
+
+                // Name field
+                TextFormField(
+                  key: MenuEditor.nameFieldKey,
+                  initialValue: _name,
+                  decoration: InputDecoration(labelText: strings.menuItemName),
+                  validator: (v) => (v == null || v.trim().isEmpty)
+                      ? strings.menuNameRequired
+                      : null,
+                  onSaved: (v) => _name = v!.trim(),
+                ),
+                const SizedBox(height: Space.md),
+
+                // Category selector if multiple categories exist
+                if (widget.categories.length > 1) ...[
+                  DropdownButtonFormField<String>(
+                    initialValue: _categoryId,
+                    decoration: const InputDecoration(labelText: 'الفئة'),
+                    items: [
+                      for (final cat in widget.categories)
+                        DropdownMenuItem(value: cat.id, child: Text(cat.name)),
+                    ],
+                    onChanged: (val) {
+                      if (val != null) {
+                        setState(() {
+                          _categoryId = val;
+                          _dirty = true;
+                        });
+                      }
+                    },
+                  ),
+                  const SizedBox(height: Space.md),
                 ],
-              ),
-            ],
+
+                // Description field
+                TextFormField(
+                  key: MenuEditor.descriptionFieldKey,
+                  initialValue: _description,
+                  decoration: InputDecoration(
+                    labelText: strings.menuItemDescription,
+                  ),
+                  maxLines: 2,
+                  onSaved: (v) => _description = v,
+                ),
+                const SizedBox(height: Space.md),
+
+                // Price field
+                TextFormField(
+                  key: MenuEditor.priceFieldKey,
+                  initialValue: _price,
+                  decoration: InputDecoration(
+                    labelText: strings.menuItemPrice,
+                    suffixText: 'ج',
+                  ),
+                  keyboardType: TextInputType.number,
+                  validator: (v) => Money.parse(v ?? '') == null
+                      ? strings.menuPriceInvalid
+                      : null,
+                  onSaved: (v) => _price = v!,
+                ),
+                const SizedBox(height: Space.md),
+
+                // Availability toggle card (M04)
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: Space.md,
+                    vertical: Space.sm,
+                  ),
+                  decoration: BoxDecoration(
+                    color: colors.card,
+                    borderRadius: Radii.fieldAll,
+                    border: Border.all(color: colors.hairline),
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              strings.menuItemAvailableTitle,
+                              style: theme.textTheme.titleMedium,
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              strings.menuItemAvailableSubtitle,
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: colors.textSecondary,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Switch(
+                        key: MenuEditor.availableSwitchKey,
+                        value: _available,
+                        activeThumbColor: colors.success,
+                        onChanged: (v) => setState(() {
+                          _available = v;
+                          _dirty = true;
+                        }),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: Space.lg),
+                if (_error != null) ...[
+                  Text(
+                    _error!,
+                    key: MenuEditor.itemErrorKey,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: colors.danger,
+                    ),
+                  ),
+                  const SizedBox(height: Space.sm),
+                ],
+
+                // Action buttons (M04: Delete + Save)
+                Row(
+                  children: [
+                    if (widget.existing != null) ...[
+                      Expanded(
+                        flex: 1,
+                        child: OutlinedButton(
+                          key: MenuEditor.deleteItemKey,
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: colors.danger,
+                            side: BorderSide(color: colors.danger),
+                            minimumSize: const Size.fromHeight(Sizes.minTarget),
+                          ),
+                          onPressed: _saving
+                              ? null
+                              : () => _confirmDelete(context),
+                          child: Text(strings.menuDeleteItem),
+                        ),
+                      ),
+                      const SizedBox(width: Space.md),
+                    ],
+                    Expanded(
+                      flex: 2,
+                      child: FilledButton(
+                        key: MenuEditor.saveItemKey,
+                        style: FilledButton.styleFrom(
+                          minimumSize: const Size.fromHeight(Sizes.minTarget),
+                        ),
+                        onPressed: _saving ? null : _submit,
+                        child: _saving
+                            ? const SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : Text(
+                                widget.existing == null
+                                    ? strings.menuSaveItem
+                                    : strings.menuSaveItemChanges,
+                              ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -894,16 +1055,33 @@ class _ItemSheetState extends State<_ItemSheet> {
     );
 
     if ((confirmed ?? false) && context.mounted) {
-      await widget.onDelete?.call(widget.existing!.id);
-      if (context.mounted) Navigator.of(context).pop();
+      setState(() {
+        _saving = true;
+        _error = null;
+      });
+      final result = await widget.onDelete?.call(widget.existing!.id);
+      if (!mounted) return;
+      if (result == null || result.isOk) {
+        _dirty = false;
+        Navigator.of(this.context).pop();
+      } else {
+        setState(() {
+          _saving = false;
+          _error = 'مقدرناش نحذف الصنف. اتأكد من النت وجرّب تاني.';
+        });
+      }
     }
   }
 
-  void _submit() {
+  Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
     _formKey.currentState!.save();
 
-    widget.onSave(
+    setState(() {
+      _saving = true;
+      _error = null;
+    });
+    final result = await widget.onSave(
       MenuItem(
         id: widget.existing?.id ?? '',
         merchantId: widget.merchantId,
@@ -917,5 +1095,16 @@ class _ItemSheetState extends State<_ItemSheet> {
         sortOrder: widget.existing?.sortOrder ?? 0,
       ),
     );
+    if (!mounted) return;
+    if (result.isOk) {
+      _dirty = false;
+      Navigator.of(context).pop();
+    } else {
+      setState(() {
+        _saving = false;
+        _error =
+            'مقدرناش نحفظ الصنف — اللي كتبته لسه هنا. اتأكد من النت وجرّب تاني.';
+      });
+    }
   }
 }

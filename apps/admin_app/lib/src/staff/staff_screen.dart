@@ -7,12 +7,12 @@ import '../shell/layout.dart';
 import 'staff_controller.dart';
 
 /// Watches all active attachments (shops plus platform) for a single courier.
-final courierAttachmentsProvider =
-    StreamProvider.autoDispose.family<List<CourierRosterItem>, String>(
-  (ref, courierUid) => ref
-      .watch(courierRosterRepositoryProvider)
-      .watchCourierAttachments(courierUid),
-);
+final courierAttachmentsProvider = StreamProvider.autoDispose
+    .family<List<CourierRosterItem>, String>(
+      (ref, courierUid) => ref
+          .watch(courierRosterRepositoryProvider)
+          .watchCourierAttachments(courierUid),
+    );
 
 /// The platform's own accounts: admins, moderators, and the shops' owners and couriers.
 ///
@@ -35,8 +35,12 @@ class StaffScreen extends ConsumerStatefulWidget {
   static const newPasswordFieldKey = Key('staff.new_password');
   static const confirmPasswordFieldKey = Key('staff.confirm_password');
   static const changePasswordKey = Key('staff.change_password');
-  static const toggleNewPasswordVisibilityKey = Key('staff.toggle_new_password');
-  static const toggleConfirmPasswordVisibilityKey = Key('staff.toggle_confirm_password');
+  static const toggleNewPasswordVisibilityKey = Key(
+    'staff.toggle_new_password',
+  );
+  static const toggleConfirmPasswordVisibilityKey = Key(
+    'staff.toggle_confirm_password',
+  );
   static const deleteAccountKey = Key('staff.delete_account');
   static const confirmDeleteAccountKey = Key('staff.confirm_delete_account');
 
@@ -63,8 +67,7 @@ class _StaffScreenState extends ConsumerState<StaffScreen> {
     final colors = Theme.of(context).luqma;
 
     final merchantsMap = {
-      for (final m in merchantsAsync.value ?? const <Merchant>[])
-        m.id: m,
+      for (final m in merchantsAsync.value ?? const <Merchant>[]) m.id: m,
     };
 
     // Keep selected courier reference fresh with latest state if the list re-emits.
@@ -80,34 +83,45 @@ class _StaffScreenState extends ConsumerState<StaffScreen> {
     // On narrow screens (phone), the staff detail replaces the staff list so that
     // controls have sufficient touch target size and never overflow.
     if (!layout.showsTwoPanes && _selectedCourier != null) {
-      return Scaffold(
-        appBar: AppBar(
-          leading: IconButton(
-            icon: const Icon(Icons.arrow_forward),
-            tooltip: 'رجوع',
-            onPressed: () => setState(() => _selectedCourier = null),
+      // Back steps out of the detail to the list, as the arrow does, rather than leaving
+      // «الفريق» altogether.
+      return PopScope(
+        canPop: false,
+        onPopInvokedWithResult: (didPop, _) {
+          if (!didPop) setState(() => _selectedCourier = null);
+        },
+        child: Scaffold(
+          appBar: AppBar(
+            leading: IconButton(
+              icon: const Icon(Icons.arrow_forward),
+              tooltip: 'رجوع',
+              onPressed: () => setState(() => _selectedCourier = null),
+            ),
+            title: Text(
+              _selectedCourier!.name?.isNotEmpty == true
+                  ? _selectedCourier!.name!
+                  : (_selectedCourier!.role == 'courier'
+                        ? 'ارتباطات الكابتن'
+                        : 'تفاصيل الحساب'),
+            ),
           ),
-          title: Text(
-            _selectedCourier!.name?.isNotEmpty == true
-                ? _selectedCourier!.name!
-                : (_selectedCourier!.role == 'courier'
-                    ? 'ارتباطات الكابتن'
-                    : 'تفاصيل الحساب'),
-          ),
-        ),
-        body: AdminContent(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(Space.gutter),
-            child: _CourierDetailView(
-              // Keyed by the account: a password change or deletion still in flight for
-              // one member must not finish into the pane of the next one selected.
-              key: ValueKey(_selectedCourier!.uid),
-              courier: _selectedCourier!,
-              merchantsMap: merchantsMap,
-              onDeleted: () {
-                setState(() => _selectedCourier = null);
-                ref.invalidate(staffListProvider);
-              },
+          body: AdminContent(
+            child: Align(
+              alignment: Alignment.topCenter,
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(Space.gutter),
+                child: _CourierDetailView(
+                  // Keyed by the account: a password change or deletion still in flight for
+                  // one member must not finish into the pane of the next one selected.
+                  key: ValueKey(_selectedCourier!.uid),
+                  courier: _selectedCourier!,
+                  merchantsMap: merchantsMap,
+                  onDeleted: () {
+                    setState(() => _selectedCourier = null);
+                    ref.invalidate(staffListProvider);
+                  },
+                ),
+              ),
             ),
           ),
         ),
@@ -121,9 +135,9 @@ class _StaffScreenState extends ConsumerState<StaffScreen> {
         key: StaffScreen.emptyKey,
         child: Text(
           'مفيش حسابات لسه.',
-          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: colors.textSecondary,
-              ),
+          style: Theme.of(
+            context,
+          ).textTheme.bodyMedium?.copyWith(color: colors.textSecondary),
         ),
       ),
       isEmpty: (value) => value.isEmpty,
@@ -142,16 +156,16 @@ class _StaffScreenState extends ConsumerState<StaffScreen> {
                         padding: const EdgeInsets.all(Space.xl),
                         child: Text(
                           'مفيش حسابات مطابقة للفلتر.',
-                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                color: colors.textSecondary,
-                              ),
+                          style: Theme.of(context).textTheme.bodyMedium
+                              ?.copyWith(color: colors.textSecondary),
                         ),
                       ),
                     )
                   : ListView.separated(
                       padding: const EdgeInsets.all(Space.gutter),
                       itemCount: filtered.length,
-                      separatorBuilder: (_, _) => const SizedBox(height: Space.sm),
+                      separatorBuilder: (_, _) =>
+                          const SizedBox(height: Space.sm),
                       itemBuilder: (context, i) {
                         final member = filtered[i];
                         final isSelected = member.uid == _selectedCourier?.uid;
@@ -163,7 +177,8 @@ class _StaffScreenState extends ConsumerState<StaffScreen> {
                           member: member,
                           merchantName: merchantName,
                           isSelected: isSelected,
-                          onTap: () => setState(() => _selectedCourier = member),
+                          onTap: () =>
+                              setState(() => _selectedCourier = member),
                           onToggle: () => _toggle(context, ref, member),
                         );
                       },
@@ -189,6 +204,7 @@ class _StaffScreenState extends ConsumerState<StaffScreen> {
       body: layout.showsTwoPanes
           ? AdminContent(
               child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Expanded(flex: 2, child: listContent),
                   VerticalDivider(width: 1, color: colors.hairline),
@@ -207,26 +223,27 @@ class _StaffScreenState extends ConsumerState<StaffScreen> {
                                 const SizedBox(height: Space.md),
                                 Text(
                                   'اختر كابتن لعرض ارتباطاته',
-                                  style: Theme.of(context)
-                                      .textTheme
-                                      .bodyMedium
+                                  style: Theme.of(context).textTheme.bodyMedium
                                       ?.copyWith(color: colors.textSecondary),
                                 ),
                               ],
                             ),
                           )
-                        : SingleChildScrollView(
-                            padding: const EdgeInsets.all(Space.gutter),
-                            child: _CourierDetailView(
-                              key: ValueKey(_selectedCourier!.uid),
-                              courier: _selectedCourier!,
-                              merchantsMap: merchantsMap,
-                              onClose: () =>
-                                  setState(() => _selectedCourier = null),
-                              onDeleted: () {
-                                setState(() => _selectedCourier = null);
-                                ref.invalidate(staffListProvider);
-                              },
+                        : Align(
+                            alignment: Alignment.topCenter,
+                            child: SingleChildScrollView(
+                              padding: const EdgeInsets.all(Space.gutter),
+                              child: _CourierDetailView(
+                                key: ValueKey(_selectedCourier!.uid),
+                                courier: _selectedCourier!,
+                                merchantsMap: merchantsMap,
+                                onClose: () =>
+                                    setState(() => _selectedCourier = null),
+                                onDeleted: () {
+                                  setState(() => _selectedCourier = null);
+                                  ref.invalidate(staffListProvider);
+                                },
+                              ),
                             ),
                           ),
                   ),
@@ -277,40 +294,65 @@ class _StaffScreenState extends ConsumerState<StaffScreen> {
     WidgetRef ref,
     StaffMember member,
   ) async {
-    await ref
+    if (member.isActive) {
+      final name = member.name?.isNotEmpty == true ? member.name! : member.uid;
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('تعطيل الحساب'),
+          content: Text('$name مش هيقدر يدخل لحد ما تفعّله تاني.'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('إلغاء'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: const Text('تعطيل'),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true || !context.mounted) return;
+    }
+
+    final result = await ref
         .read(staffRepositoryProvider)
         .setActive(member.uid, active: !member.isActive);
+    if (!context.mounted) return;
+
+    final messenger = ScaffoldMessenger.of(context);
+    if (result is Ok) {
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            member.isActive ? 'تم تعطيل الحساب' : 'تم تفعيل الحساب',
+          ),
+        ),
+      );
+    } else if (result case Err(:final failure)) {
+      final reason = switch (failure) {
+        PermissionFailure() => 'مش مسموحلك تعدل حالة الحساب.',
+        NotFoundFailure() => 'الحساب مش موجود.',
+        OfflineFailure() => 'مفيش نت — جرّب تاني.',
+        _ => 'معرفناش نغير حالة الحساب. جرّب تاني.',
+      };
+      messenger.showSnackBar(SnackBar(content: Text(reason)));
+    }
   }
 
   Future<void> _showCreateDialog(BuildContext context) async {
     final messenger = ScaffoldMessenger.of(context);
-    final created = await showDialog<Result<StaffMember>>(
+    final created = await showDialog<StaffMember>(
       context: context,
       builder: (_) => const _CreateStaffDialog(),
     );
     if (!mounted || created == null) return;
 
-    if (created is Ok<StaffMember>) {
-      ref.invalidate(staffListProvider);
-      messenger.showSnackBar(
-        SnackBar(
-          content: Text('اتعمل الحساب لـ ${created.value.name ?? created.value.uid}'),
-        ),
-      );
-    } else if (created case Err(:final failure)) {
-      messenger.showSnackBar(
-        SnackBar(
-          key: const Key('staff.create-error'),
-          content: Text(switch (failure) {
-            EmailTakenFailure() => 'الإيميل ده متسجل قبل كده.',
-            PermissionFailure() => 'مش مسموحلك تعمل حسابات.',
-            ConflictFailure() => 'فيه معلومة ناقصة أو غلط.',
-            OfflineFailure() => 'مفيش نت — جرّب تاني.',
-            _ => 'معرفنش عمل الحساب. جرّب تاني.',
-          }),
-        ),
-      );
-    }
+    ref.invalidate(staffListProvider);
+    messenger.showSnackBar(
+      SnackBar(content: Text('اتعمل الحساب لـ ${created.name ?? created.uid}')),
+    );
   }
 }
 
@@ -373,12 +415,12 @@ class _StaffRow extends StatelessWidget {
   final VoidCallback onToggle;
 
   Color _roleColor(LuqmaColors colors, String role) => switch (role) {
-        'admin' => colors.brand,
-        'moderator' => colors.accent,
-        'courier' => colors.price,
-        'owner' => colors.success,
-        _ => colors.textSecondary,
-      };
+    'admin' => colors.brand,
+    'moderator' => colors.accent,
+    'courier' => colors.price,
+    'owner' => colors.success,
+    _ => colors.textSecondary,
+  };
 
   String _formatScope(StaffMember member, String? merchantName) {
     if (member.scope == 'platform') return 'المنصة';
@@ -504,11 +546,7 @@ class _StaffRow extends StatelessWidget {
                 onPressed: onToggle,
               ),
               if (isCourier)
-                Icon(
-                  Icons.chevron_left,
-                  color: colors.textSecondary,
-                  size: 20,
-                ),
+                Icon(Icons.chevron_left, color: colors.textSecondary, size: 20),
             ],
           ),
         ),
@@ -575,11 +613,7 @@ class _CourierDetailViewState extends ConsumerState<_CourierDetailView> {
     if (result is Ok) {
       _newPasswordController.clear();
       _confirmPasswordController.clear();
-      messenger.showSnackBar(
-        const SnackBar(
-          content: Text('اتغيرت كلمة السر'),
-        ),
-      );
+      messenger.showSnackBar(const SnackBar(content: Text('اتغيرت كلمة السر')));
     } else if (result case Err(:final failure)) {
       final message = switch (failure) {
         PermissionFailure() => 'مش مسموح لك تغيّر كلمة السر.',
@@ -587,9 +621,7 @@ class _CourierDetailViewState extends ConsumerState<_CourierDetailView> {
         OfflineFailure() => 'مفيش نت — اتأكد من اتصالك وجرّب تاني.',
         _ => 'مقدرناش نغيّر كلمة السر. حاول تاني.',
       };
-      messenger.showSnackBar(
-        SnackBar(content: Text(message)),
-      );
+      messenger.showSnackBar(SnackBar(content: Text(message)));
     }
   }
 
@@ -621,9 +653,7 @@ class _CourierDetailViewState extends ConsumerState<_CourierDetailView> {
           ),
           TextButton(
             key: StaffScreen.confirmDeleteAccountKey,
-            style: TextButton.styleFrom(
-              foregroundColor: colors.danger,
-            ),
+            style: TextButton.styleFrom(foregroundColor: colors.danger),
             onPressed: () => Navigator.of(dialogContext).pop(true),
             child: const Text('احذف نهائياً'),
           ),
@@ -643,9 +673,7 @@ class _CourierDetailViewState extends ConsumerState<_CourierDetailView> {
     final messenger = ScaffoldMessenger.of(context);
 
     if (result is Ok) {
-      messenger.showSnackBar(
-        const SnackBar(content: Text('الحساب اتحذف')),
-      );
+      messenger.showSnackBar(const SnackBar(content: Text('الحساب اتحذف')));
       widget.onDeleted?.call();
     } else if (result case Err(:final failure)) {
       final message = switch (failure) {
@@ -654,14 +682,15 @@ class _CourierDetailViewState extends ConsumerState<_CourierDetailView> {
         OfflineFailure() => 'مفيش نت — اتأكد من اتصالك وجرّب تاني.',
         _ => 'مقدرناش نحذف الحساب. حاول تاني.',
       };
-      messenger.showSnackBar(
-        SnackBar(content: Text(message)),
-      );
+      messenger.showSnackBar(SnackBar(content: Text(message)));
     }
   }
 
   Widget _buildPasswordBlock(
-      BuildContext context, LuqmaColors colors, ThemeData theme) {
+    BuildContext context,
+    LuqmaColors colors,
+    ThemeData theme,
+  ) {
     return Container(
       padding: const EdgeInsets.all(Space.md),
       decoration: BoxDecoration(
@@ -695,7 +724,8 @@ class _CourierDetailViewState extends ConsumerState<_CourierDetailView> {
                 p2Error = 'كلمتي السر مش متطابقتين.';
               }
 
-              final canSubmit = p1.length >= 8 &&
+              final canSubmit =
+                  p1.length >= 8 &&
                   p1.length <= 72 &&
                   p1 == p2 &&
                   !_changingPassword;
@@ -718,8 +748,9 @@ class _CourierDetailViewState extends ConsumerState<_CourierDetailView> {
                               ? Icons.visibility_outlined
                               : Icons.visibility_off_outlined,
                         ),
-                        tooltip:
-                            _obscureNew ? 'إظهار كلمة السر' : 'إخفاء كلمة السر',
+                        tooltip: _obscureNew
+                            ? 'إظهار كلمة السر'
+                            : 'إخفاء كلمة السر',
                         onPressed: () =>
                             setState(() => _obscureNew = !_obscureNew),
                       ),
@@ -745,8 +776,8 @@ class _CourierDetailViewState extends ConsumerState<_CourierDetailView> {
                         tooltip: _obscureConfirm
                             ? 'إظهار كلمة السر'
                             : 'إخفاء كلمة السر',
-                        onPressed: () => setState(
-                            () => _obscureConfirm = !_obscureConfirm),
+                        onPressed: () =>
+                            setState(() => _obscureConfirm = !_obscureConfirm),
                       ),
                     ),
                     onChanged: (_) => setState(() {}),
@@ -776,7 +807,10 @@ class _CourierDetailViewState extends ConsumerState<_CourierDetailView> {
   }
 
   Widget _buildDeleteAction(
-      BuildContext context, LuqmaColors colors, ThemeData theme) {
+    BuildContext context,
+    LuqmaColors colors,
+    ThemeData theme,
+  ) {
     return Center(
       child: TextButton.icon(
         key: StaffScreen.deleteAccountKey,
@@ -811,8 +845,8 @@ class _CourierDetailViewState extends ConsumerState<_CourierDetailView> {
     final headerIcon = isCourier
         ? Icons.delivery_dining
         : (isOwner
-            ? Icons.storefront_outlined
-            : Icons.admin_panel_settings_outlined);
+              ? Icons.storefront_outlined
+              : Icons.admin_panel_settings_outlined);
     final headerColor = isCourier
         ? colors.price
         : (isOwner ? colors.success : colors.brand);
@@ -842,11 +876,7 @@ class _CourierDetailViewState extends ConsumerState<_CourierDetailView> {
                   shape: BoxShape.circle,
                 ),
                 alignment: Alignment.center,
-                child: Icon(
-                  headerIcon,
-                  color: colors.onBrand,
-                  size: 24,
-                ),
+                child: Icon(headerIcon, color: colors.onBrand, size: 24),
               ),
               const SizedBox(width: Space.md),
               Expanded(
@@ -926,8 +956,9 @@ class _CourierDetailViewState extends ConsumerState<_CourierDetailView> {
     final l10n = LuqmaStrings.of(context);
 
     // Platform row is represented by merchantId == null
-    final hasPlatform =
-        items.any((item) => item.merchantId == null && item.isActive);
+    final hasPlatform = items.any(
+      (item) => item.merchantId == null && item.isActive,
+    );
     final attachedMerchantIds = {
       for (final item in items)
         if (item.merchantId != null && item.isActive) item.merchantId!,
@@ -991,9 +1022,9 @@ class _CourierDetailViewState extends ConsumerState<_CourierDetailView> {
               final displayName = isPlatform
                   ? l10n.courierPlatformRow
                   : (item.merchantName ??
-                      widget.merchantsMap[item.merchantId]?.name ??
-                      item.merchantId ??
-                      'محل');
+                        widget.merchantsMap[item.merchantId]?.name ??
+                        item.merchantId ??
+                        'محل');
 
               return Container(
                 padding: const EdgeInsets.symmetric(
@@ -1128,10 +1159,7 @@ class _CourierDetailViewState extends ConsumerState<_CourierDetailView> {
 /// Dialog allowing an admin to pick a shop name and attach it to a courier.
 /// Reuses [_MerchantPicker] to uphold the "Never ask anybody to type a uuid" rule.
 class _AddShopDialog extends ConsumerStatefulWidget {
-  const _AddShopDialog({
-    required this.courierUid,
-    this.excludedIds = const {},
-  });
+  const _AddShopDialog({required this.courierUid, this.excludedIds = const {}});
 
   final String courierUid;
   final Set<String> excludedIds;
@@ -1143,9 +1171,12 @@ class _AddShopDialog extends ConsumerStatefulWidget {
 class _AddShopDialogState extends ConsumerState<_AddShopDialog> {
   String? _merchantId;
   final _form = GlobalKey<FormState>();
+  bool _submitting = false;
 
   Future<void> _submit() async {
+    if (_submitting) return;
     if (!_form.currentState!.validate()) return;
+    setState(() => _submitting = true);
     final messenger = ScaffoldMessenger.of(context);
     final result = await ref
         .read(courierRosterRepositoryProvider)
@@ -1154,6 +1185,7 @@ class _AddShopDialogState extends ConsumerState<_AddShopDialog> {
           merchantId: _merchantId,
         );
     if (!mounted) return;
+    setState(() => _submitting = false);
     if (result is Ok) {
       Navigator.of(context).pop();
     } else {
@@ -1184,11 +1216,11 @@ class _AddShopDialogState extends ConsumerState<_AddShopDialog> {
       ),
       actions: [
         TextButton(
-          onPressed: () => Navigator.of(context).pop(),
+          onPressed: _submitting ? null : () => Navigator.of(context).pop(),
           child: const Text('إلغاء'),
         ),
         FilledButton(
-          onPressed: _submit,
+          onPressed: _submitting ? null : _submit,
           child: const Text('إضافة'),
         ),
       ],
@@ -1213,6 +1245,8 @@ class _CreateStaffDialogState extends ConsumerState<_CreateStaffDialog> {
   String _role = 'owner';
 
   String? _merchantId;
+  bool _submitting = false;
+  String? _error;
 
   bool get _isMerchantScope => _scope == 'merchant';
 
@@ -1225,8 +1259,15 @@ class _CreateStaffDialogState extends ConsumerState<_CreateStaffDialog> {
   }
 
   Future<void> _submit() async {
+    if (_submitting) return;
     if (!_form.currentState!.validate()) return;
-    final result = await ref.read(staffRepositoryProvider).createAccount(
+    setState(() {
+      _submitting = true;
+      _error = null;
+    });
+    final result = await ref
+        .read(staffRepositoryProvider)
+        .createAccount(
           email: _email.text.trim(),
           password: _password.text,
           name: _name.text.trim(),
@@ -1235,7 +1276,20 @@ class _CreateStaffDialogState extends ConsumerState<_CreateStaffDialog> {
           merchantId: _isMerchantScope ? _merchantId : null,
         );
     if (!mounted) return;
-    Navigator.of(context).pop(result);
+    setState(() => _submitting = false);
+
+    if (result is Ok<StaffMember>) {
+      Navigator.of(context).pop(result.value);
+    } else if (result case Err(:final failure)) {
+      final msg = switch (failure) {
+        EmailTakenFailure() => 'الإيميل ده متسجل قبل كده.',
+        PermissionFailure() => 'مش مسموحلك تعمل حسابات.',
+        ConflictFailure() => 'فيه معلومة ناقصة أو غلط.',
+        OfflineFailure() => 'مفيش نت — جرّب تاني.',
+        _ => 'معرفناش نعمل الحساب. جرّب تاني.',
+      };
+      setState(() => _error = msg);
+    }
   }
 
   @override
@@ -1259,8 +1313,9 @@ class _CreateStaffDialogState extends ConsumerState<_CreateStaffDialog> {
               TextFormField(
                 key: const Key('staff.password'),
                 controller: _password,
-                decoration:
-                    const InputDecoration(labelText: 'كلمة السر (8 حروف على الأقل)'),
+                decoration: const InputDecoration(
+                  labelText: 'كلمة السر (8 حروف على الأقل)',
+                ),
                 obscureText: true,
                 validator: (v) =>
                     v != null && v.length >= 8 ? null : '8 حروف على الأقل',
@@ -1289,12 +1344,21 @@ class _CreateStaffDialogState extends ConsumerState<_CreateStaffDialog> {
                 decoration: const InputDecoration(labelText: 'الدور'),
                 items: _isMerchantScope
                     ? const [
-                        DropdownMenuItem(value: 'owner', child: Text('صاحب مطعم')),
-                        DropdownMenuItem(value: 'courier', child: Text('دليفري')),
+                        DropdownMenuItem(
+                          value: 'owner',
+                          child: Text('صاحب مطعم'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'courier',
+                          child: Text('دليفري'),
+                        ),
                       ]
                     : const [
                         DropdownMenuItem(value: 'admin', child: Text('أدمن')),
-                        DropdownMenuItem(value: 'moderator', child: Text('مشرف')),
+                        DropdownMenuItem(
+                          value: 'moderator',
+                          child: Text('مشرف'),
+                        ),
                       ],
                 onChanged: (v) => setState(() => _role = v ?? _role),
               ),
@@ -1303,19 +1367,35 @@ class _CreateStaffDialogState extends ConsumerState<_CreateStaffDialog> {
                   selected: _merchantId,
                   onChanged: (id) => setState(() => _merchantId = id),
                 ),
+              // Said inside the form as well: a SnackBar under a dialog is half hidden.
+              if (_error != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: Space.sm),
+                  child: Text(
+                    _error!,
+                    key: const Key('staff.create-error'),
+                    style: TextStyle(color: Theme.of(context).luqma.danger),
+                  ),
+                ),
             ],
           ),
         ),
       ),
       actions: [
         TextButton(
-          onPressed: () => Navigator.of(context).pop(),
+          onPressed: _submitting ? null : () => Navigator.of(context).pop(),
           child: const Text('إلغاء'),
         ),
         FilledButton(
           key: StaffScreen.submitKey,
-          onPressed: _submit,
-          child: const Text('اعمل الحساب'),
+          onPressed: _submitting ? null : _submit,
+          child: _submitting
+              ? const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Text('اعمل الحساب'),
         ),
       ],
     );
@@ -1345,10 +1425,11 @@ class _MerchantPicker extends ConsumerWidget {
 
     return switch (merchants) {
       AsyncValue(hasError: true) => const InputDecorator(
-          decoration: InputDecoration(labelText: 'المطعم'),
-          child: Text('مقدرناش نجيب المطاعم. اقفل وافتح تاني.'),
-        ),
-      AsyncValue(hasValue: true, :final value?) => DropdownButtonFormField<String>(
+        decoration: InputDecoration(labelText: 'المطعم'),
+        child: Text('مقدرناش نجيب المطاعم. اقفل وافتح تاني.'),
+      ),
+      AsyncValue(hasValue: true, :final value?) =>
+        DropdownButtonFormField<String>(
           key: pickerKey,
           initialValue: selected,
           isExpanded: true,
@@ -1365,9 +1446,9 @@ class _MerchantPicker extends ConsumerWidget {
           validator: (v) => v != null && v.isNotEmpty ? null : 'اختار المطعم',
         ),
       _ => const InputDecorator(
-          decoration: InputDecoration(labelText: 'المطعم'),
-          child: Text('بنجيب المطاعم…'),
-        ),
+        decoration: InputDecoration(labelText: 'المطعم'),
+        child: Text('بنجيب المطاعم…'),
+      ),
     };
   }
 }

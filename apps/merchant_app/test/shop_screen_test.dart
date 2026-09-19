@@ -42,6 +42,7 @@ void main() {
     WidgetTester tester, {
     Failure? failure,
     Failure? saveFailure,
+    Merchant seed = shop,
   }) async {
     // A phone, not the runner's 800x600 default — that window is wider than it is tall
     // and unlike anything this ships on.
@@ -62,7 +63,7 @@ void main() {
           ),
           merchantRepositoryProvider.overrideWithValue(
             FakeMerchantRepository(
-              seed: const [shop],
+              seed: [seed],
               failure: failure,
               saveFailure: saveFailure,
             ),
@@ -147,5 +148,38 @@ void main() {
     expect(find.text('آراء العملاء'), findsOneWidget);
     // The section header already says it; a second heading under it said it again.
     expect(find.text('اللي العملاء قالوه'), findsNothing);
+  });
+
+  // 2026-09-19: commission is collected weekly; the shop sees what it owes on its own card,
+  // and is told plainly once it passes the owner's line (500 ج).
+  testWidgets('what the shop owes is on its card, and marked past the line', (tester) async {
+    await pump(tester, seed: shop.copyWith(
+      revenueModel: RevenueModel.commission,
+      revenueValue: 500,
+      commissionOwed: 60000,
+    ));
+    await tester.scrollUntilVisible(
+      find.byKey(ShopScreen.owedKey),
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
+
+    expect(find.byKey(ShopScreen.owedKey), findsOneWidget);
+    expect(find.byKey(ShopScreen.owedAlertKey), findsOneWidget);
+  });
+
+  testWidgets('under the line there is no warning', (tester) async {
+    await pump(tester, seed: shop.copyWith(
+      revenueModel: RevenueModel.commission,
+      revenueValue: 500,
+      commissionOwed: 1000,
+    ));
+    await tester.scrollUntilVisible(
+      find.byKey(ShopScreen.owedKey),
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
+
+    expect(find.byKey(ShopScreen.owedAlertKey), findsNothing);
   });
 }

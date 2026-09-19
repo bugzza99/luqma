@@ -121,4 +121,68 @@ void main() {
     expect(list.single.fundedBy, CouponFunder.platform);
     expect(find.byType(CouponTile), findsOneWidget);
   });
+
+  testWidgets('code search and status chips filter the list', (tester) async {
+    await pump(tester, seed: const [
+      Coupon(
+        id: 'a',
+        code: 'EID15',
+        cityId: 'edku',
+        type: CouponType.percentage,
+        value: 1500,
+        maxDiscount: 3000,
+        isActive: true,
+      ),
+      Coupon(
+        id: 'b',
+        code: 'BAHR20',
+        cityId: 'edku',
+        type: CouponType.fixedAmount,
+        value: 2000,
+        isActive: false,
+      ),
+    ]);
+
+    expect(find.text('EID15'), findsOneWidget);
+    expect(find.text('BAHR20'), findsOneWidget);
+
+    // Search by code
+    await tester.enterText(find.byKey(CouponsScreen.searchKey), 'BAHR');
+    await tester.pumpAndSettle();
+    expect(find.text('EID15'), findsNothing);
+    expect(find.text('BAHR20'), findsOneWidget);
+
+    await tester.enterText(find.byKey(CouponsScreen.searchKey), '');
+    await tester.pumpAndSettle();
+
+    // Filter chip: شغّال
+    await tester.tap(find.byKey(CouponsScreen.filterActiveKey));
+    await tester.pumpAndSettle();
+    expect(find.text('EID15'), findsOneWidget);
+    expect(find.text('BAHR20'), findsNothing);
+
+    // Filter chip: منتهي
+    await tester.tap(find.byKey(CouponsScreen.filterExpiredKey));
+    await tester.pumpAndSettle();
+    expect(find.text('EID15'), findsNothing);
+    expect(find.text('BAHR20'), findsOneWidget);
+  });
+
+  testWidgets('percentage below 1 is refused with inline error', (tester) async {
+    await pump(tester);
+
+    await tester.tap(find.byKey(CouponsScreen.addKey));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byKey(CouponForm.codeKey), 'LOW');
+    await tester.enterText(find.byKey(CouponForm.valueKey), '0.5');
+    await tester.enterText(find.byKey(CouponForm.maxDiscountKey), '10');
+    await tester.ensureVisible(find.byKey(CouponForm.saveKey));
+    await tester.tap(find.byKey(CouponForm.saveKey));
+    await tester.pumpAndSettle();
+
+    expect(find.text('النسبة لازم تكون رقم من 1 لـ 100'), findsOneWidget);
+    final list = (await coupons.listAll()).valueOrNull!;
+    expect(list, isEmpty);
+  });
 }

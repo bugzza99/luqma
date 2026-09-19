@@ -106,6 +106,22 @@ class _CouponFormState extends State<CouponForm> {
   String? _error;
   bool _saving = false;
 
+  String? _codeError;
+  String? _valueError;
+  String? _maxDiscountError;
+  String? _minOrderError;
+  String? _perUserError;
+  String? _totalError;
+  String? _dateError;
+
+  final _codeFieldKey = GlobalKey();
+  final _valueFieldKey = GlobalKey();
+  final _maxDiscountFieldKey = GlobalKey();
+  final _minOrderFieldKey = GlobalKey();
+  final _perUserFieldKey = GlobalKey();
+  final _totalFieldKey = GlobalKey();
+  final _dateFieldKey = GlobalKey();
+
   @override
   void initState() {
     super.initState();
@@ -142,7 +158,7 @@ class _CouponFormState extends State<CouponForm> {
       piastres % 100 == 0 ? '${piastres ~/ 100}' : (piastres / 100).toStringAsFixed(2);
 
   /// A typed percentage into basis points: "15" → 1500, "12.5" → 1250. Null when it is not
-  /// a number between 0 and 100 with at most two decimals.
+  /// a number between 1 and 100 with at most two decimals.
   static int? _basisPoints(String raw) {
     final text = ArabicDigits.fold(raw)
         .replaceAll(ArabicDigits.decimalSeparator, '.')
@@ -150,7 +166,7 @@ class _CouponFormState extends State<CouponForm> {
         .trim();
     if (!RegExp(r'^\d{1,3}(\.\d{1,2})?$').hasMatch(text)) return null;
     final bp = (double.parse(text) * 100).round();
-    return bp > 0 && bp <= 10000 ? bp : null;
+    return bp >= 100 && bp <= 10000 ? bp : null;
   }
 
   /// An optional count: empty is 0 («بلا حد»), anything else a whole number that fits the
@@ -163,13 +179,142 @@ class _CouponFormState extends State<CouponForm> {
   }
 
   Future<void> _save() async {
-    final (message, draft) = _validate();
-    if (draft == null) {
-      setState(() => _error = message);
+    setState(() {
+      _codeError = null;
+      _valueError = null;
+      _maxDiscountError = null;
+      _minOrderError = null;
+      _perUserError = null;
+      _totalError = null;
+      _dateError = null;
+      _error = null;
+    });
+
+    final code = Coupon.normalizeCode(_code.text);
+    if (code.isEmpty) {
+      _codeError = 'اكتب الكود';
+    } else if (code.contains(' ')) {
+      _codeError = 'الكود مايكونش فيه مسافات';
+    }
+
+    var value = 0;
+    int? maxDiscount;
+    switch (_type) {
+      case CouponType.percentage:
+        final bp = _basisPoints(_value.text);
+        if (bp == null) {
+          _valueError = 'النسبة لازم تكون رقم من 1 لـ 100';
+        } else {
+          value = bp;
+        }
+        maxDiscount = Money.parse(_maxDiscount.text);
+        if (maxDiscount == null || maxDiscount <= 0) {
+          _maxDiscountError = 'النسبة لازم يكون ليها أقصى خصم';
+        }
+      case CouponType.fixedAmount:
+        final amount = Money.parse(_value.text);
+        if (amount == null || amount <= 0) {
+          _valueError = 'اكتب قيمة الخصم بالجنيه';
+        } else {
+          value = amount;
+        }
+      case CouponType.freeDelivery:
+        value = 0;
+    }
+
+    var minOrder = 0;
+    if (_minOrder.text.trim().isNotEmpty) {
+      final parsed = Money.parse(_minOrder.text);
+      if (parsed == null) {
+        _minOrderError = 'أقل طلب لازم يكون مبلغ بالجنيه';
+      } else {
+        minOrder = parsed;
+      }
+    }
+
+    final perUser = _count(_perUser.text);
+    if (perUser == null || perUser < 0) {
+      _perUserError = 'عدد المرات لازم يكون رقم صحيح';
+    }
+
+    final total = _count(_total.text);
+    if (total == null || total < 0) {
+      _totalError = 'عدد المرات لازم يكون رقم صحيح';
+    }
+
+    if (_validFrom != null && _validUntil != null && !_validUntil!.isAfter(_validFrom!)) {
+      _dateError = 'تاريخ النهاية لازم يكون بعد البداية';
+    }
+
+    final hasErrors = _codeError != null ||
+        _valueError != null ||
+        _maxDiscountError != null ||
+        _minOrderError != null ||
+        _perUserError != null ||
+        _totalError != null ||
+        _dateError != null;
+
+    if (hasErrors) {
+      setState(() {
+        // A summary, not a copy: each field already says what is wrong under itself,
+        // and the same sentence twice reads as two problems.
+        _error = 'فيه خانات محتاجة تتصلح — الكلام الأحمر تحت كل خانة بيقول إيه.';
+      });
+      GlobalKey? firstInvalidKey;
+      if (_codeError != null) {
+        firstInvalidKey = _codeFieldKey;
+      } else if (_valueError != null) {
+        firstInvalidKey = _valueFieldKey;
+      } else if (_maxDiscountError != null) {
+        firstInvalidKey = _maxDiscountFieldKey;
+      } else if (_minOrderError != null) {
+        firstInvalidKey = _minOrderFieldKey;
+      } else if (_perUserError != null) {
+        firstInvalidKey = _perUserFieldKey;
+      } else if (_totalError != null) {
+        firstInvalidKey = _totalFieldKey;
+      } else if (_dateError != null) {
+        firstInvalidKey = _dateFieldKey;
+      }
+
+      if (firstInvalidKey?.currentContext != null) {
+        Scrollable.ensureVisible(
+          firstInvalidKey!.currentContext!,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeInOut,
+        );
+      }
       return;
     }
+
+    final merchantId = widget.adminExtras ? _shopId : widget.merchantId;
+    final shopCity = widget.shops.where((m) => m.id == merchantId).firstOrNull?.cityId;
+
+    final draft = Coupon(
+      id: widget.initial?.id ?? '',
+      code: code,
+      cityId: widget.initial?.cityId ?? shopCity ?? widget.cityId,
+      type: _type,
+      value: value,
+      maxDiscount: maxDiscount,
+      minOrder: minOrder,
+      merchantId: merchantId,
+      firstOrderOnly: _firstOrderOnly,
+      perUserLimit: perUser ?? 0,
+      totalLimit: total ?? 0,
+      usedCount: widget.initial?.usedCount ?? 0,
+      isActive: widget.initial?.isActive ?? true,
+      validFrom: _validFrom,
+      validUntil: _validUntil,
+      // Only an admin decides who pays; a shop's own coupon is always the shop's, and a
+      // platform-wide coupon has no shop to charge.
+      fundedBy: !widget.adminExtras
+          ? CouponFunder.merchant
+          : (merchantId == null ? CouponFunder.platform : _fundedBy),
+      createdByUid: widget.initial?.createdByUid,
+    );
+
     setState(() {
-      _error = null;
       _saving = true;
     });
     final failure = await widget.onSave(draft);
@@ -185,79 +330,6 @@ class _CouponFormState extends State<CouponForm> {
         _ => 'مقدرناش نحفظ الكوبون. جرّب تاني.',
       };
     });
-  }
-
-  /// Either the sentence to show, or the draft to save.
-  (String?, Coupon?) _validate() {
-    final code = Coupon.normalizeCode(_code.text);
-    if (code.isEmpty) return ('اكتب الكود', null);
-    if (code.contains(' ')) return ('الكود مايكونش فيه مسافات', null);
-
-    var value = 0;
-    int? maxDiscount;
-    switch (_type) {
-      case CouponType.percentage:
-        final bp = _basisPoints(_value.text);
-        if (bp == null) return ('النسبة لازم تكون رقم من 1 لـ 100', null);
-        value = bp;
-        maxDiscount = Money.parse(_maxDiscount.text);
-        if (maxDiscount == null || maxDiscount <= 0) {
-          return ('النسبة لازم يكون ليها أقصى خصم', null);
-        }
-      case CouponType.fixedAmount:
-        final amount = Money.parse(_value.text);
-        if (amount == null || amount <= 0) return ('اكتب قيمة الخصم بالجنيه', null);
-        value = amount;
-      case CouponType.freeDelivery:
-        value = 0;
-    }
-
-    var minOrder = 0;
-    if (_minOrder.text.trim().isNotEmpty) {
-      final parsed = Money.parse(_minOrder.text);
-      if (parsed == null) return ('أقل طلب لازم يكون مبلغ بالجنيه', null);
-      minOrder = parsed;
-    }
-
-    final perUser = _count(_perUser.text);
-    final total = _count(_total.text);
-    if (perUser == null || perUser < 0 || total == null || total < 0) {
-      return ('عدد المرات لازم يكون رقم صحيح', null);
-    }
-
-    if (_validFrom != null && _validUntil != null && !_validUntil!.isAfter(_validFrom!)) {
-      return ('تاريخ النهاية لازم يكون بعد البداية', null);
-    }
-
-    final merchantId = widget.adminExtras ? _shopId : widget.merchantId;
-    final shopCity = widget.shops.where((m) => m.id == merchantId).firstOrNull?.cityId;
-
-    return (
-      null,
-      Coupon(
-        id: widget.initial?.id ?? '',
-        code: code,
-        cityId: widget.initial?.cityId ?? shopCity ?? widget.cityId,
-        type: _type,
-        value: value,
-        maxDiscount: maxDiscount,
-        minOrder: minOrder,
-        merchantId: merchantId,
-        firstOrderOnly: _firstOrderOnly,
-        perUserLimit: perUser,
-        totalLimit: total,
-        usedCount: widget.initial?.usedCount ?? 0,
-        isActive: widget.initial?.isActive ?? true,
-        validFrom: _validFrom,
-        validUntil: _validUntil,
-        // Only an admin decides who pays; a shop's own coupon is always the shop's, and a
-        // platform-wide coupon has no shop to charge.
-        fundedBy: !widget.adminExtras
-            ? CouponFunder.merchant
-            : (merchantId == null ? CouponFunder.platform : _fundedBy),
-        createdByUid: widget.initial?.createdByUid,
-      ),
-    );
   }
 
   Future<void> _pickDate({required bool from}) async {
@@ -293,13 +365,22 @@ class _CouponFormState extends State<CouponForm> {
       String? hint,
       TextInputType keyboard = TextInputType.number,
       TextDirection? direction,
+      String? errorText,
+      Key? containerKey,
     }) =>
-        TextField(
-          key: key,
-          controller: controller,
-          keyboardType: keyboard,
-          textDirection: direction,
-          decoration: InputDecoration(labelText: label, hintText: hint),
+        Container(
+          key: containerKey,
+          child: TextField(
+            key: key,
+            controller: controller,
+            keyboardType: keyboard,
+            textDirection: direction,
+            decoration: InputDecoration(
+              labelText: label,
+              hintText: hint,
+              errorText: errorText,
+            ),
+          ),
         );
 
     String dateLabel(DateTime? d, String empty) =>
@@ -317,6 +398,8 @@ class _CouponFormState extends State<CouponForm> {
             hint: 'EID15',
             keyboard: TextInputType.text,
             direction: TextDirection.ltr,
+            errorText: _codeError,
+            containerKey: _codeFieldKey,
           ),
           const SizedBox(height: Space.md),
           Wrap(
@@ -338,15 +421,42 @@ class _CouponFormState extends State<CouponForm> {
           ),
           const SizedBox(height: Space.md),
           if (_type == CouponType.percentage) ...[
-            field(CouponForm.valueKey, _value, 'النسبة %', hint: '15'),
+            field(
+              CouponForm.valueKey,
+              _value,
+              'النسبة %',
+              hint: '15',
+              errorText: _valueError,
+              containerKey: _valueFieldKey,
+            ),
             const SizedBox(height: Space.md),
-            field(CouponForm.maxDiscountKey, _maxDiscount, 'أقصى خصم بالجنيه', hint: '30'),
+            field(
+              CouponForm.maxDiscountKey,
+              _maxDiscount,
+              'أقصى خصم بالجنيه',
+              hint: '30',
+              errorText: _maxDiscountError,
+              containerKey: _maxDiscountFieldKey,
+            ),
             const SizedBox(height: Space.md),
           ] else if (_type == CouponType.fixedAmount) ...[
-            field(CouponForm.valueKey, _value, 'قيمة الخصم بالجنيه', hint: '20'),
+            field(
+              CouponForm.valueKey,
+              _value,
+              'قيمة الخصم بالجنيه',
+              hint: '20',
+              errorText: _valueError,
+              containerKey: _valueFieldKey,
+            ),
             const SizedBox(height: Space.md),
           ],
-          field(CouponForm.minOrderKey, _minOrder, 'أقل طلب بالجنيه (اختياري)'),
+          field(
+            CouponForm.minOrderKey,
+            _minOrder,
+            'أقل طلب بالجنيه (اختياري)',
+            errorText: _minOrderError,
+            containerKey: _minOrderFieldKey,
+          ),
           const SizedBox(height: Space.md),
           SwitchListTile(
             key: CouponForm.firstOrderOnlyKey,
@@ -365,6 +475,8 @@ class _CouponFormState extends State<CouponForm> {
                   _perUser,
                   'مرات لكل عميل',
                   hint: 'بلا حد',
+                  errorText: _perUserError,
+                  containerKey: _perUserFieldKey,
                 ),
               ),
               const SizedBox(width: Space.md),
@@ -374,35 +486,52 @@ class _CouponFormState extends State<CouponForm> {
                   _total,
                   'إجمالي المرات',
                   hint: 'بلا حد',
+                  errorText: _totalError,
+                  containerKey: _totalFieldKey,
                 ),
               ),
             ],
           ),
           const SizedBox(height: Space.md),
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton(
-                  key: CouponForm.validFromKey,
-                  onPressed: () => _pickDate(from: true),
-                  style: OutlinedButton.styleFrom(
-                    minimumSize: const Size.fromHeight(Sizes.minTarget),
-                  ),
-                  child: Text('من: ${dateLabel(_validFrom, 'دلوقتي')}'),
+          Container(
+            key: _dateFieldKey,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        key: CouponForm.validFromKey,
+                        onPressed: () => _pickDate(from: true),
+                        style: OutlinedButton.styleFrom(
+                          minimumSize: const Size.fromHeight(Sizes.minTarget),
+                        ),
+                        child: Text('من: ${dateLabel(_validFrom, 'دلوقتي')}'),
+                      ),
+                    ),
+                    const SizedBox(width: Space.md),
+                    Expanded(
+                      child: OutlinedButton(
+                        key: CouponForm.validUntilKey,
+                        onPressed: () => _pickDate(from: false),
+                        style: OutlinedButton.styleFrom(
+                          minimumSize: const Size.fromHeight(Sizes.minTarget),
+                        ),
+                        child: Text('لحد: ${dateLabel(_validUntil, 'مفتوح')}'),
+                      ),
+                    ),
+                  ],
                 ),
-              ),
-              const SizedBox(width: Space.md),
-              Expanded(
-                child: OutlinedButton(
-                  key: CouponForm.validUntilKey,
-                  onPressed: () => _pickDate(from: false),
-                  style: OutlinedButton.styleFrom(
-                    minimumSize: const Size.fromHeight(Sizes.minTarget),
+                if (_dateError != null) ...[
+                  const SizedBox(height: Space.xs),
+                  Text(
+                    _dateError!,
+                    style: theme.textTheme.bodySmall?.copyWith(color: colors.danger),
                   ),
-                  child: Text('لحد: ${dateLabel(_validUntil, 'مفتوح')}'),
-                ),
-              ),
-            ],
+                ],
+              ],
+            ),
           ),
           if (widget.adminExtras) ...[
             const SizedBox(height: Space.lg),

@@ -137,4 +137,69 @@ void main() {
     // the next time they opened the screen, having typed it once already.
     expect(find.text('احفظ'), findsOneWidget);
   });
+
+  testWidgets('screen and button use «تصنيفات المحلات» / «تصنيف جديد»', (tester) async {
+    await pump(tester);
+
+    expect(find.text('تصنيفات المحلات'), findsOneWidget);
+    expect(find.text('تصنيف جديد'), findsOneWidget);
+  });
+
+  testWidgets('order field accepts Arabic digits and rejects non-digits with «اكتب رقم»', (tester) async {
+    await pump(tester);
+
+    await tester.tap(find.byKey(CuisinesScreen.addKey));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byType(TextFormField).first, 'مشويات');
+    await tester.enterText(find.byType(TextFormField).at(1), 'abc');
+    await tester.tap(find.text('احفظ'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('اكتب رقم'), findsOneWidget);
+    expect(cuisines.all, isEmpty);
+
+    // Enter Arabic-Indic digits
+    await tester.enterText(find.byType(TextFormField).at(1), '١٢');
+    await tester.tap(find.text('احفظ'));
+    await tester.pumpAndSettle();
+
+    expect(cuisines.all.single.sortOrder, equals(12));
+  });
+
+  testWidgets('editing existing category offers «احذف التصنيف» with confirmation', (tester) async {
+    await pump(tester, seed: [cuisine(id: 'c1', name: 'مشويات')]);
+
+    await tester.tap(find.byKey(CuisinesScreen.rowKey));
+    await tester.pumpAndSettle();
+
+    final deleteBtn = find.byKey(CuisinesScreen.deleteKey);
+    expect(deleteBtn, findsOneWidget);
+
+    await tester.tap(deleteBtn);
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(CuisinesScreen.deleteConfirmKey), findsOneWidget);
+
+    await tester.tap(find.byKey(CuisinesScreen.deleteConfirmKey));
+    await tester.pumpAndSettle();
+
+    expect(cuisines.all, isEmpty);
+    expect(find.text('تم حذف التصنيف.'), findsOneWidget);
+  });
+
+  testWidgets('image preview in form is capped at 160dp high', (tester) async {
+    await pump(tester);
+
+    await tester.tap(find.byKey(CuisinesScreen.addKey));
+    await tester.pumpAndSettle();
+
+    final sizedBoxFinder = find.ancestor(
+      of: find.byType(MediaPicker),
+      matching: find.byType(SizedBox),
+    );
+    expect(sizedBoxFinder, findsWidgets);
+    final sizedBox = tester.widget<SizedBox>(sizedBoxFinder.first);
+    expect(sizedBox.width, equals(160));
+  });
 }

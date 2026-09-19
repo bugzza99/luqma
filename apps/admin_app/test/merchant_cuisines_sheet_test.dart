@@ -1,4 +1,6 @@
 import 'package:admin_app/src/auth/admin_access.dart';
+import 'package:admin_app/src/merchants/merchant_cuisines_sheet.dart';
+import 'package:admin_app/src/cuisines/cuisines_screen.dart';
 import 'package:admin_app/src/merchants/merchants_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -147,22 +149,51 @@ void main() {
       expect(updated.valueOrNull, equals({'c2'}));
 
       // Success SnackBar shown
-      expect(find.text('اتحفظت الفئات'), findsOneWidget);
+      expect(find.text('اتحفظت تصنيفات المحل'), findsOneWidget);
     });
 
     testWidgets('(c) empty chip list shows the go-to-cuisines button and navigates',
         (tester) async {
       await pumpSheet(tester, seed: const []);
 
-      expect(find.text('مفيش فئات لسه'), findsOneWidget);
+      expect(find.text('مفيش تصنيفات لسه'), findsOneWidget);
 
-      final goButton = find.text('شرائح الفئات');
+      final goButton = find.text('تصنيفات المحلات');
       expect(goButton, findsOneWidget);
 
       await tester.tap(goButton);
       await tester.pumpAndSettle();
 
-      expect(find.text('صفحة شرائح الفئات'), findsOneWidget);
+      expect(find.byType(CuisinesScreen), findsOneWidget);
+    });
+
+    testWidgets('returning from categories screen reloads the list keeping selections',
+        (tester) async {
+      await pumpSheet(tester, seed: const []);
+
+      expect(find.text('مفيش تصنيفات لسه'), findsOneWidget);
+
+      // Now new category is added to the fake repo
+      // An empty id creates; a made-up one is refused as not found, as the server would.
+      final created = (await cuisinesRepo.save(
+        const Cuisine(id: '', cityId: 'edku', name: 'شاورما'),
+      ))
+          .valueOrNull!;
+
+      final goButton = find.text('تصنيفات المحلات');
+      expect(goButton, findsOneWidget);
+
+      await tester.tap(goButton);
+      await tester.pumpAndSettle();
+
+      expect(find.byType(CuisinesScreen), findsOneWidget);
+
+      // Pop back to the sheet
+      tester.state<NavigatorState>(find.byType(Navigator).last).pop();
+      await tester.pumpAndSettle();
+
+      // The new cuisine is loaded!
+      expect(find.byKey(MerchantCuisinesSheet.chipKey(created.id)), findsOneWidget);
     });
 
     testWidgets('error state is distinct from empty state', (tester) async {
@@ -173,7 +204,7 @@ void main() {
       );
 
       expect(find.byType(LuqmaErrorView), findsOneWidget);
-      expect(find.text('مفيش فئات لسه'), findsNothing);
+      expect(find.text('مفيش تصنيفات لسه'), findsNothing);
     });
 
     testWidgets('save failure keeps sheet open and shows SnackBar', (tester) async {

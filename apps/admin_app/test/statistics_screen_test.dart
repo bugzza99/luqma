@@ -79,7 +79,7 @@ void main() {
 
   // The one that would be believed if it were wrong.
   testWidgets('the average order is money, and reads as pounds', (tester) async {
-    await pump(tester, value: stats(avgOrderValue: 15000));
+    await pump(tester, value: stats(ordersTotal: 4, avgOrderValue: 15000));
 
     final shown = tileText(tester, StatisticsScreen.averageKey);
     expect(shown, contains('150'),

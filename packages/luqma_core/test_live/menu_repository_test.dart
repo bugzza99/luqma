@@ -101,7 +101,9 @@ void main() {
 
       final other = await repository.watchCategories(otherMerchant).first;
 
-      expect(other, isEmpty);
+      // The other shop has its own four starting shelves (20261006) and nothing of this
+      // one's — not an empty list any more, but never «مشويات».
+      expect(other.map((c) => c.name), isNot(contains('مشويات')));
     });
   });
 

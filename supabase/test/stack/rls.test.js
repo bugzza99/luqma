@@ -255,8 +255,10 @@ describe('merchants', () => {
   // Changed to something it is not: the guard compares old against new, so writing the
   // value a column already holds is not a change and is correctly ignored.
   it('an owner cannot set their own revenue model', async () => {
+    // 'prepaid', not 'commission': every shop starts on commission since 20261010, and
+    // writing the value a column already holds is correctly not a change.
     const error = await refused(owner,
-      () => db.query("update merchants set revenue_model = 'commission' where id = $1",
+      () => db.query("update merchants set revenue_model = 'prepaid' where id = $1",
                      [merchant]));
     assert.match(error ?? '', /column not yours/i);
   });
@@ -724,7 +726,10 @@ describe('ratings that reach a number', () => {
 
   it('a customer rates a dish from an order they received', async () => {
     const item = await menuItem();
-    const order = await deliveredOrder();
+    // The dish has to be on the order: since 20260916 a rating is matched against the
+    // frozen `itemId`, so an order with no lines rates nothing.
+    const order = await deliveredOrder(customer, merchant,
+      JSON.stringify([{ itemId: item, name: 'فراخ', unitPrice: 5000, quantity: 1 }]));
 
     const after = await as(customer, async () => {
       await db.query(

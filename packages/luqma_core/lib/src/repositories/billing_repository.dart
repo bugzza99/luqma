@@ -22,19 +22,25 @@ abstract interface class BillingRepository {
 
   /// Takes a payment. Extends an unexpired term rather than restarting it — the
   /// alternative is a merchant losing days they already paid for.
+  ///
+  /// [receiptId] names this payment (see `newClientOrderId`): the server records it once, so a
+  /// retry with the same id after a lost reply returns the first term instead of a second.
   Future<Result<Subscription>> recordPayment({
     required String merchantId,
     required String planId,
     required int amount,
     required int months,
     required String recordedBy,
+    String? receiptId,
   });
 
-  /// Adds prepaid credit. Adds to the balance; never replaces it.
+  /// Adds prepaid credit. Adds to the balance; never replaces it — and never twice for one
+  /// [receiptId].
   Future<Result<void>> topUpWallet({
     required String merchantId,
     required int amount,
     required String recordedBy,
+    String? receiptId,
   });
 
   /// Creates or replaces a plan — the edit that makes a price change an admin's
@@ -80,6 +86,7 @@ class SupabaseBillingRepository implements BillingRepository {
     required int amount,
     required int months,
     required String recordedBy,
+    String? receiptId,
   }) {
     return Result.guard(() async {
       final row = await _db.rpc('record_subscription_payment', params: {
@@ -88,6 +95,7 @@ class SupabaseBillingRepository implements BillingRepository {
         'p_amount': amount,
         'p_months': months,
         'p_recorded_by': recordedBy,
+        'p_receipt_id': ?receiptId,
       });
       return _toSubscription(Map<String, dynamic>.from(row as Map));
     });
@@ -98,12 +106,14 @@ class SupabaseBillingRepository implements BillingRepository {
     required String merchantId,
     required int amount,
     required String recordedBy,
+    String? receiptId,
   }) {
     return Result.guard(
       () => _db.rpc('top_up_wallet', params: {
         'p_merchant_id': merchantId,
         'p_amount': amount,
         'p_recorded_by': recordedBy,
+        'p_receipt_id': ?receiptId,
       }),
     );
   }
@@ -144,10 +154,15 @@ class FakeBillingRepository implements BillingRepository {
         _subscriptions = {for (final s in seedSubscriptions) s.id: s},
         _wallets = Map.of(wallets);
 
+  /// Receipts already recorded, and what each recorded — the server's `payment_receipts`.
+  final Map<String, Object> _receipts = {};
+
   final List<Plan> _plans;
   final Map<String, Subscription> _subscriptions;
   final Map<String, int> _wallets;
-  final Failure? failure;
+  /// Settable, so a test can drop the connection after the screen has loaded — which is
+  /// exactly when a payment is being written down.
+  Failure? failure;
 
   final _changed = StreamController<void>.broadcast();
 
@@ -208,9 +223,13 @@ class FakeBillingRepository implements BillingRepository {
     required int amount,
     required int months,
     required String recordedBy,
+    String? receiptId,
   }) async {
     if (failure != null) return Result.err(failure!);
     if (months < 1 || amount < 0) return const Result.err(ConflictFailure());
+    // The server's rule: a receipt already recorded returns what it recorded.
+    final recorded = receiptId == null ? null : _receipts[receiptId];
+    if (recorded is Subscription) return Result.ok(recorded);
 
     final now = DateTime.now();
     // Read synchronously, not by awaiting this fake's own stream: under a widget test's
@@ -230,6 +249,7 @@ class FakeBillingRepository implements BillingRepository {
     );
 
     _subscriptions[subscription.id] = subscription;
+    if (receiptId != null) _receipts[receiptId] = subscription;
     audit.add({
       'action': 'recordSubscriptionPayment',
       'by': recordedBy,
@@ -247,9 +267,14 @@ class FakeBillingRepository implements BillingRepository {
     required String merchantId,
     required int amount,
     required String recordedBy,
+    String? receiptId,
   }) async {
     if (failure != null) return Result.err(failure!);
     if (amount <= 0) return const Result.err(ConflictFailure());
+    if (receiptId != null && _receipts.containsKey(receiptId)) {
+      return const Result.ok(null);
+    }
+    if (receiptId != null) _receipts[receiptId] = amount;
 
     _wallets[merchantId] = walletOf(merchantId) + amount;
     audit.add({

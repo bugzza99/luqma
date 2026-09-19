@@ -32,6 +32,7 @@ void main() {
     String? url,
     Failure? uploadFails,
     void Function(Media)? onUploaded,
+    bool asAdmin = false,
   }) async {
     tester.view.physicalSize = const Size(390, 844);
     tester.view.devicePixelRatio = 1.0;
@@ -47,6 +48,7 @@ void main() {
             FakeAuthService(restoring: const LuqmaIdentity(uid: 'u1')),
           ),
           pickImageProvider.overrideWithValue(picker),
+          if (asAdmin) uploadsArriveApprovedProvider.overrideWithValue(true),
         ],
         child: MaterialApp(
           theme: LuqmaTheme.light,
@@ -201,5 +203,36 @@ void main() {
       final size = tester.getSize(imageFinder);
       expect(size.width / size.height, closeTo(16 / 9, 0.02));
     });
+  });
+
+  // The moderation card printed «0 × 0» for every picture (QA review 2026-09-19).
+  testWidgets('the upload carries the size of the picture that was stored', (tester) async {
+    await pump(tester, picker: () async => bigPhoto());
+
+    await tester.tap(find.byKey(MediaPicker.pickKey));
+    await tester.pumpAndSettle();
+
+    // 3000 × 2000 fitted inside the 1600 long edge.
+    expect(media.uploads.single.width, ImageCompressor.maxEdge);
+    expect(media.uploads.single.height, 1067);
+  });
+
+  testWidgets('an ordinary upload waits for review', (tester) async {
+    await pump(tester, picker: () async => bigPhoto());
+
+    await tester.tap(find.byKey(MediaPicker.pickKey));
+    await tester.pumpAndSettle();
+
+    expect(media.uploads.single.status, MediaStatus.pending);
+  });
+
+  // AdminApp promised «صورك بتظهر على طول» while its uploads sat in the queue.
+  testWidgets('in AdminApp an upload arrives approved', (tester) async {
+    await pump(tester, picker: () async => bigPhoto(), asAdmin: true);
+
+    await tester.tap(find.byKey(MediaPicker.pickKey));
+    await tester.pumpAndSettle();
+
+    expect(media.uploads.single.status, MediaStatus.approved);
   });
 }

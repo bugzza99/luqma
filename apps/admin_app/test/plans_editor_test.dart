@@ -139,5 +139,38 @@ void main() {
     expect(saved.features.verifiedBadge, isTrue);
     expect(saved.features.homeBannerSlots, 2);
     expect(saved.features.monthlyPromotionCount, 1);
+    expect(find.text('اتحفظت الخطة'), findsOneWidget);
+  });
+
+  testWidgets('folds Arabic digits for banners and pushes and saves properly', (tester) async {
+    await pump(tester, seed: [
+      const Plan(id: 'premium', name: 'مميزة', priceMonthly: 150000),
+    ]);
+
+    await tester.enterText(find.byKey(PlansEditorScreen.bannersKey('premium')), '٣');
+    await tester.enterText(find.byKey(PlansEditorScreen.pushesKey('premium')), '٥');
+    await tester.ensureVisible(find.byKey(PlansEditorScreen.saveKey('premium')));
+    await tester.tap(find.byKey(PlansEditorScreen.saveKey('premium')));
+    await tester.pumpAndSettle();
+
+    final saved = (await billing.plans(includeInactive: true)).valueOrNull!.single;
+    expect(saved.features.homeBannerSlots, 3);
+    expect(saved.features.monthlyPromotionCount, 5);
+    expect(find.text('اتحفظت الخطة'), findsOneWidget);
+  });
+
+  // A price changed and never saved looked exactly like one in force (QA review 2026-09-19).
+  testWidgets('an edited plan says it is not saved until it is', (tester) async {
+    await pump(tester, seed: [plan(priceMonthly: 25000)]);
+    expect(find.byKey(PlansEditorScreen.unsavedKey('basic')), findsNothing);
+
+    await tester.enterText(find.byKey(PlansEditorScreen.priceKey('basic')), '300');
+    await tester.pump();
+    expect(find.byKey(PlansEditorScreen.unsavedKey('basic')), findsOneWidget);
+
+    await tester.ensureVisible(find.byKey(PlansEditorScreen.saveKey('basic')));
+    await tester.tap(find.byKey(PlansEditorScreen.saveKey('basic')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(PlansEditorScreen.unsavedKey('basic')), findsNothing);
   });
 }

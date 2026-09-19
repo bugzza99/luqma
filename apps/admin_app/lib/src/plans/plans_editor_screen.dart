@@ -20,6 +20,7 @@ class PlansEditorScreen extends ConsumerWidget {
   static Key verifiedKey(String id) => Key('plans.verified.$id');
   static Key bannersKey(String id) => Key('plans.banners.$id');
   static Key pushesKey(String id) => Key('plans.pushes.$id');
+  static Key unsavedKey(String id) => Key('plans.unsaved.$id');
   static Key saveKey(String id) => Key('plans.save.$id');
 
   @override
@@ -118,6 +119,29 @@ class _PlanEditorState extends ConsumerState<_PlanEditor> {
   late bool _isActive = widget.plan.isActive;
   bool _busy = false;
 
+  /// What was last saved, to tell an edited plan from a saved one. A price changed and
+  /// never saved looked exactly like a price in force (QA review 2026-09-19).
+  late List<Object> _saved = _snapshot();
+
+  List<Object> _snapshot() =>
+      [_price.text, _banners.text, _pushes.text, _boost, _verified, _isActive];
+
+  bool get _dirty {
+    final now = _snapshot();
+    for (var i = 0; i < now.length; i++) {
+      if (now[i] != _saved[i]) return true;
+    }
+    return false;
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    for (final c in [_price, _banners, _pushes]) {
+      c.addListener(() => setState(() {}));
+    }
+  }
+
   @override
   void dispose() {
     _price.dispose();
@@ -133,8 +157,10 @@ class _PlanEditorState extends ConsumerState<_PlanEditor> {
       return;
     }
     // A blank count is none — the shop gets no free placements of that kind.
-    final banners = _banners.text.trim().isEmpty ? 0 : int.tryParse(_banners.text.trim());
-    final pushes = _pushes.text.trim().isEmpty ? 0 : int.tryParse(_pushes.text.trim());
+    final bannersRaw = ArabicDigits.fold(_banners.text.trim());
+    final pushesRaw = ArabicDigits.fold(_pushes.text.trim());
+    final banners = bannersRaw.isEmpty ? 0 : int.tryParse(bannersRaw);
+    final pushes = pushesRaw.isEmpty ? 0 : int.tryParse(pushesRaw);
     if (banners == null || banners < 0 || pushes == null || pushes < 0) {
       _say('اكتب رقم صحيح للبانرات والإشعارات');
       return;
@@ -156,7 +182,10 @@ class _PlanEditorState extends ConsumerState<_PlanEditor> {
     if (!mounted) return;
     setState(() => _busy = false);
 
-    if (result case Err(:final failure)) {
+    if (result is Ok) {
+      setState(() => _saved = _snapshot());
+      _say('اتحفظت الخطة');
+    } else if (result case Err(:final failure)) {
       _say(switch (failure) {
         OfflineFailure() => 'مفيش نت — جرّب تاني.',
         PermissionFailure() => 'مش مسموح ليك تعدّل الخطط.',
@@ -379,8 +408,15 @@ class _PlanEditorState extends ConsumerState<_PlanEditor> {
                       borderRadius: Radii.fieldAll,
                     ),
                   ),
+                  // The button says whether there is anything to save, so an edited
+                  // plan does not look like the one in force.
                   child: Text(
-                    _busy ? 'جاري…' : 'احفظ الخطة',
+                    _busy
+                        ? 'جاري…'
+                        : _dirty
+                            ? 'احفظ التعديلات — لسه مش متطبّقة'
+                            : 'احفظ الخطة',
+                    key: _dirty ? PlansEditorScreen.unsavedKey(widget.plan.id) : null,
                     style: const TextStyle(fontWeight: FontWeight.bold),
                   ),
                 ),
@@ -413,22 +449,24 @@ class _FeatureSwitch extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colors = theme.luqma;
-    return Row(
-      children: [
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(title, style: theme.textTheme.bodyMedium),
-              Text(
-                subtitle,
-                style: theme.textTheme.bodySmall?.copyWith(color: colors.textSecondary),
-              ),
-            ],
+    return MergeSemantics(
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title, style: theme.textTheme.bodyMedium),
+                Text(
+                  subtitle,
+                  style: theme.textTheme.bodySmall?.copyWith(color: colors.textSecondary),
+                ),
+              ],
+            ),
           ),
-        ),
-        Switch(key: switchKey, value: value, onChanged: onChanged),
-      ],
+          Switch(key: switchKey, value: value, onChanged: onChanged),
+        ],
+      ),
     );
   }
 }

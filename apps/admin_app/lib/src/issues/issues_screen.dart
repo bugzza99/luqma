@@ -20,6 +20,9 @@ class IssuesScreen extends ConsumerStatefulWidget {
   static const closeKey = Key('issues.close');
   static const cancelKey = Key('issues.cancel');
   static const confirmKey = Key('issues.confirm');
+  static const reopenKey = Key('issues.reopen');
+  static const reopenReasonKey = Key('issues.reopenReason');
+  static const confirmReopenKey = Key('issues.confirmReopen');
 
   @override
   ConsumerState<IssuesScreen> createState() => _IssuesScreenState();
@@ -30,17 +33,24 @@ class _IssuesScreenState extends ConsumerState<IssuesScreen> {
   String? _selectedIssueId;
 
   Future<void> _closeIssue(OrderIssue issue) async {
-    final note = await showDialog<String>(
+    await showDialog<void>(
       context: context,
-      builder: (dialogContext) => _CloseDialog(),
+      builder: (dialogContext) => _CloseDialog(
+        onConfirm: (note) async {
+          final messenger = ScaffoldMessenger.of(context);
+          final res = await ref
+              .read(issueRepositoryProvider)
+              .close(issue.id, adminNote: note);
+          if (res.isOk && dialogContext.mounted) {
+            Navigator.of(dialogContext).pop();
+            messenger.showSnackBar(
+              const SnackBar(content: Text('تم إغلاق الشكوى بنجاح')),
+            );
+          }
+          return res;
+        },
+      ),
     );
-    // `||`, not `&&`. With `and` this only returned when the dialog was cancelled
-    // *and* the screen had gone — so cancelling while still looking at it fell
-    // through and closed the ticket anyway, which is the opposite of what the
-    // person just asked for.
-    if (note == null || !context.mounted) return;
-
-    await ref.read(issueRepositoryProvider).close(issue.id, adminNote: note);
   }
 
   @override
@@ -50,7 +60,9 @@ class _IssuesScreenState extends ConsumerState<IssuesScreen> {
     final colors = Theme.of(context).luqma;
     final strings = LuqmaStrings.of(context);
 
-    final selected = issues.value?.where((i) => i.id == _selectedIssueId).firstOrNull;
+    final selected = issues.value
+        ?.where((i) => i.id == _selectedIssueId)
+        .firstOrNull;
 
     // On narrow screens (phone), the issue detail replaces the queue list
     // so controls have full touch targets.
@@ -121,13 +133,15 @@ class _IssuesScreenState extends ConsumerState<IssuesScreen> {
                   : ListView.separated(
                       padding: const EdgeInsets.all(Space.gutter),
                       itemCount: filtered.length,
-                      separatorBuilder: (_, _) => const SizedBox(height: Space.sm),
+                      separatorBuilder: (_, _) =>
+                          const SizedBox(height: Space.sm),
                       itemBuilder: (context, i) {
                         final issue = filtered[i];
                         return _IssueRow(
                           issue: issue,
                           isSelected: issue.id == _selectedIssueId,
-                          onSelect: () => setState(() => _selectedIssueId = issue.id),
+                          onSelect: () =>
+                              setState(() => _selectedIssueId = issue.id),
                           onClose: () => _closeIssue(issue),
                         );
                       },
@@ -179,6 +193,37 @@ class _NothingSelected extends StatelessWidget {
         message: strings.issuesDetailNothingSelected,
       ),
     );
+  }
+}
+
+/// Formats issue time for Arabic display:
+/// «النهارده 3:40م» / «امبارح 3:40م» / «12 سبتمبر 3:40م»
+String formatIssueDateTime(DateTime when, {DateTime? now}) {
+  final local = when.toLocal();
+  final current = (now ?? DateTime.now()).toLocal();
+  final isToday =
+      local.year == current.year &&
+      local.month == current.month &&
+      local.day == current.day;
+  final yesterday = DateTime(current.year, current.month, current.day - 1);
+  final isYesterday =
+      local.year == yesterday.year &&
+      local.month == yesterday.month &&
+      local.day == yesterday.day;
+
+  var hour = local.hour % 12;
+  if (hour == 0) hour = 12;
+  final minute = local.minute.toString().padLeft(2, '0');
+  final marker = local.hour >= 12 ? 'م' : 'ص';
+  final timeStr = '$hour:$minute$marker';
+
+  if (isToday) {
+    return 'النهارده $timeStr';
+  } else if (isYesterday) {
+    return 'امبارح $timeStr';
+  } else {
+    final monthName = luqmaMonthName(local.month);
+    return '${local.day} $monthName $timeStr';
   }
 }
 
@@ -260,7 +305,7 @@ class _IssueRow extends StatelessWidget {
                             const Spacer(),
                             if (issue.createdAt != null)
                               Text(
-                                '${issue.createdAt!.hour.toString().padLeft(2, '0')}:${issue.createdAt!.minute.toString().padLeft(2, '0')}',
+                                formatIssueDateTime(issue.createdAt!),
                                 style: theme.textTheme.labelSmall?.copyWith(
                                   color: colors.textSecondary,
                                 ),
@@ -355,22 +400,41 @@ class _IssueDetailScreen extends StatelessWidget {
   }
 }
 
-class _IssueDetail extends StatelessWidget {
+class _IssueDetail extends ConsumerWidget {
   const _IssueDetail({required this.issue, required this.onClose});
+
+  Future<void> _reopen(BuildContext context, WidgetRef ref) async {
+    final reason = await showDialog<String>(
+      context: context,
+      builder: (_) => const _ReopenDialog(),
+    );
+    if (reason == null || reason.trim().isEmpty || !context.mounted) return;
+    final result = await ref
+        .read(issueRepositoryProvider)
+        .reopen(issue.id, reason: reason);
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          result is Ok ? 'الشكوى اتفتحت تاني' : 'مقدرناش نفتحها. جرّب تاني.',
+        ),
+      ),
+    );
+  }
 
   final OrderIssue issue;
   final VoidCallback onClose;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final colors = theme.luqma;
     final strings = LuqmaStrings.of(context);
 
     final createdAt = issue.createdAt;
-    final dateStr = createdAt != null
-        ? '${createdAt.year}/${createdAt.month}/${createdAt.day} · ${createdAt.hour.toString().padLeft(2, '0')}:${createdAt.minute.toString().padLeft(2, '0')}'
-        : null;
+    final dateStr = createdAt != null ? formatIssueDateTime(createdAt) : null;
+    final orderAsync = ref.watch(orderProvider(issue.orderId));
+    final order = orderAsync.value;
 
     return Column(
       children: [
@@ -391,14 +455,81 @@ class _IssueDetail extends StatelessWidget {
                   children: [
                     Text(issue.reason, style: theme.textTheme.headlineMedium),
                     const SizedBox(height: Space.sm),
-                    Text(
-                      'الطلب: #${issue.orderId}',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: colors.textSecondary,
+                    if (order != null) ...[
+                      Text(
+                        'طلب #${order.orderNumber}',
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
-                    ),
+                      const SizedBox(height: Space.xs),
+                      Text(
+                        'المحل: ${order.merchantName}',
+                        style: theme.textTheme.bodyMedium,
+                      ),
+                      const SizedBox(height: Space.xs),
+                      Text(
+                        'العميل: ${order.customerName}',
+                        style: theme.textTheme.bodyMedium,
+                      ),
+                      const SizedBox(height: Space.xs),
+                      Row(
+                        children: [
+                          Flexible(
+                            child: Text(
+                              'الهاتف: ${order.customerPhone}',
+                              style: theme.textTheme.bodyMedium,
+                            ),
+                          ),
+                          const SizedBox(width: Space.xs),
+                          IconButton(
+                            tooltip: 'اتصال بالعميل',
+                            icon: Icon(
+                              Icons.phone,
+                              color: colors.brand,
+                              size: 20,
+                            ),
+                            constraints: const BoxConstraints(
+                              minWidth: Sizes.minTarget,
+                              minHeight: Sizes.minTarget,
+                            ),
+                            onPressed: () async {
+                              await openExternalLink(
+                                context,
+                                ref,
+                                Uri.parse('tel:${order.customerPhone}'),
+                                whenUnavailable:
+                                    'لا يمكن إجراء المكالمة على هذا الجهاز',
+                              );
+                            },
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: Space.xs),
+                      Text(
+                        'الإجمالي: ${strings.price(order.pricing.total)}',
+                        style: theme.textTheme.titleSmall?.copyWith(
+                          color: colors.price,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ] else if (orderAsync.isLoading) ...[
+                      const SizedBox(height: Space.xs),
+                      const SizedBox(
+                        height: 16,
+                        width: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                    ] else ...[
+                      Text(
+                        'الطلب: #${issue.orderId}',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: colors.textSecondary,
+                        ),
+                      ),
+                    ],
                     if (dateStr != null) ...[
-                      const SizedBox(height: 2),
+                      const SizedBox(height: Space.xs),
                       Text(
                         'التاريخ: $dateStr',
                         style: theme.textTheme.bodySmall?.copyWith(
@@ -449,10 +580,7 @@ class _IssueDetail extends StatelessWidget {
                   border: Border.all(color: colors.hairline),
                   boxShadow: Elevations.card,
                 ),
-                child: Text(
-                  issue.reason,
-                  style: theme.textTheme.bodyMedium,
-                ),
+                child: Text(issue.reason, style: theme.textTheme.bodyMedium),
               ),
               if (issue.adminNote != null && issue.adminNote!.isNotEmpty) ...[
                 const SizedBox(height: Space.lg),
@@ -516,6 +644,14 @@ class _IssueDetail extends StatelessWidget {
                           fontWeight: FontWeight.bold,
                         ),
                       ),
+                      const Spacer(),
+                      // Closed by mistake, or the customer called back: a closed ticket
+                      // was a dead end (QA review 2026-09-19).
+                      OutlinedButton(
+                        key: IssuesScreen.reopenKey,
+                        onPressed: () => _reopen(context, ref),
+                        child: const Text('إعادة فتح'),
+                      ),
                     ],
                   ),
           ),
@@ -526,12 +662,18 @@ class _IssueDetail extends StatelessWidget {
 }
 
 class _CloseDialog extends StatefulWidget {
+  const _CloseDialog({required this.onConfirm});
+
+  final Future<Result<void>> Function(String? note) onConfirm;
+
   @override
   State<_CloseDialog> createState() => _CloseDialogState();
 }
 
 class _CloseDialogState extends State<_CloseDialog> {
   final _note = TextEditingController();
+  bool _isSubmitting = false;
+  String? _errorMessage;
 
   @override
   void dispose() {
@@ -542,27 +684,115 @@ class _CloseDialogState extends State<_CloseDialog> {
   @override
   Widget build(BuildContext context) {
     final strings = LuqmaStrings.of(context);
+    final colors = Theme.of(context).luqma;
 
     return AlertDialog(
       title: Text(strings.issuesCloseDialogTitle),
-      content: TextField(
-        controller: _note,
-        maxLines: 3,
-        decoration: InputDecoration(
-          labelText: strings.issuesCloseDialogNoteLabel,
-          hintText: strings.issuesCloseDialogNoteHint,
-        ),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (_errorMessage != null) ...[
+            Text(_errorMessage!, style: TextStyle(color: colors.danger)),
+            const SizedBox(height: Space.sm),
+          ],
+          TextField(
+            controller: _note,
+            maxLines: 3,
+            decoration: InputDecoration(
+              labelText: strings.issuesCloseDialogNoteLabel,
+              hintText: strings.issuesCloseDialogNoteHint,
+            ),
+          ),
+        ],
       ),
       actions: [
         TextButton(
           key: IssuesScreen.cancelKey,
-          onPressed: () => Navigator.of(context).pop(null),
+          onPressed: _isSubmitting
+              ? null
+              : () => Navigator.of(context).pop(null),
           child: Text(strings.issuesCloseDialogCancel),
         ),
         FilledButton(
           key: IssuesScreen.confirmKey,
-          onPressed: () => Navigator.of(context).pop(_note.text.trim()),
-          child: Text(strings.issuesCloseDialogConfirm),
+          onPressed: _isSubmitting
+              ? null
+              : () async {
+                  setState(() {
+                    _isSubmitting = true;
+                    _errorMessage = null;
+                  });
+                  final noteText = _note.text.trim();
+                  final res = await widget.onConfirm(
+                    noteText.isEmpty ? null : noteText,
+                  );
+                  if (mounted && !res.isOk) {
+                    setState(() {
+                      _isSubmitting = false;
+                      _errorMessage = 'فشل إغلاق الشكوى، حاول مرة أخرى';
+                    });
+                  }
+                },
+          child: _isSubmitting
+              ? const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : Text(strings.issuesCloseDialogConfirm),
+        ),
+      ],
+    );
+  }
+}
+
+/// Why a closed ticket is being opened again — kept in its note, so the history reads.
+class _ReopenDialog extends StatefulWidget {
+  const _ReopenDialog();
+
+  @override
+  State<_ReopenDialog> createState() => _ReopenDialogState();
+}
+
+class _ReopenDialogState extends State<_ReopenDialog> {
+  final _reason = TextEditingController();
+  String? _error;
+
+  @override
+  void dispose() {
+    _reason.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('إعادة فتح الشكوى'),
+      content: TextField(
+        key: IssuesScreen.reopenReasonKey,
+        controller: _reason,
+        maxLines: 3,
+        decoration: InputDecoration(
+          labelText: 'ليه بتتفتح تاني؟',
+          errorText: _error,
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('رجوع'),
+        ),
+        FilledButton(
+          key: IssuesScreen.confirmReopenKey,
+          onPressed: () {
+            if (_reason.text.trim().isEmpty) {
+              setState(() => _error = 'اكتب السبب');
+              return;
+            }
+            Navigator.of(context).pop(_reason.text);
+          },
+          child: const Text('افتحها'),
         ),
       ],
     );

@@ -19,4 +19,11 @@ extension LuqmaMoney on LuqmaStrings {
         : '$pounds.${remainder.toString().padLeft(2, '0')}';
     return '$amount $currencySuffix';
   }
+
+  /// An amount of money that is a *figure* — takings, a debt, an average — rather than a
+  /// price somebody pays. The same format as [price] except that zero is `0 ج`: «مجاناً»
+  /// is right for a delivery fee and wrong for «فلوس النهارده», where it read as the day's
+  /// takings being free (QA review 2026-09-19).
+  String amount(int piastres) =>
+      piastres == 0 ? '0 $currencySuffix' : price(piastres);
 }

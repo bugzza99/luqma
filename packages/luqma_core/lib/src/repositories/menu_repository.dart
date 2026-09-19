@@ -165,7 +165,7 @@ class FakeMenuRepository implements MenuRepository {
 
   final List<MenuCategory> _categories;
   final List<MenuItem> _items;
-  final Failure? failure;
+  Failure? failure;
 
   final _changed = StreamController<void>.broadcast();
 

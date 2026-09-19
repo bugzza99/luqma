@@ -216,6 +216,36 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('الإيميل ده متسجل قبل كده.'), findsOneWidget);
+    // Dialog stays open with entered data preserved
+    expect(find.byKey(const Key('staff.email')), findsOneWidget);
+    expect(find.text('taken@luqma.test'), findsOneWidget);
+  });
+
+  testWidgets('deactivating asks for confirmation and shows the consequence', (tester) async {
+    final staffRepo = FakeStaffRepository();
+    await staffRepo.createAccount(
+      email: 'active@luqma.test',
+      password: 'password123',
+      name: 'محمود الناشط',
+      scope: 'merchant',
+      role: 'owner',
+      merchantId: shore.id,
+    );
+
+    await pump(tester, staffRepo: staffRepo);
+    expect(find.text('محمود الناشط'), findsOneWidget);
+
+    await tester.tap(find.byKey(StaffScreen.toggleKey));
+    await tester.pumpAndSettle();
+
+    expect(find.text('تعطيل الحساب'), findsOneWidget);
+    expect(find.text('محمود الناشط مش هيقدر يدخل لحد ما تفعّله تاني.'), findsOneWidget);
+
+    await tester.tap(find.text('تعطيل'));
+    await tester.pumpAndSettle();
+
+    expect(staffRepo.all.single.isActive, false);
+    expect(find.text('تم تعطيل الحساب'), findsOneWidget);
   });
 
   group('courier detail and attachments', () {

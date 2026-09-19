@@ -18,6 +18,10 @@ abstract interface class IssueRepository {
   /// tickets answer themselves — but the note is where "we phoned the merchant"
   /// lives, and that sentence is the point of the screen.
   Future<Result<void>> close(String id, {String? adminNote});
+
+  /// Opens a closed ticket again — closed by mistake, or the customer called back. The
+  /// reason is kept in the note, after whatever was written when it closed.
+  Future<Result<void>> reopen(String id, {required String reason});
 }
 
 class SupabaseIssueRepository implements IssueRepository {
@@ -55,6 +59,29 @@ class SupabaseIssueRepository implements IssueRepository {
       (_) {},
     );
   }
+
+  @override
+  Future<Result<void>> reopen(String id, {required String reason}) {
+    return Result.guard(() async {
+      final row = await _db
+          .from('order_issues')
+          .select('admin_note')
+          .eq('id', id)
+          .maybeSingle();
+      if (row == null) throw const NotFoundFailure();
+      final before = (row['admin_note'] as String?)?.trim();
+      final note = [
+        if (before != null && before.isNotEmpty) before,
+        'اتفتحت تاني: ${reason.trim()}',
+      ].join('\n');
+      final changed = await _db
+          .from('order_issues')
+          .update({'status': 'open', 'admin_note': note})
+          .eq('id', id)
+          .select('id');
+      if (changed.isEmpty) throw const NotFoundFailure();
+    });
+  }
 }
 
 /// In-memory issues, for tests and for building screens above it.
@@ -63,7 +90,7 @@ class FakeIssueRepository implements IssueRepository {
     : _issues = {for (final i in seed) i.id: i};
 
   final Map<String, OrderIssue> _issues;
-  final Failure? failure;
+  Failure? failure;
 
   @override
   Stream<List<OrderIssue>> watchIssues() {
@@ -95,6 +122,29 @@ class FakeIssueRepository implements IssueRepository {
       reason: existing.reason,
       status: OrderIssue.closed,
       adminNote: adminNote,
+      createdAt: existing.createdAt,
+      updatedAt: DateTime.now(),
+    );
+    return const Result.ok(null);
+  }
+
+  @override
+  Future<Result<void>> reopen(String id, {required String reason}) async {
+    if (failure != null) return Result.err(failure!);
+    final existing = _issues[id];
+    if (existing == null) return const Result.err(NotFoundFailure());
+    final before = existing.adminNote?.trim();
+    _issues[id] = OrderIssue(
+      id: existing.id,
+      orderId: existing.orderId,
+      customerUid: existing.customerUid,
+      merchantId: existing.merchantId,
+      reason: existing.reason,
+      status: 'open',
+      adminNote: [
+        if (before != null && before.isNotEmpty) before,
+        'اتفتحت تاني: ${reason.trim()}',
+      ].join('\n'),
       createdAt: existing.createdAt,
       updatedAt: DateTime.now(),
     );

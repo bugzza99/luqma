@@ -2,12 +2,11 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 import 'package:luqma_core/luqma_core.dart';
 
-import '../auth/admin_access.dart';
 import '../billing/merchant_billing_screen.dart';
 import '../shell/layout.dart';
+import 'merchant_cuisines_sheet.dart';
 import 'merchants_controller.dart';
 
 /// The screen the owner spends the launch inside.
@@ -41,6 +40,7 @@ class MerchantsScreen extends ConsumerWidget {
 
   static Key pendingBadgeKey(String id) => Key('merchants.pending.$id');
   static Key rowKey(String id) => Key('merchants.row.$id');
+  static const confirmSuspendKey = Key('merchants.confirmSuspend');
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -54,9 +54,17 @@ class MerchantsScreen extends ConsumerWidget {
     // On a phone the detail replaces the list; there is no room to squeeze both, and a
     // half-width menu editor is worse than no second pane at all.
     if (!layout.showsTwoPanes && selected != null) {
-      return _Detail(
-        merchant: selected,
-        onBack: () => ref.read(selectedMerchantProvider.notifier).select(null),
+      // The detail is a state of this screen, not a route, so the system back button used
+      // to leave «المطاعم» altogether instead of stepping back to the list.
+      return PopScope(
+        canPop: false,
+        onPopInvokedWithResult: (didPop, _) {
+          if (!didPop) ref.read(selectedMerchantProvider.notifier).select(null);
+        },
+        child: _Detail(
+          merchant: selected,
+          onBack: () => ref.read(selectedMerchantProvider.notifier).select(null),
+        ),
       );
     }
 
@@ -607,7 +615,6 @@ class _Detail extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final colors = Theme.of(context).luqma;
-    final actions = ref.read(merchantActionsProvider.notifier);
     final orderCount = ref.watch(merchantOrderCountProvider(merchant.id));
 
     return Scaffold(
@@ -645,15 +652,13 @@ class _Detail extends ConsumerWidget {
           if (merchant.status != MerchantStatus.approved)
             TextButton(
               key: MerchantsScreen.approveKey,
-              onPressed: () =>
-                  actions.setStatus(merchant.id, MerchantStatus.approved),
+              onPressed: () => _setStatus(context, ref, MerchantStatus.approved),
               child: Text('اعتماد', style: TextStyle(color: colors.onBrand)),
             )
           else
             TextButton(
               key: MerchantsScreen.suspendKey,
-              onPressed: () =>
-                  actions.setStatus(merchant.id, MerchantStatus.suspended),
+              onPressed: () => _setStatus(context, ref, MerchantStatus.suspended),
               child: Text('إيقاف', style: TextStyle(color: colors.onBrand)),
             ),
           // Delete only while the merchant never traded. Once it has an order the
@@ -661,12 +666,16 @@ class _Detail extends ConsumerWidget {
           // and history wins. The real count is queried, never a field that can drift.
           IconButton(
             key: MerchantsScreen.deleteKey,
-            tooltip: switch (orderCount.value ?? 0) {
-              0 => 'حذف المطعم',
-              final n => 'مينفعش حذف — عنده $n طلب',
+            // Enabled only once the count is known to be zero. Loading and failing both
+            // used to read as zero, offering a delete the database would then refuse.
+            tooltip: switch (orderCount) {
+              AsyncData(value: 0) => 'حذف المطعم',
+              AsyncData(:final value) => 'مينفعش حذف — عنده $value طلب',
+              AsyncError() => 'مقدرناش نتأكد من الطلبات — مش هينفع الحذف دلوقتي',
+              _ => 'لحظة…',
             },
             icon: const Icon(Icons.delete_outline),
-            onPressed: (orderCount.value ?? 0) == 0
+            onPressed: orderCount is AsyncData<int> && orderCount.value == 0
                 ? () => _confirmDelete(context, ref)
                 : null,
           ),
@@ -680,6 +689,51 @@ class _Detail extends ConsumerWidget {
             Expanded(child: MenuEditor(merchantId: merchant.id)),
           ],
         ),
+      ),
+    );
+  }
+
+  /// Suspending stops a working shop taking orders, so it is asked first; approving is
+  /// what the owner came here to do and is not. Either way the result is said.
+  Future<void> _setStatus(
+    BuildContext context,
+    WidgetRef ref,
+    MerchantStatus status,
+  ) async {
+    if (status == MerchantStatus.suspended) {
+      final sure = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: Text('إيقاف ${merchant.name}'),
+          content: const Text(
+            'المحل هيختفي من عند العملاء ومش هيستقبل طلبات لحد ما تعتمده تاني.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('رجوع'),
+            ),
+            FilledButton(
+              key: MerchantsScreen.confirmSuspendKey,
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: const Text('أوقفه'),
+            ),
+          ],
+        ),
+      );
+      if (sure != true || !context.mounted) return;
+    }
+    final result =
+        await ref.read(merchantActionsProvider.notifier).setStatus(merchant.id, status);
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(switch (result) {
+          Ok() => status == MerchantStatus.approved
+              ? 'اتعتمد ${merchant.name}'
+              : 'اتوقف ${merchant.name}',
+          Err() => 'مقدرناش نغيّر حالة المحل. جرّب تاني.',
+        }),
       ),
     );
   }
@@ -932,12 +986,13 @@ class _MerchantIdentitySheetState extends ConsumerState<MerchantIdentitySheet> {
     // One write for all three. Three separate saves is three chances for the second to
     // fail after the first landed, leaving a shop with a new logo and the old description
     // and nothing on screen saying which half went through.
-    final result = await ref.read(merchantRepositoryProvider).saveMerchant(
-          widget.merchant.copyWith(
-            logoMediaId: _logoId,
-            coverMediaId: _coverId,
-            description: typed.isEmpty ? null : typed,
-          ),
+    // Only these three. A full save from the copy this sheet opened with would put back
+    // whatever the shop looked like then — a status or plan somebody changed since.
+    final result = await ref.read(merchantRepositoryProvider).setIdentity(
+          widget.merchant.id,
+          logoMediaId: _logoId,
+          coverMediaId: _coverId,
+          description: typed.isEmpty ? null : typed,
         );
     if (!mounted) return;
     setState(() => _saving = false);
@@ -1032,226 +1087,6 @@ class _MerchantIdentitySheetState extends ConsumerState<MerchantIdentitySheet> {
                 const SizedBox(height: Space.sm),
               ],
             ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// The category chips («شرائح الفئات») assigned to a merchant.
-///
-/// Backed by the `cuisines` table (city-wide, name + picture).
-/// Lists every chip of the merchant's city as [FilterChip]s (multi-select),
-/// pre-selected from `cuisinesOf`, with a save button that calls `setMerchantCuisines`.
-class MerchantCuisinesSheet extends ConsumerStatefulWidget {
-  const MerchantCuisinesSheet({super.key, required this.merchant});
-
-  final Merchant merchant;
-
-  static const openKey = Key('merchant.cuisines.open');
-  static Key chipKey(dynamic id) => Key('merchant.cuisines.chip.$id');
-  static const saveKey = Key('merchant.cuisines.save');
-
-  @override
-  ConsumerState<MerchantCuisinesSheet> createState() =>
-      _MerchantCuisinesSheetState();
-}
-
-class _MerchantCuisinesSheetState extends ConsumerState<MerchantCuisinesSheet> {
-  bool _loading = true;
-  Failure? _loadFailure;
-  List<Cuisine> _cuisines = const [];
-  Set<String> _selected = const {};
-  bool _saving = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _load();
-  }
-
-  Future<void> _load() async {
-    setState(() {
-      _loading = true;
-      _loadFailure = null;
-    });
-
-    final repo = ref.read(cuisineRepositoryProvider);
-    final results = await Future.wait([
-      repo.forCity(widget.merchant.cityId),
-      repo.cuisinesOf(widget.merchant.id),
-    ]);
-    if (!mounted) return;
-
-    final cityResult = results[0] as Result<List<Cuisine>>;
-    final ofResult = results[1] as Result<Set<String>>;
-
-    if (cityResult case Err(:final failure)) {
-      setState(() {
-        _loading = false;
-        _loadFailure = failure;
-      });
-      return;
-    }
-    if (ofResult case Err(:final failure)) {
-      setState(() {
-        _loading = false;
-        _loadFailure = failure;
-      });
-      return;
-    }
-
-    setState(() {
-      _loading = false;
-      _cuisines = cityResult.valueOrNull ?? [];
-      _selected = {...(ofResult.valueOrNull ?? {})};
-    });
-  }
-
-  Future<void> _save() async {
-    setState(() => _saving = true);
-    final repo = ref.read(cuisineRepositoryProvider);
-    final result =
-        await repo.setMerchantCuisines(widget.merchant.id, _selected);
-    if (!mounted) return;
-    setState(() => _saving = false);
-
-    switch (result) {
-      case Ok():
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('اتحفظت الفئات')),
-        );
-        if (Navigator.of(context).canPop()) {
-          Navigator.of(context).pop();
-        }
-      case Err(:final failure):
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(switch (failure) {
-              OfflineFailure() => 'مفيش نت — جرّب تاني.',
-              _ => 'مقدرناش نحفظ. جرّب تاني.',
-            }),
-          ),
-        );
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colors = theme.luqma;
-
-    return Padding(
-      padding: EdgeInsets.only(
-        left: Space.gutter,
-        right: Space.gutter,
-        top: Space.xl,
-        bottom: MediaQuery.viewInsetsOf(context).bottom + Space.xl,
-      ),
-      child: SafeArea(
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text('فئات المحل', style: theme.textTheme.titleLarge),
-                  IconButton(
-                    icon: const Icon(Icons.close),
-                    tooltip: 'إغلاق',
-                    onPressed: () => Navigator.of(context).pop(),
-                  ),
-                ],
-              ),
-              const SizedBox(height: Space.xs),
-              Text(
-                'اختر الفئات اللي بيظهر فيها المحل في تطبيق العميل',
-                style: theme.textTheme.bodySmall
-                    ?.copyWith(color: colors.textSecondary),
-              ),
-              const SizedBox(height: Space.lg),
-              if (_loading)
-                const Center(
-                  child: Padding(
-                    padding: EdgeInsets.all(Space.xxl),
-                    child: CircularProgressIndicator(),
-                  ),
-                )
-              else if (_loadFailure != null)
-                LuqmaErrorView(
-                  failure: _loadFailure,
-                  onRetry: _load,
-                )
-              else if (_cuisines.isEmpty)
-                Center(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(vertical: Space.xl),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          'مفيش فئات لسه',
-                          style: theme.textTheme.titleMedium,
-                        ),
-                        const SizedBox(height: Space.xs),
-                        Text(
-                          'المدينة دي لسه مفيهاش أي شرائح فئات. تقدر تضيفها من شاشة شرائح الفئات.',
-                          textAlign: TextAlign.center,
-                          style: theme.textTheme.bodyMedium?.copyWith(
-                            color: colors.textSecondary,
-                          ),
-                        ),
-                        const SizedBox(height: Space.lg),
-                        FilledButton(
-                          onPressed: () {
-                            try {
-                              context.push(Routes.cuisines);
-                            } catch (_) {}
-                          },
-                          child: const Text('شرائح الفئات'),
-                        ),
-                      ],
-                    ),
-                  ),
-                )
-              else ...[
-                Wrap(
-                  spacing: Space.sm,
-                  runSpacing: Space.sm,
-                  children: [
-                    for (final cuisine in _cuisines)
-                      FilterChip(
-                        key: MerchantCuisinesSheet.chipKey(cuisine.id),
-                        label: Text(cuisine.name),
-                        selected: _selected.contains(cuisine.id),
-                        onSelected: (selected) {
-                          setState(() {
-                            final next = {..._selected};
-                            if (selected) {
-                              next.add(cuisine.id);
-                            } else {
-                              next.remove(cuisine.id);
-                            }
-                            _selected = next;
-                          });
-                        },
-                      ),
-                  ],
-                ),
-                const SizedBox(height: Space.xl),
-                FilledButton(
-                  key: MerchantCuisinesSheet.saveKey,
-                  onPressed: _saving ? null : _save,
-                  style: FilledButton.styleFrom(
-                    minimumSize: const Size.fromHeight(Sizes.minTarget),
-                  ),
-                  child: Text(_saving ? 'جاري…' : 'احفظ'),
-                ),
-              ],
-            ],
           ),
         ),
       ),

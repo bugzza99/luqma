@@ -15,11 +15,13 @@ void main() {
     int ordersToday = 0,
     int moneyToday = 0,
     int openIssues = 0,
+    int platformToday = 0,
     List<NeedsAttentionItem> needsAttention = const [],
   }) =>
       AdminToday(
         ordersToday: ordersToday,
         moneyToday: moneyToday,
+        platformToday: platformToday,
         needsAttention: needsAttention,
         openIssues: openIssues,
       );
@@ -40,6 +42,7 @@ void main() {
     WidgetTester tester, {
     AdminToday? value,
     Failure? failure,
+    List<Merchant> shops = const [],
   }) async {
     tester.view.physicalSize = const Size(1080, 2340);
     tester.view.devicePixelRatio = 3;
@@ -51,6 +54,11 @@ void main() {
           adminRepositoryProvider.overrideWithValue(
             FakeAdminRepository(todayValue: value ?? today(), failure: failure),
           ),
+          merchantRepositoryProvider.overrideWithValue(
+            FakeMerchantRepository(seed: shops),
+          ),
+          remoteConfigServiceProvider
+              .overrideWithValue(RemoteConfigService(FakeConfigFetcher({}))),
         ],
         child: MaterialApp(
           theme: LuqmaTheme.light,
@@ -136,5 +144,51 @@ void main() {
 
     await pump(tester, value: today(ordersToday: 5, openIssues: 0, needsAttention: const []));
     expect(find.byIcon(Icons.warning_amber_rounded), findsNothing);
+  });
+
+  // 2026-09-19: commission is collected in cash once a week, and «اليوم» is where the
+  // round starts — every shop that owes, most first.
+  testWidgets('shops that owe commission are listed, most first, and zero is 0 ج',
+      (tester) async {
+    Merchant shop(String id, String name, int owed) => Merchant(
+          id: id,
+          cityId: 'edku',
+          type: MerchantType.restaurant,
+          name: name,
+          zoneId: 'z1',
+          phone: '0100',
+          status: MerchantStatus.approved,
+          commissionOwed: owed,
+        );
+    await pump(
+      tester,
+      value: today(moneyToday: 0),
+      shops: [shop('a', 'قليل', 5000), shop('b', 'كتير', 60000), shop('c', 'خالص', 0)],
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(DashboardScreen.owedRowKey('b')), findsOneWidget);
+    expect(find.byKey(DashboardScreen.owedRowKey('c')), findsNothing);
+    final many = tester.getTopLeft(find.byKey(DashboardScreen.owedRowKey('b')));
+    final few = tester.getTopLeft(find.byKey(DashboardScreen.owedRowKey('a')));
+    expect(many.dy, lessThan(few.dy));
+    // Above 500 ج: marked.
+    expect(find.text('عدّى حد التنبيه'), findsOneWidget);
+    expect(tileText(tester, DashboardScreen.moneyKey), contains('0 ج'));
+    expect(find.text('مجاناً'), findsNothing);
+  });
+
+  // The shops' takings and the platform's are different money (QA review 2026-09-19).
+  testWidgets('what the platform took today is its own figure', (tester) async {
+    await pump(tester, value: today(moneyToday: 452500, platformToday: 22625));
+
+    expect(tileText(tester, DashboardScreen.platformKey), contains('226.25'));
+    expect(tileText(tester, DashboardScreen.moneyKey), contains('4525'));
+  });
+
+  testWidgets('says when the figures were read', (tester) async {
+    await pump(tester);
+
+    expect(find.byKey(DashboardScreen.updatedKey), findsOneWidget);
   });
 }

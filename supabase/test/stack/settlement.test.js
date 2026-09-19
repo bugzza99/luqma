@@ -48,10 +48,25 @@ describe('settling a delivered order', () => {
    * Inserted at that status rather than walked there from `placed`: what is under test
    * is the last transition, and the four before it have their own tests in `rls.test.js`.
    */
+  // As the server, the way `place_order` inserts one: since 20260913 an order on a
+  // prepaid shop holds its fee on the merchant row at insert, which is a server write.
   const makeOrder = async (merchantId, {
     model = 'subscription', value = 0, subtotal = 20000, owes = 0,
     status = 'outForDelivery', courierUid = null, deliveryBy = 'merchant',
-  } = {}) => (await q(
+  } = {}) => {
+    await q('begin');
+    try {
+      await q("select set_config('app.server_mode','on',true)");
+      const id = await makeOrderRaw(merchantId, { model, value, subtotal, owes, status,
+                                                  courierUid, deliveryBy });
+      await q('commit');
+      return id;
+    } catch (e) { await q('rollback'); throw e; }
+  };
+
+  const makeOrderRaw = async (merchantId, {
+    model, value, subtotal, owes, status, courierUid, deliveryBy,
+  }) => (await q(
     `insert into orders (city_id, customer_uid, customer_name, customer_phone,
                          merchant_id, merchant_name, zone_id, type, items, pricing,
                          revenue, status, courier_uid, delivery_by)

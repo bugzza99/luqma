@@ -28,6 +28,10 @@ void main() {
   late FakeHomeSectionRepository sections;
 
   Future<void> pump(WidgetTester tester, {List<HomeSection> seed = const []}) async {
+    tester.view.physicalSize = const Size(1080, 2340);
+    tester.view.devicePixelRatio = 3;
+    addTearDown(tester.view.reset);
+
     sections = FakeHomeSectionRepository(seed: seed);
 
     await tester.pumpWidget(
@@ -92,6 +96,22 @@ void main() {
       expect(find.byKey(HomeBuilderScreen.rowKey('oops')), findsOneWidget);
       expect(find.byKey(HomeBuilderScreen.unknownKey('oops')), findsOneWidget);
     });
+
+    testWidgets('rows show Arabic type name and description, never the raw key', (tester) async {
+      await pump(tester, seed: [
+        section(key: 'custom_chips_key', type: 'categoryChips', sortOrder: 0),
+      ]);
+
+      expect(find.text('تصنيفات المحلات'), findsOneWidget);
+      expect(find.text('دوائر تصنيفات المحلات في أعلى الشاشة'), findsOneWidget);
+      expect(find.textContaining('custom_chips_key'), findsNothing);
+    });
+
+    testWidgets('drag handle icon is not present', (tester) async {
+      await pump(tester, seed: [section()]);
+
+      expect(find.byIcon(Icons.drag_handle_rounded), findsNothing);
+    });
   });
 
   group('changing it', () {
@@ -143,6 +163,20 @@ void main() {
       );
       expect(button.onPressed, isNull);
     });
+
+    testWidgets('reorder failure rolls back local order and shows error', (tester) async {
+      await pump(tester, seed: [
+        section(key: 'chips', type: 'categoryChips', sortOrder: 0),
+        section(key: 'list', sortOrder: 1),
+      ]);
+
+      sections.failure = const OfflineFailure();
+
+      await tester.tap(find.byKey(HomeBuilderScreen.upKey('list')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('مفيش نت — جرّب تاني.'), findsOneWidget);
+    });
   });
 
   group('adding one', () {
@@ -185,6 +219,20 @@ void main() {
       final slots = sections.all.where((s) => s.type == 'adSlot').toList();
       expect(slots, hasLength(2));
       expect(slots[0].key, isNot(slots[1].key));
+    });
+
+    testWidgets('add failure keeps sheet open and shows SnackBar', (tester) async {
+      await pump(tester);
+
+      await tester.tap(find.byKey(HomeBuilderScreen.addKey));
+      await tester.pumpAndSettle();
+
+      sections.failure = const OfflineFailure();
+      await tester.tap(find.byKey(HomeBuilderScreen.typeKey('adSlot')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('مفيش نت — جرّب تاني.'), findsOneWidget);
+      expect(find.byKey(HomeBuilderScreen.typeKey('adSlot')), findsOneWidget);
     });
   });
 

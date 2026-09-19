@@ -7,6 +7,9 @@ import '../models/staff_application.dart';
 import '../result.dart';
 import '../util/phone.dart';
 
+/// How many decided applications the history holds.
+const decidedPage = 200;
+
 /// Joining the platform: couriers, restaurants and home kitchens apply here.
 ///
 /// An applicant is not signed in — they have no account, that is the point — so `anon`
@@ -45,6 +48,11 @@ abstract interface class StaffApplicationRepository {
 
   /// The open applications waiting for a phone call, newest first.
   Stream<List<StaffApplication>> watchPending();
+
+  /// Every application already decided, most recently decided first — so a call from
+  /// last month can be looked up, with the reason it was accepted or refused (QA review
+  /// 2026-09-19). Capped at [decidedPage]; the screen searches within it.
+  Future<Result<List<StaffApplication>>> decided();
 
   /// Records the owner's decision after speaking to the applicant.
   Future<Result<void>> review(
@@ -85,6 +93,19 @@ class SupabaseStaffApplicationRepository implements StaffApplicationRepository {
         }
         Error.throwWithStackTrace(e, st);
       }
+    });
+  }
+
+  @override
+  Future<Result<List<StaffApplication>>> decided() {
+    return Result.guard(() async {
+      final rows = await _db
+          .from('staff_applications')
+          .select()
+          .neq('status', 'pending')
+          .order('reviewed_at', ascending: false, nullsFirst: false)
+          .limit(decidedPage);
+      return rows.map(StaffApplication.fromRow).toList();
     });
   }
 
@@ -204,6 +225,15 @@ class FakeStaffApplicationRepository implements StaffApplicationRepository {
     );
     _notify();
     return const Result.ok(null);
+  }
+
+  @override
+  Future<Result<List<StaffApplication>>> decided() async {
+    if (failure != null) return Result.err(failure!);
+    final done = _applications.values.where((a) => !a.isPending).toList()
+      ..sort((a, b) =>
+          (b.reviewedAt ?? DateTime(0)).compareTo(a.reviewedAt ?? DateTime(0)));
+    return Result.ok(done.take(decidedPage).toList());
   }
 
   @override

@@ -1,3 +1,4 @@
+import 'package:customer_app/src/orders/order_help_sheet.dart';
 import 'package:customer_app/src/orders/order_screen.dart';
 import 'package:customer_app/src/orders/orders_screen.dart';
 import 'package:flutter/material.dart';
@@ -642,6 +643,8 @@ void main() {
       await reveal(tester, find.byKey(OrderScreen.issueKey));
       await tester.tap(find.byKey(OrderScreen.issueKey));
       await tester.pumpAndSettle();
+      await tester.tap(find.byKey(OrderHelpSheet.topicKey(HelpTopic.other)));
+      await tester.pumpAndSettle();
       await tester.enterText(
         find.byKey(OrderScreen.issueTextKey),
         'الأكل وصل بارد',
@@ -649,8 +652,93 @@ void main() {
       await tester.tap(find.byKey(OrderScreen.sendIssueKey));
       await tester.pumpAndSettle();
 
-      expect(orders.issues.single['reason'], 'الأكل وصل بارد');
+      // The topic leads, so the admin's queue reads at a glance.
+      expect(orders.issues.single['reason'], 'حاجة تانية: الأكل وصل بارد');
       expect(orders.issues.single['orderId'], 'o1');
+      expect(find.text('وصلتنا شكواك، هنراجعها ونرد عليك.'), findsOneWidget);
+    });
+
+    testWidgets('a missing item after delivery becomes a ticket under that topic',
+        (tester) async {
+      await pump(
+        tester,
+        const OrderScreen(orderId: 'o1'),
+        seed: [order(status: OrderStatus.delivered)],
+      );
+
+      await reveal(tester, find.byKey(OrderScreen.issueKey));
+      await tester.tap(find.byKey(OrderScreen.issueKey));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(OrderHelpSheet.topicKey(HelpTopic.wrongItems)));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(OrderHelpSheet.actionKey(HelpAction.complain)));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(OrderScreen.issueTextKey), 'ناقص عيش');
+      await tester.tap(find.byKey(OrderScreen.sendIssueKey));
+      await tester.pumpAndSettle();
+
+      expect(orders.issues.single['reason'], 'ناقص صنف أو غلط في الطلب: ناقص عيش');
+    });
+
+    // "What do I owe" is answered by the bill on the order, not by a person.
+    testWidgets('the assistant reads the bill back without filing anything',
+        (tester) async {
+      await pump(
+        tester,
+        const OrderScreen(orderId: 'o1'),
+        seed: [order(status: OrderStatus.outForDelivery)],
+      );
+
+      await reveal(tester, find.byKey(OrderScreen.issueKey));
+      await tester.tap(find.byKey(OrderScreen.issueKey));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(OrderHelpSheet.topicKey(HelpTopic.money)));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('المطلوب كاش للمندوب: 130 ج'), findsOneWidget);
+      await tester.tap(find.byKey(OrderHelpSheet.actionKey(HelpAction.done)));
+      await tester.pumpAndSettle();
+      expect(orders.issues, isEmpty);
+    });
+
+    testWidgets('a late order the shop has not answered can be cancelled from the assistant',
+        (tester) async {
+      await pump(
+        tester,
+        const OrderScreen(orderId: 'o1'),
+        seed: [order(status: OrderStatus.placed)],
+      );
+
+      await reveal(tester, find.byKey(OrderScreen.issueKey));
+      await tester.tap(find.byKey(OrderScreen.issueKey));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(OrderHelpSheet.topicKey(HelpTopic.late)));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(OrderHelpSheet.actionKey(HelpAction.cancelOrder)));
+      await tester.pumpAndSettle();
+
+      // The same question the cancel button asks — the assistant does not skip it.
+      expect(find.byKey(OrderScreen.confirmCancelKey), findsOneWidget);
+    });
+
+    testWidgets('a complaint that fails to send says so', (tester) async {
+      await pump(
+        tester,
+        const OrderScreen(orderId: 'o1'),
+        seed: [order(status: OrderStatus.delivered)],
+      );
+      orders.failure = const OfflineFailure();
+
+      await reveal(tester, find.byKey(OrderScreen.issueKey));
+      await tester.tap(find.byKey(OrderScreen.issueKey));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(OrderHelpSheet.topicKey(HelpTopic.other)));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(OrderScreen.issueTextKey), 'الأكل بارد');
+      await tester.tap(find.byKey(OrderScreen.sendIssueKey));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('الشكوى موصلتش'), findsOneWidget);
     });
 
     // An empty complaint tells an admin nothing and wastes the reply.
@@ -664,10 +752,13 @@ void main() {
       await reveal(tester, find.byKey(OrderScreen.issueKey));
       await tester.tap(find.byKey(OrderScreen.issueKey));
       await tester.pumpAndSettle();
+      await tester.tap(find.byKey(OrderHelpSheet.topicKey(HelpTopic.other)));
+      await tester.pumpAndSettle();
       await tester.tap(find.byKey(OrderScreen.sendIssueKey));
       await tester.pumpAndSettle();
 
       expect(orders.issues, isEmpty);
+      expect(find.text('اكتب اللي حصل الأول'), findsOneWidget);
     });
   });
 

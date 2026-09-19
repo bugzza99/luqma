@@ -10,6 +10,7 @@ import '../menu/menu_screen.dart';
 import '../orders/inbox_screen.dart';
 import '../orders/live_board_screen.dart';
 import '../shop/shop_screen.dart';
+import '../shop/statement_screen.dart';
 import '../shop/subscription_screen.dart';
 
 /// MerchantApp.
@@ -127,6 +128,20 @@ class _ShellState extends ConsumerState<_Shell> {
     // order nobody has answered, and that is الجديد.
     if (kind == 'newOrder' || hasOrderId) {
       setState(() => _tab = 0);
+      return;
+    }
+
+    // Commission owed — weekly, or past the line — opens the statement, which is where
+    // the amount and what it is made of are.
+    if (kind == 'commissionDue') {
+      final merchantId = ref.read(staffIdentityProvider).merchantId;
+      if (merchantId != null) {
+        Navigator.of(context).push(
+          MaterialPageRoute<void>(
+            builder: (_) => StatementScreen(merchantId: merchantId),
+          ),
+        );
+      }
       return;
     }
 

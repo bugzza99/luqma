@@ -21,6 +21,13 @@ import 'luqma_image.dart';
 /// a picture, shrink, upload, and then say plainly that the photograph is not live yet.
 /// That last part is not decoration — a merchant who uploads a photo of their fish,
 /// opens CustomerApp and sees nothing will upload it again, and again.
+/// Whether pictures uploaded in this app arrive approved. False everywhere but AdminApp,
+/// which overrides it at its root: the owner's own photographs — six hundred dishes during
+/// onboarding — are not something the owner should then approve one by one, and the
+/// screen already promised «صورك بتظهر على طول» while the rows waited in the queue
+/// (QA review 2026-09-19). The database refuses an approved upload from anybody else.
+final uploadsArriveApprovedProvider = Provider<bool>((ref) => false);
+
 class MediaPicker extends ConsumerStatefulWidget {
   const MediaPicker({
     super.key,
@@ -29,6 +36,7 @@ class MediaPicker extends ConsumerStatefulWidget {
     required this.name,
     required this.onUploaded,
     this.ownerId,
+    this.approved = false,
   });
 
   /// What the picture is of. Decides the path in the bucket and the moderation lane.
@@ -46,6 +54,10 @@ class MediaPicker extends ConsumerStatefulWidget {
   /// Called with the filed `media` row. The caller stores `media.id` on whatever it is
   /// editing — this widget never writes to another table.
   final ValueChanged<Media> onUploaded;
+
+  /// An admin's picture: it arrives approved and is on the product at once. AdminApp
+  /// passes it; the database refuses it from anybody else.
+  final bool approved;
 
   static const pickKey = Key('mediaPicker.pick');
   static const errorKey = Key('mediaPicker.error');
@@ -84,6 +96,7 @@ class _MediaPickerState extends ConsumerState<MediaPicker> {
     final Result<Media> result;
     try {
       final bytes = await ImageCompressor.shrink(picked);
+      final (width, height) = ImageCompressor.dimensionsOf(bytes);
       // Whoever is signed in, read here rather than passed in: the policy on `media`
       // requires `uploaded_by = auth.uid()`, so there has only ever been one correct
       // value for it, and a parameter is somewhere a caller can put a different one.
@@ -92,6 +105,9 @@ class _MediaPickerState extends ConsumerState<MediaPicker> {
             bytes: bytes,
             uploadedBy: ref.read(currentIdentityProvider).value?.uid ?? '',
             ownerId: widget.ownerId,
+            width: width,
+            height: height,
+            approved: widget.approved || ref.read(uploadsArriveApprovedProvider),
           );
     } on FormatException {
       // Whatever was chosen is not an image this build can read — a video, a PDF, a file
@@ -138,11 +154,18 @@ class _MediaPickerState extends ConsumerState<MediaPicker> {
         ),
       );
     } else {
-      preview = ClipRRect(
-        borderRadius: Radii.cardAll,
-        child: AspectRatio(
-          aspectRatio: widget.kind.aspectRatio,
-          child: previewImage,
+      // Capped in height: at full width a dish photo filled a phone screen and pushed the
+      // name and the price below the fold of the very sheet that edits them.
+      preview = Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxHeight: 160),
+          child: ClipRRect(
+            borderRadius: Radii.cardAll,
+            child: AspectRatio(
+              aspectRatio: widget.kind.aspectRatio,
+              child: previewImage,
+            ),
+          ),
         ),
       );
     }

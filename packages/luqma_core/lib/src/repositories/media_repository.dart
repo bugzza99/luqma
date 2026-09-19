@@ -27,6 +27,11 @@ abstract interface class MediaRepository {
     String? ownerId,
     int width,
     int height,
+
+    /// Arrives approved rather than waiting in the queue. Only an admin's upload may: the
+    /// `media` policies refuse an approved row from anybody else, so a merchant passing it
+    /// is refused rather than trusted.
+    bool approved,
   });
 
   /// Everything waiting for review, oldest first — a photo that has been waiting three
@@ -41,6 +46,19 @@ abstract interface class MediaRepository {
     String? reviewedBy,
     String? note,
   });
+
+  /// Whose each picture is — the shop, the dish or meal it shows, who uploaded it — for
+  /// the moderation queue, in one call. Ids the server cannot name are simply absent.
+  Future<Result<Map<String, MediaContext>>> contextOf(List<String> ids);
+}
+
+/// What the moderation card says about a picture besides the picture itself.
+class MediaContext {
+  const MediaContext({this.shop, this.item, this.uploader});
+
+  final String? shop;
+  final String? item;
+  final String? uploader;
 }
 
 class SupabaseMediaRepository implements MediaRepository {
@@ -71,6 +89,7 @@ class SupabaseMediaRepository implements MediaRepository {
     String? ownerId,
     int width = 0,
     int height = 0,
+    bool approved = false,
   }) {
     return Result.guard(() async {
       final storage = _db.storage.from(_bucket);
@@ -95,7 +114,7 @@ class SupabaseMediaRepository implements MediaRepository {
         final row = await _db.from('media').insert({
           'kind': kind.name,
           'url': storage.getPublicUrl(path),
-          'status': MediaStatus.pending.name,
+          'status': (approved ? MediaStatus.approved : MediaStatus.pending).name,
           'uploaded_by': uploadedBy,
           'owner_id': _uuidOrNull(ownerId),
           'width': width,
@@ -148,6 +167,22 @@ class SupabaseMediaRepository implements MediaRepository {
   }
 
   @override
+  Future<Result<Map<String, MediaContext>>> contextOf(List<String> ids) {
+    return Result.guard(() async {
+      if (ids.isEmpty) return const <String, MediaContext>{};
+      final rows = await _db.rpc('admin_media_context', params: {'p_ids': ids}) as List;
+      return {
+        for (final row in rows.cast<Map<String, dynamic>>())
+          row['media_id'] as String: MediaContext(
+            shop: row['shop'] as String?,
+            item: row['item'] as String?,
+            uploader: row['uploader'] as String?,
+          ),
+      };
+    });
+  }
+
+  @override
   Future<Result<void>> setStatus(
     String id,
     MediaStatus status, {
@@ -174,7 +209,7 @@ class FakeMediaRepository implements MediaRepository {
       : _media = {for (final m in seed) m.id: m};
 
   final Map<String, Media> _media;
-  final Failure? failure;
+  Failure? failure;
 
   /// What was uploaded, in order, for assertions.
   final List<Media> uploads = [];
@@ -189,6 +224,7 @@ class FakeMediaRepository implements MediaRepository {
     String? ownerId,
     int width = 0,
     int height = 0,
+    bool approved = false,
   }) async {
     if (failure != null) return Result.err(failure!);
 
@@ -199,7 +235,7 @@ class FakeMediaRepository implements MediaRepository {
       // Distinct per upload, like the real one: a screen that shows two photos must not
       // be handed one URL twice and pass.
       url: 'https://fake.luqma/${kind.name}/$_counter.jpg',
-      status: MediaStatus.pending,
+      status: approved ? MediaStatus.approved : MediaStatus.pending,
       ownerId: ownerId,
       uploadedBy: uploadedBy,
       width: width,
@@ -225,6 +261,18 @@ class FakeMediaRepository implements MediaRepository {
     final media = _media[id];
     if (media == null) return const Result.err(NotFoundFailure());
     return Result.ok(media);
+  }
+
+  /// What [contextOf] answers, keyed by media id. Seeded by a test.
+  final contexts = <String, MediaContext>{};
+
+  @override
+  Future<Result<Map<String, MediaContext>>> contextOf(List<String> ids) async {
+    if (failure != null) return Result.err(failure!);
+    return Result.ok({
+      for (final id in ids)
+        if (contexts[id] != null) id: contexts[id]!,
+    });
   }
 
   @override

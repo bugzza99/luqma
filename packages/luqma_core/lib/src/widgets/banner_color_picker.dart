@@ -25,6 +25,17 @@ class BannerColorPicker extends StatelessWidget {
   static const gradientKey = Key('banner.color.gradient');
   static Key swatchKey(String hex) => Key('banner.color.$hex');
 
+  static const swatchNames = <String, String>{
+    '#761812': 'عنابي',
+    '#451410': 'بني غامق',
+    '#D67F2B': 'برتقالي',
+    '#F5EBE2': 'كريمي',
+    '#1B4332': 'أخضر',
+    '#0E3A5C': 'أزرق',
+    '#130B07': 'أسود',
+    '#8C1C4A': 'توتي',
+  };
+
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).luqma;
@@ -39,7 +50,7 @@ class BannerColorPicker extends StatelessWidget {
           key: gradientKey,
           selected: selected == null,
           onTap: () => onPicked(null),
-          label: 'التدرج',
+          label: 'تدرّج',
           gradient: LinearGradient(
             begin: Alignment.centerRight,
             end: Alignment.centerLeft,
@@ -51,7 +62,7 @@ class BannerColorPicker extends StatelessWidget {
             key: swatchKey(hex),
             selected: selected == hex,
             onTap: () => onPicked(hex),
-            label: hex,
+            label: swatchNames[hex] ?? hex,
             color: PromotionPalette.parse(hex),
           ),
       ],
@@ -84,6 +95,8 @@ class _Swatch extends StatelessWidget {
       selected: selected,
       button: true,
       child: InkWell(
+        // The swatch's own `selected` semantics say which one is chosen; an announcement
+        // on top of it was read twice.
         onTap: onTap,
         borderRadius: BorderRadius.circular(Sizes.minTarget),
         child: Container(

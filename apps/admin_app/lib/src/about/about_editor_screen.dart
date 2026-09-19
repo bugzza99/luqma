@@ -44,15 +44,31 @@ class _AboutForm extends ConsumerStatefulWidget {
 
 class _AboutFormState extends ConsumerState<_AboutForm> {
   late final _description = _field('about_description');
+  late String _savedDescription;
 
   bool _busy = false;
+
+  bool get _hasUnsavedChanges => _description.text.trim() != _savedDescription.trim();
 
   TextEditingController _field(String key) => TextEditingController(
         text: widget.initial[key] is String ? widget.initial[key] as String : '',
       );
 
   @override
+  void initState() {
+    super.initState();
+    _savedDescription =
+        widget.initial['about_description'] is String ? widget.initial['about_description'] as String : '';
+    _description.addListener(_onTextChanged);
+  }
+
+  void _onTextChanged() {
+    if (mounted) setState(() {});
+  }
+
+  @override
   void dispose() {
+    _description.removeListener(_onTextChanged);
     _description.dispose();
     super.dispose();
   }
@@ -65,7 +81,14 @@ class _AboutFormState extends ConsumerState<_AboutForm> {
     if (!mounted) return;
     setState(() => _busy = false);
 
-    if (result case Err(:final failure)) {
+    if (result is Ok) {
+      setState(() {
+        _savedDescription = _description.text.trim();
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('اتحفظ')),
+      );
+    } else if (result case Err(:final failure)) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(switch (failure) {
           OfflineFailure() => 'مفيش نت — جرّب تاني.',
@@ -75,51 +98,81 @@ class _AboutFormState extends ConsumerState<_AboutForm> {
     }
   }
 
+  Future<bool> _confirmLeave() async {
+    final leave = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('تسيب التعديلات من غير حفظ؟'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('إلغاء'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('سيب'),
+          ),
+        ],
+      ),
+    );
+    return leave ?? false;
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colors = theme.luqma;
 
-    return Column(
-      children: [
-        Expanded(
-          child: ListView(
-            padding: const EdgeInsets.all(Space.gutter),
-            children: [
-        Text(
-          'الكلام اللي هيظهر للعميل في «حول لقمة» — عن التطبيق نفسه. صورتك ونبذتك في «عن المطور».',
-          style: theme.textTheme.bodyMedium?.copyWith(color: colors.textSecondary),
-        ),
-        const SizedBox(height: Space.lg),
-        TextField(
-          key: AboutEditorScreen.descriptionKey,
-          controller: _description,
-          maxLines: 5,
-          decoration: const InputDecoration(labelText: 'وصف لقمة'),
-        ),
-            ],
-          ),
-        ),
-        // Pinned, not the last row of the list: this screen is a form, and its one
-        // action should be reachable without hunting for where it scrolled to.
-        Padding(
-          padding: const EdgeInsets.fromLTRB(
-            Space.gutter,
-            Space.sm,
-            Space.gutter,
-            Space.gutter,
-          ),
-          child: FilledButton.icon(
-            key: AboutEditorScreen.saveKey,
-            onPressed: _busy ? null : _save,
-            icon: const Icon(Icons.save_outlined, size: Sizes.iconSm),
-            label: Text(_busy ? 'جاري…' : 'احفظ'),
-            style: FilledButton.styleFrom(
-              minimumSize: const Size.fromHeight(Sizes.minTarget),
+    return PopScope(
+      canPop: !_hasUnsavedChanges,
+      onPopInvokedWithResult: (didPop, result) async {
+        if (didPop) return;
+        final leave = await _confirmLeave();
+        if (leave && context.mounted) {
+          Navigator.of(context).pop();
+        }
+      },
+      child: Column(
+        children: [
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.all(Space.gutter),
+              children: [
+                Text(
+                  'الكلام اللي هيظهر للعميل في «حول لقمة» — عن التطبيق نفسه. صورتك ونبذتك في «عن المطور».',
+                  style: theme.textTheme.bodyMedium?.copyWith(color: colors.textSecondary),
+                ),
+                const SizedBox(height: Space.lg),
+                TextField(
+                  key: AboutEditorScreen.descriptionKey,
+                  controller: _description,
+                  maxLines: 5,
+                  decoration: const InputDecoration(labelText: 'وصف لقمة'),
+                ),
+              ],
             ),
           ),
-        ),
-      ],
+          // Pinned, not the last row of the list: this screen is a form, and its one
+          // action should be reachable without hunting for where it scrolled to.
+          Padding(
+            padding: const EdgeInsets.fromLTRB(
+              Space.gutter,
+              Space.sm,
+              Space.gutter,
+              Space.gutter,
+            ),
+            child: FilledButton.icon(
+              key: AboutEditorScreen.saveKey,
+              onPressed: _busy ? null : _save,
+              icon: const Icon(Icons.save_outlined, size: Sizes.iconSm),
+              label: Text(_busy ? 'جاري…' : 'احفظ'),
+              style: FilledButton.styleFrom(
+                minimumSize: const Size.fromHeight(Sizes.minTarget),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:luqma_core/luqma_core.dart';
@@ -10,7 +12,7 @@ import 'statistics_controller.dart';
 /// Everything here is an aggregate the server computed — the client never reads every
 /// order in the city to count them. What cannot be answered cheaply is not answered at
 /// all rather than guessed.
-class StatisticsScreen extends ConsumerWidget {
+class StatisticsScreen extends ConsumerStatefulWidget {
   const StatisticsScreen({super.key});
 
   static const activeUsersKey = Key('statistics.active_users');
@@ -18,10 +20,42 @@ class StatisticsScreen extends ConsumerWidget {
   static const merchantsKey = Key('statistics.merchants');
   static const ordersKey = Key('statistics.orders');
   static const averageKey = Key('statistics.average');
+  static const updatedKey = Key('statistics.updated');
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<StatisticsScreen> createState() => _StatisticsScreenState();
+}
+
+class _StatisticsScreenState extends ConsumerState<StatisticsScreen> {
+  Timer? _tick;
+  DateTime? _updatedAt;
+
+  @override
+  void initState() {
+    super.initState();
+    // Read once, the figures stood still while orders came in under the owner's eyes
+    // (QA review 2026-09-19). Asked again every two minutes while the screen is open.
+    _tick = Timer.periodic(const Duration(minutes: 2), (_) {
+      if (!mounted) return;
+      ref.invalidate(adminStatisticsProvider);
+      ref.invalidate(adminActiveUsersProvider);
+    });
+  }
+
+  @override
+  void dispose() {
+    _tick?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final stats = ref.watch(adminStatisticsProvider);
+    ref.listen(adminStatisticsProvider, (_, next) {
+      if (next.hasValue && !next.isLoading && !next.hasError) {
+        setState(() => _updatedAt = ref.read(clockProvider)());
+      }
+    });
 
     return Scaffold(
       appBar: AppBar(title: const Text('الإحصائيات')),
@@ -32,7 +66,16 @@ class StatisticsScreen extends ConsumerWidget {
             ref.invalidate(adminStatisticsProvider);
             ref.invalidate(adminActiveUsersProvider);
           },
-          builder: (context, value) => _Body(stats: value),
+          builder: (context, value) => RefreshIndicator(
+            onRefresh: () async {
+              ref.invalidate(adminStatisticsProvider);
+              ref.invalidate(adminActiveUsersProvider);
+              await ref
+                  .read(adminStatisticsProvider.future)
+                  .then((_) {}, onError: (_) {});
+            },
+            child: _Body(stats: value, updatedAt: _updatedAt),
+          ),
         ),
       ),
     );
@@ -40,9 +83,10 @@ class StatisticsScreen extends ConsumerWidget {
 }
 
 class _Body extends StatelessWidget {
-  const _Body({required this.stats});
+  const _Body({required this.stats, this.updatedAt});
 
   final AdminStatistics stats;
+  final DateTime? updatedAt;
 
   @override
   Widget build(BuildContext context) {
@@ -52,30 +96,46 @@ class _Body extends StatelessWidget {
     // Not a lazy list: the page is short, and a lazy one leaves the figures below the
     // «مين فتح التطبيق» card unbuilt until scrolled to.
     return SingleChildScrollView(
+      // Always scrollable, so pulling down refreshes even when the page fits.
+      physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.all(Space.gutter),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          if (updatedAt != null) ...[
+            Text(
+              'آخر تحديث ${updatedAt!.hour % 12 == 0 ? 12 : updatedAt!.hour % 12}:'
+              '${updatedAt!.minute.toString().padLeft(2, '0')} — بتتحدّث لوحدها كل دقيقتين، '
+              'واسحب لتحت للتحديث دلوقتي.',
+              key: StatisticsScreen.updatedKey,
+              style: theme.textTheme.bodySmall
+                  ?.copyWith(color: theme.luqma.textSecondary),
+            ),
+            const SizedBox(height: Space.md),
+          ],
           const _ActiveUsersCard(),
           const SizedBox(height: Space.xl),
           Text('الأرقام الكبيرة', style: theme.textTheme.headlineMedium),
           const SizedBox(height: Space.lg),
           _Stat(
             key: StatisticsScreen.customersKey,
-            label: 'العملاء',
+            label: 'العملاء (من غير حسابات الفريق)',
             value: '${stats.customers}',
           ),
           const SizedBox(height: Space.sm),
           _Stat(
             key: StatisticsScreen.ordersKey,
-            label: 'كل الطلبات',
+            label: 'كل الطلبات (من غير الملغية)',
             value: '${stats.ordersTotal}',
           ),
           const SizedBox(height: Space.sm),
           _Stat(
             key: StatisticsScreen.averageKey,
             label: 'متوسط قيمة الطلب',
-            value: strings.price(stats.avgOrderValue),
+            // Zero is «0 ج», not «مجاناً» — that word is for a delivery fee.
+            value: stats.ordersTotal == 0
+                ? 'لسه مفيش طلبات'
+                : strings.amount(stats.avgOrderValue),
           ),
           const SizedBox(height: Space.xl),
           Text('المطاعم', style: theme.textTheme.titleLarge),
@@ -85,7 +145,7 @@ class _Body extends StatelessWidget {
             statuses: stats.merchantsByStatus,
           ),
           const SizedBox(height: Space.xl),
-          Text('النمو', style: theme.textTheme.titleLarge),
+          Text('عدد الطلبات (من غير الملغية)', style: theme.textTheme.titleLarge),
           const SizedBox(height: Space.sm),
           _Series(title: 'آخر 8 أسابيع', points: stats.byWeek),
           const SizedBox(height: Space.lg),

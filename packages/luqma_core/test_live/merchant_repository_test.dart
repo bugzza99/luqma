@@ -201,13 +201,14 @@ void main() {
       await live.client.from('menu_categories').insert({
         'merchant_id': created.id,
         'name': 'مشويات',
-        'sort_order': 0,
+        'sort_order': 9,
       });
 
       await adminRepository.saveMerchant(created.copyWith(phone: '01111111111'));
 
+      // Alongside the four shelves every restaurant starts with (20261006).
       final read = (await repository.getMerchant(created.id)).valueOrNull!;
-      expect(read.menuCategories.single.name, 'مشويات');
+      expect(read.menuCategories.map((c) => c.name), contains('مشويات'));
       expect(read.phone, '01111111111');
     });
 

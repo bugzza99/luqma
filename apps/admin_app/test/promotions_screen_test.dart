@@ -54,6 +54,10 @@ void main() {
     List<Promotion> seed = const [],
     Map<String, PromotionPushReport> pushReports = const {},
   }) async {
+    tester.view.physicalSize = const Size(1080, 2340);
+    tester.view.devicePixelRatio = 3;
+    addTearDown(tester.view.reset);
+
     promotions = FakePromotionRepository(seed: seed, pushReports: pushReports);
 
     await tester.pumpWidget(
@@ -350,6 +354,53 @@ void main() {
       expect(find.text('مش مسموحلك تحط إعلانات.'), findsOneWidget);
       expect(promotions.all, isEmpty);
     });
+
+    testWidgets('categoryBanner is not offered in channel dropdown', (tester) async {
+      await pump(tester);
+      await openForm(tester);
+
+      await tester.tap(find.byType(DropdownButtonFormField<PromotionChannel>));
+      await tester.pumpAndSettle();
+
+      expect(find.text('بانر في قسم'), findsNothing);
+      expect(find.text('بانر في الرئيسية'), findsWidgets);
+    });
+
+    testWidgets('shows start and end date pickers in create form', (tester) async {
+      await pump(tester);
+      await openForm(tester);
+
+      expect(find.byKey(PromotionsScreen.formStartDateKey), findsOneWidget);
+      expect(find.byKey(PromotionsScreen.formEndDateKey), findsOneWidget);
+      expect(find.text('من'), findsOneWidget);
+      expect(find.text('لحد'), findsOneWidget);
+    });
+
+    testWidgets('creating a push asks for confirmation before sending', (tester) async {
+      await pump(tester);
+      await openForm(tester);
+
+      await chooseMerchant(tester, 'مطعم الشاطئ');
+      await tester.tap(find.byType(DropdownButtonFormField<PromotionChannel>));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('إشعار للعملاء').last);
+      await tester.pumpAndSettle();
+
+      await tester.enterText(find.byKey(PromotionsScreen.formTitleKey), 'تنبيه مهم');
+      await tester.enterText(find.byKey(PromotionsScreen.formBodyKey), 'خصم اليوم فقط');
+      await tester.tap(find.byKey(PromotionsScreen.formSubmitKey));
+      await tester.pumpAndSettle();
+
+      expect(find.text('هيوصل لكل عملاء المدينة اللي مفعّلين الإشعارات'), findsOneWidget);
+      expect(find.byKey(PromotionsScreen.pushConfirmKey), findsOneWidget);
+
+      await tester.tap(find.byKey(PromotionsScreen.pushConfirmKey));
+      await tester.pumpAndSettle();
+
+      final created = promotions.all.single;
+      expect(created.channel, PromotionChannel.push);
+      expect(created.title, 'تنبيه مهم');
+    });
   });
 
   // The owner approved a banner and watched nothing happen. It was correct — the request
@@ -604,6 +655,67 @@ void main() {
       // runs to the end of its last day rather than expiring as that day begins.
       expect(moved.endAt.hour, 23);
       expect(moved.endAt.minute, 59);
+    });
+
+    // A typo on a live banner had no way out but stopping it (QA review 2026-09-19).
+    testWidgets('the words on a running banner can be corrected in place', (tester) async {
+      await pump(
+        tester,
+        seed: [
+          promotion(
+            id: 'p3',
+            status: PromotionStatus.approved,
+            startAt: now.subtract(const Duration(days: 1)),
+          ),
+        ],
+      );
+      await tester.tap(find.byKey(PromotionsScreen.tabAllKey));
+      await tester.pumpAndSettle();
+
+      final edit = find.byKey(PromotionsScreen.editKey('p3'));
+      await tester.ensureVisible(edit);
+      await tester.tap(edit);
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(PromotionsScreen.editTitleKey), 'التوصيل ببلاش');
+      await tester.tap(find.byKey(PromotionsScreen.editSaveKey));
+      await tester.pumpAndSettle();
+
+      final edited = promotions.all.single;
+      expect(edited.title, 'التوصيل ببلاش');
+      expect(edited.status, PromotionStatus.approved, reason: 'no trip back to the queue');
+      expect(find.text('اتعدّل الإعلان.'), findsOneWidget);
+    });
+
+    testWidgets('a live promotion has a stop button that reschedules to now', (tester) async {
+      await pump(
+        tester,
+        seed: [
+          promotion(
+            id: 'p2',
+            status: PromotionStatus.approved,
+            startAt: now.subtract(const Duration(days: 1)),
+          ),
+        ],
+      );
+
+      await tester.tap(find.byKey(PromotionsScreen.tabAllKey));
+      await tester.pumpAndSettle();
+
+      final stopBtn = find.byKey(PromotionsScreen.stopKey('p2'));
+      expect(stopBtn, findsOneWidget);
+
+      await tester.tap(stopBtn);
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(PromotionsScreen.stopConfirmKey), findsOneWidget);
+      expect(find.textContaining('مش هيظهر للعملاء تاني'), findsOneWidget);
+
+      await tester.tap(find.byKey(PromotionsScreen.stopConfirmKey));
+      await tester.pumpAndSettle();
+
+      final stopped = promotions.all.single;
+      expect(stopped.endAt, now);
+      expect(find.text('تم إيقاف الإعلان.'), findsOneWidget);
     });
   });
 }

@@ -44,9 +44,10 @@ class MerchantActions extends _$MerchantActions {
   @override
   void build() {}
 
-  Future<void> setStatus(String id, MerchantStatus status) async {
-    await ref.read(merchantRepositoryProvider).setStatus(id, status);
+  Future<Result<void>> setStatus(String id, MerchantStatus status) async {
+    final result = await ref.read(merchantRepositoryProvider).setStatus(id, status);
     ref.invalidate(allMerchantsProvider);
+    return result;
   }
 
   /// Creates a merchant from what the owner typed while sitting in the restaurant.

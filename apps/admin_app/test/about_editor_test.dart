@@ -82,5 +82,20 @@ void main() {
       config.setCalls.first['about_description'],
       'أكل بيتي على أصوله في إدكو.',
     );
+    expect(find.text('اتحفظ'), findsOneWidget);
+  });
+
+  testWidgets('leaving with unsaved changes shows confirmation dialog', (tester) async {
+    await pump(tester, seed: {'about_description': 'قديم'});
+
+    await tester.enterText(find.byKey(AboutEditorScreen.descriptionKey), 'جديد');
+    await tester.pump();
+
+    // Simulate back pop
+    final dynamic widgetsAppState = tester.state(find.byType(WidgetsApp));
+    await widgetsAppState.didPopRoute();
+    await tester.pumpAndSettle();
+
+    expect(find.text('تسيب التعديلات من غير حفظ؟'), findsOneWidget);
   });
 }
