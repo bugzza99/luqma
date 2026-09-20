@@ -69,6 +69,8 @@ export 'src/repositories/profile_repository.dart';
 export 'src/repositories/promotion_repository.dart';
 export 'src/models/staff_application.dart';
 export 'src/repositories/staff_application_repository.dart';
+export 'src/models/staff_documents.dart';
+export 'src/repositories/staff_documents_repository.dart';
 export 'src/repositories/staff_repository.dart';
 export 'src/repositories/zaatar_repository.dart';
 export 'src/repositories/merchant_repository.dart';

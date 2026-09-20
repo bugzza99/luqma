@@ -593,6 +593,41 @@ DATABASE_URL=<luqma-test session pooler> npm --prefix supabase run test:stack
 - **A payment is recorded once.** `top_up_wallet` and `record_subscription_payment` take a
   `p_receipt_id` the screen generates once per payment; a retry after a lost reply returns
   the stored result instead of charging twice (`payment_receipts`).
+- **A courier shows their papers, and the papers belong to the person.** Settled
+  2026-09-20 with the owner, after a structural review parked an earlier attempt
+  (`park/courier-papers-and-commission`, still parked). A courier applicant hands in three
+  photographs — ID front, ID back, and a selfie holding the ID — and **a courier cannot be
+  approved without them**, enforced by a trigger on `staff_applications` rather than inside
+  `approve_staff_application`, so an admin on an older APK meets the same rule.
+  Three decisions, all the owner's:
+  *the papers are kept while the person is working or waiting to hear, and purged
+  `staff_docs_grace_days` (30) after neither is true* — not for ever, and not at approval;
+  *a courier's commission debt survives their account*, the same rule as an order surviving
+  a deleted customer; and *documents ship first, the per-delivery commission separately* —
+  **a platform courier works at zero commission until that half is designed**, and nothing
+  in the schema implies otherwise.
+  The papers hang off `auth.users`, never off the application. The earlier attempt hung
+  them off `staff_applications` and swept anything no application row pointed at, so an
+  approved courier's national ID was one deleted row away from vanishing.
+- **`refresh_staff_documents_retention` is the only writer of `purge_after`, and
+  `staff_documents` grants SELECT to nobody else.** A retention rule the person it counts
+  down for can edit is not a rule — and neither is one a second writer can disagree with,
+  which is exactly the fault that parked the earlier attempt: *who is a platform courier*
+  was asked by `is_courier_for_order` and answered differently by
+  `apply_courier_settlement`, which then **returned silently**. A courier dropped from the
+  platform roster could deliver all week and accrue nothing, with no error anywhere. So
+  every path — hiring, dismissal, reinstatement, removal, a rejected application — goes
+  through that one function, and the nightly sweep **recomputes before it deletes** so a
+  clock left wrong by a path nobody thought of is corrected rather than acted on. An admin
+  is refused the direct write too, and `supabase/test/stack/staff_documents.test.js` says
+  so out loud.
+- **There is no deletion queue for storage, and there never needed to be.** The parked
+  attempt built `staff_docs_deletions` plus a drain worker plus a cron because objects
+  looked undeletable from SQL. `20260828040000` had already found the door:
+  `storage.allow_delete_query`, transaction-local, which `sweep_orphan_media` goes through
+  and `sweep_staff_documents` now does too. **The stack teardowns need it as well** — a
+  test that deletes its own uploads without naming it fails on `protect_delete` and leaves
+  the bucket filling up every run.
 - **A courier is paid outside the app, and the app's job is the facts.** Settled
   2026-09-11 when the earnings screen was specified and it turned out nothing in the
   product knew what a courier earns — no table, no column, no rule, only a colour note in

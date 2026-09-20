@@ -212,6 +212,41 @@ describe('a courier\'s papers', () => {
     });
   });
 
+  describe('the triggers survive being fired by an ordinary caller', () => {
+    // `staff_touches_documents` and `application_touches_documents` run as whoever ran
+    // the statement, and they call a function revoked from `authenticated`. Without
+    // `security definer` on the trigger *as well as* on what it calls, applying fails
+    // outright with "permission denied for function" -- the same trap the delivery
+    // settlement and the rating refresh each fell into, and each was found the same way:
+    // by going through a real token instead of the service key.
+    it('lets an applicant file an application with papers already in', async () => {
+      const applicant = { uid: await uid(), claims: {} };
+      const phone = '0127707' + String(Date.now()).slice(-4);
+      await q('update auth.users set email = $1 where id = $2',
+              [`${phone}@phone.luqma.app`, applicant.uid]);
+
+      const message = await refused(applicant, async () => {
+        await q(`insert into storage.objects (bucket_id, name) values ('staff-docs', $1)`,
+                [`${applicant.uid}/id-front.jpg`]);
+        await q(`insert into storage.objects (bucket_id, name) values ('staff-docs', $1)`,
+                [`${applicant.uid}/id-back.jpg`]);
+        await q(`insert into storage.objects (bucket_id, name) values ('staff-docs', $1)`,
+                [`${applicant.uid}/selfie.jpg`]);
+        await q('select set_my_staff_documents($1,$2,$3)', [
+          `${applicant.uid}/id-front.jpg`,
+          `${applicant.uid}/id-back.jpg`,
+          `${applicant.uid}/selfie.jpg`,
+        ]);
+        await q(
+          `insert into staff_applications (kind, name, phone, applicant_uid)
+           values ('courier', 'سعيد', $1, $2)`, [phone, applicant.uid]);
+      });
+
+      assert.equal(message, null, 'the application trigger refused an ordinary caller');
+      await q('delete from auth.users where id = $1', [applicant.uid]);
+    });
+  });
+
   describe('handing papers in, through a real token', () => {
     it('refuses a path that is not the caller\'s', async () => {
       const message = await refused(rider, () =>

@@ -53,6 +53,8 @@ import '../repositories/search_repository.dart';
 import '../repositories/settlement_repository.dart';
 import '../models/staff_application.dart';
 import '../repositories/staff_application_repository.dart';
+import '../models/staff_documents.dart';
+import '../repositories/staff_documents_repository.dart';
 import '../repositories/staff_repository.dart';
 import '../repositories/zaatar_repository.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -278,6 +280,23 @@ StaffApplicationRepository staffApplicationRepository(Ref ref) =>
 @riverpod
 Stream<List<StaffApplication>> pendingStaffApplications(Ref ref) =>
     ref.watch(staffApplicationRepositoryProvider).watchPending();
+
+@Riverpod(keepAlive: true)
+StaffDocumentsRepository staffDocumentsRepository(Ref ref) =>
+    SupabaseStaffDocumentsRepository(ref.watch(supabaseProvider));
+
+/// One applicant's identity papers, for the admin reviewing them.
+///
+/// Keyed on the person rather than on the application, because that is what the papers
+/// are keyed on: an applicant who applies twice has one set, and an approved courier
+/// still has theirs after the application row has stopped being interesting.
+///
+/// `valueOrThrow` rather than `valueOrNull`: null here means "this applicant uploaded
+/// nothing", which is a sentence the admin says on the telephone, and a dropped
+/// connection must not be able to say it for them.
+@riverpod
+Future<StaffDocuments?> staffDocumentsFor(Ref ref, String uid) async =>
+    (await ref.watch(staffDocumentsRepositoryProvider).forPerson(uid)).valueOrThrow;
 
 @Riverpod(keepAlive: true)
 ConfigRepository configRepository(Ref ref) =>

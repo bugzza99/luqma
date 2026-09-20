@@ -18,6 +18,11 @@ class ApplicationsScreen extends ConsumerWidget {
   const ApplicationsScreen({super.key});
 
   static Key approveKey(String id) => Key('application.approve.$id');
+
+  /// The way to look at a courier applicant's identity papers.
+  static Key papersKey(String id) => Key('application.papers.$id');
+  static const papersSheetKey = Key('application.papersSheet');
+  static const papersEmptyKey = Key('application.papersEmpty');
   static const zonePickerKey = Key('application.zone');
   static const shopPickerKey = Key('application.shop');
   static Key rejectKey(String id) => Key('application.reject.$id');
@@ -122,6 +127,20 @@ class _ApplicationCard extends ConsumerWidget {
   const _ApplicationCard({required this.application});
 
   final StaffApplication application;
+
+  /// The three photographs, full width, in a sheet the admin can scroll.
+  ///
+  /// A sheet rather than a row of thumbnails on the card: this is a national ID being
+  /// checked against a name, and the whole point is to look at it properly. It is also
+  /// why nothing here crops — `BoxFit.contain`, for the same reason the moderation queue
+  /// stopped cropping: approving the middle of an image lets its edges through unseen.
+  Future<void> _showPapers(BuildContext context, String applicantUid) {
+    return showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (sheetContext) => _PapersSheet(applicantUid: applicantUid),
+    );
+  }
 
   Future<void> _decide(
     BuildContext context,
@@ -564,6 +583,19 @@ class _ApplicationCard extends ConsumerWidget {
                 ),
               ),
             ],
+            // A courier is approved on their papers, so the way to look at them sits with
+            // the decision rather than behind it. Putting it inside the approve dialog
+            // would mean the admin had already decided before they could see the ID.
+            if (application.kind == StaffApplicationKind.courier &&
+                application.applicantUid != null) ...[
+              const SizedBox(height: Space.md),
+              OutlinedButton.icon(
+                key: ApplicationsScreen.papersKey(application.id),
+                onPressed: () => _showPapers(context, application.applicantUid!),
+                icon: const Icon(Icons.badge_outlined, size: Sizes.iconSm),
+                label: const Text('شوف البطاقة'),
+              ),
+            ],
             const SizedBox(height: Space.md),
             Row(
               mainAxisAlignment: MainAxisAlignment.end,
@@ -721,6 +753,130 @@ class _HistoryState extends ConsumerState<_History> {
                   const SizedBox(height: Space.sm),
                 ],
             ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// A courier applicant's identity papers, fetched and signed for as long as it takes to
+/// look at them.
+///
+/// Loading, error and empty are three different answers and this draws three different
+/// things. "This applicant uploaded nothing" is a sentence the owner says on the
+/// telephone; "the connection dropped" is not, and a screen that says the first when it
+/// means the second sends somebody to ring a courier who did everything right.
+class _PapersSheet extends ConsumerWidget {
+  const _PapersSheet({required this.applicantUid});
+
+  final String applicantUid;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
+    final colors = theme.luqma;
+    final papers = ref.watch(staffDocumentsForProvider(applicantUid));
+
+    return SafeArea(
+      key: ApplicationsScreen.papersSheetKey,
+      child: Padding(
+        padding: const EdgeInsets.all(Space.lg),
+        child: switch (papers) {
+          // hasError first: a provider that fails before it has ever emitted stays
+          // AsyncLoading with the error hanging off it, so the error arm never fires and
+          // the sheet spins for ever.
+          AsyncValue(hasError: true, :final error) => LuqmaErrorView(
+              failure: error,
+              onRetry: () => ref.invalidate(staffDocumentsForProvider(applicantUid)),
+            ),
+          AsyncValue(value: null, isLoading: true) => const Padding(
+              padding: EdgeInsets.all(Space.xxl),
+              child: Center(child: CircularProgressIndicator()),
+            ),
+          AsyncValue(value: null) => Padding(
+              key: ApplicationsScreen.papersEmptyKey,
+              padding: const EdgeInsets.all(Space.lg),
+              child: Text(
+                'المتقدم ده مرفعش صور البطاقة. مش هينفع تقبله من غيرها — كلّمه يقدّم تاني '
+                'من النسخة الجديدة من التطبيق.',
+                style: theme.textTheme.bodyMedium?.copyWith(color: colors.textSecondary),
+              ),
+            ),
+          AsyncValue(value: final StaffDocuments found) => SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text('صور البطاقة', style: theme.textTheme.titleMedium),
+                  const SizedBox(height: Space.md),
+                  for (final (label, path) in [
+                    ('وش البطاقة', found.idFrontPath),
+                    ('ضهر البطاقة', found.idBackPath),
+                    ('سيلفي وهو ماسك البطاقة', found.selfiePath),
+                  ]) ...[
+                    Text(label, style: theme.textTheme.labelLarge),
+                    const SizedBox(height: Space.xs),
+                    _SignedImage(path: path),
+                    const SizedBox(height: Space.md),
+                  ],
+                ],
+              ),
+            ),
+        },
+      ),
+    );
+  }
+}
+
+/// One photograph out of the private bucket.
+///
+/// The link is asked for here rather than alongside the row, so it is minted when
+/// somebody actually looks and expires shortly after they stop. A signed link for a
+/// national ID that lives as long as the screen does is a public URL with extra steps.
+class _SignedImage extends ConsumerWidget {
+  const _SignedImage({required this.path});
+
+  final String path;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final colors = Theme.of(context).luqma;
+
+    return FutureBuilder<Result<String>>(
+      future: ref.read(staffDocumentsRepositoryProvider).signedUrl(path),
+      builder: (context, snapshot) {
+        final url = snapshot.data?.valueOrNull;
+        if (url == null) {
+          return Container(
+            height: 180,
+            decoration: BoxDecoration(
+              color: colors.background,
+              borderRadius: Radii.cardAll,
+              border: Border.all(color: colors.hairline),
+            ),
+            child: Center(
+              child: snapshot.connectionState == ConnectionState.done
+                  ? Icon(Icons.broken_image_outlined, color: colors.textSecondary)
+                  : const CircularProgressIndicator(),
+            ),
+          );
+        }
+        return ClipRRect(
+          borderRadius: Radii.cardAll,
+          child: Image.network(
+            url,
+            height: 260,
+            // Never cropped: an admin approving the middle of an ID has not seen its
+            // edges, and the edges are where a card says when it expires.
+            fit: BoxFit.contain,
+            errorBuilder: (context, _, _) => Container(
+              height: 180,
+              color: colors.background,
+              child: Center(
+                child: Icon(Icons.broken_image_outlined, color: colors.textSecondary),
+              ),
+            ),
           ),
         );
       },

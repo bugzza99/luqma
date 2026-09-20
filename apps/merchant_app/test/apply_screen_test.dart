@@ -1,6 +1,9 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:image/image.dart' as img;
 import 'package:luqma_core/luqma_core.dart';
 import 'package:merchant_app/src/auth/apply_screen.dart';
 import 'package:merchant_app/src/auth/sign_in_screen.dart';
@@ -8,6 +11,20 @@ import 'package:merchant_app/src/auth/sign_in_screen.dart';
 void main() {
   late FakeStaffApplicationRepository applications;
   late FakeAuthService auth;
+  late FakeStaffDocumentsRepository papers;
+
+  /// Real JPEG bytes. `ImageCompressor` decodes what it is handed, so three arbitrary
+  /// bytes would exercise the "could not read that photograph" path rather than the one
+  /// under test.
+  Uint8List photograph() {
+    final image = img.Image(width: 64, height: 40);
+    for (var y = 0; y < 40; y += 1) {
+      for (var x = 0; x < 64; x += 1) {
+        image.setPixelRgb(x, y, (x * 4) % 256, (y * 6) % 256, 128);
+      }
+    }
+    return Uint8List.fromList(img.encodeJpg(image));
+  }
 
   Future<void> pumpScreen(
     WidgetTester tester, {
@@ -20,6 +37,7 @@ void main() {
 
     applications = FakeStaffApplicationRepository(failure: repositoryFailure);
     auth = FakeAuthService();
+    papers = FakeStaffDocumentsRepository(signedInUid: 'applicant');
     addTearDown(auth.dispose);
 
     await tester.pumpWidget(
@@ -27,6 +45,8 @@ void main() {
         overrides: [
           staffApplicationRepositoryProvider.overrideWithValue(applications),
           authServiceProvider.overrideWithValue(auth),
+          staffDocumentsRepositoryProvider.overrideWithValue(papers),
+          pickImageProvider.overrideWithValue(() async => photograph()),
         ],
         child: MaterialApp(
           theme: LuqmaTheme.light,
@@ -50,10 +70,35 @@ void main() {
     await tester.enterText(find.byKey(ApplyScreen.confirmKey), password);
   }
 
-  Future<void> submit(WidgetTester tester) async {
+  /// Taps the three document slots. A courier is approved on their papers, so every
+  /// courier application in these tests has to hand them in the way a real one does.
+  ///
+  /// A no-op when the form is not asking — a restaurant has no slots to tap — so
+  /// [submit] can call it without every test having to know which kind it chose.
+  Future<void> handInPapers(WidgetTester tester) async {
+    if (find.byKey(ApplyScreen.papersKey).evaluate().isEmpty) return;
+    for (final key in [
+      ApplyScreen.idFrontKey,
+      ApplyScreen.idBackKey,
+      ApplyScreen.selfieKey,
+    ]) {
+      await tester.ensureVisible(find.byKey(key));
+      await tester.tap(find.byKey(key));
+      await tester.pumpAndSettle();
+    }
+  }
+
+  Future<void> tapSubmit(WidgetTester tester) async {
     await tester.ensureVisible(find.byKey(ApplyScreen.submitKey));
     await tester.tap(find.byKey(ApplyScreen.submitKey));
     await tester.pumpAndSettle();
+  }
+
+  /// Fills in whatever the chosen kind requires, then sends it. Tests that are *about*
+  /// sending an incomplete form tap the button directly instead.
+  Future<void> submit(WidgetTester tester) async {
+    await handInPapers(tester);
+    await tapSubmit(tester);
   }
 
   group('Way in from sign-in screen', () {
@@ -247,6 +292,94 @@ void main() {
       expect(find.byKey(ApplyScreen.errorKey), findsOneWidget);
       expect(find.textContaining('الرقم ده عنده حساب بالفعل'), findsOneWidget);
       expect(applications.all, isEmpty);
+    });
+  });
+
+  group('a courier shows their papers', () {
+    Future<void> fillIn(WidgetTester tester) async {
+      await tester.enterText(find.byKey(ApplyScreen.nameKey), 'سعيد');
+      await tester.enterText(find.byKey(ApplyScreen.phoneKey), '01000000000');
+      await enterPassword(tester);
+    }
+
+    testWidgets('asks a courier for three photographs and says why', (tester) async {
+      await pumpScreen(tester);
+
+      expect(find.byKey(ApplyScreen.papersKey), findsOneWidget);
+      expect(find.byKey(ApplyScreen.idFrontKey), findsOneWidget);
+      expect(find.byKey(ApplyScreen.idBackKey), findsOneWidget);
+      expect(find.byKey(ApplyScreen.selfieKey), findsOneWidget);
+      // Somebody handing over a photograph of their national ID is owed the reason and
+      // the rule about how long it is kept, on the screen that asks for it.
+      expect(find.textContaining('بيحصّل فلوسهم'), findsOneWidget);
+      expect(find.textContaining('بتتمسح'), findsOneWidget);
+    });
+
+    testWidgets('asks a restaurant for none of it', (tester) async {
+      await pumpScreen(tester);
+
+      await tester.tap(find.byKey(const Key('apply.kind.restaurant')));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(ApplyScreen.papersKey), findsNothing);
+    });
+
+    testWidgets('refuses to file a courier application with no papers', (tester) async {
+      // The database refuses to *approve* one, which would strand somebody in the queue
+      // with an application nobody can act on and no way to tell why. Said here instead.
+      await pumpScreen(tester);
+      await fillIn(tester);
+
+      await tapSubmit(tester);
+
+      expect(find.byKey(ApplyScreen.errorKey), findsOneWidget);
+      expect(find.textContaining('صور البطاقة التلاتة'), findsOneWidget);
+      expect(applications.all, isEmpty);
+      expect(papers.handIns, 0);
+    });
+
+    testWidgets('hands the papers in before the application', (tester) async {
+      await pumpScreen(tester);
+      await fillIn(tester);
+
+      await submit(tester);
+
+      expect(papers.handIns, 1);
+      expect(applications.all.single.kind, StaffApplicationKind.courier);
+      expect(find.byKey(ApplyScreen.successKey), findsOneWidget);
+    });
+
+    testWidgets('files nothing when the papers will not upload', (tester) async {
+      // The other order would leave a row in the owner's queue that cannot be approved,
+      // and the owner would find that out on the telephone.
+      await pumpScreen(tester);
+      papers.failWith = const OfflineFailure();
+      await fillIn(tester);
+
+      await submit(tester);
+
+      expect(applications.all, isEmpty);
+      expect(find.byKey(ApplyScreen.errorKey), findsOneWidget);
+      expect(find.textContaining('مفيش اتصال بالإنترنت'), findsOneWidget);
+    });
+
+    testWidgets('a chosen photograph is shown back, not just ticked off', (tester) async {
+      // The bucket is private and this screen is the last time the applicant sees what
+      // they sent, so a tick alone would ask them to trust that the right photograph
+      // went in — the one thing they cannot check afterwards.
+      await pumpScreen(tester);
+
+      await tester.ensureVisible(find.byKey(ApplyScreen.idFrontKey));
+      await tester.tap(find.byKey(ApplyScreen.idFrontKey));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.descendant(
+          of: find.byKey(ApplyScreen.idFrontKey),
+          matching: find.byType(Image),
+        ),
+        findsOneWidget,
+      );
     });
   });
 }

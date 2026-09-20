@@ -70,6 +70,10 @@ dev_dependencies:
   build_runner: ^2.4.0
   riverpod_generator: ^3.0.0
 
+  # Real JPEG bytes for the apply screen's document slots. ImageCompressor decodes what
+  # it is given, so a test that hands it three arbitrary bytes tests the error path.
+  image: ^4.2.0
+
   # The "flutter_lints" package below contains a set of recommended lints to
   # encourage good coding practices. The lint set provided by the package is
   # activated in the `analysis_options.yaml` file located at the root of your

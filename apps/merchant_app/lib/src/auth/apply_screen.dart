@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:luqma_core/luqma_core.dart';
@@ -27,6 +29,12 @@ class ApplyScreen extends ConsumerStatefulWidget {
   static const successKey = Key('apply.success');
   static const backButtonKey = Key('apply.back');
 
+  /// The three photographs a courier is approved on.
+  static const idFrontKey = Key('apply.idFront');
+  static const idBackKey = Key('apply.idBack');
+  static const selfieKey = Key('apply.selfie');
+  static const papersKey = Key('apply.papers');
+
   @override
   ConsumerState<ApplyScreen> createState() => _ApplyScreenState();
 }
@@ -44,6 +52,18 @@ class _ApplyScreenState extends ConsumerState<ApplyScreen> {
   bool _submitted = false;
   String? _error;
 
+  /// A courier's papers, held here until there is an account to upload them against.
+  ///
+  /// They cannot be sent before the account exists: the bucket policy compares the first
+  /// path segment to `auth.uid()`, so an upload by a signed-out applicant has no correct
+  /// path to use. So the form collects the bytes and `_submit` sends them in order.
+  Uint8List? _idFront;
+  Uint8List? _idBack;
+  Uint8List? _selfie;
+
+  bool get _needsPapers => _kind == StaffApplicationKind.courier;
+  bool get _hasPapers => _idFront != null && _idBack != null && _selfie != null;
+
   @override
   void dispose() {
     _name.dispose();
@@ -56,6 +76,14 @@ class _ApplyScreenState extends ConsumerState<ApplyScreen> {
 
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
+
+    // Said here rather than left to the server. The database refuses to *approve* a
+    // courier with no papers, which would strand somebody in the queue with an
+    // application nobody can act on and no way to tell why.
+    if (_needsPapers && !_hasPapers) {
+      setState(() => _error = 'محتاجين صور البطاقة التلاتة عشان نقدر نراجع طلبك');
+      return;
+    }
 
     setState(() {
       _busy = true;
@@ -95,6 +123,30 @@ class _ApplyScreenState extends ConsumerState<ApplyScreen> {
             : 'مقدرناش نعمل الحساب. جرّب تاني.';
       });
       return;
+    }
+
+    // Papers before the application, and the application is not filed if they fail.
+    //
+    // The other order would leave a row in the owner's queue that cannot be approved, and
+    // the owner would find that out on the telephone. Failing here leaves an account and
+    // no application, which the applicant fixes by filling the form in again — the second
+    // attempt signs into the account it already made.
+    if (_needsPapers) {
+      final papers = await ref.read(staffDocumentsRepositoryProvider).handIn(
+            idFront: _idFront!,
+            idBack: _idBack!,
+            selfie: _selfie!,
+          );
+      if (papers case Err(failure: final failure)) {
+        if (!mounted) return;
+        setState(() {
+          _busy = false;
+          _error = failure is OfflineFailure
+              ? 'مفيش اتصال بالإنترنت — اتأكد من الشبكة وجرّب تاني'
+              : 'مقدرناش نرفع صور البطاقة. جرّب تاني.';
+        });
+        return;
+      }
     }
 
     final repo = ref.read(staffApplicationRepositoryProvider);
@@ -288,6 +340,10 @@ class _ApplyScreenState extends ConsumerState<ApplyScreen> {
               return null;
             },
           ),
+          if (_needsPapers) ...[
+            const SizedBox(height: Space.lg),
+            _buildPapers(context),
+          ],
           const SizedBox(height: Space.md),
           Container(
             padding: const EdgeInsets.all(Space.md),
@@ -333,6 +389,52 @@ class _ApplyScreenState extends ConsumerState<ApplyScreen> {
     );
   }
 
+  /// The three photographs, and the sentence saying why they are being asked for.
+  ///
+  /// A courier holds other people's food and collects other people's cash, and somebody
+  /// handing over a photograph of their national ID is owed the reason and the rule about
+  /// how long it is kept. Saying neither is how an app gets refused a permission it
+  /// needed — and deserves to be.
+  Widget _buildPapers(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = theme.luqma;
+
+    return Column(
+      key: ApplyScreen.papersKey,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text('صور البطاقة', style: theme.textTheme.titleSmall),
+        const SizedBox(height: Space.xs),
+        Text(
+          'المندوب بيشيل أكل الناس وبيحصّل فلوسهم، فبنتأكد من شخصيته قبل الموافقة. '
+          'الصور دي محدش بيشوفها غير إدارة لقمة، وبتتمسح بعد ما تبطّل شغل معانا.',
+          style: theme.textTheme.bodySmall?.copyWith(color: colors.textSecondary),
+        ),
+        const SizedBox(height: Space.md),
+        _DocumentSlot(
+          slotKey: ApplyScreen.idFrontKey,
+          label: 'وش البطاقة',
+          bytes: _idFront,
+          onPicked: (bytes) => setState(() => _idFront = bytes),
+        ),
+        const SizedBox(height: Space.sm),
+        _DocumentSlot(
+          slotKey: ApplyScreen.idBackKey,
+          label: 'ضهر البطاقة',
+          bytes: _idBack,
+          onPicked: (bytes) => setState(() => _idBack = bytes),
+        ),
+        const SizedBox(height: Space.sm),
+        _DocumentSlot(
+          slotKey: ApplyScreen.selfieKey,
+          label: 'سيلفي وإنت ماسك البطاقة',
+          bytes: _selfie,
+          onPicked: (bytes) => setState(() => _selfie = bytes),
+        ),
+      ],
+    );
+  }
+
   Widget _buildSuccess(BuildContext context) {
     final theme = Theme.of(context);
     final colors = theme.luqma;
@@ -364,6 +466,138 @@ class _ApplyScreenState extends ConsumerState<ApplyScreen> {
           ),
           child: const Text('الرجوع لصفحة الدخول'),
         ),
+      ],
+    );
+  }
+}
+
+/// One photograph: pick it, see it, replace it.
+///
+/// Shrunk the moment it is chosen rather than at submit, for two reasons. The applicant
+/// finds out here that their camera produced something unreadable, while they still have
+/// the card in their hand; and `_submit` holds three images at once, which on a cheap
+/// handset is the difference between an upload and an out-of-memory kill.
+class _DocumentSlot extends ConsumerStatefulWidget {
+  const _DocumentSlot({
+    required this.slotKey,
+    required this.label,
+    required this.bytes,
+    required this.onPicked,
+  });
+
+  final Key slotKey;
+  final String label;
+  final Uint8List? bytes;
+  final ValueChanged<Uint8List> onPicked;
+
+  @override
+  ConsumerState<_DocumentSlot> createState() => _DocumentSlotState();
+}
+
+class _DocumentSlotState extends ConsumerState<_DocumentSlot> {
+  bool _busy = false;
+  String? _error;
+
+  Future<void> _pick() async {
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+
+    final picked = await ref.read(pickImageProvider)();
+    if (!mounted) return;
+
+    // Backing out of the picker is a decision, not a failure.
+    if (picked == null) {
+      setState(() => _busy = false);
+      return;
+    }
+
+    try {
+      final shrunk = await ImageCompressor.shrink(picked);
+      if (!mounted) return;
+      setState(() => _busy = false);
+      widget.onPicked(shrunk);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _busy = false;
+        _error = 'مقدرناش نقرا الصورة دي — جرّب صورة تانية';
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = theme.luqma;
+    final bytes = widget.bytes;
+    final done = bytes != null;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        InkWell(
+          key: widget.slotKey,
+          onTap: _busy ? null : _pick,
+          borderRadius: Radii.cardAll,
+          child: Container(
+            padding: const EdgeInsets.all(Space.md),
+            decoration: BoxDecoration(
+              color: colors.card,
+              borderRadius: Radii.cardAll,
+              border: Border.all(
+                color: done ? colors.brand : colors.border,
+              ),
+            ),
+            child: Row(
+              children: [
+                // The picture itself once there is one. A tick alone would leave somebody
+                // trusting that the right photograph went in, which is the one thing they
+                // cannot check afterwards — the bucket is private and this screen is the
+                // last time they see it.
+                if (done)
+                  ClipRRect(
+                    borderRadius: Radii.cardAll,
+                    child: Image.memory(
+                      bytes,
+                      width: Sizes.minTarget,
+                      height: Sizes.minTarget,
+                      fit: BoxFit.cover,
+                    ),
+                  )
+                else
+                  Icon(
+                    Icons.add_a_photo_outlined,
+                    size: Sizes.iconSm,
+                    color: colors.textSecondary,
+                  ),
+                const SizedBox(width: Space.md),
+                Expanded(
+                  child: Text(widget.label, style: theme.textTheme.bodyMedium),
+                ),
+                if (_busy)
+                  const SizedBox(
+                    width: Sizes.iconSm,
+                    height: Sizes.iconSm,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                else
+                  Text(
+                    done ? 'تغيير' : 'اختيار',
+                    style: theme.textTheme.labelLarge?.copyWith(color: colors.brand),
+                  ),
+              ],
+            ),
+          ),
+        ),
+        if (_error != null) ...[
+          const SizedBox(height: Space.xs),
+          Text(
+            _error!,
+            style: theme.textTheme.bodySmall?.copyWith(color: colors.danger),
+          ),
+        ],
       ],
     );
   }

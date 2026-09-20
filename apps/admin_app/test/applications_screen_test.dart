@@ -6,6 +6,7 @@ import 'package:luqma_core/luqma_core.dart';
 
 void main() {
   late FakeStaffApplicationRepository applications;
+  late FakeStaffDocumentsRepository papers;
 
   const appOld = StaffApplication(
     id: 'app-old',
@@ -30,17 +31,35 @@ void main() {
   Future<void> pump(
     WidgetTester tester, {
     List<StaffApplication> seed = const [appOld, appNew],
+    bool courierHasPapers = true,
+    Failure? papersFailure,
   }) async {
     tester.view.physicalSize = const Size(1080, 2340);
     tester.view.devicePixelRatio = 3;
     addTearDown(tester.view.reset);
 
     applications = FakeStaffApplicationRepository(seed: seed);
+    papers = FakeStaffDocumentsRepository(
+      signedInUid: 'u-admin',
+      seed: courierHasPapers
+          ? {
+              'u-courier': StaffDocuments(
+                uid: 'u-courier',
+                idFrontPath: 'u-courier/id-front.jpg',
+                idBackPath: 'u-courier/id-back.jpg',
+                selfiePath: 'u-courier/selfie.jpg',
+                uploadedAt: DateTime(2026, 9, 19),
+              ),
+            }
+          : const {},
+    )..readable.add('u-courier');
+    papers.failWith = papersFailure;
 
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
           staffApplicationRepositoryProvider.overrideWithValue(applications),
+          staffDocumentsRepositoryProvider.overrideWithValue(papers),
           // Approval builds the account now, so it needs the zone a shop sits in and the
           // shop a courier starts at.
           geographyRepositoryProvider.overrideWithValue(
@@ -256,5 +275,53 @@ void main() {
     await tester.enterText(find.byKey(ApplicationsScreen.historySearchKey), 'حد تاني');
     await tester.pumpAndSettle();
     expect(find.byKey(ApplicationsScreen.decidedKey('app-done')), findsNothing);
+  });
+
+  group('a courier is approved on their papers', () {
+    testWidgets('offers the papers on a courier and not on a shop', (tester) async {
+      await pump(tester);
+
+      // On the card, beside the decision rather than behind it: putting it inside the
+      // approve dialog would mean deciding before seeing the ID.
+      expect(find.byKey(ApplicationsScreen.papersKey('app-old')), findsOneWidget);
+      expect(find.byKey(ApplicationsScreen.papersKey('app-new')), findsNothing);
+    });
+
+    testWidgets('shows the three photographs', (tester) async {
+      await pump(tester);
+
+      await tester.ensureVisible(find.byKey(ApplicationsScreen.papersKey('app-old')));
+      await tester.tap(find.byKey(ApplicationsScreen.papersKey('app-old')));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(ApplicationsScreen.papersSheetKey), findsOneWidget);
+      expect(find.text('وش البطاقة'), findsOneWidget);
+      expect(find.text('ضهر البطاقة'), findsOneWidget);
+      expect(find.text('سيلفي وهو ماسك البطاقة'), findsOneWidget);
+    });
+
+    testWidgets('says plainly when an applicant uploaded nothing', (tester) async {
+      await pump(tester, courierHasPapers: false);
+
+      await tester.ensureVisible(find.byKey(ApplicationsScreen.papersKey('app-old')));
+      await tester.tap(find.byKey(ApplicationsScreen.papersKey('app-old')));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(ApplicationsScreen.papersEmptyKey), findsOneWidget);
+      expect(find.textContaining('مرفعش صور البطاقة'), findsOneWidget);
+    });
+
+    testWidgets('a dropped connection is not "they uploaded nothing"', (tester) async {
+      // The two answers send the owner to two different telephone calls, and saying the
+      // first when it means the second rings a courier who did everything right.
+      await pump(tester, papersFailure: const OfflineFailure());
+
+      await tester.ensureVisible(find.byKey(ApplicationsScreen.papersKey('app-old')));
+      await tester.tap(find.byKey(ApplicationsScreen.papersKey('app-old')));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(ApplicationsScreen.papersEmptyKey), findsNothing);
+      expect(find.byType(LuqmaErrorView), findsOneWidget);
+    });
   });
 }
