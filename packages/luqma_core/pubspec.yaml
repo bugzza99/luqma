@@ -36,7 +36,7 @@ dependencies:
 
   # The version this build was installed as, against minSupportedVersion. Read once at
   # start-up and handed to the gate as a string, so nothing here depends on a plugin.
-  package_info_plus: ^8.0.0
+  package_info_plus: ^10.0.0
 
   # The one outbound tap: the force-update button opening the store listing.
   url_launcher: ^6.3.0

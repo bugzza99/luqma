@@ -60,55 +60,50 @@ authorization.
 - No secret value appears in logs, artifacts, commits or APKs.
 - A second consecutive workflow run passes without manual database cleanup.
 
-## P1 — Migrate away from plugins applying the Kotlin Gradle plugin
+## MOSTLY DONE — Migrate away from plugins applying the Kotlin Gradle plugin
 
-### Evidence and impact
+Worked through on 2026-09-20. Three of the four plugins are clear; the fourth is blocked
+by a package we do not choose, and the block is recorded here so nobody spends the
+evening rediscovering it.
 
-Flutter 3.44.4 currently builds all three APKs, but warns that `package_info_plus` and
-`sentry_flutter` still apply the Kotlin Gradle plugin directly. Flutter states that a
-future version will turn this warning into a build failure. This is not a current release
-blocker, but it becomes one when Flutter or Android tooling is upgraded.
+**Upgraded, and each one verified by a build rather than by a changelog:**
 
-Versions observed during Phase 0:
+- `package_info_plus` 8.3.1 → **10.2.1**. The breaking changes in 9.0.0 and 10.0.0 are
+  platform minimums only — AGP >= 8.12.1, Gradle >= 8.13, Kotlin 2.2.0, win32 6.0.0,
+  Flutter >= 3.41.6 — and this repository was already above every one of them. The Dart
+  API we use, `PackageInfo.fromPlatform()`, did not change. 10.2.0 moved its Android
+  build to `build.gradle.kts` and applies KGP only below AGP 9, so it left the warning.
+- `maplibre_gl` 0.27.0 → **0.27.1**, which applies KGP only when no Kotlin extension
+  exists yet. It was never in this file's list because the map was added after it was
+  written — a reminder that the list is evidence from a build, not a memory.
+- `sentry_flutter` 9.27.0 → **9.30.0** (with `sentry`). 9.30 made its KGP application
+  conditional on AGP 9 **and** on `android.builtInKotlin` not being `'false'`.
 
-- `package_info_plus`: 8.3.1 resolved
-- `sentry_flutter`: 9.27.0 resolved
-- Flutter: 3.44.4
+**What is left, and why it cannot be taken here.** The warning now names
+`sentry_flutter` alone, and it names it because all three apps carry
+`android.builtInKotlin=false` — set by the Flutter template, which is what sentry 9.30
+reads. Setting it to `true` was tried and **fails the build** in
+`app_links-7.2.1/android/build.gradle.kts`, which applies `org.jetbrains.kotlin.android`
+with no version check; AGP 9 refuses that outright. `app_links` is already at its latest
+version and is not a dependency we picked — it arrives under `supabase_flutter`.
 
-Re-checked 2026-09-05, still on the same two versions, and the shape of the upgrade is
-now known:
+So this waits on `app_links`. When it migrates, flipping that one line in the three
+`gradle.properties` files clears the last warning with no other change; the comment
+beside the flag says so. Do not flip it before then, and do not work around it by
+pinning an older `app_links` — that is a transitive pin on the auth client.
 
-- `package_info_plus` 8.3.1 → **10.2.1**, two major versions. Not reachable without
-  widening the constraint in all four pubspecs, and majors are where its Android side
-  has been changing.
-- `sentry_flutter` 9.27.0 → **9.29.0**, already inside `^9.0.0`; 10.0.0 is an alpha and
-  is not a candidate.
+### Verification performed
 
-This stayed undone deliberately rather than being half-taken. The acceptance criteria
-below require a build with no warning **and** a device smoke test of start-up, Sentry
-init and the version read, and the owner has not wanted APKs built this week. Taking the
-safe Sentry minor on its own would not clear the warning — `package_info_plus` is the
-other half — so it would be an unverified dependency bump that changes nothing
-observable, which is the combination this file warns against everywhere else.
-
-### Required work
-
-1. Re-check the packages' current changelogs and Flutter's Built-in Kotlin migration
-   guidance; do not assume the versions above are still current.
-2. Determine whether upgrading either package removes the warning before editing Gradle
-   files manually.
-3. Upgrade one plugin at a time and inspect its transitive Android changes.
-4. If a Gradle migration is still required, apply it consistently to customer, merchant
-   and admin apps.
-5. Do not run a broad `pub upgrade --major-versions` as part of this task.
-
-### Acceptance criteria
-
-- `tool/build-ci-apks.ps1` builds all three APKs without the Kotlin plugin warning.
-- All Flutter analyzers and tests pass.
-- Startup, Sentry initialization and version/build-number reads are smoke-tested on an
-  Android device or emulator.
-- The release gate passes twice from a clean checkout.
+- `flutter build apk --debug` on customer_app, before and after each upgrade. The warning
+  went from `maplibre_gl, sentry_flutter` (with package_info_plus already dropped) to
+  `sentry_flutter` alone.
+- `tool/run_tests.ps1 -SkipCloud`: gen-l10n, four analyzers, four Flutter suites and the
+  PGlite schema suite all passed. The two cloud suites were skipped and are not
+  implicated — a Flutter dependency cannot reach Postgres.
+- Still outstanding from the original acceptance criteria: a release build of all three
+  APKs through `tool/build-apks.ps1`, and a device smoke test of start-up, Sentry init
+  and the version read. `PackageInfo.fromPlatform()` is what حسابي shows as the build
+  number, so that read is the one to look at on the handset.
 
 ## DONE — Normalize the support WhatsApp config key
 
