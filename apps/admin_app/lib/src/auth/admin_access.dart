@@ -37,6 +37,9 @@ abstract final class Routes {
   static const cuisines = '/cuisines';
   static const coupons = '/coupons';
   static const subscriptions = '/subscriptions';
+
+  /// Who owes the platform out of their delivery fees, and recording the cash.
+  static const courierBilling = '/courier-billing';
 }
 
 enum AdminAccess {

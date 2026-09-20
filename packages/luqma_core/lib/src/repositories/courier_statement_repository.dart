@@ -174,6 +174,10 @@ class FakeCourierStatementRepository implements CourierStatementRepository {
 
   final List<({String courierUid, int amount})> recorded = [];
 
+  /// Every receipt id this fake was handed, failures included. What a retry must repeat
+  /// is the id, and that is checkable even when the attempt it belongs to went nowhere.
+  final List<String?> receiptIds = [];
+
   @override
   Future<Result<List<CourierCharge>>> charges({
     String? courierUid,
@@ -214,6 +218,7 @@ class FakeCourierStatementRepository implements CourierStatementRepository {
     String? note,
     String? receiptId,
   }) async {
+    receiptIds.add(receiptId);
     if (failure case final f?) return Result.err(f);
 
     if (receiptId != null) {

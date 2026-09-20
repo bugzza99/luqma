@@ -9,6 +9,7 @@ import '../auth/identity_provider.dart';
 import '../about/about_editor_screen.dart';
 import '../developer/developer_editor_screen.dart';
 import '../applications/applications_screen.dart';
+import '../billing/courier_billing_screen.dart';
 import '../config/config_screen.dart';
 import '../coupons/coupons_screen.dart';
 import '../cuisines/cuisines_screen.dart';
@@ -76,6 +77,11 @@ const _modules = [
     route: Routes.coupons,
   ),
   AdminModule(label: 'الفريق', icon: Icons.badge, route: Routes.staff),
+  AdminModule(
+    label: 'حسابات المناديب',
+    icon: Icons.delivery_dining,
+    route: Routes.courierBilling,
+  ),
   AdminModule(
     label: 'طلبات الانضمام',
     icon: Icons.assignment_ind_outlined,
@@ -167,6 +173,10 @@ GoRouter router(Ref ref) {
           GoRoute(path: Routes.customers, builder: (_, _) => const CustomersScreen()),
           GoRoute(path: Routes.issues, builder: (_, _) => const IssuesScreen()),
           GoRoute(path: Routes.staff, builder: (_, _) => const StaffScreen()),
+          GoRoute(
+            path: Routes.courierBilling,
+            builder: (_, _) => const CourierBillingScreen(),
+          ),
           GoRoute(
             path: Routes.applications,
             builder: (_, _) => const ApplicationsScreen(),
