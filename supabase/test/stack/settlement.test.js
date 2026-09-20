@@ -532,4 +532,97 @@ describe('settling a delivered order', () => {
       } finally { await q('rollback'); }
     });
   });
+
+  /**
+   * What the courier keeps, through a real token.
+   *
+   * `apply_courier_settlement` writes `staff.commission_owed`, which `guard_staff_money`
+   * refuses to anybody who has not declared server mode — and `security definer` does not
+   * satisfy that guard, it asks whether a trusted server function has declared itself.
+   * That is the identical trap the merchant settlement fell into and the reason the block
+   * above exists, so the courier half gets the same treatment rather than the same
+   * surprise. Every assertion here goes through a courier's own token.
+   */
+  describe('the courier is charged too', () => {
+    const asCourier = async (uid, fn) => {
+      await q('begin');
+      try {
+        await q("select set_config('role','authenticated',true)");
+        await q("select set_config('request.jwt.claims',$1,true)", [JSON.stringify({
+          sub: uid, role: 'authenticated',
+          app_metadata: { role: 'courier', scope: 'platform' },
+        })]);
+        return await fn();
+      } finally { await q('rollback'); }
+    };
+
+    const deliverAsCourier = async (orderId, courierUid) => {
+      await q('begin');
+      try {
+        await q("select set_config('role','authenticated',true)");
+        await q("select set_config('request.jwt.claims',$1,true)", [JSON.stringify({
+          sub: courierUid, role: 'authenticated',
+          app_metadata: { role: 'courier', scope: 'platform' },
+        })]);
+        await q('update orders set status = $2 where id = $1', [orderId, 'delivered']);
+        await q('commit');
+      } catch (e) { await q('rollback'); throw e; }
+    };
+
+    const owed = async (uid) => (await q(
+      'select commission_owed from staff where uid = $1', [uid])).rows[0].commission_owed;
+
+    it('moves the balance of the courier who delivered', async () => {
+      const m = await makeMerchant();
+      const before = await owed(courier);
+      const o = await makeOrder(m, {
+        status: 'outForDelivery', courierUid: courier, deliveryBy: 'platform' });
+
+      await deliverAsCourier(o, courier);
+
+      const row = (await q('select * from courier_settlements where order_id = $1',
+                           [o])).rows[0];
+      assert.ok(row, 'a delivered order leaves a courier row whatever the amount');
+      assert.equal(row.ground, 'platform');
+      assert.equal(await owed(courier), before + row.amount);
+
+      await q('delete from courier_settlements where order_id = $1', [o]);
+    });
+
+    it('refuses a courier writing their own balance down', async () => {
+      const message = await asCourier(courier, async () => {
+        try {
+          await q('update staff set commission_owed = 0 where uid = $1', [courier]);
+          return null;
+        } catch (e) { return e.message; }
+      });
+
+      assert.ok(message, 'a courier who can zero their own balance owes nothing');
+    });
+
+    it('keeps the settlement and the payment functions out of their reach', async () => {
+      for (const call of [
+        ['select apply_courier_settlement($1, true)', [null]],
+        ['select record_courier_payment($1, 100)', [courier]],
+      ]) {
+        const message = await asCourier(courier, async () => {
+          try { await q(call[0], call[1]); return null; } catch (e) { return e.message; }
+        });
+        assert.ok(message, `${call[0]} should not be reachable`);
+        assert.match(message, /permission denied|only an admin/i);
+      }
+    });
+
+    it('shows a courier their own earnings and no one elses', async () => {
+      const earnings = await asCourier(courier, async () =>
+        (await q('select courier_earnings() as e')).rows[0].e);
+
+      // Zeros rather than nothing: a screen that gets null for "this month" has to invent
+      // a number or draw an error, and neither is "you have not delivered anything yet".
+      for (const span of ['today', 'week', 'month']) {
+        assert.ok(earnings[span], `${span} is missing`);
+        assert.equal(typeof earnings[span].net, 'number');
+      }
+    });
+  });
 });
