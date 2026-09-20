@@ -30,6 +30,7 @@ import '../repositories/subscription_request_repository.dart';
 import '../repositories/plan_perks_repository.dart';
 import '../repositories/courier_order_repository.dart';
 import '../repositories/courier_roster_repository.dart';
+import '../repositories/courier_statement_repository.dart';
 import '../repositories/courier_queue_drain.dart';
 import '../repositories/courier_write_queue.dart';
 import '../repositories/cuisine_repository.dart';
@@ -614,6 +615,34 @@ Future<CourierEarnings> courierEarnings(Ref ref) async {
   final result = await ref.watch(courierOrderRepositoryProvider).earnings();
   return result.valueOrThrow;
 }
+
+@Riverpod(keepAlive: true)
+CourierStatementRepository courierStatementRepository(Ref ref) =>
+    SupabaseCourierStatementRepository(ref.watch(supabaseProvider));
+
+/// A courier's own statement lines. [courierUid] null is the signed-in rider, which is
+/// what their own screen passes — the policy answers it, so nobody has to name themselves.
+@riverpod
+Future<List<CourierCharge>> courierCharges(Ref ref, {String? courierUid}) async =>
+    (await ref.watch(courierStatementRepositoryProvider)
+            .charges(courierUid: courierUid, limit: 100))
+        .valueOrThrow;
+
+@riverpod
+Future<List<CourierPayment>> courierPayments(Ref ref, {String? courierUid}) async =>
+    (await ref.watch(courierStatementRepositoryProvider)
+            .payments(courierUid: courierUid, limit: 100))
+        .valueOrThrow;
+
+/// What one courier owes right now. Null is the signed-in rider.
+@riverpod
+Future<int> courierOwed(Ref ref, {String? courierUid}) async =>
+    (await ref.watch(courierStatementRepositoryProvider).owedBy(courierUid)).valueOrThrow;
+
+/// Every courier whose account is not square, for the owner's collection round.
+@riverpod
+Future<List<CourierBalance>> couriersOutstanding(Ref ref) async =>
+    (await ref.watch(courierStatementRepositoryProvider).outstanding()).valueOrThrow;
 
 /// One staff member row, watched live.
 @riverpod

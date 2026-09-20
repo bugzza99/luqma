@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:luqma_core/luqma_core.dart';
 
+import 'courier_statement_screen.dart';
 import 'navigation.dart';
 
 /// Courier mode.
@@ -54,6 +55,7 @@ class CourierScreen extends ConsumerStatefulWidget {
   /// The span the summary card is showing: today, this week, or this month.
   static Key spanKey(String span) => Key('courier.span.$span');
   static const summaryNetKey = Key('courier.summary.net');
+  static const statementKey = Key('courier.statement');
   static const summaryCommissionKey = Key('courier.summary.commission');
   static Key callKey(String id) => Key('courier.call.$id');
   static Key callMerchantKey(String id) => Key('courier.callMerchant.$id');
@@ -1238,6 +1240,19 @@ class _CourierDaySummaryViewState extends ConsumerState<_CourierDaySummaryView> 
               emphasis: true,
             ),
           ],
+          const SizedBox(height: Space.sm),
+          // The way out of the one-screen mode, and the answer to «عليّ قد إيه وهل اتسدد».
+          // The delivery page stays as small as it was; this is a page of its own.
+          OutlinedButton.icon(
+            key: CourierScreen.statementKey,
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => const CourierStatementScreen(),
+              ),
+            ),
+            icon: const Icon(Icons.receipt_long_outlined, size: Sizes.iconSm),
+            label: const Text('كشف الحساب'),
+          ),
           // The per-shop split is what settles a shift, so it belongs to today and to
           // nothing else: a month of shops is a page, not a line somebody reads standing up.
           if (_span == _Span.today && summary != null && summary.shops.isNotEmpty) ...[

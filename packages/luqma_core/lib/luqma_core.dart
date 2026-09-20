@@ -50,6 +50,7 @@ export 'src/repositories/config_repository.dart';
 export 'src/repositories/coupon_repository.dart';
 export 'src/repositories/courier_order_repository.dart';
 export 'src/repositories/courier_roster_repository.dart';
+export 'src/repositories/courier_statement_repository.dart';
 export 'src/repositories/courier_queue_drain.dart';
 export 'src/repositories/courier_write_queue.dart';
 export 'src/repositories/customer_repository.dart';

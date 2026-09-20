@@ -167,3 +167,150 @@ class CourierEarnings {
   /// The calendar month.
   final CourierSpan month;
 }
+
+/// Why a delivery was charged what it was charged.
+///
+/// Stored on every settled order including the zeros, so «اتحسب عليك صفر» is a fact with
+/// a reason behind it rather than a row that is simply not there.
+enum CourierGround {
+  /// A platform delivery by a platform courier: the fee was theirs, so a share of it is
+  /// the platform's.
+  platform,
+
+  /// The shop delivered with its own rider. The fee was never the courier's.
+  merchantDelivery,
+
+  /// Carried for a shop rather than for the platform, on an order the platform owned.
+  notPlatformCourier;
+
+  static CourierGround parse(String? raw) => switch (raw) {
+        'platform' => CourierGround.platform,
+        'notPlatformCourier' => CourierGround.notPlatformCourier,
+        _ => CourierGround.merchantDelivery,
+      };
+}
+
+/// One line of a courier's statement: a delivery, and what it cost them.
+@immutable
+class CourierCharge {
+  const CourierCharge({
+    required this.orderId,
+    required this.basis,
+    required this.bps,
+    required this.amount,
+    required this.ground,
+    required this.settledAt,
+    this.reversedAt,
+    this.orderNumber,
+    this.merchantName,
+  });
+
+  factory CourierCharge.fromRow(Map<String, dynamic> row) {
+    // The order is embedded, and an embed the policy cannot satisfy comes back null
+    // rather than refused. A line with no order still belongs on the statement — the
+    // money moved — so the name and number are optional and the screen says so.
+    final order = switch (row['orders']) {
+      final Map order => order,
+      _ => null,
+    };
+    return CourierCharge(
+      orderId: row['order_id'] as String,
+      basis: (row['basis'] as num?)?.toInt() ?? 0,
+      bps: (row['bps'] as num?)?.toInt() ?? 0,
+      amount: (row['amount'] as num?)?.toInt() ?? 0,
+      ground: CourierGround.parse(row['ground'] as String?),
+      settledAt: DateTime.parse(row['settled_at'] as String).toLocal(),
+      reversedAt: switch (row['reversed_at']) {
+        final String at => DateTime.parse(at).toLocal(),
+        _ => null,
+      },
+      orderNumber: (order?['order_number'] as num?)?.toInt(),
+      merchantName: order?['merchant_name'] as String?,
+    );
+  }
+
+  final String orderId;
+
+  /// The delivery fee this courier kept, which the charge is a percentage of.
+  final int basis;
+
+  /// The rate applied, frozen at the moment of delivery. Kept so an old line still
+  /// explains itself after the rate has moved.
+  final int bps;
+
+  final int amount;
+  final CourierGround ground;
+  final DateTime settledAt;
+
+  /// Set when the delivery stopped being a delivery and the charge was handed back.
+  final DateTime? reversedAt;
+
+  final int? orderNumber;
+  final String? merchantName;
+
+  bool get isReversed => reversedAt != null;
+
+  /// The rate as a percentage, for showing beside the amount.
+  double get percent => bps / 100;
+}
+
+/// Cash a courier handed over, and when.
+@immutable
+class CourierPayment {
+  const CourierPayment({
+    required this.id,
+    required this.amount,
+    required this.createdAt,
+    this.note,
+  });
+
+  factory CourierPayment.fromRow(Map<String, dynamic> row) => CourierPayment(
+        id: row['id'] as String,
+        amount: (row['amount'] as num?)?.toInt() ?? 0,
+        createdAt: DateTime.parse(row['created_at'] as String).toLocal(),
+        note: row['note'] as String?,
+      );
+
+  final String id;
+  final int amount;
+  final DateTime createdAt;
+  final String? note;
+}
+
+/// A courier, and what they owe. The admin's side of the same account.
+@immutable
+class CourierBalance {
+  const CourierBalance({
+    required this.uid,
+    required this.name,
+    required this.phone,
+    required this.owed,
+    this.isActive = true,
+  });
+
+  factory CourierBalance.fromRow(Map<String, dynamic> row) => CourierBalance(
+        uid: row['uid'] as String,
+        name: row['name'] as String? ?? '',
+        phone: row['phone'] as String? ?? '',
+        owed: (row['commission_owed'] as num?)?.toInt() ?? 0,
+        isActive: row['is_active'] as bool? ?? true,
+      );
+
+  final String uid;
+  final String name;
+  final String phone;
+
+  /// Positive is owed to the platform. Negative is credit — somebody handed over more
+  /// than they owed, which is said in words rather than with a minus sign.
+  final int owed;
+
+  final bool isActive;
+}
+
+/// What `record_courier_payment` gives back: what it stored, and what is left.
+@immutable
+class CourierCollection {
+  const CourierCollection({required this.remaining});
+
+  final int remaining;
+}
