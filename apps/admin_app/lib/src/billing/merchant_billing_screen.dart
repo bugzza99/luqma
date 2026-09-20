@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -6,6 +5,7 @@ import 'package:luqma_core/luqma_core.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../shell/layout.dart';
+import 'pending_collection.dart';
 
 /// How one merchant pays, and recording that they did.
 ///
@@ -941,38 +941,14 @@ class _Settlements extends ConsumerWidget {
   }
 
   Future<void> _collect(BuildContext context, WidgetRef ref) async {
-    final prefs = SharedPreferencesAsync();
-    final prefKey = 'pending_payment_merchant_${merchant.id}';
-    final pendingJson = await prefs.getString(prefKey);
-
-    // The receipt id and the amount are **one** frozen pair, set before the first
-    // request and never changed afterwards.
-    //
-    // They used to be two things: a receipt id minted when the dialog opened and an
-    // amount read out of the box at every press. So a collection that committed and lost
-    // its reply left the field editable — `pendingAmount` was whatever the *prefs* had
-    // said when the dialog opened, which is null on a first attempt — and typing 200 and
-    // pressing again sent the original receipt id with a new figure. The server, doing
-    // exactly its job, answered with the first receipt for 100 and moved nothing; the
-    // screen said «اتسجّل 200 ج» and cleared the pending record. A false receipt in a
-    // cash business, produced by the very path built to prevent one.
-    String? receiptId;
-    int? frozenAmount;
-    if (pendingJson != null) {
-      try {
-        final map = jsonDecode(pendingJson) as Map<String, dynamic>;
-        receiptId = map['receiptId'] as String;
-        frozenAmount = map['amount'] as int;
-      } catch (_) {
-        // Both, or neither. The id is assigned first, so a record with a missing or
-        // non-integer amount left `receiptId` set and `frozenAmount` null — field
-        // editable, no notice, no discard button — and the next press would send a new
-        // figure under the old receipt. That is the original bug's exact shape,
-        // reassembled out of a half-readable preference.
-        receiptId = null;
-        frozenAmount = null;
-      }
-    }
+    // The frozen pair, and the reasoning for it, live in `PendingCollection` now — the
+    // courier collection needs the identical rule, and two copies of a rule about money
+    // is how one of them drifts. The key it builds is the one this screen has always
+    // used, so a pending record already on a phone is read unchanged.
+    final pending = PendingCollections(SharedPreferencesAsync(), kind: 'merchant');
+    final stored = await pending.load(merchant.id);
+    String? receiptId = stored?.receiptId;
+    int? frozenAmount = stored?.amount;
 
     // A pending record means the *reply* was lost, not that the money was. Ask the
     // receipts before telling the admin anything: if the server holds one under this id
@@ -992,9 +968,7 @@ class _Settlements extends ConsumerWidget {
                 .valueOrNull ??
             const <CommissionPayment>[];
         if (payments.any((p) => p.clientPaymentId == receiptId)) {
-          try {
-            await prefs.remove(prefKey);
-          } catch (_) {}
+          await pending.clear(merchant.id);
           receiptId = null;
           frozenAmount = null;
         }
@@ -1132,9 +1106,7 @@ class _Settlements extends ConsumerWidget {
                     onPressed: saving
                         ? null
                         : () async {
-                            try {
-                              await prefs.remove(prefKey);
-                            } catch (_) {}
+                            await pending.clear(merchant.id);
                             if (!dialogContext.mounted) return;
                             // A fresh receipt id as well as a fresh amount: the discarded
                             // one may yet be sitting in a queue somewhere, and reusing it
@@ -1176,12 +1148,8 @@ class _Settlements extends ConsumerWidget {
                             // Best effort, and deliberately not fatal: the pair is held
                             // in this dialog either way, and refusing to take the cash
                             // because a preference would not write is the wrong failure.
-                            try {
-                              await prefs.setString(prefKey, jsonEncode({
-                                'receiptId': receipt,
-                                'amount': amount,
-                              }));
-                            } catch (_) {}
+                            await pending.save(merchant.id,
+                                PendingCollection(receiptId: receipt, amount: amount));
                             if (!dialogContext.mounted) return;
 
                             final result = await ref
@@ -1195,9 +1163,7 @@ class _Settlements extends ConsumerWidget {
 
                             switch (result) {
                               case Ok(:final value):
-                                try {
-                                  await prefs.remove(prefKey);
-                                } catch (_) {}
+                                await pending.clear(merchant.id);
                                 if (!dialogContext.mounted) return;
                                 setDialogState(() {
                                   done = true;

@@ -628,6 +628,54 @@ DATABASE_URL=<luqma-test session pooler> npm --prefix supabase run test:stack
   and `sweep_staff_documents` now does too. **The stack teardowns need it as well** — a
   test that deletes its own uploads without naming it fails on `protect_delete` and leaves
   the bucket filling up every run.
+- **A platform courier keeps the delivery fee and pays the platform a share of it.**
+  Settled 2026-09-20 with the owner, and it is the half a structural review had parked.
+  `courier_commission_percent` (10, guarded 0..50 on the `config` table) of the fee **less
+  its discount**; free delivery costs the courier nothing, because a percentage of a fee
+  nobody received is charging for money nobody received. Collected in cash weekly, exactly
+  as a shop's commission is. **A shop's own rider hands the shop everything** and what
+  they are paid is between them — there is still no column anywhere for a shop's wage to
+  its courier and the app does not invent one. **A courier's debt survives them leaving.**
+- **There is a `courier_settlements` row for every delivered order, including the zeros.**
+  This is the fix for what parked the feature, and it is the shape rather than the
+  arithmetic. The old `apply_courier_settlement` asked at settlement time whether the
+  courier was eligible and **returned silently** when the answer was no — while
+  `is_courier_for_order` had already let that same courier mark the order delivered on
+  `auth.uid()` and an active staff row alone. Two questions, two answers, money in the
+  gap: a rider dropped from the platform roster worked all week, accrued nothing, and
+  nothing anywhere said so. Now `ground` records which of three answers applied
+  (`platform`, `merchantDelivery`, `notPlatformCourier`), eligibility is asked **once**
+  inside the delivery transaction and frozen, and a reversal reads the frozen figures back
+  rather than recomputing — so a rate changed next month cannot refund an amount nobody
+  was charged. Same rule as `order_settlements`: "an audit trail with the uninteresting
+  entries left out is one nobody can count."
+- **The courier's cut is computed twice, and that is deliberate.** `CourierCut` in Dart
+  and `apply_courier_settlement` in Postgres, tested against the same numbers by
+  `courier_money_test.dart` and `what_the_courier_keeps.test.js`. The phone *shows* the
+  figure and the server *decides* it. `~/` on an integer bps, because Postgres truncates
+  `(basis * bps) / 10000` — rounding on the phone would put it a piastre above the server
+  on half the orders in the city. The same arrangement `Revenue` and `engine.ts` had.
+- **Courier mode is no longer one screen, and the original reason still stands.** Amended
+  2026-09-21 by the owner: a rider could not see what they delivered, what was charged, how
+  much they owed, or whether last week's cash had been credited. The decision that was
+  reversed was about the *delivery* page — sized to be read one-handed at a junction — and
+  the eleven screens declined with it were a queue, a pickup flow, availability and a
+  problem sheet. A statement is none of those. The delivery page is untouched; كشف الحساب
+  is a page of its own reached from the summary card, the same shape as the merchant's
+  `StatementScreen`. Every charge carries the sum behind it («توصيل ٢٠ ج · عمولة ١٠٪») and
+  every zero carries its reason, so "why is it this much" is answered on the line rather
+  than by a telephone call.
+- **`PendingCollection` is the frozen pair, and both collection screens use it.** A
+  receipt id and an amount are one thing, set before the first request, written to disk
+  before it is sent, never edited afterwards, and read back only when **both** halves are
+  there. The merchant screen learned why: an id minted when the dialog opened and an
+  amount read from the box at every press meant a retry sent the original id with a new
+  figure — the server answered with the first receipt and moved nothing, and the screen
+  said «اتسجّل ٢٠٠ ج». A false receipt in a cash business, produced by the path built to
+  prevent one. The half-written record is the same bug reassembled, which is why `decode`
+  is both-or-neither. It lives in `admin_app/src/billing/pending_collection.dart` and the
+  key it builds is the one the merchant screen always used, so a pending record already on
+  a phone survives the move.
 - **A courier is paid outside the app, and the app's job is the facts.** Settled
   2026-09-11 when the earnings screen was specified and it turned out nothing in the
   product knew what a courier earns — no table, no column, no rule, only a colour note in
