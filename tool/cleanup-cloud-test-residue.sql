@@ -94,6 +94,13 @@ delete from storage.objects where bucket_id = 'media';
 -->>
 delete from media;
 -->>
+-- The same for a courier's identity papers. `staff_documents` cascades from `auth.users`
+-- below, so the row would go on its own -- the objects would not, and these are national
+-- ID photographs rather than a menu picture nobody minds leaving behind.
+delete from storage.objects where bucket_id = 'staff-docs';
+-->>
+delete from staff_documents;
+-->>
 -- The test accounts go through auth.users so the cascade takes their profile and staff
 -- rows with them, exactly as production deletion would. This is intentionally every
 -- account: the exact-project guard in cleanup-cloud.mjs makes this a test-only database.

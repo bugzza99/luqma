@@ -146,9 +146,22 @@ describe('an application becomes an account', () => {
     );
   });
 
+  // A courier is approved on their papers since 20261016000000: they carry other people's
+  // food and collect other people's cash, and the owner looks at an ID before saying yes.
+  const handInPapers = async (uid) => {
+    const names = [`${uid}/id-front.jpg`, `${uid}/id-back.jpg`, `${uid}/selfie.jpg`];
+    for (const name of names) {
+      await db.query(
+        `insert into storage.objects (bucket_id, name, owner) values ('staff-docs', $1, $2)
+         on conflict do nothing`, [name, uid]);
+    }
+    await db.query('select set_my_staff_documents($1, $2, $3)', names);
+  };
+
   it('a courier needs a shop to start with, and gets attached to it', async () => {
     await as(COURIER);
     const { rows } = await apply(COURIER, 'courier', 'محمد', '01277077557');
+    await handInPapers(COURIER);
 
     await as(ADMIN, { admin: true });
     await assert.rejects(
