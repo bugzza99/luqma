@@ -69,6 +69,9 @@ class _OfflineOnce implements CourierOrderRepository {
   Stream<Order> watchOrder(String orderId) => _real.watchOrder(orderId);
 
   @override
+  Future<Result<CourierEarnings>> earnings() => _real.earnings();
+
+  @override
   Future<Result<CourierDaySummary>> daySummary({DateTime? day}) =>
       _real.daySummary(day: day);
 }

@@ -57,6 +57,10 @@ class _Slow implements CourierOrderRepository {
   Stream<Order> watchOrder(String orderId) => const Stream.empty();
 
   @override
+  Future<Result<CourierEarnings>> earnings() async =>
+      const Result.ok(CourierEarnings.empty);
+
+  @override
   Future<Result<CourierDaySummary>> daySummary({DateTime? day}) async =>
       const Result.ok(CourierDaySummary.empty);
 }
@@ -89,6 +93,10 @@ class _Dead implements CourierOrderRepository {
 
   @override
   Stream<Order> watchOrder(String orderId) => const Stream.empty();
+
+  @override
+  Future<Result<CourierEarnings>> earnings() async =>
+      const Result.ok(CourierEarnings.empty);
 
   @override
   Future<Result<CourierDaySummary>> daySummary({DateTime? day}) async =>

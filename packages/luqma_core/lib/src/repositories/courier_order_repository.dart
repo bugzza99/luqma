@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../data/column_names.dart';
 import '../data/live_query.dart';
+import '../models/courier_money.dart';
 import '../models/courier_summary.dart';
 import '../models/order.dart';
 import '../result.dart';
@@ -43,6 +44,13 @@ abstract interface class CourierOrderRepository {
   /// What this courier did today (or on [day]): delivered count, returned count,
   /// cash in hand, and the per-shop breakdown.
   Future<Result<CourierDaySummary>> daySummary({DateTime? day});
+
+  /// Today, this week and this month: what was delivered, what came back, and what is
+  /// theirs once the platform's share comes out.
+  ///
+  /// One call for all three spans. The person reading this is standing in the street, and
+  /// three round trips is three chances for one of them not to arrive.
+  Future<Result<CourierEarnings>> earnings();
 }
 
 /// What a courier has on their hands: ready to collect, or already out.
@@ -211,6 +219,15 @@ class SupabaseCourierOrderRepository implements CourierOrderRepository {
       );
       if (data == null) return CourierDaySummary.empty;
       return CourierDaySummary.fromJson(Map<String, dynamic>.from(data as Map));
+    });
+  }
+
+  @override
+  Future<Result<CourierEarnings>> earnings() {
+    return Result.guard(() async {
+      final data = await _db.rpc('courier_earnings');
+      if (data == null) return CourierEarnings.empty;
+      return CourierEarnings.fromJson(Map<String, dynamic>.from(data as Map));
     });
   }
 }
@@ -415,5 +432,55 @@ class FakeCourierOrderRepository implements CourierOrderRepository {
     });
 
     return Result.ok(CourierDaySummary.of(matching));
+  }
+
+  /// The rate this fake charges, so a test can put the screen under a real one.
+  double commissionPercent = 10;
+
+  @override
+  Future<Result<CourierEarnings>> earnings() async {
+    if (failure != null) return Result.err(failure!);
+
+    final today = cairoDay(_now());
+    // Saturday, the week somebody settles for. `DateTime.weekday` runs Monday 1 to
+    // Sunday 7, so Saturday is 6 and the offset wraps through Sunday.
+    final weekStart = today.subtract(Duration(days: (today.weekday + 1) % 7));
+    final monthStart = DateTime.utc(today.year, today.month);
+
+    CourierSpan span(DateTime from) {
+      var delivered = 0, returned = 0, cash = 0, fees = 0, commission = 0;
+      for (final order in _orders.values) {
+        if (courierUid == null || order.courierUid != courierUid) continue;
+        final happenedAt = order.deliveredAt ?? _updatedAt[order.id];
+        if (happenedAt == null) continue;
+        final day = cairoDay(happenedAt);
+        if (day.isBefore(from) || day.isAfter(today)) continue;
+
+        if (order.status == OrderStatus.delivered) {
+          delivered++;
+          cash += order.pricing.total;
+          final cut = CourierCut.of(order, commissionPercent: commissionPercent);
+          fees += cut.forCourier + cut.forPlatform;
+          commission += cut.forPlatform;
+        } else if (order.status == OrderStatus.cancelled &&
+            order.cancelledBy == OrderActor.courier) {
+          returned++;
+        }
+      }
+      return CourierSpan(
+        delivered: delivered,
+        returned: returned,
+        cash: cash,
+        fees: fees,
+        commission: commission,
+        net: fees - commission,
+      );
+    }
+
+    return Result.ok(CourierEarnings(
+      today: span(today),
+      week: span(weekStart),
+      month: span(monthStart),
+    ));
   }
 }

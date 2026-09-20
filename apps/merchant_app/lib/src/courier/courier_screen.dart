@@ -47,6 +47,14 @@ class CourierScreen extends ConsumerStatefulWidget {
 
   static Key cardKey(String id) => Key('courier.card.$id');
   static Key cashKey(String id) => Key('courier.cash.$id');
+
+  /// Whose money the cash above is: the shop's, the rider's, and the platform's share.
+  static Key cutKey(String id) => Key('courier.cut.$id');
+
+  /// The span the summary card is showing: today, this week, or this month.
+  static Key spanKey(String span) => Key('courier.span.$span');
+  static const summaryNetKey = Key('courier.summary.net');
+  static const summaryCommissionKey = Key('courier.summary.commission');
   static Key callKey(String id) => Key('courier.call.$id');
   static Key callMerchantKey(String id) => Key('courier.callMerchant.$id');
   static Key shopAddressKey(String id) => Key('courier.shopAddress.$id');
@@ -376,6 +384,9 @@ class _Card extends ConsumerWidget {
               ],
             ),
           ),
+          // Directly under the figure it divides, because the two are one thought: this
+          // is what the rider does with the money they are about to be handed.
+          _CutBreakdown(order: order),
           Padding(
             padding: const EdgeInsets.all(Space.md),
             child: Column(
@@ -1115,15 +1126,34 @@ class _CarriedMerchantName extends ConsumerWidget {
 /// What the rider did today. If nothing has happened yet on this shift (0 delivered,
 /// 0 returned, 0 cash), the rider is told nothing — no empty card, no heading, no error
 /// card. When work has happened, shows deliveries, returns, cash in hand, and the per-shop split.
-class _CourierDaySummaryView extends ConsumerWidget {
+/// Which stretch of work the summary card is showing.
+enum _Span { today, week, month }
+
+class _CourierDaySummaryView extends ConsumerStatefulWidget {
   const _CourierDaySummaryView();
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_CourierDaySummaryView> createState() => _CourierDaySummaryViewState();
+}
+
+class _CourierDaySummaryViewState extends ConsumerState<_CourierDaySummaryView> {
+  _Span _span = _Span.today;
+
+  @override
+  Widget build(BuildContext context) {
     final summaryAsync = ref.watch(courierDaySummaryProvider);
     final summary = summaryAsync.value;
+    final earnings = ref.watch(courierEarningsProvider).value;
+    final chosen = switch (_span) {
+      _Span.today => earnings?.today,
+      _Span.week => earnings?.week,
+      _Span.month => earnings?.month,
+    };
 
-    if (summary == null || summary.isEmpty) {
+    // Nothing at all to say: no work today and nothing over the month either. A card of
+    // zeros on a rider's first morning reads as a broken screen.
+    if ((summary == null || summary.isEmpty) &&
+        (chosen == null || chosen.isEmpty)) {
       return const SizedBox.shrink();
     }
 
@@ -1147,29 +1177,70 @@ class _CourierDaySummaryView extends ConsumerWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(
-            'شغل النهاردة',
-            style: theme.textTheme.titleMedium,
+          Text('شغلك', style: theme.textTheme.titleMedium),
+          const SizedBox(height: Space.sm),
+          // Three spans on one screen rather than a screen of their own: courier mode is
+          // deliberately one page somebody can read at a junction, and this is a
+          // modification of the card that was already here.
+          SegmentedButton<_Span>(
+            segments: [
+              ButtonSegment(
+                value: _Span.today,
+                label: Text('النهاردة', key: CourierScreen.spanKey('today')),
+              ),
+              ButtonSegment(
+                value: _Span.week,
+                label: Text('الأسبوع', key: CourierScreen.spanKey('week')),
+              ),
+              ButtonSegment(
+                value: _Span.month,
+                label: Text('الشهر', key: CourierScreen.spanKey('month')),
+              ),
+            ],
+            selected: {_span},
+            showSelectedIcon: false,
+            onSelectionChanged: (s) => setState(() => _span = s.first),
           ),
           const SizedBox(height: Space.sm),
           LuqmaBillLine(
             key: CourierScreen.summaryDeliveredKey,
             label: 'اتسلّم',
-            value: strings.orderCount(summary.delivered),
+            value: strings.orderCount(chosen?.delivered ?? summary?.delivered ?? 0),
           ),
           const SizedBox(height: Space.xs),
           LuqmaBillLine(
             key: CourierScreen.summaryReturnedKey,
             label: 'اترجع',
-            value: strings.orderCount(summary.returned),
+            value: strings.orderCount(chosen?.returned ?? summary?.returned ?? 0),
           ),
           const SizedBox(height: Space.xs),
           LuqmaBillLine(
             key: CourierScreen.summaryCashKey,
-            label: 'كاش في إيدك',
-            value: strings.price(summary.cash),
+            // Only today's cash is in a pocket. Last month's was handed over weeks ago,
+            // and calling it «كاش في إيدك» would have a rider counting money they spent.
+            label: _span == _Span.today ? 'كاش في إيدك' : 'حصّلت',
+            value: strings.price(chosen?.cash ?? summary?.cash ?? 0),
           ),
-          if (summary.shops.isNotEmpty) ...[
+          if (chosen != null && chosen.commission > 0) ...[
+            const SizedBox(height: Space.xs),
+            LuqmaBillLine(
+              key: CourierScreen.summaryCommissionKey,
+              label: 'عمولة لقمة',
+              value: strings.price(chosen.commission),
+            ),
+          ],
+          if (chosen != null && (chosen.fees > 0 || chosen.delivered > 0)) ...[
+            const SizedBox(height: Space.xs),
+            LuqmaBillLine(
+              key: CourierScreen.summaryNetKey,
+              label: 'ليك',
+              value: strings.price(chosen.net),
+              emphasis: true,
+            ),
+          ],
+          // The per-shop split is what settles a shift, so it belongs to today and to
+          // nothing else: a month of shops is a page, not a line somebody reads standing up.
+          if (_span == _Span.today && summary != null && summary.shops.isNotEmpty) ...[
             const SizedBox(height: Space.sm),
             Divider(color: colors.hairline, height: 1),
             const SizedBox(height: Space.xs),
@@ -1297,3 +1368,65 @@ class _CustomReasonWidgetState extends State<_CustomReasonWidget> {
   }
 }
 
+/// Whose money is in the rider's hand, under the figure they are collecting.
+///
+/// A rider holding 120 ج has three questions and the order answers all three. The split
+/// is computed by [CourierCut] from the same numbers `apply_courier_settlement` uses, so
+/// what this shows at the door is what the server records a moment later.
+class _CutBreakdown extends ConsumerWidget {
+  const _CutBreakdown({required this.order});
+
+  final Order order;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
+    final colors = theme.luqma;
+    final strings = LuqmaStrings.of(context);
+    final cut = CourierCut.of(
+      order,
+      commissionPercent: ref.watch(appConfigProvider).courierCommissionPercent,
+    );
+
+    // The shop's own rider: everything goes back to the shop, and what they are paid for
+    // the trip is between them. The app has no column for that and says so rather than
+    // printing a number it would be guessing at.
+    if (cut.shopSettles) {
+      return Padding(
+        key: CourierScreen.cutKey(order.id),
+        padding: const EdgeInsets.fromLTRB(Space.md, Space.sm, Space.md, 0),
+        child: Text(
+          'كل الفلوس دي للمحل. حسابك على التوصيلة بينك وبين المحل.',
+          style: theme.textTheme.bodySmall?.copyWith(color: colors.textSecondary),
+        ),
+      );
+    }
+
+    return Padding(
+      key: CourierScreen.cutKey(order.id),
+      padding: const EdgeInsets.fromLTRB(Space.md, Space.sm, Space.md, 0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          LuqmaBillLine(label: 'تدي المحل', value: strings.price(cut.forShop)),
+          const SizedBox(height: Space.xs),
+          LuqmaBillLine(label: 'ليك', value: strings.price(cut.forCourier)),
+          if (cut.forPlatform > 0) ...[
+            const SizedBox(height: Space.xs),
+            LuqmaBillLine(
+              label: 'عمولة لقمة',
+              value: strings.price(cut.forPlatform),
+            ),
+            const SizedBox(height: Space.xs),
+            // Said plainly, because a rider who thinks this comes out of the cash in
+            // their hand will hand over the wrong money at the door.
+            Text(
+              'العمولة مش بتتخصم دلوقتي — بتتحسب عليك وبتتحصّل كاش آخر الأسبوع.',
+              style: theme.textTheme.bodySmall?.copyWith(color: colors.textSecondary),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}

@@ -14,6 +14,7 @@ import '../models/menu_item.dart';
 import '../models/merchant.dart';
 import '../models/billing.dart';
 import '../models/courier_roster.dart';
+import '../models/courier_money.dart';
 import '../models/courier_summary.dart';
 import '../models/daily_meal.dart';
 import '../models/order.dart';
@@ -600,6 +601,17 @@ Stream<List<String?>> carriedMerchants(Ref ref) =>
 @riverpod
 Future<CourierDaySummary> courierDaySummary(Ref ref) async {
   final result = await ref.watch(courierOrderRepositoryProvider).daySummary();
+  return result.valueOrThrow;
+}
+
+/// Today, this week and this month: deliveries, returns, and what is theirs once the
+/// platform's share comes out.
+///
+/// Auto-disposed and read on demand. A rider opens this to settle up, not to watch it —
+/// and a figure held for the session is one that stops agreeing with the last delivery.
+@riverpod
+Future<CourierEarnings> courierEarnings(Ref ref) async {
+  final result = await ref.watch(courierOrderRepositoryProvider).earnings();
   return result.valueOrThrow;
 }
 

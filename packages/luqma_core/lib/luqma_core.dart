@@ -24,6 +24,7 @@ export 'src/models/billing.dart';
 export 'src/models/subscription_request.dart';
 export 'src/models/converters.dart';
 export 'src/models/coupon.dart';
+export 'src/models/courier_money.dart';
 export 'src/models/courier_roster.dart';
 export 'src/models/courier_summary.dart';
 export 'src/models/daily_meal.dart';

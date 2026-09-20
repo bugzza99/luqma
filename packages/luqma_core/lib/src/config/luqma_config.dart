@@ -76,6 +76,7 @@ class LuqmaConfig {
     required this.updateMessage,
     required this.supportWhatsapp,
     this.defaultCommissionPercent = 5,
+    this.courierCommissionPercent = 10,
     this.commissionAlertPounds = 500,
     this.aboutDescription,
     this.developerName,
@@ -127,6 +128,14 @@ class LuqmaConfig {
   /// The one commission rate every shop follows unless the owner agreed it another
   /// (`merchants.commission_custom`). A percentage of the food, never of delivery.
   final double defaultCommissionPercent;
+
+  /// What a platform courier pays the platform out of the delivery fee they kept.
+  ///
+  /// Read on the courier's own screen so the split they see before handing the cash over
+  /// is the split the server will record. Zero is a real setting, not a missing one: it
+  /// is how a courier runs at no commission, which is what every platform courier does
+  /// until the owner decides otherwise.
+  final double courierCommissionPercent;
 
   /// Owed above this many pounds, a shop and the owner are told.
   final int commissionAlertPounds;
@@ -248,6 +257,11 @@ class LuqmaConfig {
         final value = source.read('default_commission_percent');
         if (value is num && value >= 0 && value <= 50) return value.toDouble();
         return defaults.defaultCommissionPercent;
+      }(),
+      courierCommissionPercent: () {
+        final value = source.read('courier_commission_percent');
+        if (value is num && value >= 0 && value <= 50) return value.toDouble();
+        return defaults.courierCommissionPercent;
       }(),
       commissionAlertPounds: ranged(
         'commission_alert_pounds',

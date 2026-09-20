@@ -1022,7 +1022,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byKey(CourierScreen.summaryKey), findsNothing);
-      expect(find.text('شغل النهاردة'), findsNothing);
+      expect(find.text('شغلك'), findsNothing);
       expect(find.byKey(CourierScreen.errorKey), findsNothing);
     });
 
@@ -1075,7 +1075,7 @@ void main() {
 
       // Summary card is present
       expect(find.byKey(CourierScreen.summaryKey), findsOneWidget);
-      expect(find.text('شغل النهاردة'), findsOneWidget);
+      expect(find.text('شغلك'), findsOneWidget);
 
       // Three totals:
       // 1. Deliveries: 3
@@ -1118,7 +1118,103 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byKey(CourierScreen.summaryKey), findsNothing);
-      expect(find.text('شغل النهاردة'), findsNothing);
+      expect(find.text('شغلك'), findsNothing);
+    });
+  });
+
+  group('whose money is in the rider’s hand', () {
+    Order platformOrder({int fee = 2000, int subtotal = 10000}) =>
+        order(id: 'o_split', courierUid: 'c1', status: OrderStatus.outForDelivery)
+            .copyWith(
+          deliveryBy: DeliveryBy.platform,
+          pricing: OrderPricing(
+            subtotal: subtotal,
+            deliveryFee: fee,
+            total: subtotal + fee,
+          ),
+        );
+
+    testWidgets('splits the cash three ways on a platform delivery', (tester) async {
+      await pump(tester, seed: [platformOrder()]);
+      await tester.pumpAndSettle();
+
+      final split = find.byKey(CourierScreen.cutKey('o_split'));
+      expect(split, findsOneWidget);
+      expect(find.descendant(of: split, matching: find.text('تدي المحل')), findsOneWidget);
+      expect(find.descendant(of: split, matching: find.text('ليك')), findsOneWidget);
+      expect(find.descendant(of: split, matching: find.text('عمولة لقمة')), findsOneWidget);
+    });
+
+    testWidgets('says the commission is not coming out of this cash', (tester) async {
+      // A rider who thinks it is will hand over the wrong money at the door, which is the
+      // one mistake this whole card exists to stop.
+      await pump(tester, seed: [platformOrder()]);
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('مش بتتخصم دلوقتي'), findsOneWidget);
+    });
+
+    testWidgets('claims to know nothing when the shop delivers with its own rider',
+        (tester) async {
+      final own = order(id: 'o_split', courierUid: 'c1', status: OrderStatus.outForDelivery)
+          .copyWith(
+        deliveryBy: DeliveryBy.merchant,
+        pricing: const OrderPricing(subtotal: 10000, deliveryFee: 2000, total: 12000),
+      );
+      await pump(tester, seed: [own]);
+      await tester.pumpAndSettle();
+
+      final split = find.byKey(CourierScreen.cutKey('o_split'));
+      expect(find.descendant(of: split, matching: find.text('ليك')), findsNothing);
+      expect(find.textContaining('بينك وبين المحل'), findsOneWidget);
+    });
+  });
+
+  group('the three spans', () {
+    testWidgets('offers today, this week and this month on the one card', (tester) async {
+      // Courier mode stays one screen somebody can read at a junction, so this is a
+      // modification of the card that was already there rather than a shell of its own.
+      await pump(tester, seed: [
+        order(id: 'o_d', courierUid: 'c1', status: OrderStatus.delivered)
+            .copyWith(deliveredAt: DateTime(2026, 9, 22, 13)),
+      ]);
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(CourierScreen.spanKey('today')), findsOneWidget);
+      expect(find.byKey(CourierScreen.spanKey('week')), findsOneWidget);
+      expect(find.byKey(CourierScreen.spanKey('month')), findsOneWidget);
+    });
+
+    testWidgets('stops calling it cash in hand once it is not today', (tester) async {
+      // Last month's takings were handed over weeks ago. Calling them «كاش في إيدك» has a
+      // rider counting money they no longer have.
+      await pump(tester, seed: [
+        order(id: 'o_d', courierUid: 'c1', status: OrderStatus.delivered)
+            .copyWith(deliveredAt: DateTime(2026, 9, 22, 13)),
+      ]);
+      await tester.pumpAndSettle();
+      expect(find.text('كاش في إيدك'), findsOneWidget);
+
+      await tester.tap(find.byKey(CourierScreen.spanKey('month')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('كاش في إيدك'), findsNothing);
+      expect(find.text('حصّلت'), findsOneWidget);
+    });
+
+    testWidgets('keeps the per-shop split to today, where it settles a shift',
+        (tester) async {
+      await pump(tester, seed: [
+        order(id: 'o_d', courierUid: 'c1', status: OrderStatus.delivered)
+            .copyWith(deliveredAt: DateTime(2026, 9, 22, 13)),
+      ], carriedMerchants: const {'m1'});
+      await tester.pumpAndSettle();
+      expect(find.byKey(CourierScreen.summaryShopKey('m1')), findsOneWidget);
+
+      await tester.tap(find.byKey(CourierScreen.spanKey('week')));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(CourierScreen.summaryShopKey('m1')), findsNothing);
     });
   });
 }
