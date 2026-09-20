@@ -22,7 +22,7 @@ three chances to drop one — and a dropped one is silent. A build with no
 `LUQMA_SENTRY_DSN` reports nothing and looks identical to one that has it:
 
 ```
-powershell -ExecutionPolicy Bypass -File tooluild-apks.ps1
+powershell -ExecutionPolicy Bypass -File tool\build-apks.ps1
 ```
 
 It fetches the anon key from the linked project rather than having it pasted, carries the
@@ -1296,7 +1296,7 @@ DATABASE_URL=<luqma-test session pooler> npm --prefix supabase run test:stack
   no prepaid order could be delivered, refused or cancelled by the person doing it — and a
   coupon guard that refused the service key. **Push every migration to `luqma-test` before
   production** (`npx supabase db push --db-url <luqma-test session pooler>`), and run
-  `toolun_tests.ps1`; a green suite against a stale schema proves nothing.
+  `tool\run_tests.ps1`; a green suite against a stale schema proves nothing.
 - **A function that writes a table nobody is granted must be `security definer`.**
   `payment_receipts` grants no insert, by design; `top_up_wallet` ran as the caller and so
   every receipt-bearing payment from a real admin token failed, while every owner-run test
