@@ -1,15 +1,22 @@
+// ignore_for_file: depend_on_referenced_packages
+
+import 'dart:async';
+import 'dart:convert';
+
 import 'package:admin_app/src/billing/merchant_billing_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:luqma_core/luqma_core.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:shared_preferences_platform_interface/in_memory_shared_preferences_async.dart';
+import 'package:shared_preferences_platform_interface/shared_preferences_async_platform_interface.dart';
 
-/// How a merchant pays, and recording that they did.
-///
-/// Every number on this screen is cash somebody handed over in a shop. Nothing here is
-/// inferred and nothing is undoable from the app — a mistake is corrected by recording
-/// the opposite, the way a ledger works.
 void main() {
+  setUp(() {
+    SharedPreferencesAsyncPlatform.instance = InMemorySharedPreferencesAsync.empty();
+  });
+
   const plans = [
     Plan(id: 'free', name: 'مجانية', sortOrder: 0),
     Plan(
@@ -54,13 +61,18 @@ void main() {
     List<OrderSettlement> settlements = const [],
     Failure? settlementFailure,
     Failure? collectFailure,
+
+    /// A repository of the test's own, for the cases about *retrying* a collection —
+    /// where what happened on the first attempt is the whole question.
+    FakeSettlementRepository? settlementRepoOverride,
   }) async {
-    settlementRepo = FakeSettlementRepository(
-      seed: settlements,
-      failure: settlementFailure,
-      writeFailure: collectFailure,
-      owedStart: (seed ?? merchant()).commissionOwed,
-    );
+    settlementRepo = settlementRepoOverride ??
+        FakeSettlementRepository(
+          seed: settlements,
+          failure: settlementFailure,
+          writeFailure: collectFailure,
+          owedStart: (seed ?? merchant()).commissionOwed,
+        );
     // A phone, not the runner's 800x600 default — which is wider than it is tall and
     // unlike anything this ships on. `ListView` builds lazily, so a card below the fold
     // of a window that shape is not merely off-screen: it does not exist, and every
@@ -597,6 +609,228 @@ void main() {
           findsNothing);
     });
 
+    // The reply is lost on a phone in a shop, which is an ordinary thing. What must not
+    // happen next is the admin typing a different figure, pressing again, and being told
+    // that figure was recorded — because the server, correctly, answers a repeated
+    // receipt with the receipt it already has and moves nothing.
+    group('a retry after a lost reply', () {
+      late _LostReply repo;
+
+      Future<void> pumpLosing(WidgetTester tester) async {
+        repo = _LostReply(owedStart: 47500);
+        await pump(
+          tester,
+          seed: merchant(model: RevenueModel.commission, value: 1000, owed: 47500),
+          settlementRepoOverride: repo,
+        );
+        await tester.drag(
+          find.byKey(MerchantBillingScreen.listKey),
+          const Offset(0, -900),
+        );
+        await tester.pumpAndSettle();
+      }
+
+      testWidgets('freezes the amount with the receipt', (tester) async {
+        await pumpLosing(tester);
+
+        await collect(tester, '100');
+        expect(find.textContaining('مااتسجّلش'), findsOneWidget);
+        expect(find.byKey(MerchantBillingScreen.pendingNoticeKey), findsOneWidget);
+
+        final field = tester.widget<TextField>(
+          find.byKey(MerchantBillingScreen.collectAmountKey),
+        );
+        expect(field.enabled, isFalse,
+            reason: 'the receipt is sent; its amount is no longer anybody to change');
+
+        // And the field refuses the new figure even when it is typed at.
+        await tester.enterText(
+            find.byKey(MerchantBillingScreen.collectAmountKey), '200');
+        await tester.tap(find.byKey(MerchantBillingScreen.confirmCollectKey));
+        await tester.pumpAndSettle();
+
+        expect(repo.calls, hasLength(2));
+        expect(repo.calls.first.receipt, isNotNull);
+        expect(repo.calls.last.receipt, repo.calls.first.receipt,
+            reason: 'one press, one receipt, however many attempts');
+        expect(repo.calls.last.amount, 10000,
+            reason: 'the amount the receipt was sent with, not the retyped one');
+      });
+
+      testWidgets('confirms the amount the server recorded, not the one on screen',
+          (tester) async {
+        await pumpLosing(tester);
+
+        await collect(tester, '100');
+        await tester.tap(find.byKey(MerchantBillingScreen.confirmCollectKey));
+        await tester.pumpAndSettle();
+
+        // One receipt for 100, from the attempt whose reply was lost.
+        expect(repo.recorded, hasLength(1));
+        expect(repo.recorded.single.amount, 10000);
+        expect(repo.owed, 37500, reason: 'and the money moved exactly once');
+
+        final said = tester
+            .widget<Text>(find.byKey(MerchantBillingScreen.collectedKey))
+            .data!;
+        expect(said, contains('100'));
+        expect(said, isNot(contains('200')));
+      });
+
+      // The notice used to say «اقفل وافتح تحصيل جديد», which did nothing at all:
+      // reopening reloads the same frozen pair, because only a successful send of that
+      // receipt clears it. So an admin whose 100 genuinely never landed, handed 250 a
+      // week later, could leave the dialog only by recording the 100 — crediting a
+      // merchant money they never paid, with no negative collection anywhere to undo it.
+      testWidgets('a pending collection that never landed can be discarded',
+          (tester) async {
+        await pumpLosing(tester);
+
+        await collect(tester, '100');
+        expect(find.byKey(MerchantBillingScreen.pendingNoticeKey), findsOneWidget);
+
+        await tester.tap(find.byKey(MerchantBillingScreen.discardPendingKey));
+        await tester.pumpAndSettle();
+
+        expect(find.byKey(MerchantBillingScreen.pendingNoticeKey), findsNothing);
+        expect(
+          tester
+              .widget<TextField>(find.byKey(MerchantBillingScreen.collectAmountKey))
+              .enabled,
+          isTrue,
+          reason: 'the discarded attempt holds the field no longer',
+        );
+
+        await tester.enterText(
+            find.byKey(MerchantBillingScreen.collectAmountKey), '250');
+        await tester.tap(find.byKey(MerchantBillingScreen.confirmCollectKey));
+        await tester.pumpAndSettle();
+
+        expect(find.byKey(MerchantBillingScreen.collectedKey), findsOneWidget);
+        expect(repo.calls.last.amount, 25000, reason: 'the cash actually handed over');
+        expect(repo.calls.last.receipt, isNot(repo.calls.first.receipt),
+            reason: 'a fresh receipt, or the server answers with the discarded one');
+      });
+
+      // A pending record means the *reply* was lost, not that the money was. Asking the
+      // receipts first is what keeps an admin from being shown a notice — and a frozen
+      // field — about a collection that has already succeeded.
+      testWidgets('a pending record whose collection landed is cleared silently',
+          (tester) async {
+        await SharedPreferencesAsync().setString(
+          'pending_payment_merchant_m1',
+          jsonEncode({'receiptId': 'r-1', 'amount': 10000}),
+        );
+
+        final landed = FakeSettlementRepository(
+          owedStart: 37500,
+          payments: [
+            CommissionPayment(
+              id: 'pay-1',
+              merchantId: 'm1',
+              amount: 10000,
+              recordedBy: 'admin1',
+              recordedAt: DateTime(2026, 8, 30),
+              clientPaymentId: 'r-1',
+            ),
+          ],
+        );
+        await pump(
+          tester,
+          seed: merchant(model: RevenueModel.commission, value: 1000, owed: 37500),
+          settlementRepoOverride: landed,
+        );
+        await tester.drag(
+          find.byKey(MerchantBillingScreen.listKey),
+          const Offset(0, -900),
+        );
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.byKey(MerchantBillingScreen.collectKey));
+        await tester.pumpAndSettle();
+
+        expect(find.byKey(MerchantBillingScreen.pendingNoticeKey), findsNothing);
+        expect(
+          tester
+              .widget<TextField>(find.byKey(MerchantBillingScreen.collectAmountKey))
+              .enabled,
+          isTrue,
+        );
+        expect(
+          await SharedPreferencesAsync().getString('pending_payment_merchant_m1'),
+          isNull,
+          reason: 'a record about a collection that landed is not kept',
+        );
+      });
+
+      // The receipt and the figure asked for are allowed to differ, and when they do the
+      // admin is reading a number they did not type. Said out loud, or it is a figure to
+      // doubt rather than a receipt to read.
+      testWidgets('says so when the receipt disagrees with what was asked for',
+          (tester) async {
+        final stale = _StaleReceipt(owedStart: 47500);
+        await pump(
+          tester,
+          seed: merchant(model: RevenueModel.commission, value: 1000, owed: 47500),
+          settlementRepoOverride: stale,
+        );
+        await tester.drag(
+          find.byKey(MerchantBillingScreen.listKey),
+          const Offset(0, -900),
+        );
+        await tester.pumpAndSettle();
+
+        await collect(tester, '250');
+
+        final said = tester
+            .widget<Text>(find.byKey(MerchantBillingScreen.collectedKey))
+            .data!;
+        expect(said, contains('100'), reason: 'the receipt the server holds');
+        expect(said, contains('250'), reason: 'and the figure that was not recorded');
+        expect(said, contains('قبل كده'));
+      });
+    });
+
+    // `PopScope` used to sit outside the `StatefulBuilder`, so it kept the `canPop` it
+    // was built with — true — however many times the dialog rebuilt. Android Back took
+    // the dialog away mid-save, and a collection that then succeeded exited at the
+    // mounted check: no confirmation, no refreshed figures, and cash on the counter.
+    testWidgets('Android back cannot dismiss the dialog mid-save', (tester) async {
+      final completer = Completer<Result<CommissionCollection>>();
+      final repo = _PendingCollection(completer, owedStart: 47500);
+
+      await pump(
+        tester,
+        seed: merchant(model: RevenueModel.commission, value: 1000, owed: 47500),
+        settlementRepoOverride: repo,
+      );
+      await tester.drag(
+        find.byKey(MerchantBillingScreen.listKey),
+        const Offset(0, -900),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(MerchantBillingScreen.collectKey));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+          find.byKey(MerchantBillingScreen.collectAmountKey), '300');
+      await tester.tap(find.byKey(MerchantBillingScreen.confirmCollectKey));
+      await tester.pump();
+
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(MerchantBillingScreen.confirmCollectKey), findsOneWidget,
+          reason: 'the dialog is still there, because the save is still running');
+
+      completer.complete(
+        const Result.ok(CommissionCollection(recorded: 30000, remaining: 17500)),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(MerchantBillingScreen.collectedKey), findsOneWidget);
+    });
+
     // A merchant moved to a subscription with a debt outstanding is exactly the case
     // where somebody has to be able to collect it.
     testWidgets('a debt survives a move to a subscription, and can still be taken',
@@ -715,4 +949,69 @@ void main() {
       expect(summary.data, contains('لحد'));
     });
   });
+}
+
+/// A collection that reaches the database and whose reply does not come back.
+///
+/// The write is a real one — `super.recordPayment` commits it — and only the answer is
+/// lost, which is the shape of the failure this path exists for. A fake that refused the
+/// write instead would test nothing: the whole question is what the *second* attempt is
+/// told about a collection that already happened.
+class _LostReply extends FakeSettlementRepository {
+  _LostReply({required super.owedStart});
+
+  final List<({int amount, String? receipt})> calls = [];
+  bool loseNextReply = true;
+
+  @override
+  Future<Result<CommissionCollection>> recordPayment({
+    required String merchantId,
+    required int amount,
+    String? note,
+    String? clientPaymentId,
+  }) async {
+    calls.add((amount: amount, receipt: clientPaymentId));
+    final result = await super.recordPayment(
+      merchantId: merchantId,
+      amount: amount,
+      note: note,
+      clientPaymentId: clientPaymentId,
+    );
+    if (loseNextReply) {
+      loseNextReply = false;
+      return const Result.err(UnknownFailure('the reply never arrived'));
+    }
+    return result;
+  }
+}
+
+/// A server that answers with a receipt for a different amount than the one asked for —
+/// what a retry of a collection that had already landed looks like from the screen.
+class _StaleReceipt extends FakeSettlementRepository {
+  _StaleReceipt({required super.owedStart});
+
+  @override
+  Future<Result<CommissionCollection>> recordPayment({
+    required String merchantId,
+    required int amount,
+    String? note,
+    String? clientPaymentId,
+  }) async =>
+      const Result.ok(CommissionCollection(recorded: 10000, remaining: 37500));
+}
+
+/// A collection that is still in flight, so the dialog can be caught mid-save.
+class _PendingCollection extends FakeSettlementRepository {
+  _PendingCollection(this._completer, {required super.owedStart});
+
+  final Completer<Result<CommissionCollection>> _completer;
+
+  @override
+  Future<Result<CommissionCollection>> recordPayment({
+    required String merchantId,
+    required int amount,
+    String? note,
+    String? clientPaymentId,
+  }) =>
+      _completer.future;
 }

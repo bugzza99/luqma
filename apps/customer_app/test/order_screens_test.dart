@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:customer_app/src/orders/order_help_sheet.dart';
 import 'package:customer_app/src/orders/order_screen.dart';
 import 'package:customer_app/src/orders/orders_screen.dart';
@@ -61,6 +63,7 @@ void main() {
 
   late FakeOrderRepository orders;
   late FakeExternalLinks links;
+  late FakeZaatarRepository zaatar;
 
   /// Brings a control at the bottom of a lazily built list into the viewport.
   ///
@@ -87,6 +90,11 @@ void main() {
     /// Orders that already carry a rating when the screen opens — what returning to an
     /// order rated last week looks like.
     List<String> ratedOrderIds = const [],
+    FakeZaatarRepository? zaatarRepo,
+
+    /// A repository of the test's own, for the cases that need the order to *change*
+    /// while somebody is looking at it.
+    FakeOrderRepository? orderRepo,
   }) async {
     // A real phone, not the 800x600 test window. This screen stacks a hero, a five-step
     // track, a bill and the order's own lines, so on a window wider than it is tall the
@@ -96,13 +104,14 @@ void main() {
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
 
-    orders = FakeOrderRepository(seed: seed, failure: failure);
+    orders = orderRepo ?? FakeOrderRepository(seed: seed, failure: failure);
     // Seeded before the tree is built: `watchHasRated` is read as the card first builds,
     // so a rating added afterwards is a rating the screen never sees.
     for (final id in ratedOrderIds) {
       orders.ratings.add({'orderId': id, 'stars': 5});
     }
     links = FakeExternalLinks();
+    zaatar = zaatarRepo ?? FakeZaatarRepository();
 
     await tester.pumpWidget(
       ProviderScope(
@@ -115,6 +124,7 @@ void main() {
           externalLinksProvider.overrideWithValue(links),
           remoteConfigServiceProvider
               .overrideWithValue(RemoteConfigService(FakeConfigFetcher({}))),
+          zaatarRepositoryProvider.overrideWithValue(zaatar),
         ],
         child: MaterialApp(
           theme: dark ? LuqmaTheme.dark : LuqmaTheme.light,
@@ -760,6 +770,334 @@ void main() {
       expect(orders.issues, isEmpty);
       expect(find.text('اكتب اللي حصل الأول'), findsOneWidget);
     });
+
+    testWidgets('a typed question is answered from the topic the server chose',
+        (tester) async {
+      await pump(
+        tester,
+        const OrderScreen(orderId: 'o1'),
+        seed: [order(status: OrderStatus.placed)],
+      );
+
+      zaatar.enqueue(
+        const ZaatarVerdict(topic: HelpTopic.late, fromModel: true),
+      );
+
+      await reveal(tester, find.byKey(OrderScreen.issueKey));
+      await tester.tap(find.byKey(OrderScreen.issueKey));
+      await tester.pumpAndSettle();
+
+      expect(find.text('زعتر'), findsOneWidget);
+      expect(find.textContaining('أهلاً، أنا زعتر من لقمة'), findsOneWidget);
+
+      await tester.enterText(find.byKey(OrderHelpSheet.inputKey), 'الأكل فين؟');
+      await tester.tap(find.byKey(OrderHelpSheet.sendKey));
+      await tester.pumpAndSettle();
+
+      // The words are OrderHelper's, not the server's: the server sent a topic and the
+      // sentence was drawn here from the order.
+      expect(find.byKey(OrderHelpSheet.replyKey), findsOneWidget);
+      expect(find.textContaining('اتأخر في الرد على طلبك'), findsOneWidget);
+      expect(
+        find.byKey(OrderHelpSheet.actionKey(HelpAction.complain)),
+        findsOneWidget,
+      );
+      // And nothing says the rules answered, because they did not.
+      expect(find.text('زعتر بيرد من الردود الجاهزة دلوقتي'), findsNothing);
+      expect(zaatar.calls.single.message, 'الأكل فين؟');
+    });
+
+    testWidgets('the server topic and the offline topic draw the same sentence',
+        (tester) async {
+      // One answer specification. The Edge Function used to carry its own copy of these
+      // templates in TypeScript; it returns a topic now, and this is what says so.
+      await pump(
+        tester,
+        const OrderScreen(orderId: 'o1'),
+        seed: [order(status: OrderStatus.placed)],
+      );
+      zaatar.enqueue(const ZaatarVerdict(topic: HelpTopic.late, fromModel: true));
+
+      await reveal(tester, find.byKey(OrderScreen.issueKey));
+      await tester.tap(find.byKey(OrderScreen.issueKey));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(find.byKey(OrderHelpSheet.inputKey), 'سؤال');
+      await tester.tap(find.byKey(OrderHelpSheet.sendKey));
+      await tester.pumpAndSettle();
+
+      final fromServer =
+          tester.widget<Text>(find.descendant(
+        of: find.byKey(OrderHelpSheet.replyKey),
+        matching: find.byType(Text),
+      )).data;
+
+      // Now the same order and the same topic, reached the other way.
+      zaatar.fallback = true;
+      await tester.enterText(
+        find.byKey(OrderHelpSheet.inputKey),
+        'الطلب اتأخر',
+      );
+      await tester.tap(find.byKey(OrderHelpSheet.sendKey));
+      await tester.pumpAndSettle();
+
+      final fromRules =
+          tester.widget<Text>(find.descendant(
+        of: find.byKey(OrderHelpSheet.replyKey),
+        matching: find.byType(Text),
+      )).data;
+
+      expect(fromRules, isNotNull);
+      expect(fromRules, fromServer);
+    });
+
+    testWidgets('fallback path answers from OrderHelper with the grey line',
+        (tester) async {
+      await pump(
+        tester,
+        const OrderScreen(orderId: 'o1'),
+        seed: [order(status: OrderStatus.placed)],
+      );
+      zaatar.fallback = true;
+
+      await reveal(tester, find.byKey(OrderScreen.issueKey));
+      await tester.tap(find.byKey(OrderScreen.issueKey));
+      await tester.pumpAndSettle();
+
+      // Keyword 'اتأخر' routes to HelpTopic.late
+      await tester.enterText(
+        find.byKey(OrderHelpSheet.inputKey),
+        'الطلب اتأخر جداً ومش عارف أعمل إيه',
+      );
+      await tester.tap(find.byKey(OrderHelpSheet.sendKey));
+      await tester.pumpAndSettle();
+
+      expect(find.text('زعتر بيرد من الردود الجاهزة دلوقتي'), findsOneWidget);
+      expect(find.textContaining('اتأخر في الرد على طلبك'), findsOneWidget);
+      expect(find.byKey(OrderHelpSheet.replyKey), findsOneWidget);
+    });
+
+    testWidgets('suggested cancel still asks for confirmation',
+        (tester) async {
+      await pump(
+        tester,
+        const OrderScreen(orderId: 'o1'),
+        seed: [order(status: OrderStatus.placed)],
+      );
+      zaatar.enqueue(
+        const ZaatarVerdict(topic: HelpTopic.cancel, fromModel: true),
+      );
+
+      await reveal(tester, find.byKey(OrderScreen.issueKey));
+      await tester.tap(find.byKey(OrderScreen.issueKey));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(find.byKey(OrderHelpSheet.inputKey), 'عاوز ألغي');
+      await tester.tap(find.byKey(OrderHelpSheet.sendKey));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(OrderHelpSheet.actionKey(HelpAction.cancelOrder)));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(OrderScreen.confirmCancelKey), findsOneWidget);
+    });
+
+    testWidgets('complaint from a typed message files a ticket with that text',
+        (tester) async {
+      await pump(
+        tester,
+        const OrderScreen(orderId: 'o1'),
+        seed: [order(status: OrderStatus.delivered)],
+      );
+      zaatar.enqueue(
+        const ZaatarVerdict(topic: HelpTopic.wrongItems, fromModel: true),
+      );
+
+      await reveal(tester, find.byKey(OrderScreen.issueKey));
+      await tester.tap(find.byKey(OrderScreen.issueKey));
+      await tester.pumpAndSettle();
+
+      const complaintMsg = 'الأكل وصل بارد ومفيش معالق';
+      await tester.enterText(find.byKey(OrderHelpSheet.inputKey), complaintMsg);
+      await tester.tap(find.byKey(OrderHelpSheet.sendKey));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(OrderHelpSheet.actionKey(HelpAction.complain)));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(OrderScreen.issueTextKey), findsOneWidget);
+      final field = tester.widget<TextField>(find.byKey(OrderScreen.issueTextKey));
+      expect(field.controller?.text, complaintMsg);
+
+      await tester.tap(find.byKey(OrderScreen.sendIssueKey));
+      await tester.pumpAndSettle();
+
+      expect(orders.issues.single['reason'], contains(complaintMsg));
+      expect(orders.issues.single['orderId'], 'o1');
+    });
+
+    testWidgets('send is disabled while pending', (tester) async {
+      final completer = Completer<Result<ZaatarVerdict>>();
+      final pendingZaatar = _PendingZaatar(completer);
+
+      await pump(
+        tester,
+        const OrderScreen(orderId: 'o1'),
+        seed: [order(status: OrderStatus.placed)],
+        zaatarRepo: pendingZaatar,
+      );
+
+      await reveal(tester, find.byKey(OrderScreen.issueKey));
+      await tester.tap(find.byKey(OrderScreen.issueKey));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(find.byKey(OrderHelpSheet.inputKey), 'سؤال');
+      await tester.tap(find.byKey(OrderHelpSheet.sendKey));
+      await tester.pump();
+
+      final sendButton = tester.widget<IconButton>(find.byKey(OrderHelpSheet.sendKey));
+      expect(sendButton.onPressed, isNull);
+
+      completer.complete(const Result.ok(
+        ZaatarVerdict(topic: HelpTopic.late, fromModel: true),
+      ));
+      await tester.pumpAndSettle();
+
+      final sendButtonAfter = tester.widget<IconButton>(find.byKey(OrderHelpSheet.sendKey));
+      expect(sendButtonAfter.onPressed, isNotNull);
+    });
+
+    // The sheet used to answer from the order it was handed when it opened. A shop that
+    // accepts while زعتر is thinking left the customer reading «لسه مردش» under a cancel
+    // button the database would refuse — and the server's reply cannot correct it,
+    // because all it carries is a topic.
+    testWidgets('answers the order as it is now, not as it was when the sheet opened',
+        (tester) async {
+      final completer = Completer<Result<ZaatarVerdict>>();
+      final live = _LiveOrders(order(status: OrderStatus.placed));
+      addTearDown(live.close);
+
+      await pump(
+        tester,
+        const OrderScreen(orderId: 'o1'),
+        orderRepo: live,
+        zaatarRepo: _PendingZaatar(completer),
+      );
+
+      await reveal(tester, find.byKey(OrderScreen.issueKey));
+      await tester.tap(find.byKey(OrderScreen.issueKey));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(find.byKey(OrderHelpSheet.inputKey), 'عاوز ألغي');
+      await tester.tap(find.byKey(OrderHelpSheet.sendKey));
+      await tester.pump();
+
+      // The shop answers while the question is in flight.
+      live.emit(order(status: OrderStatus.accepted));
+      await tester.pump();
+
+      completer.complete(const Result.ok(
+        ZaatarVerdict(topic: HelpTopic.cancel, fromModel: true),
+      ));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('بدأ يجهّز الأكل'), findsOneWidget);
+      expect(find.textContaining('لسه مردش'), findsNothing);
+      expect(
+        find.byKey(OrderHelpSheet.actionKey(HelpAction.cancelOrder)),
+        findsNothing,
+        reason: 'the database would refuse it, so the button must not be offered',
+      );
+    });
+
+    testWidgets('withdraws a cancel button the moment the shop accepts',
+        (tester) async {
+      final live = _LiveOrders(order(status: OrderStatus.placed));
+      addTearDown(live.close);
+
+      await pump(
+        tester,
+        const OrderScreen(orderId: 'o1'),
+        orderRepo: live,
+      );
+
+      await reveal(tester, find.byKey(OrderScreen.issueKey));
+      await tester.tap(find.byKey(OrderScreen.issueKey));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(OrderHelpSheet.topicKey(HelpTopic.cancel)));
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(OrderHelpSheet.actionKey(HelpAction.cancelOrder)),
+        findsOneWidget,
+      );
+
+      live.emit(order(status: OrderStatus.accepted));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(OrderHelpSheet.actionKey(HelpAction.cancelOrder)),
+        findsNothing,
+      );
+    });
+
+    // Both copies of the reader are one specification now — `ZaatarClassifier` in
+    // luqma_core, ported into the Edge Function and pinned to it by
+    // `data/zaatar_corpus.json`. These two sentences are what the phone used to get
+    // wrong on its own: «السعر» was «حاجة تانية» here and money on the server, and
+    // «لسه عاوز ألغي» was «اتأخر» here and cancel there.
+    testWidgets('the offline reader is the shared one', (tester) async {
+      await pump(
+        tester,
+        const OrderScreen(orderId: 'o1'),
+        seed: [order(status: OrderStatus.placed)],
+      );
+      zaatar.fallback = true;
+
+      await reveal(tester, find.byKey(OrderScreen.issueKey));
+      await tester.tap(find.byKey(OrderScreen.issueKey));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(find.byKey(OrderHelpSheet.inputKey), 'السعر');
+      await tester.tap(find.byKey(OrderHelpSheet.sendKey));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('حساب طلبك'), findsOneWidget);
+
+      await tester.enterText(find.byKey(OrderHelpSheet.inputKey), 'لسه عاوز ألغي');
+      await tester.tap(find.byKey(OrderHelpSheet.sendKey));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('تقدر تلغي دلوقتي'), findsOneWidget);
+    });
+
+    testWidgets('sends messages to zaatar with order id',
+        (tester) async {
+      await pump(
+        tester,
+        const OrderScreen(orderId: 'o1'),
+        seed: [order(status: OrderStatus.placed)],
+      );
+
+      await reveal(tester, find.byKey(OrderScreen.issueKey));
+      await tester.tap(find.byKey(OrderScreen.issueKey));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(find.byKey(OrderHelpSheet.inputKey), 'سؤال 1');
+      await tester.tap(find.byKey(OrderHelpSheet.sendKey));
+      await tester.pumpAndSettle();
+
+      expect(zaatar.calls.first.orderId, 'o1');
+      expect(zaatar.calls.first.message, 'سؤال 1');
+
+      await tester.enterText(find.byKey(OrderHelpSheet.inputKey), 'سؤال 2');
+      await tester.tap(find.byKey(OrderHelpSheet.sendKey));
+      await tester.pumpAndSettle();
+
+      expect(zaatar.calls.length, 2);
+      expect(zaatar.calls.last.orderId, 'o1');
+      expect(zaatar.calls.last.message, 'سؤال 2');
+    });
   });
 
   group('rating', () {
@@ -1179,3 +1517,43 @@ void main() {
     });
   });
 }
+
+class _PendingZaatar extends FakeZaatarRepository {
+  _PendingZaatar(this._completer);
+  final Completer<Result<ZaatarVerdict>> _completer;
+
+  @override
+  Future<Result<ZaatarVerdict>> ask({
+    required String orderId,
+    required String message,
+  }) =>
+      _completer.future;
+}
+
+/// An order that changes while somebody is looking at it.
+///
+/// [FakeOrderRepository.watchOrder] is a `Stream.value` — one reading, for ever — which
+/// is fine for a screen that opens and closes and hides every bug about an order moving
+/// underneath one. The real repository is a live subscription; this is that.
+class _LiveOrders extends FakeOrderRepository {
+  _LiveOrders(Order initial)
+      : _current = initial,
+        super(seed: [initial]);
+
+  Order _current;
+  final _changes = StreamController<Order>.broadcast();
+
+  void emit(Order order) {
+    _current = order;
+    _changes.add(order);
+  }
+
+  Future<void> close() => _changes.close();
+
+  @override
+  Stream<Order> watchOrder(String orderId) async* {
+    yield _current;
+    yield* _changes.stream;
+  }
+}
+

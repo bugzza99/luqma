@@ -54,6 +54,7 @@ import '../repositories/settlement_repository.dart';
 import '../models/staff_application.dart';
 import '../repositories/staff_application_repository.dart';
 import '../repositories/staff_repository.dart';
+import '../repositories/zaatar_repository.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../result.dart';
@@ -91,6 +92,10 @@ SettlementRepository settlementRepository(Ref ref) =>
 @Riverpod(keepAlive: true)
 CourierRosterRepository courierRosterRepository(Ref ref) =>
     SupabaseCourierRosterRepository(ref.watch(supabaseProvider));
+
+@Riverpod(keepAlive: true)
+ZaatarRepository zaatarRepository(Ref ref) =>
+    SupabaseZaatarRepository(ref.watch(supabaseProvider));
 
 /// The active couriers carrying for this shop. Live.
 @riverpod

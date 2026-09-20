@@ -11,6 +11,44 @@ import '../result.dart';
 /// only thing that inserts a row is the settlement trigger running as its definer. A
 /// repository with a `save` would be an interface promising something the database
 /// refuses, which is how a screen comes to show a button that cannot work.
+/// What a collection actually recorded, as the server holds it.
+///
+/// [recorded] is not "the amount that was asked for". A retry after a lost reply carries
+/// the receipt id of the attempt that may already have landed, and the server answers
+/// with that first receipt — so the two can differ, and when they do the one on the
+/// screen has to be the server's. Confirming «اتسجّل 200» over a receipt that says 100 is
+/// a false receipt in a cash business, which is the one thing this whole idempotency
+/// path exists to prevent.
+class CommissionCollection {
+  const CommissionCollection({required this.recorded, required this.remaining});
+
+  /// The amount on the receipt, in piastres.
+  final int recorded;
+
+  /// What the merchant still owes after it, in piastres. Negative is credit.
+  final int remaining;
+
+  /// True when the server answered with a receipt for a different amount than the one
+  /// this attempt asked for — meaning this is a retry of a collection that had already
+  /// landed, and the figure typed the second time was never recorded.
+  bool matches(int requested) => recorded == requested;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is CommissionCollection &&
+          runtimeType == other.runtimeType &&
+          recorded == other.recorded &&
+          remaining == other.remaining;
+
+  @override
+  int get hashCode => Object.hash(recorded, remaining);
+
+  @override
+  String toString() =>
+      'CommissionCollection(recorded: $recorded, remaining: $remaining)';
+}
+
 abstract interface class SettlementRepository {
   /// Complete account totals, not the sum of either bounded list.
   Future<Result<SettlementSummary>> summaryFor(String merchantId);
@@ -40,7 +78,10 @@ abstract interface class SettlementRepository {
   /// Not capped at what is owed. An admin standing in a shop takes what is handed over,
   /// and a merchant who rounds up must not meet an error with the cash on the counter —
   /// the balance goes negative, which is credit the next delivery eats into.
-  Future<Result<int>> recordPayment({
+  ///
+  /// The receipt comes back as well as the balance, because on a retry the two can
+  /// disagree with what was asked for: see [CommissionCollection].
+  Future<Result<CommissionCollection>> recordPayment({
     required String merchantId,
     required int amount,
     String? note,
@@ -119,7 +160,7 @@ class SupabaseSettlementRepository implements SettlementRepository {
   }
 
   @override
-  Future<Result<int>> recordPayment({
+  Future<Result<CommissionCollection>> recordPayment({
     required String merchantId,
     required int amount,
     String? note,
@@ -143,7 +184,18 @@ class SupabaseSettlementRepository implements SettlementRepository {
           'p_client_payment_id': clientPaymentId,
         },
       );
-      return result['remaining'] as int;
+      // The receipt the server holds, which on a retry is the *first* attempt's — not
+      // this one's. The amount asked for is deliberately not the fallback for a missing
+      // figure either: a reply that does not say what was recorded is a reply this
+      // screen must not put a number on.
+      final payment = result['payment'];
+      final recorded = payment is Map ? payment['amount'] as int? : null;
+      if (recorded == null) throw const UnknownFailure('no receipt in the reply');
+
+      return CommissionCollection(
+        recorded: recorded,
+        remaining: result['remaining'] as int,
+      );
     });
   }
 }
@@ -158,7 +210,18 @@ class FakeSettlementRepository implements SettlementRepository {
     this.owedStart = 0,
   })  : _settlements = List.of(seed),
         _payments = List.of(payments),
-        _owed = owedStart;
+        _owed = owedStart {
+    // A seeded receipt is a receipt the server holds. `_byReceipt` used to be built only
+    // by [recordPayment], so a fake seeded with a payment that already carried a
+    // `clientPaymentId` took the money a *second* time for that id — where
+    // `record_commission_payment` returns the receipt it already has and moves nothing.
+    // A fake more permissive than the database is how a screen is proved right against a
+    // server that contradicts it, which is the finding behind half this file's comments.
+    for (final p in payments) {
+      final id = p.clientPaymentId;
+      if (id != null) _byReceipt['${p.merchantId}/$id'] = p;
+    }
+  }
 
   final List<OrderSettlement> _settlements;
   final List<CommissionPayment> _payments;
@@ -219,8 +282,11 @@ class FakeSettlementRepository implements SettlementRepository {
     return Result.ok(mine.take(limit).toList());
   }
 
+  /// The receipt each attempt wrote, keyed the way the unique index is.
+  final Map<String, CommissionPayment> _byReceipt = {};
+
   @override
-  Future<Result<int>> recordPayment({
+  Future<Result<CommissionCollection>> recordPayment({
     required String merchantId,
     required int amount,
     String? note,
@@ -237,15 +303,32 @@ class FakeSettlementRepository implements SettlementRepository {
     // fake that accepts what production rejects.
     if (amount <= 0) return const Result.err(ConflictFailure());
 
-    _payments.add(CommissionPayment(
+    // And the same idempotency. `record_commission_payment` returns the receipt the
+    // first attempt wrote, whatever the retry asks for — a fake that happily took the
+    // money twice is a fake no screen could be proved right against, which is precisely
+    // how a retry came to be able to confirm an amount nobody had recorded.
+    final key = clientPaymentId == null ? null : '$merchantId/$clientPaymentId';
+    final already = key == null ? null : _byReceipt[key];
+    if (already != null) {
+      return Result.ok(
+        CommissionCollection(recorded: already.amount, remaining: _owed),
+      );
+    }
+
+    final payment = CommissionPayment(
       id: 'pay-${_payments.length + 1}',
       merchantId: merchantId,
       amount: amount,
       note: (note == null || note.trim().isEmpty) ? null : note.trim(),
       recordedBy: 'admin1',
       recordedAt: DateTime(2026, 8, 30),
-    ));
+      // The column the server stores as well, so a screen asking the receipts whether a
+      // pending attempt landed gets the same answer here as it would in the street.
+      clientPaymentId: clientPaymentId,
+    );
+    _payments.add(payment);
+    if (key != null) _byReceipt[key] = payment;
     _owed -= amount;
-    return Result.ok(_owed);
+    return Result.ok(CommissionCollection(recorded: amount, remaining: _owed));
   }
 }

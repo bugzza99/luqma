@@ -1,7 +1,9 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:luqma_core/luqma_core.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../shell/layout.dart';
 
@@ -37,6 +39,8 @@ class MerchantBillingScreen extends ConsumerWidget {
   static const collectAmountKey = Key('billing.collectAmount');
   static const confirmCollectKey = Key('billing.confirmCollect');
   static const collectedKey = Key('billing.collected');
+  static const pendingNoticeKey = Key('billing.pendingPayment');
+  static const discardPendingKey = Key('billing.discardPending');
   static const creditKey = Key('billing.credit');
   static const confirmModelKey = Key('billing.confirmModel');
   static const customRateKey = Key('billing.customRate');
@@ -937,80 +941,300 @@ class _Settlements extends ConsumerWidget {
   }
 
   Future<void> _collect(BuildContext context, WidgetRef ref) async {
-    final amount = await showDialog<int>(
+    final prefs = SharedPreferencesAsync();
+    final prefKey = 'pending_payment_merchant_${merchant.id}';
+    final pendingJson = await prefs.getString(prefKey);
+
+    // The receipt id and the amount are **one** frozen pair, set before the first
+    // request and never changed afterwards.
+    //
+    // They used to be two things: a receipt id minted when the dialog opened and an
+    // amount read out of the box at every press. So a collection that committed and lost
+    // its reply left the field editable — `pendingAmount` was whatever the *prefs* had
+    // said when the dialog opened, which is null on a first attempt — and typing 200 and
+    // pressing again sent the original receipt id with a new figure. The server, doing
+    // exactly its job, answered with the first receipt for 100 and moved nothing; the
+    // screen said «اتسجّل 200 ج» and cleared the pending record. A false receipt in a
+    // cash business, produced by the very path built to prevent one.
+    String? receiptId;
+    int? frozenAmount;
+    if (pendingJson != null) {
+      try {
+        final map = jsonDecode(pendingJson) as Map<String, dynamic>;
+        receiptId = map['receiptId'] as String;
+        frozenAmount = map['amount'] as int;
+      } catch (_) {
+        // Both, or neither. The id is assigned first, so a record with a missing or
+        // non-integer amount left `receiptId` set and `frozenAmount` null — field
+        // editable, no notice, no discard button — and the next press would send a new
+        // figure under the old receipt. That is the original bug's exact shape,
+        // reassembled out of a half-readable preference.
+        receiptId = null;
+        frozenAmount = null;
+      }
+    }
+
+    // A pending record means the *reply* was lost, not that the money was. Ask the
+    // receipts before telling the admin anything: if the server holds one under this id
+    // the collection landed, so the record is stale and the right thing is a clean
+    // dialog rather than a notice about an attempt that has already succeeded.
+    if (receiptId != null) {
+      try {
+        // The repository directly, not `commissionPaymentsProvider.future`. That provider
+        // is auto-dispose and nothing in AdminApp watches it, so reading its future here
+        // creates an element with no listener and schedules it for disposal while the
+        // round trip is still out — and if disposal wins, the `catch` below swallows it
+        // and the admin is shown the pending notice for a collection that landed. The
+        // same hazard is already recorded for streams in `media_controller.dart`.
+        final payments = (await ref
+                    .read(settlementRepositoryProvider)
+                    .paymentsFor(merchant.id))
+                .valueOrNull ??
+            const <CommissionPayment>[];
+        if (payments.any((p) => p.clientPaymentId == receiptId)) {
+          try {
+            await prefs.remove(prefKey);
+          } catch (_) {}
+          receiptId = null;
+          frozenAmount = null;
+        }
+      } catch (_) {
+        // Offline is not this branch — a refused read comes back as an `Err` and the
+        // empty list above, which leaves the pending record standing. That is the safe
+        // reading of not knowing, and so is this: anything unexpected also leaves the
+        // record alone rather than clearing a collection that may never have landed.
+      }
+    }
+
+    final amountCtrl = TextEditingController(
+      // The shared formatter, not `/100`: this field is read by somebody holding cash,
+      // and a frozen 100 ج printed as «100.0» reads as a figure nobody typed.
+      text: frozenAmount == null ? null : Money.format(frozenAmount),
+    );
+    var saving = false;
+    String? errorText;
+    var done = false;
+    int? confirmedAmount;
+    int? returnedBalance;
+
+    /// The figure this attempt asked for, kept so the confirmation can say when the
+    /// receipt disagrees with it — which is what a retry of a collection that had already
+    /// landed looks like.
+    int? requestedAmount;
+    var differed = false;
+
+    /// True once a request has gone out under [receiptId] — from this dialog or from a
+    /// session that never heard back. From here the amount is not the admin's to change:
+    /// the only thing that can still be recorded under this receipt is what it was first
+    /// asked for.
+    bool frozen() => frozenAmount != null;
+
+    if (!context.mounted) return;
+    await showDialog<void>(
       context: context,
-      builder: (_) => const _AmountDialog(
-        title: 'تحصيل عمولة',
-        fieldKey: MerchantBillingScreen.collectAmountKey,
-        confirmKey: MerchantBillingScreen.confirmCollectKey,
-        label: 'المبلغ المستلم',
+      barrierDismissible: false,
+      builder: (dialogContext) => StatefulBuilder(
+          builder: (dialogContext, setDialogState) {
+            // Inside the builder, not around it: `setDialogState` rebuilds this subtree
+            // only, so a `PopScope` above it keeps whatever `canPop` it was born with —
+            // which was `true`, and Android Back could take the dialog away mid-save.
+            return PopScope(
+              canPop: !saving,
+              child: AlertDialog(
+              title: const Text('تحصيل عمولة'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  if (!done) ...[
+                    if (frozen()) ...[
+                      Container(
+                        padding: const EdgeInsets.all(Space.sm),
+                        decoration: BoxDecoration(
+                          color: Theme.of(context).colorScheme.errorContainer,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        // «اقفل وافتح تحصيل جديد» used to be the sentence here, and it
+                        // did nothing at all: reopening reloads the same frozen pair,
+                        // because the record is only cleared by a *successful* send of
+                        // that receipt. So the only way out of the dialog was to record
+                        // an amount that may never have been handed over. The escape is
+                        // a button now, and the sentence names it.
+                        child: const Text(
+                          'في دفعة اتبعتت وماتأكدتش. اضغط «سجّل» تاني بنفس المبلغ — '
+                          'مش هتتسجّل مرتين. لو الدفعة دي ماحصلتش أصلاً أو المبلغ غلط، '
+                          'اضغط «دي مش دفعة».',
+                          key: MerchantBillingScreen.pendingNoticeKey,
+                          style: TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                      const SizedBox(height: Space.md),
+                    ],
+                    TextField(
+                      key: MerchantBillingScreen.collectAmountKey,
+                      controller: amountCtrl,
+                      keyboardType: TextInputType.number,
+                      inputFormatters: [
+                        FilteringTextInputFormatter.allow(RegExp(r'[0-9٠-٩.,]')),
+                      ],
+                      decoration: InputDecoration(
+                        labelText: 'المبلغ المستلم',
+                        suffixText: 'ج',
+                        errorText: errorText,
+                      ),
+                      // The pair is frozen: a receipt that has already been sent can only
+                      // ever record the amount it was sent with.
+                      enabled: !saving && !frozen(),
+                      onChanged: (_) => setDialogState(() {}),
+                    ),
+                  ] else ...[
+                    Text(
+                      key: MerchantBillingScreen.collectedKey,
+                      // The server's figure, never the one in the box: on a retry they
+                      // are allowed to differ, and the receipt is what happened.
+                      //
+                      // And when they do differ, that is said. An admin who asked for one
+                      // amount and is shown another, with no sentence between them, has
+                      // been given a number to doubt rather than a receipt to read.
+                      'اتسجّل ${LuqmaStrings.of(context).price(confirmedAmount!)}.\n'
+                      // Three arms, not two. The collection is deliberately uncapped —
+                      // an admin in a shop takes what is on the counter — so a negative
+                      // balance is an ordinary outcome, and «الحساب مقفول» read aloud
+                      // over it tells a merchant who is 200 in credit that they are
+                      // square. The card behind this dialog has said «رصيد للمطعم
+                      // عندنا» since it was written; this sentence, the one actually
+                      // spoken in the shop, had inherited the old snackbar's two.
+                      '${switch (returnedBalance!) {
+                        > 0 => 'الباقي ${LuqmaStrings.of(context).price(returnedBalance!)}',
+                        0 => 'الحساب مقفول.',
+                        _ => 'رصيد للمطعم عندنا ${LuqmaStrings.of(context).price(-returnedBalance!)}',
+                      }}'
+                      '${differed ? '\nالإيصال ده كان اتسجّل قبل كده، واللي كان متسجّل قبل كده هو ${LuqmaStrings.of(context).price(confirmedAmount!)} مش ${LuqmaStrings.of(context).price(requestedAmount!)}.' : ''}',
+                    ),
+                  ],
+                ],
+              ),
+              actions: [
+                if (!done)
+                  TextButton(
+                    onPressed: saving ? null : () => Navigator.of(dialogContext).pop(),
+                    child: const Text('إلغاء'),
+                  ),
+                // The way out of a frozen pair, and the only one. A send that genuinely
+                // never landed leaves a record nothing else clears — the successful path
+                // is the only other writer — so without this the dialog can be left only
+                // by recording an amount that may never have been handed over, and a
+                // merchant credited money they did not pay has no negative collection
+                // anywhere in the product to correct it from.
+                if (!done && frozen())
+                  TextButton(
+                    key: MerchantBillingScreen.discardPendingKey,
+                    onPressed: saving
+                        ? null
+                        : () async {
+                            try {
+                              await prefs.remove(prefKey);
+                            } catch (_) {}
+                            if (!dialogContext.mounted) return;
+                            // A fresh receipt id as well as a fresh amount: the discarded
+                            // one may yet be sitting in a queue somewhere, and reusing it
+                            // is how a second collection would be answered with the first
+                            // one's receipt.
+                            receiptId = null;
+                            amountCtrl.clear();
+                            setDialogState(() {
+                              frozenAmount = null;
+                              errorText = null;
+                            });
+                          },
+                    child: const Text('دي مش دفعة · ابدأ تحصيل جديد'),
+                  ),
+                if (!done)
+                  FilledButton(
+                    key: MerchantBillingScreen.confirmCollectKey,
+                    onPressed: saving
+                        ? null
+                        : () async {
+                            // Frozen wins over the field. On a retry the box is disabled
+                            // anyway; reading it here as well means no future edit to
+                            // this screen can quietly reintroduce a changed amount under
+                            // an already-sent receipt.
+                            final amount = frozenAmount ?? Money.parse(amountCtrl.text);
+                            if (amount == null || amount <= 0) {
+                              setDialogState(() {
+                                errorText = 'اكتب مبلغ صحيح بالجنيه';
+                              });
+                              return;
+                            }
+                            final receipt = receiptId ??= newClientOrderId();
+                            setDialogState(() {
+                              saving = true;
+                              errorText = null;
+                              frozenAmount = amount;
+                            });
+
+                            // Best effort, and deliberately not fatal: the pair is held
+                            // in this dialog either way, and refusing to take the cash
+                            // because a preference would not write is the wrong failure.
+                            try {
+                              await prefs.setString(prefKey, jsonEncode({
+                                'receiptId': receipt,
+                                'amount': amount,
+                              }));
+                            } catch (_) {}
+                            if (!dialogContext.mounted) return;
+
+                            final result = await ref
+                                .read(settlementRepositoryProvider)
+                                .recordPayment(
+                                  merchantId: merchant.id,
+                                  amount: amount,
+                                  clientPaymentId: receipt,
+                                );
+                            if (!dialogContext.mounted) return;
+
+                            switch (result) {
+                              case Ok(:final value):
+                                try {
+                                  await prefs.remove(prefKey);
+                                } catch (_) {}
+                                if (!dialogContext.mounted) return;
+                                setDialogState(() {
+                                  done = true;
+                                  confirmedAmount = value.recorded;
+                                  returnedBalance = value.remaining;
+                                  // Asked of the receipt, not of the field: the server
+                                  // answers a repeated id with the receipt it already
+                                  // holds, and when that is a different figure the screen
+                                  // has to say so rather than print it bare.
+                                  requestedAmount = amount;
+                                  differed = !value.matches(amount);
+                                  saving = false;
+                                });
+                                ref.invalidate(merchantProvider(merchant.id));
+                                ref.invalidate(commissionPaymentsProvider(merchant.id));
+                                ref.invalidate(settlementSummaryProvider(merchant.id));
+                              case Err():
+                                setDialogState(() {
+                                  saving = false;
+                                  errorText = 'التحصيل مااتسجّلش. جرّب تاني — مش هتتسجّل مرتين.';
+                                });
+                            }
+                          },
+                    child: const Text('سجّل'),
+                  ),
+                if (done)
+                  FilledButton(
+                    onPressed: () => Navigator.of(dialogContext).pop(),
+                    child: const Text('تمام'),
+                  ),
+              ],
+              ),
+            );
+          },
       ),
     );
-
-    if (amount == null || !context.mounted) return;
-
-    // One id for this collection, made before the first attempt and reused by every
-    // retry. Without it a reply lost on a shop's wifi turned into a second subtraction:
-    // the function took the money again and wrote a second receipt, and a 100 debt became
-    // 100 of credit — money the platform now owes for cash it collected once.
-    final attempt = newClientOrderId();
-
-    final result = await ref
-        .read(settlementRepositoryProvider)
-        .recordPayment(
-          merchantId: merchant.id,
-          amount: amount,
-          clientPaymentId: attempt,
-        );
-    if (!context.mounted) return;
-
-    // The result is read rather than discarded. A collection that failed and a
-    // collection that worked look identical if the only feedback is the screen
-    // refreshing — and the admin is standing in a shop holding the cash.
-    switch (result) {
-      case Ok(:final value):
-        ref.invalidate(merchantProvider(merchant.id));
-        ref.invalidate(commissionPaymentsProvider(merchant.id));
-        ref.invalidate(settlementSummaryProvider(merchant.id));
-        ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-          SnackBar(
-            key: MerchantBillingScreen.collectedKey,
-            content: Text(
-              value > 0
-                  ? 'اتسجّل. الباقي ${LuqmaStrings.of(context).price(value)}'
-                  : 'اتسجّل. الحساب مقفول.',
-            ),
-          ),
-        );
-      case Err():
-        // «جرّب تاني» is now safe advice rather than a guess. A failure here can mean the
-        // request never landed *or* that it landed and the reply did not, and the two are
-        // indistinguishable from this side — so the sentence used to invite the admin to
-        // collect the same cash twice. Retrying carries the same id, which the server
-        // answers with the original receipt.
-        ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-          SnackBar(
-            content: const Text('التحصيل مااتسجّلش. جرّب تاني.'),
-            action: SnackBarAction(
-              label: 'جرّب تاني',
-              onPressed: () async {
-                final retry = await ref
-                    .read(settlementRepositoryProvider)
-                    .recordPayment(
-                      merchantId: merchant.id,
-                      amount: amount,
-                      clientPaymentId: attempt,
-                    );
-                if (retry is Ok) {
-                  ref.invalidate(merchantProvider(merchant.id));
-                  ref.invalidate(commissionPaymentsProvider(merchant.id));
-                  ref.invalidate(settlementSummaryProvider(merchant.id));
-                }
-              },
-            ),
-          ),
-        );
-    }
+    amountCtrl.dispose();
   }
 }
 

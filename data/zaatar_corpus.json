@@ -1,0 +1,292 @@
+{
+  "README": "The one classification specification for «زعتر», as data. packages/luqma_core/lib/src/support/zaatar_classifier.dart and supabase/functions/zaatar/excerpt.js are both run against this file by their own suites, so a word added to one and not the other fails both. Topics are HelpTopic.",
+  "intentWords": {
+    "اتاخر": "late",
+    "تاخر": "late",
+    "متاخر": "late",
+    "تاخير": "late",
+    "فين": "late",
+    "امتي": "late",
+    "هيوصل": "late",
+    "وصل": "late",
+    "يوصل": "late",
+    "بطيء": "late",
+    "late": "late",
+    "delay": "late",
+    "delayed": "late",
+    "where": "late",
+    "ناقص": "wrongItems",
+    "ناقصه": "wrongItems",
+    "غلط": "wrongItems",
+    "خطا": "wrongItems",
+    "مغلوط": "wrongItems",
+    "wrong": "wrongItems",
+    "missing": "wrongItems",
+    "الغي": "cancel",
+    "الغاء": "cancel",
+    "يلغي": "cancel",
+    "تلغي": "cancel",
+    "نلغي": "cancel",
+    "ملغي": "cancel",
+    "cancel": "cancel",
+    "فلوس": "money",
+    "حساب": "money",
+    "الحساب": "money",
+    "الباقي": "money",
+    "فاتوره": "money",
+    "سعر": "money",
+    "السعر": "money",
+    "تمن": "money",
+    "كاش": "money",
+    "جنيه": "money",
+    "money": "money",
+    "price": "money",
+    "refund": "money",
+    "cash": "money",
+    "bill": "money"
+  },
+  "contextWords": [
+    "مش",
+    "عايز",
+    "عاوز",
+    "محتاج",
+    "ممكن",
+    "لسه",
+    "خلاص",
+    "دلوقتي",
+    "بقالي",
+    "من",
+    "ليه",
+    "ازاي",
+    "ايه",
+    "هو",
+    "انا",
+    "حد",
+    "حاجه",
+    "تاني",
+    "كمان",
+    "برضه",
+    "الطلب",
+    "طلب",
+    "طلبي",
+    "الاوردر",
+    "اوردر",
+    "الاكل",
+    "اكل",
+    "الوجبه",
+    "وجبه",
+    "صنف",
+    "اصناف",
+    "كميه",
+    "حته",
+    "ساندويتش",
+    "مشروب",
+    "المطعم",
+    "مطعم",
+    "المحل",
+    "الشيف",
+    "المطبخ",
+    "المندوب",
+    "مندوب",
+    "الدليفري",
+    "التوصيل",
+    "توصيل",
+    "بارد",
+    "ساقع",
+    "سخن",
+    "وحش",
+    "مقرف",
+    "حلو",
+    "كويس",
+    "نضيف",
+    "مقفول",
+    "مفتوح",
+    "مشكله",
+    "شكوي",
+    "زعلان",
+    "اسف",
+    "ساعه",
+    "ساعات",
+    "دقيقه",
+    "دقايق",
+    "يوم",
+    "النهارده",
+    "order",
+    "food",
+    "driver",
+    "delivery",
+    "restaurant",
+    "shop",
+    "cold",
+    "hot",
+    "bad",
+    "problem",
+    "help",
+    "please",
+    "still",
+    "not",
+    "why",
+    "when",
+    "how",
+    "item",
+    "items"
+  ],
+  "cases": [
+    {
+      "message": "الطلب اتأخر ليه؟",
+      "topic": "late",
+      "decisive": true,
+      "note": "one family, however it is spelt"
+    },
+    {
+      "message": "فين الأوردر بقاله ساعة",
+      "topic": "late",
+      "decisive": true,
+      "note": ""
+    },
+    {
+      "message": "where is my food",
+      "topic": "late",
+      "decisive": true,
+      "note": "the Latin half of the vocabulary"
+    },
+    {
+      "message": "الأكل ناقص صنف",
+      "topic": "wrongItems",
+      "decisive": true,
+      "note": ""
+    },
+    {
+      "message": "ألغي الطلب حالاً",
+      "topic": "cancel",
+      "decisive": true,
+      "note": ""
+    },
+    {
+      "message": "إلغاء",
+      "topic": "cancel",
+      "decisive": true,
+      "note": "hamza dropped by the normaliser"
+    },
+    {
+      "message": "الغاء",
+      "topic": "cancel",
+      "decisive": true,
+      "note": "and the same word without it"
+    },
+    {
+      "message": "cancel my order please",
+      "topic": "cancel",
+      "decisive": true,
+      "note": ""
+    },
+    {
+      "message": "الحساب كام؟",
+      "topic": "money",
+      "decisive": true,
+      "note": ""
+    },
+    {
+      "message": "عاوز أعرف السعر والباقي",
+      "topic": "money",
+      "decisive": true,
+      "note": "two words, one family, still decisive"
+    },
+    {
+      "message": "السعر",
+      "topic": "money",
+      "decisive": true,
+      "note": "the phone used to answer «حاجة تانية» here because its copy had no price word"
+    },
+    {
+      "message": "لسه عاوز ألغي",
+      "topic": "cancel",
+      "decisive": true,
+      "note": "the phone used to answer «الأوردر اتأخر» here because its copy tested «لسه» first"
+    },
+    {
+      "message": "الطلب اتأخر وعاوز ألغي",
+      "topic": "other",
+      "decisive": false,
+      "note": "two families: the case a model is for"
+    },
+    {
+      "message": "wrong items and I want a refund",
+      "topic": "other",
+      "decisive": false,
+      "note": "two families in English"
+    },
+    {
+      "message": "السلام عليكم",
+      "topic": "other",
+      "decisive": false,
+      "note": "nothing in the vocabulary at all"
+    },
+    {
+      "message": "deliver to ahmed ali, 12 el bahr, edku",
+      "topic": "other",
+      "decisive": false,
+      "note": "a name and an address"
+    },
+    {
+      "message": "٠١٠١٢٣٤٥٦٧٨",
+      "topic": "other",
+      "decisive": false,
+      "note": "a telephone number decides nothing"
+    },
+    {
+      "message": "constructor",
+      "topic": "other",
+      "decisive": false,
+      "note": "inherited properties are not vocabulary: this once produced a function as a topic"
+    },
+    {
+      "message": "toString",
+      "topic": "other",
+      "decisive": false,
+      "note": "and neither is this one"
+    },
+    {
+      "message": "hasOwnProperty",
+      "topic": "other",
+      "decisive": false,
+      "note": "nor this one"
+    },
+    {
+      "message": "constructor الغي",
+      "topic": "cancel",
+      "decisive": true,
+      "note": "one real family; the inherited property must not make it two"
+    },
+    {
+      "message": "constructor الغي ناقص",
+      "topic": "other",
+      "decisive": false,
+      "note": "two real families, and «constructor» is not a third"
+    },
+    {
+      "message": "الأكل ناقصة",
+      "topic": "wrongItems",
+      "decisive": true,
+      "note": "the normaliser folds ة onto ه, or «ناقصة» is a word neither side knows"
+    },
+    {
+      "message": "شكوى من المندوب",
+      "topic": "other",
+      "decisive": false,
+      "note": "ى folds onto ي, so «شكوى» is the context word it was written as — and context decides nothing"
+    },
+    {
+      "message": "الطلب اتأخّر",
+      "topic": "late",
+      "decisive": true,
+      "note": "tashkeel is stripped; a shadda must not hide a word from the vocabulary"
+    },
+    {
+      "message": "الشيف محترفين",
+      "topic": "other",
+      "decisive": false,
+      "note": "whole words, never substrings: «محترفين» contains «فين» and is not about a late order"
+    }
+  ]
+}

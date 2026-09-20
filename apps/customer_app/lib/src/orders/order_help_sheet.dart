@@ -19,11 +19,14 @@ final class ComplaintWritten extends HelpOutcome {
   final String text;
 }
 
-/// «مساعد لقمة» — the complaints assistant, as a conversation.
+/// «زعتر» — the complaints assistant.
 ///
-/// Rules, not a model: the customer picks what went wrong, and the answer is read off the
-/// order they are looking at by [OrderHelper]. Anything it cannot settle becomes an
-/// ordinary ticket for a person — the assistant never closes a complaint by itself.
+/// Every sentence in here comes from [OrderHelper], read off the order the customer is
+/// looking at. What the server adds is *which* of the five topics a typed question is
+/// about — the model may choose a topic and may do nothing else, so it cannot promise a
+/// time, name a price or offer a button. When the server cannot be reached the topic is
+/// read from the words on the phone instead and the customer is told so; the answer is
+/// the same answer either way, because there is only one place it is written.
 class OrderHelpSheet extends ConsumerStatefulWidget {
   const OrderHelpSheet({super.key, required this.order, this.shopPhone});
 
@@ -34,32 +37,48 @@ class OrderHelpSheet extends ConsumerStatefulWidget {
 
   static Key topicKey(HelpTopic topic) => Key('help.topic.${topic.name}');
   static Key actionKey(HelpAction action) => Key('help.action.${action.name}');
+  static const inputKey = Key('zaatar.input');
+  static const sendKey = Key('zaatar.send');
+  static const replyKey = Key('zaatar.reply');
+  static const privacyNoticeKey = Key('zaatar.privacyNotice');
 
   @override
   ConsumerState<OrderHelpSheet> createState() => _OrderHelpSheetState();
 }
 
 class _Bubble {
-  const _Bubble(this.text, {required this.mine});
+  const _Bubble(
+    this.text, {
+    required this.mine,
+    this.isReply = false,
+    this.isNotice = false,
+  });
 
   final String text;
   final bool mine;
+  final bool isReply;
+  final bool isNotice;
 }
 
 class _OrderHelpSheetState extends ConsumerState<OrderHelpSheet> {
   final _typed = TextEditingController();
+  final _chatController = TextEditingController();
   final _scroll = ScrollController();
   final _bubbles = <_Bubble>[];
+
   HelpTopic? _topic;
   List<HelpAction> _actions = const [];
   bool _writing = false;
+  bool _pending = false;
+  bool _fallbackNoticeShown = false;
   String? _error;
+  String _lastCustomerMessage = '';
 
   @override
   void initState() {
     super.initState();
     _bubbles.add(_Bubble(
-      'أهلاً، أنا مساعد لقمة. إيه اللي حصل في طلب #${widget.order.orderNumber}؟',
+      'أهلاً، أنا زعتر من لقمة. اسألني عن طلب #${widget.order.orderNumber} أو اختار من تحت',
       mine: false,
     ));
   }
@@ -67,35 +86,113 @@ class _OrderHelpSheetState extends ConsumerState<OrderHelpSheet> {
   @override
   void dispose() {
     _typed.dispose();
+    _chatController.dispose();
     _scroll.dispose();
     super.dispose();
   }
+
+  bool get _hasPhone => (widget.shopPhone ?? '').trim().isNotEmpty;
+
+  /// The order as it is *now*, not as it was when the sheet opened.
+  ///
+  /// A conversation outlives a status: the customer asks «فين الأوردر» while the shop
+  /// has not answered, the shop accepts while زعتر is thinking, and an answer built from
+  /// the snapshot this sheet was handed says «لسه مردش» and offers a cancel the database
+  /// will refuse. The order screen behind it is already a live listener; this reads the
+  /// same provider rather than a copy taken at `showModalBottomSheet`.
+  Order get _order =>
+      ref.read(orderProvider(widget.order.id)).value ?? widget.order;
 
   void _pick(HelpTopic topic) {
     final strings = LuqmaStrings.of(context);
     final reply = OrderHelper.answer(
       topic,
-      widget.order,
+      _order,
       ref.read(clockProvider)(),
       money: strings.amount,
     );
+
     setState(() {
       _topic = topic;
       _error = null;
       _bubbles
         ..add(_Bubble(OrderHelper.label(topic), mine: true))
-        ..add(_Bubble(reply.text, mine: false));
+        ..add(_Bubble(reply.text, mine: false, isReply: true));
       _actions = [
         for (final action in reply.actions)
           if (action != HelpAction.callShop || _hasPhone) action,
       ];
       // «حاجة تانية» has nothing to answer: it goes straight to the words.
       _writing = topic == HelpTopic.other;
+      if (_writing) {
+        _typed.text = '';
+      }
     });
     _toBottom();
   }
 
-  bool get _hasPhone => (widget.shopPhone ?? '').trim().isNotEmpty;
+  Future<void> _sendChat() async {
+    final message = _chatController.text.trim();
+    if (message.isEmpty || _pending) return;
+
+    _chatController.clear();
+    _lastCustomerMessage = message;
+
+    setState(() {
+      _error = null;
+      _bubbles.add(_Bubble(message, mine: true));
+      _pending = true;
+      _actions = const [];
+    });
+    _toBottom();
+
+    final result = await ref.read(zaatarRepositoryProvider).ask(
+          orderId: widget.order.id,
+          message: message,
+        );
+
+    if (!mounted) return;
+
+    if (result case Ok(:final value)) {
+      _render(value.topic);
+    } else {
+      // The server could not be reached, so the topic is read here instead. Saying so
+      // matters: the rules answer from the order and cannot read a sentence the way the
+      // model can, and a customer who is told nothing assumes they were understood.
+      _render(
+        ZaatarClassifier.read(message).topic,
+        notice: 'زعتر بيرد من الردود الجاهزة دلوقتي',
+      );
+    }
+    _toBottom();
+  }
+
+  /// The one place an answer is drawn, whoever chose the topic.
+  void _render(HelpTopic topic, {String? notice}) {
+    final strings = LuqmaStrings.of(context);
+    final reply = OrderHelper.answer(
+      topic,
+      // The order as it is when the answer is written, which is not the order as it was
+      // when the question was asked: the shop may have accepted in between.
+      _order,
+      ref.read(clockProvider)(),
+      money: strings.amount,
+    );
+
+    setState(() {
+      _topic = topic;
+      _pending = false;
+      if (notice != null && !_fallbackNoticeShown) {
+        _fallbackNoticeShown = true;
+        _bubbles.add(_Bubble(notice, mine: false, isNotice: true));
+      }
+      _bubbles.add(_Bubble(reply.text, mine: false, isReply: true));
+      _actions = [
+        for (final action in reply.actions)
+          if (action != HelpAction.callShop || _hasPhone) action,
+      ];
+    });
+  }
 
   Future<void> _act(HelpAction action) async {
     switch (action) {
@@ -111,6 +208,7 @@ class _OrderHelpSheetState extends ConsumerState<OrderHelpSheet> {
       case HelpAction.complain:
         setState(() {
           _writing = true;
+          _typed.text = _lastCustomerMessage;
           _bubbles.add(const _Bubble(
             'اكتب اللي حصل بالتفصيل وفريق لقمة هيراجعه ويرد عليك.',
             mine: false,
@@ -122,11 +220,9 @@ class _OrderHelpSheetState extends ConsumerState<OrderHelpSheet> {
     }
   }
 
-  void _send() {
+  void _sendComplaint() {
     final topic = _topic ?? HelpTopic.other;
     final typed = _typed.text.trim();
-    // «حاجة تانية» with nothing typed tells an admin nothing; every other topic at least
-    // says what it is about.
     if (topic == HelpTopic.other && typed.isEmpty) {
       setState(() => _error = 'اكتب اللي حصل الأول');
       return;
@@ -152,10 +248,25 @@ class _OrderHelpSheetState extends ConsumerState<OrderHelpSheet> {
         HelpAction.done => 'تمام، شكراً',
       };
 
+  bool get _showChips => _topic == null && _actions.isEmpty && !_pending;
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colors = theme.luqma;
+
+    // Followed live, so a shop accepting while this sheet is open reaches it. An answer
+    // already on screen is a thing that was said and stays said; a *button* is an offer
+    // made now, so «ألغِ الطلب» is withdrawn the moment the database would refuse it.
+    final live = ref.watch(orderProvider(widget.order.id)).value ?? widget.order;
+    final canCancel =
+        live.status.canMoveTo(OrderStatus.cancelled, by: OrderActor.customer);
+    final actions = [
+      for (final action in _actions)
+        if (action != HelpAction.cancelOrder || canCancel) action,
+    ];
+
+    final lastReplyIndex = _bubbles.lastIndexWhere((b) => b.isReply);
 
     return Padding(
       padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
@@ -180,7 +291,7 @@ class _OrderHelpSheetState extends ConsumerState<OrderHelpSheet> {
                     Icon(Icons.support_agent_rounded, color: colors.brand),
                     const SizedBox(width: Space.sm),
                     Expanded(
-                      child: Text('مساعد لقمة', style: theme.textTheme.titleLarge),
+                      child: Text('زعتر', style: theme.textTheme.titleLarge),
                     ),
                     IconButton(
                       tooltip: 'اقفل',
@@ -197,8 +308,13 @@ class _OrderHelpSheetState extends ConsumerState<OrderHelpSheet> {
                   shrinkWrap: true,
                   padding: const EdgeInsets.all(Space.gutter),
                   children: [
-                    for (final bubble in _bubbles) _BubbleView(bubble: bubble),
-                    if (_topic == null) ...[
+                    for (final (index, bubble) in _bubbles.indexed)
+                      _BubbleView(
+                        bubble: bubble,
+                        isLatestReply: index == lastReplyIndex,
+                      ),
+                    if (_pending) const _TypingIndicatorBubble(),
+                    if (_showChips) ...[
                       const SizedBox(height: Space.sm),
                       Wrap(
                         spacing: Space.sm,
@@ -212,9 +328,9 @@ class _OrderHelpSheetState extends ConsumerState<OrderHelpSheet> {
                             ),
                         ],
                       ),
-                    ] else if (!_writing) ...[
+                    ] else if (!_writing && actions.isNotEmpty) ...[
                       const SizedBox(height: Space.sm),
-                      for (final action in _actions)
+                      for (final action in actions)
                         Padding(
                           padding: const EdgeInsets.only(bottom: Space.sm),
                           child: action == HelpAction.complain ||
@@ -284,12 +400,55 @@ class _OrderHelpSheetState extends ConsumerState<OrderHelpSheet> {
                       ),
                       FilledButton(
                         key: const Key('order.sendIssue'),
-                        onPressed: _send,
+                        onPressed: _sendComplaint,
                         style: FilledButton.styleFrom(
                           minimumSize: const Size.fromHeight(Sizes.minTarget),
                         ),
                         child: const Text('ابعت'),
                       ),
+                    ],
+                  ),
+                )
+              else
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(
+                    Space.gutter,
+                    Space.xs,
+                    Space.gutter,
+                    Space.md,
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Text(
+                        'ماتكتبش بياناتك الشخصية هنا (رقمك أو عنوانك)',
+                        key: OrderHelpSheet.privacyNoticeKey,
+                        style: theme.textTheme.bodySmall?.copyWith(color: colors.textSecondary),
+                      ),
+                      const SizedBox(height: Space.xs),
+                      Row(children: [
+                      Expanded(
+                        child: TextField(
+                          key: OrderHelpSheet.inputKey,
+                          controller: _chatController,
+                          maxLength: 500,
+                          textInputAction: TextInputAction.send,
+                          onSubmitted: _pending ? null : (_) => _sendChat(),
+                          decoration: const InputDecoration(
+                            hintText: 'اسأل زعتر عن طلبك...',
+                            counterText: '',
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: Space.xs),
+                      IconButton(
+                        key: OrderHelpSheet.sendKey,
+                        tooltip: 'ابعت لزعتر',
+                        icon: const Icon(Icons.send_rounded),
+                        color: colors.brand,
+                        onPressed: _pending ? null : _sendChat,
+                      ),
+                      ]),
                     ],
                   ),
                 ),
@@ -301,21 +460,70 @@ class _OrderHelpSheetState extends ConsumerState<OrderHelpSheet> {
   }
 }
 
-class _BubbleView extends StatelessWidget {
-  const _BubbleView({required this.bubble});
-
-  final _Bubble bubble;
+class _TypingIndicatorBubble extends StatelessWidget {
+  const _TypingIndicatorBubble();
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colors = theme.luqma;
+
+    return Align(
+      alignment: AlignmentDirectional.centerEnd,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: Space.sm),
+        padding: const EdgeInsets.symmetric(
+          horizontal: Space.md,
+          vertical: Space.sm,
+        ),
+        decoration: BoxDecoration(
+          color: colors.card,
+          borderRadius: Radii.cardAll,
+          border: Border.all(color: colors.hairline),
+        ),
+        child: Text(
+          'زعتر بيكتب...',
+          style: theme.textTheme.bodyMedium?.copyWith(
+            color: colors.textSecondary,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _BubbleView extends StatelessWidget {
+  const _BubbleView({required this.bubble, this.isLatestReply = false});
+
+  final _Bubble bubble;
+  final bool isLatestReply;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = theme.luqma;
+
+    if (bubble.isNotice) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: Space.xs),
+        child: Center(
+          child: Text(
+            bubble.text,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: colors.textSecondary,
+            ),
+          ),
+        ),
+      );
+    }
+
     // RTL: the customer's own words sit at the start (right), the assistant's at the end.
     return Align(
       alignment: bubble.mine
           ? AlignmentDirectional.centerStart
           : AlignmentDirectional.centerEnd,
       child: Container(
+        key: isLatestReply ? OrderHelpSheet.replyKey : null,
         margin: const EdgeInsets.only(bottom: Space.sm),
         padding: const EdgeInsets.symmetric(
           horizontal: Space.md,
@@ -339,3 +547,4 @@ class _BubbleView extends StatelessWidget {
     );
   }
 }
+

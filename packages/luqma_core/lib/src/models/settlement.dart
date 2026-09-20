@@ -117,6 +117,15 @@ abstract class CommissionPayment with _$CommissionPayment {
     /// caller. A log that can be lied to is not evidence.
     required String recordedBy,
     @TimestampConverter() DateTime? recordedAt,
+
+    /// The attempt this receipt was written for, as the screen named it — null on a
+    /// collection recorded before the idempotency key existed, and on any APK that does
+    /// not send one.
+    ///
+    /// It is here so a screen holding a pending attempt can ask whether that attempt
+    /// actually landed. A lost reply and a collection that never happened look identical
+    /// from the phone, and the receipts are the only place that knows the difference.
+    String? clientPaymentId,
   }) = _CommissionPayment;
 
   const CommissionPayment._();

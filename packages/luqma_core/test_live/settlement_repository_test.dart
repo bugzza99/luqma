@@ -242,15 +242,18 @@ void main() {
       final adminDb = await live.openAsAdmin();
       addTearDown(adminDb.dispose);
 
-      final remaining = (await SupabaseSettlementRepository(adminDb).recordPayment(
+      final collection =
+          (await SupabaseSettlementRepository(adminDb).recordPayment(
         merchantId: merchantId,
         amount: 1500,
         note: 'دفع كاش',
       ))
-          .valueOrThrow;
+              .valueOrThrow;
 
       // The order took 2000; 1500 was handed over.
-      expect(remaining, 500);
+      expect(collection.remaining, 500);
+      expect(collection.recorded, 1500,
+          reason: 'the receipt the server wrote, not the figure that was typed');
 
       final row = await live.client
           .from('merchants')
@@ -259,6 +262,55 @@ void main() {
           .single();
       expect(row['commission_owed'], 500,
           reason: 'the balance the function returned is the balance it wrote');
+    });
+
+    // The reply is lost, the admin retries, and the figure in the box has been changed
+    // in between. The server holds the first receipt; what this pins is that the
+    // repository hands that receipt's own amount back rather than echoing what it was
+    // asked for — which is the number the screen then confirms out loud.
+    test('a retry with the same receipt answers with the first amount', () async {
+      await deliveredOrder(merchantId);
+      final adminDb = await live.openAsAdmin();
+      addTearDown(adminDb.dispose);
+      final repo = SupabaseSettlementRepository(adminDb);
+      final receipt = newClientOrderId();
+
+      final first = (await repo.recordPayment(
+        merchantId: merchantId,
+        amount: 1000,
+        clientPaymentId: receipt,
+      ))
+          .valueOrThrow;
+      final retry = (await repo.recordPayment(
+        merchantId: merchantId,
+        amount: 1900,
+        clientPaymentId: receipt,
+      ))
+          .valueOrThrow;
+
+      expect(first.recorded, 1000);
+      expect(retry.recorded, 1000, reason: 'the receipt that exists, not the retry');
+
+      // And the column comes *back*, not just in. The billing screen asks the receipts
+      // whether a pending attempt landed and silently clears the record when it finds
+      // one — a branch that turns entirely on this field arriving non-null from Postgres.
+      // Nothing pinned it: the write's idempotency was proved and the column never read.
+      // It would break silently, as an admin shown a pending notice for money already
+      // collected.
+      expect(
+        (await repo.paymentsFor(merchantId)).valueOrThrow.first.clientPaymentId,
+        receipt,
+        reason: 'the screen reads this column to tell a landed collection from a lost one',
+      );
+      expect(retry.matches(1900), isFalse);
+      expect(retry.remaining, first.remaining, reason: 'and no second subtraction');
+
+      final row = await live.client
+          .from('merchants')
+          .select('commission_owed')
+          .eq('id', merchantId)
+          .single();
+      expect(row['commission_owed'], 1000);
     });
 
     test('and the receipt is readable by the merchant it belongs to', () async {

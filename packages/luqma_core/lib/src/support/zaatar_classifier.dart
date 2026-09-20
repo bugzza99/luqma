@@ -1,0 +1,168 @@
+import 'order_helper.dart';
+
+/// What the words in a message say the question is about, and whether they said it
+/// plainly enough to be trusted without a model.
+class ZaatarReading {
+  const ZaatarReading({required this.topic, required this.decisive});
+
+  final HelpTopic topic;
+
+  /// False means «other» is a guess rather than a reading — either nothing in the
+  /// message is in the vocabulary, or two different families are, which is the one case
+  /// worth spending a model turn on.
+  final bool decisive;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is ZaatarReading &&
+          runtimeType == other.runtimeType &&
+          topic == other.topic &&
+          decisive == other.decisive;
+
+  @override
+  int get hashCode => Object.hash(topic, decisive);
+
+  @override
+  String toString() => 'ZaatarReading(topic: $topic, decisive: $decisive)';
+}
+
+/// How «زعتر» reads a typed question — the whole specification, in one place.
+///
+/// It is written twice, because one copy has to run on a phone with no connection and
+/// the other inside the Edge Function before anything is sent to a model. It used to be
+/// written twice *differently*, which is worse than either: `السعر` was money on the
+/// server and «حاجة تانية» on the phone, and `لسه عاوز ألغي` was cancel on the server and
+/// «الأوردر اتأخر» on the phone — because the phone's copy searched for substrings in the
+/// order somebody happened to write the `if`s, and checked «لسه» before «ألغي». So the
+/// answer a customer read depended on *which* failure they had hit, which is the one
+/// thing a fallback must never be.
+///
+/// This file is the specification and `supabase/functions/zaatar/excerpt.js` is its port.
+/// Neither is allowed to drift: `data/zaatar_corpus.json` holds the vocabulary and a
+/// corpus of messages, and both sides are run against that same file — by
+/// `test/zaatar_classifier_test.dart` here and by
+/// `supabase/test/local/zaatar_counts_its_words.test.js` there. A word added to one and
+/// not the other fails both suites.
+abstract final class ZaatarClassifier {
+  /// The words that decide a topic on their own, in their normalized spelling.
+  static const intentWords = <String, HelpTopic>{
+    // late
+    'اتاخر': HelpTopic.late,
+    'تاخر': HelpTopic.late,
+    'متاخر': HelpTopic.late,
+    'تاخير': HelpTopic.late,
+    'فين': HelpTopic.late,
+    'امتي': HelpTopic.late,
+    'هيوصل': HelpTopic.late,
+    'وصل': HelpTopic.late,
+    'يوصل': HelpTopic.late,
+    'بطيء': HelpTopic.late,
+    'late': HelpTopic.late,
+    'delay': HelpTopic.late,
+    'delayed': HelpTopic.late,
+    'where': HelpTopic.late,
+    // wrongItems
+    'ناقص': HelpTopic.wrongItems,
+    'ناقصه': HelpTopic.wrongItems,
+    'غلط': HelpTopic.wrongItems,
+    'خطا': HelpTopic.wrongItems,
+    'مغلوط': HelpTopic.wrongItems,
+    'wrong': HelpTopic.wrongItems,
+    'missing': HelpTopic.wrongItems,
+    // cancel
+    'الغي': HelpTopic.cancel,
+    'الغاء': HelpTopic.cancel,
+    'يلغي': HelpTopic.cancel,
+    'تلغي': HelpTopic.cancel,
+    'نلغي': HelpTopic.cancel,
+    'ملغي': HelpTopic.cancel,
+    'cancel': HelpTopic.cancel,
+    // money
+    'فلوس': HelpTopic.money,
+    'حساب': HelpTopic.money,
+    'الحساب': HelpTopic.money,
+    'الباقي': HelpTopic.money,
+    'فاتوره': HelpTopic.money,
+    'سعر': HelpTopic.money,
+    'السعر': HelpTopic.money,
+    'تمن': HelpTopic.money,
+    'كاش': HelpTopic.money,
+    'جنيه': HelpTopic.money,
+    'money': HelpTopic.money,
+    'price': HelpTopic.money,
+    'refund': HelpTopic.money,
+    'cash': HelpTopic.money,
+    'bill': HelpTopic.money,
+  };
+
+  /// Words that carry no topic by themselves but say what kind of message this is.
+  ///
+  /// Nothing on the phone reads them — they decide nothing here. They are part of the
+  /// specification because the server's excerpt is built out of them, and a vocabulary
+  /// kept in one file is a vocabulary that can be checked against the other side.
+  static const contextWords = <String>{
+    'مش', 'عايز', 'عاوز', 'محتاج', 'ممكن', 'لسه', 'خلاص', 'دلوقتي', 'بقالي', 'من',
+    'ليه', 'ازاي', 'ايه', 'هو', 'انا', 'حد', 'حاجه', 'تاني', 'كمان', 'برضه',
+    'الطلب', 'طلب', 'طلبي', 'الاوردر', 'اوردر', 'الاكل', 'اكل', 'الوجبه', 'وجبه',
+    'صنف', 'اصناف', 'كميه', 'حته', 'ساندويتش', 'مشروب',
+    'المطعم', 'مطعم', 'المحل', 'الشيف', 'المطبخ',
+    'المندوب', 'مندوب', 'الدليفري', 'التوصيل', 'توصيل',
+    'بارد', 'ساقع', 'سخن', 'وحش', 'مقرف', 'حلو', 'كويس', 'نضيف', 'مقفول', 'مفتوح',
+    'مشكله', 'شكوي', 'زعلان', 'اسف', 'ساعه', 'ساعات', 'دقيقه', 'دقايق', 'يوم',
+    'النهارده',
+    'order', 'food', 'driver', 'delivery', 'restaurant', 'shop', 'cold', 'hot', 'bad',
+    'problem', 'help', 'please', 'still', 'not', 'why', 'when', 'how', 'item', 'items',
+  };
+
+  static final RegExp _tashkeel = RegExp('[ً-ْـ]');
+  static final RegExp _separator = RegExp(r'[^\p{L}\p{N}]+', unicode: true);
+
+  /// Eastern Arabic (٠-٩) and Persian (۰-۹) digits to ASCII, so a number is a number.
+  static String normalizeDigits(String text) {
+    final out = StringBuffer();
+    for (final unit in text.runes) {
+      if (unit >= 0x0660 && unit <= 0x0669) {
+        out.write(unit - 0x0660);
+      } else if (unit >= 0x06f0 && unit <= 0x06f9) {
+        out.write(unit - 0x06f0);
+      } else {
+        out.writeCharCode(unit);
+      }
+    }
+    return out.toString();
+  }
+
+  /// One spelling per word. Egyptian typing drops hamza, writes ة for ه and ى for ي more
+  /// or less at random, so «إلغاء», «الغاء» and «ألغاء» must all reach the same entry or
+  /// the vocabulary silently refuses ordinary Arabic.
+  static String normalize(String text) => normalizeDigits(text)
+      .replaceAll(_tashkeel, '')
+      .replaceAll(RegExp('[أإآٱ]'), 'ا')
+      .replaceAll('ى', 'ي')
+      .replaceAll('ئ', 'ي')
+      .replaceAll('ؤ', 'و')
+      .replaceAll('ة', 'ه')
+      .toLowerCase();
+
+  /// The normalized words in a message, in order, splitting on anything that is neither
+  /// a letter nor a digit.
+  static List<String> tokens(String text) =>
+      normalize(text).split(_separator).where((t) => t.isNotEmpty).toList();
+
+  /// The topic these words decide, and whether they decided one.
+  static ZaatarReading read(String message) {
+    final counts = <HelpTopic, int>{};
+    for (final token in tokens(message)) {
+      final topic = intentWords[token];
+      if (topic != null) counts[topic] = (counts[topic] ?? 0) + 1;
+    }
+
+    // Two different families in one message — «الطلب اتأخر وعاوز ألغي» — is exactly the
+    // ambiguity the model is for. One family, however many times, is not a guess.
+    if (counts.length != 1) {
+      return const ZaatarReading(topic: HelpTopic.other, decisive: false);
+    }
+    return ZaatarReading(topic: counts.keys.first, decisive: true);
+  }
+}

@@ -44,6 +44,10 @@ dependencies:
   luqma_core:
     path: ../../packages/luqma_core
 
+  # A commission collection that was sent and never confirmed. The receipt id outlives
+  # the screen so a retry carries the same one rather than taking the cash twice.
+  shared_preferences: ^2.3.2
+
   # Calling a shop or an applicant from the screen that says to call them.
   url_launcher: ^6.3.2
 
