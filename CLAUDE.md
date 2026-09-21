@@ -516,7 +516,7 @@ in the repository — and `flutter test` on a *package* does not run the generat
 the way an app build does. Without it a new string is a compile error that points at the
 call site rather than at the missing step.
 
-**~2004 Dart tests · 507 schema tests · 247 stack tests · 273 live-repository tests.**
+**~2005 Dart tests · 515 schema tests · 251 stack tests · 273 live-repository tests.**
 `flutter analyze` clean.
 
 There are no `function` tests and no `tsc`: the TypeScript Cloud Functions went with
@@ -1452,6 +1452,33 @@ DATABASE_URL=<luqma-test session pooler> npm --prefix supabase run test:stack
   AdminApp's rail shed six modules for the moment a token spends refreshing. A widget
   test that granted access without supplying an identity is what caught it, and it was
   a real defect rather than a test artefact.
+- **Widening a predicate reaches every policy that reads it, including ones in a schema
+  you did not enumerate.** `refuse_moderator_delete` went on 25 tables in `public`, chosen
+  by reading the `for all` policies in the migrations. `storage.objects` is in another
+  schema, and two policies on it are gated on `is_admin()` — so widening that function for
+  H-08 handed a moderator the delete on **every courier's national ID photograph and every
+  image in the product**, for the hour between the two migrations. Nothing was exposed
+  (production had no moderator, and still has none), which is luck rather than design.
+  The fix is the method: enumerate with a catalogue query, never by reading migrations.
+  `pg_policy` joined to `pg_class` and `pg_namespace`, asking which delete-capable
+  policies mention the predicate and which of those tables carry the guard. That query
+  found both, and it is an assertion in `supabase/test/stack/staff_documents.test.js` now
+  rather than a note here.
+- **On hosted storage a direct SQL delete never reaches RLS.** `storage.protect_delete()`
+  raises 42501 first unless the caller names `storage.allow_delete_query`, so a stack test
+  that asserts a policy by attempting a delete is testing Supabase's guard and not ours —
+  and the path a client really takes is the Storage HTTP API, which consults the policy
+  expression. Assert the expression.
+- **Removing a courier's papers is an act with a name on it.** H-03: an admin could delete
+  the objects straight from the client and nothing recorded it, which breaks the rule H-09
+  settled. `admin_delete_staff_documents(uid, reason)` is the only way now — a **required**
+  reason, the bytes and the row and the audit entry in one transaction, and
+  `storage.allow_delete_query` put back afterwards. It removes **all three**, because the
+  three paths are `not null`, written as a set, and the approval trigger asks whether the
+  row exists at all: there is no state in the product for "two papers on file", so an
+  unacceptable photograph means the papers are handed in again. The first draft nulled one
+  column and the test refused it — bending the schema to fit the API first imagined would
+  have rippled a nullable column through the approval guard, the queue and the sheet.
 - **A trigger is the safe way to take back a verb that `for all` handed out.** Twenty-five
   tables carry a `for all` policy gated on `is_admin()`, so widening that function opened
   the delete on every one of them at once. Splitting twenty-five policies into
