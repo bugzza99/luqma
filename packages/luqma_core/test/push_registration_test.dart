@@ -293,6 +293,44 @@ void main() {
     expect(tokens.forgetAttempts['tok-1'], 2);
   });
 
+  // H-10. The deletion that needs a session is the one that cannot happen after sign-out,
+  // which is the only moment it matters. Without the secret the token stayed in the retry
+  // set waiting for an auth emission that never comes on a phone somebody signed out of
+  // and put down — and the old account went on being woken on it.
+  test('a token whose session-bound deletion fails is revoked with its secret', () async {
+    final auth = FakeAuthService();
+    final tokens = _RefusesForgetPushTokenRepository();
+    final registration = keepPushTokenRegistered(
+      identities: auth.changes,
+      repository: tokens,
+      token: () async => 'tok-1',
+      refreshes: const Stream<String>.empty(),
+    );
+    addTearDown(registration.cancel);
+
+    await auth.signInWithPassword(email: 'a@b.c', password: 'x');
+    await Future<void>.delayed(Duration.zero);
+    expect(tokens.registered, {'tok-1'});
+
+    await registration.forgetRegisteredToken();
+
+    expect(tokens.forgetAttempts, greaterThan(0),
+        reason: 'the session path is still tried first');
+    expect(tokens.registered, isEmpty,
+        reason: 'and the secret finishes what it could not');
+  });
+
+  test('a revocation is refused when the secret is not this token’s', () async {
+    // The rotation that stops an account which has handed the installation on from
+    // taking it back off the account holding it now.
+    final tokens = FakePushTokenRepository();
+    final first = (await tokens.register('tok-1')).valueOrNull!;
+    await tokens.register('tok-1');
+
+    expect((await tokens.revoke('tok-1', first)).valueOrNull, isFalse);
+    expect(tokens.tokens, contains('tok-1'));
+  });
+
   // A token arriving for nobody is a token filed against nobody. The RPC takes its uid
   // from the session, so there is deliberately no account parameter to fall back to.
   test('a refresh before anybody signs in registers nothing', () async {
@@ -418,16 +456,42 @@ void main() {
   });
 }
 
-class _FailsOncePushTokenRepository implements PushTokenRepository {
+/// What every double in this file needs and none of them is about: a secret per
+/// registration, and a revocation that honours it. Written once, because five copies of
+/// a stub is five places for one of them to drift.
+mixin _Revocable implements PushTokenRepository {
+  final _secrets = <String, String>{};
+  var _minted = 0;
+
+  String _secretFor(String token) => _secrets[token] = 'secret-${++_minted}';
+
+  /// Each double keeps its own registry under its own name, so the mixin asks rather
+  /// than reaches. A revocation that dropped the secret and left the token registered
+  /// would be a fake claiming a removal the server actually performs.
+  void dropToken(String token);
+
+  @override
+  Future<Result<bool>> revoke(String token, String secret) async {
+    if (_secrets[token] != secret) return const Result.ok(false);
+    _secrets.remove(token);
+    dropToken(token);
+    return const Result.ok(true);
+  }
+}
+
+class _FailsOncePushTokenRepository with _Revocable {
+  @override
+  void dropToken(String token) => registered.remove(token);
+
   var attempts = 0;
   final registered = <String>[];
 
   @override
-  Future<Result<void>> register(String token) async {
+  Future<Result<String?>> register(String token) async {
     attempts++;
     if (attempts == 1) return const Result.err(OfflineFailure());
     registered.add(token);
-    return const Result.ok(null);
+    return Result.ok(_secretFor(token));
   }
 
   @override
@@ -437,14 +501,17 @@ class _FailsOncePushTokenRepository implements PushTokenRepository {
   }
 }
 
-class _RejectsRefreshedTokenRepository implements PushTokenRepository {
+class _RejectsRefreshedTokenRepository with _Revocable {
+  @override
+  void dropToken(String token) => registered.remove(token);
+
   final registered = <String>[];
 
   @override
-  Future<Result<void>> register(String token) async {
+  Future<Result<String?>> register(String token) async {
     if (token == 'tok-2') return const Result.err(OfflineFailure());
     registered.add(token);
-    return const Result.ok(null);
+    return Result.ok(_secretFor(token));
   }
 
   @override
@@ -454,7 +521,10 @@ class _RejectsRefreshedTokenRepository implements PushTokenRepository {
   }
 }
 
-class _ControlledPushTokenRepository implements PushTokenRepository {
+class _ControlledPushTokenRepository with _Revocable {
+  @override
+  void dropToken(String token) => registered.remove(token);
+
   final registered = <String>{};
   final _started = <String, Completer<void>>{};
   final _gates = <String, Completer<Result<void>>>{};
@@ -466,11 +536,14 @@ class _ControlledPushTokenRepository implements PushTokenRepository {
       .complete(const Result.ok(null));
 
   @override
-  Future<Result<void>> register(String token) async {
+  Future<Result<String?>> register(String token) async {
     (_started[token] ??= Completer<void>()).complete();
     final result = await (_gates[token] ??= Completer<Result<void>>()).future;
-    if (result.failureOrNull == null) registered.add(token);
-    return result;
+    if (result.failureOrNull == null) {
+      registered.add(token);
+      return Result.ok(_secretFor(token));
+    }
+    return Result.err(result.failureOrNull!);
   }
 
   @override
@@ -480,14 +553,28 @@ class _ControlledPushTokenRepository implements PushTokenRepository {
   }
 }
 
-class _FailsFirstForgetPushTokenRepository implements PushTokenRepository {
+class _FailsFirstForgetPushTokenRepository with _Revocable {
+  @override
+  void dropToken(String token) => registered.remove(token);
+
+  /// Both doors shut on the first attempt. The point of this double is a token that
+  /// could not be removed at all, and a revocation that quietly succeeded would leave
+  /// the retry it exists to prove untested.
+  @override
+  Future<Result<bool>> revoke(String token, String secret) async {
+    if (token == 'tok-1' && (forgetAttempts[token] ?? 0) <= 1) {
+      return const Result.err(OfflineFailure());
+    }
+    return super.revoke(token, secret);
+  }
+
   final registered = <String>{};
   final forgetAttempts = <String, int>{};
 
   @override
-  Future<Result<void>> register(String token) async {
+  Future<Result<String?>> register(String token) async {
     registered.add(token);
-    return const Result.ok(null);
+    return Result.ok(_secretFor(token));
   }
 
   @override
@@ -502,15 +589,41 @@ class _FailsFirstForgetPushTokenRepository implements PushTokenRepository {
   }
 }
 
-class _CountingPushTokenRepository implements PushTokenRepository {
+class _CountingPushTokenRepository with _Revocable {
+  @override
+  void dropToken(String token) => registrations.remove(token);
+
   final registrations = <String>[];
 
   @override
-  Future<Result<void>> register(String token) async {
+  Future<Result<String?>> register(String token) async {
     registrations.add(token);
-    return const Result.ok(null);
+    return Result.ok(_secretFor(token));
   }
 
   @override
   Future<Result<void>> forget(String token) async => const Result.ok(null);
+}
+
+/// Never lets the session-bound deletion succeed. What is left is the secret.
+class _RefusesForgetPushTokenRepository with _Revocable {
+  final registered = <String>{};
+  var forgetAttempts = 0;
+
+  @override
+  void dropToken(String token) => registered.remove(token);
+
+  @override
+  Future<Result<String?>> register(String token) async {
+    registered.add(token);
+    return Result.ok(_secretFor(token));
+  }
+
+  @override
+  Future<Result<void>> forget(String token) async {
+    forgetAttempts++;
+    // What GoTrue leaves behind once it has signed out: the RPC needs a JWT and there
+    // is not one.
+    return const Result.err(PermissionFailure());
+  }
 }

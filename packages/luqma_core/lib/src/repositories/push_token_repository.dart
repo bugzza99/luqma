@@ -12,13 +12,24 @@ import '../result.dart';
 /// own several tokens for a phone in the kitchen and a till behind the counter.
 abstract interface class PushTokenRepository {
   /// Claims [token] for whoever is signed in, transferring it from any previous account.
-  Future<Result<void>> register(String token);
+  ///
+  /// Returns the secret the server minted for this registration. It is proof of ownership
+  /// that does not expire with the session, and it is the only thing [revoke] accepts.
+  Future<Result<String?>> register(String token);
 
   /// Takes [token] off the account only if the caller still owns it.
   ///
   /// Called on sign-out, and it matters: a shared till that keeps the last merchant's
   /// token goes on ringing for a shop the person holding it no longer works for.
   Future<Result<void>> forget(String token);
+
+  /// Takes [token] off whatever account holds it, with no session at all.
+  ///
+  /// The one deletion that cannot fail for lack of authentication, which is the failure
+  /// [forget] has by construction: it needs a JWT, and the moment this exists for is the
+  /// moment the JWT has gone. Returns whether a row was actually removed — false means
+  /// "not mine", and a caller told false must not report a clean sign-out.
+  Future<Result<bool>> revoke(String token, String secret);
 }
 
 class SupabasePushTokenRepository implements PushTokenRepository {
@@ -27,11 +38,26 @@ class SupabasePushTokenRepository implements PushTokenRepository {
   final SupabaseClient _db;
 
   @override
-  Future<Result<void>> register(String token) {
+  Future<Result<String?>> register(String token) {
     return Result.guard(() async {
       if (_db.auth.currentUser == null) throw const PermissionFailure();
 
-      await _db.rpc('register_device_token', params: {'p_token': token});
+      // Null from a server too old to mint one. The caller keeps working without a
+      // revocation path rather than treating the registration as failed.
+      final secret = await _db.rpc('register_device_token', params: {'p_token': token});
+      return secret is String ? secret : null;
+    });
+  }
+
+  @override
+  Future<Result<bool>> revoke(String token, String secret) {
+    return Result.guard(() async {
+      // Deliberately no session check. This is the call for when there is no session.
+      final removed = await _db.rpc(
+        'revoke_device_token',
+        params: {'p_token': token, 'p_secret': secret},
+      );
+      return removed == true;
     });
   }
 
@@ -68,18 +94,41 @@ class FakePushTokenRepository implements PushTokenRepository {
       if (entry.value == accountId) entry.key,
   ];
 
+  /// The secret each registration minted, keyed by token. Rotated on every registration,
+  /// the way the server rotates it, so a fake cannot prove an invariant the database
+  /// does not hold.
+  final Map<String, String> _secrets = {};
+
+  int _minted = 0;
+
   @override
-  Future<Result<void>> register(String token) async {
+  Future<Result<String?>> register(String token) async {
     if (failure != null) return Result.err(failure!);
     _deviceOwners[token] = accountId;
-    return const Result.ok(null);
+    final secret = 'secret-${++_minted}';
+    _secrets[token] = secret;
+    return Result.ok(secret);
   }
 
   @override
   Future<Result<void>> forget(String token) async {
     if (failure != null) return Result.err(failure!);
-    if (_deviceOwners[token] == accountId) _deviceOwners.remove(token);
+    if (_deviceOwners[token] == accountId) {
+      _deviceOwners.remove(token);
+      _secrets.remove(token);
+    }
     return const Result.ok(null);
+  }
+
+  @override
+  Future<Result<bool>> revoke(String token, String secret) async {
+    // No `failure` check and no account check, on purpose: this is the call that works
+    // when nothing else does, and a fake that made it fail alongside the rest would hide
+    // the very case it exists for.
+    if (_secrets[token] != secret) return const Result.ok(false);
+    _deviceOwners.remove(token);
+    _secrets.remove(token);
+    return const Result.ok(true);
   }
 }
 
@@ -175,6 +224,13 @@ class PushTokenRegistration {
   /// signed-out installation on an old account forever.
   final Set<String> _serverTokens = {};
 
+  /// The revocation secret the server minted for each token it accepted.
+  ///
+  /// Kept because a deletion that needs a session is a deletion that cannot happen after
+  /// sign-out — which is the one moment it is needed. With the secret, the same removal
+  /// works with no session at all.
+  final Map<String, String> _secrets = {};
+
   /// The token whose registration most recently succeeded.
   String? get registeredToken => _registered;
 
@@ -196,6 +252,9 @@ class PushTokenRegistration {
       // retryable on the next auth emission or token refresh.
       if (result.failureOrNull != null) return;
       _serverTokens.add(fresh);
+      // Null from a server too old to mint one; the token is still registered and the
+      // session-bound deletion still works, so this degrades rather than fails.
+      if (result.valueOrNull case final secret?) _secrets[fresh] = secret;
 
       // Sign-out can begin while the network request above is in flight. Remove the
       // just-registered token in that case instead of attaching it to a dead session.
@@ -214,9 +273,22 @@ class PushTokenRegistration {
   }
 
   Future<void> _forget(String token) async {
-    final result = await _repository.forget(token);
-    if (result.failureOrNull != null) return;
+    var removed = (await _repository.forget(token)).failureOrNull == null;
+
+    // The fallback that cannot fail for lack of a session, which is exactly how the
+    // session-bound call fails once GoTrue has signed out. Without it a deletion that
+    // misses its window stays in [_serverTokens] waiting for an auth emission that never
+    // comes on a phone somebody signed out of and put down — and the old account goes on
+    // being woken on it.
+    if (!removed) {
+      if (_secrets[token] case final secret?) {
+        removed = (await _repository.revoke(token, secret)).valueOrNull ?? false;
+      }
+    }
+
+    if (!removed) return;
     _serverTokens.remove(token);
+    _secrets.remove(token);
     if (_registered == token) _registered = null;
   }
 
