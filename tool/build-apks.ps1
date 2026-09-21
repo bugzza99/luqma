@@ -1,3 +1,5 @@
+param([string]$Only)
+
 # Builds the three release APKs, with every dart-define they need.
 #
 # The alternative is the long command in CLAUDE.md, typed by hand three times. That is
@@ -98,7 +100,15 @@ New-Item -ItemType Directory -Force -Path $outDir | Out-Null
 # build without the split flag came out at 53.5 MB carrying x86_64 and armeabi-v7a copies
 # of libmaplibre.so. What keeps it to one architecture is `ndk { abiFilters }` in each
 # app's `build.gradle.kts`.
-foreach ($app in @('customer_app', 'merchant_app', 'admin_app')) {
+$targets = @('customer_app', 'merchant_app', 'admin_app')
+if ($Only) {
+  $targets = @($targets | Where-Object { $_ -eq "${Only}_app" -or $_ -eq $Only })
+  if ($targets.Count -eq 0) {
+    throw "No app called '$Only'. Use customer, merchant or admin."
+  }
+}
+
+foreach ($app in $targets) {
   Write-Host "`n=== $app ===" -ForegroundColor Cyan
   Push-Location (Join-Path $root "apps\$app")
   try {
