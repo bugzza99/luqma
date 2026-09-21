@@ -38,7 +38,10 @@ class SupabasePushTokenRepository implements PushTokenRepository {
   @override
   Future<Result<void>> forget(String token) {
     return Result.guard(() async {
-      if (_db.auth.currentUser == null) return;
+      // A signed-out no-op must not be reported as a successful deletion: the manager
+      // would then discard its retry state while the server can still wake the old
+      // account on this installation.
+      if (_db.auth.currentUser == null) throw const PermissionFailure();
 
       await _db.rpc('forget_device_token', params: {'p_token': token});
     });
@@ -93,71 +96,154 @@ class FakePushTokenRepository implements PushTokenRepository {
 ///
 /// Nothing here throws. A merchant who cannot be reached by notification can still cook;
 /// a merchant whose app dies on sign-in cannot.
-StreamSubscription<LuqmaIdentity?> keepPushTokenRegistered({
+PushTokenRegistration keepPushTokenRegistered({
   required Stream<LuqmaIdentity?> identities,
   required PushTokenRepository repository,
   required Future<String?> Function() token,
   Stream<String>? refreshes,
 }) {
-  String? registered;
-  var signedIn = false;
-
-  Future<void> put(String fresh) async {
-    if (fresh == registered) return;
-    final was = registered;
-    registered = fresh;
-    await repository.register(fresh);
-    // The old one is dropped only once the new one is on the account. The other order
-    // leaves a phone with no token at all if the second call fails.
-    if (was != null) await repository.forget(was);
-  }
-
-  // Android reissues a token after a reinstall, a restore, a clear-data, or on its own
-  // after a long silence. Nothing listened for that, so a phone whose token changed while
-  // the app was open went quiet with the stale one still on the account — and it fails
-  // the way every push bug here fails: no error, no screen, just silence.
-  final refreshed = refreshes?.listen(
-    (fresh) async {
-      if (!signedIn) return;
-      try {
-        await put(fresh);
-      } catch (_) {
-        // Same reasoning as below: never worth an exception on a working app.
-      }
-    },
-    // A stream *error* is delivered here and nowhere else — the `try` above wraps the
-    // data callback and cannot see it. Without this it reaches the zone, and Sentry's
-    // `PlatformDispatcher.onError` reports an unhandled async error as fatal, so a bad
-    // moment on the FCM refresh stream would close the app.
-    onError: (Object _) {},
+  return PushTokenRegistration._(
+    repository,
+    identities: identities,
+    token: token,
+    refreshes: refreshes,
   );
+}
 
-  final subscription = identities.listen(
-    (identity) async {
+/// The live link between one signed-in session and its last successful push token.
+///
+/// Sign-out must remove the token that the server actually accepted, which can differ
+/// from Firebase's current token when a refresh registration failed. Keeping that value
+/// here also gives the auth service a cleanup operation it can await before its session
+/// disappears.
+class PushTokenRegistration {
+  PushTokenRegistration._(
+    this._repository, {
+    required Stream<LuqmaIdentity?> identities,
+    required Future<String?> Function() token,
+    Stream<String>? refreshes,
+  }) {
+    _refreshed = refreshes?.listen((fresh) async {
+      if (!_signedIn) return;
+      final generation = _generation;
+      try {
+        await _put(fresh, generation);
+      } catch (_) {
+        // Push availability must never make the app unavailable.
+      }
+    }, onError: (Object _) {});
+
+    _identities = identities.listen((identity) async {
       try {
         if (identity == null) {
-          signedIn = false;
-          final was = registered;
-          registered = null;
-          if (was != null) await repository.forget(was);
+          await forgetRegisteredToken();
           return;
         }
 
-        signedIn = true;
+        if (_identityUid != identity.uid) {
+          _identityUid = identity.uid;
+          // A token string names the installation, not the account. Even when Firebase
+          // returns the same string, a new account must run register again so the server
+          // transfers ownership to that account.
+          _registered = null;
+          _generation++;
+        }
+        _signedIn = true;
+        final generation = _generation;
         final fresh = await token();
         if (fresh == null) return;
-        await put(fresh);
+        await _put(fresh, generation);
       } catch (_) {
-        // Deliberately swallowed. This runs on every sign-in, and the worst outcome it may
-        // cause is somebody who is not woken — never one who cannot sign in.
+        // Same reasoning as above: token work must not block authentication.
       }
-    },
-    // Theoretical today — `SupabaseAuthService`'s controller is never given an error —
-    // and here for the same reason as above: a session stream that ever did emit one
-    // must not be able to take the app down with it.
-    onError: (Object _) {},
-  );
+    }, onError: (Object _) {});
 
-  subscription.onDone(() => refreshed?.cancel());
-  return subscription;
+    _identities.onDone(() => _refreshed?.cancel());
+  }
+
+  final PushTokenRepository _repository;
+  late final StreamSubscription<LuqmaIdentity?> _identities;
+  StreamSubscription<String>? _refreshed;
+  String? _registered;
+  String? _identityUid;
+  bool _signedIn = false;
+  int _generation = 0;
+  Future<void> _serial = Future<void>.value();
+
+  /// Every token the server accepted but has not confirmed forgetting yet. Usually this
+  /// is one value; keeping the failed deletions means a temporary outage cannot strand a
+  /// signed-out installation on an old account forever.
+  final Set<String> _serverTokens = {};
+
+  /// The token whose registration most recently succeeded.
+  String? get registeredToken => _registered;
+
+  Future<void> _enqueue(Future<void> Function() operation) {
+    final next = _serial.then((_) => operation());
+    // A failed push operation must not poison every operation queued after it. The
+    // caller still receives [next] and can handle the error; only the queue tail heals.
+    _serial = next.then<void>((_) {}, onError: (Object _, StackTrace _) {});
+    return next;
+  }
+
+  Future<void> _put(String fresh, int generation) {
+    return _enqueue(() async {
+      if (!_signedIn || generation != _generation) return;
+      if (fresh == _registered) return;
+
+      final result = await _repository.register(fresh);
+      // Do not remember a token the server refused. A transient failure should be
+      // retryable on the next auth emission or token refresh.
+      if (result.failureOrNull != null) return;
+      _serverTokens.add(fresh);
+
+      // Sign-out can begin while the network request above is in flight. Remove the
+      // just-registered token in that case instead of attaching it to a dead session.
+      if (!_signedIn || generation != _generation) {
+        await _forget(fresh);
+        return;
+      }
+
+      _registered = fresh;
+      // Registration and replacement are serialized, so two refresh events cannot
+      // finish out of order and leave the older token as the remembered one.
+      for (final stale in _serverTokens.toList()) {
+        if (stale != fresh) await _forget(stale);
+      }
+    });
+  }
+
+  Future<void> _forget(String token) async {
+    final result = await _repository.forget(token);
+    if (result.failureOrNull != null) return;
+    _serverTokens.remove(token);
+    if (_registered == token) _registered = null;
+  }
+
+  /// Removes the server-accepted token while authentication still exists.
+  Future<void> forgetRegisteredToken() {
+    // This part is intentionally synchronous: it invalidates an in-flight registration
+    // before the auth service starts waiting for the queued cleanup.
+    _signedIn = false;
+    _identityUid = null;
+    _generation++;
+    // This value belongs to the session that is ending. Failed deletions stay in
+    // [_serverTokens] for retry, but must not suppress registration if another account
+    // signs in on the same installation.
+    _registered = null;
+    return _enqueue(() async {
+      for (final token in _serverTokens.toList()) {
+        await _forget(token);
+      }
+    });
+  }
+
+  Future<void> cancel() async {
+    _signedIn = false;
+    _identityUid = null;
+    _generation++;
+    await _identities.cancel();
+    await _refreshed?.cancel();
+    await _serial;
+  }
 }

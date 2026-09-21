@@ -1,5 +1,5 @@
 name: admin_app
-description: "A new Flutter project."
+description: "لوحة إدارة منصة لقمة."
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
 publish_to: 'none'
@@ -68,6 +68,9 @@ dependencies:
 dev_dependencies:
   flutter_test:
     sdk: flutter
+  # Tests install an in-memory preferences backend directly. Depending on the
+  # transitive copy from shared_preferences makes `flutter analyze` reject the import.
+  shared_preferences_platform_interface: ^2.4.1
   build_runner: ^2.4.0
   riverpod_generator: ^3.0.0
 

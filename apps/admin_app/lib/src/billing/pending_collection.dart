@@ -28,7 +28,9 @@ class PendingCollection {
       final map = jsonDecode(json) as Map<String, dynamic>;
       final receiptId = map['receiptId'];
       final amount = map['amount'];
-      if (receiptId is! String || receiptId.isEmpty || amount is! int) return null;
+      if (receiptId is! String || receiptId.isEmpty || amount is! int) {
+        return null;
+      }
       return PendingCollection(receiptId: receiptId, amount: amount);
     } catch (_) {
       return null;
@@ -60,22 +62,13 @@ class PendingCollections {
   String _key(String subjectId) => 'pending_payment_${kind}_$subjectId';
 
   Future<PendingCollection?> load(String subjectId) async {
-    try {
-      return PendingCollection.decode(await _prefs.getString(_key(subjectId)));
-    } catch (_) {
-      // Unreadable storage is the same answer as no record: start clean rather than
-      // block a collection on a preference nobody can fix from here.
-      return null;
-    }
+    return PendingCollection.decode(await _prefs.getString(_key(subjectId)));
   }
 
   Future<void> save(String subjectId, PendingCollection pending) async {
-    try {
-      await _prefs.setString(_key(subjectId), pending.encode());
-    } catch (_) {
-      // Best effort. A collection that cannot be remembered is worse than one that can,
-      // but refusing to send it is worse still: the owner is holding the cash already.
-    }
+    // Fail closed. Sending money after this write failed means a lost response can no
+    // longer be reconciled and the next tap may collect the same cash twice.
+    await _prefs.setString(_key(subjectId), pending.encode());
   }
 
   Future<void> clear(String subjectId) async {

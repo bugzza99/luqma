@@ -21,14 +21,26 @@ void main() => luqmaBootstrap(() async {
   // The version this install runs as, against minSupportedVersion.
   final info = await PackageInfo.fromPlatform();
 
+  final pushTokens = SupabasePushTokenRepository(supabase);
+  PushTokenRegistration? pushRegistration;
+  final auth = SupabaseAuthService(
+    supabase,
+    beforeSignOut: () async {
+      await pushRegistration?.forgetRegisteredToken();
+    },
+  );
+
   final container = ProviderContainer(
     overrides: [
-      authServiceProvider.overrideWithValue(SupabaseAuthService(supabase)),
+      authServiceProvider.overrideWithValue(auth),
+      pushTokenRepositoryProvider.overrideWithValue(pushTokens),
       // The only place this app names the gallery; see src/app/gallery.dart.
       pickImageProvider.overrideWithValue(pickImageFromGallery),
       // The same shape the customer app shows on حسابي. Read here by the config screen,
       // which must not let a minimum version be set above the newest one that exists.
-      appVersionProvider.overrideWithValue('${info.version} (${info.buildNumber})'),
+      appVersionProvider.overrideWithValue(
+        '${info.version} (${info.buildNumber})',
+      ),
       // The owner's own photographs are on the product the moment they upload; the
       // database allows it from an admin and from nobody else.
       uploadsArriveApprovedProvider.overrideWithValue(true),
@@ -40,7 +52,7 @@ void main() => luqmaBootstrap(() async {
   // there is nobody after this — which is why it comes on the critical channel rather
   // than the quiet one the customer gets.
   unawaited(LuqmaPush.start());
-  keepPushTokenRegistered(
+  pushRegistration = keepPushTokenRegistered(
     identities: container.read(authServiceProvider).changes,
     repository: container.read(pushTokenRepositoryProvider),
     token: LuqmaPush.token,

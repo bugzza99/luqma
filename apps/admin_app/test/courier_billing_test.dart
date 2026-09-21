@@ -135,6 +135,20 @@ void main() {
   });
 
   group('recording the cash', () {
+    testWidgets('a repeated tap opens only one collection', (tester) async {
+      await pump(tester, balances: [owing()]);
+
+      final button = find.byKey(CourierBillingScreen.collectKey('c1'));
+      await tester.tap(button);
+      await tester.tap(button, warnIfMissed: false);
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(CourierBillingScreen.amountKey, skipOffstage: false),
+        findsOneWidget,
+      );
+    });
+
     testWidgets('lowers the balance and says what is left', (tester) async {
       await pump(tester, balances: [owing()]);
 

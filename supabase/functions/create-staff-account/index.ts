@@ -85,6 +85,13 @@ Deno.serve(async (req: Request) => {
   // A merchant-scope account belongs to somebody; a platform account to nobody.
   if (scope === 'merchant' && !merchantId) return json({ error: 'badRequest' }, 400);
   if (scope === 'platform' && merchantId) return json({ error: 'badRequest' }, 400);
+  // A syntactically valid role in the wrong scope becomes privilege confusion in the
+  // token hook (for example merchant/admin). Keep the same matrix in this service and
+  // the database constraint below it.
+  const roleMatchesScope = scope === 'platform'
+    ? role === 'admin' || role === 'moderator' || role === 'courier'
+    : role === 'owner' || role === 'courier';
+  if (!roleMatchesScope) return json({ error: 'badRequest' }, 400);
 
   // If the staff row names a merchant, that merchant has to exist — otherwise the
   // account would sign in to nothing.

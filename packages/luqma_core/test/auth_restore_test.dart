@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:luqma_core/luqma_core.dart';
 // `AuthState` is a name this package and GoTrue both use; the one that matters here is
@@ -25,9 +27,9 @@ void main() {
     final auth = SupabaseAuthService(client, resolveWithin: Duration.zero);
 
     await auth.restore().timeout(
-          const Duration(seconds: 5),
-          onTimeout: () => fail('restore() never returned'),
-        );
+      const Duration(seconds: 5),
+      onTimeout: () => fail('restore() never returned'),
+    );
 
     // Signed out, not unknown: the wait is over and nobody arrived. A screen that keeps
     // saying "we don't know yet" is the hang wearing a different label.
@@ -44,5 +46,23 @@ void main() {
     await auth.restore();
 
     expect(auth.state, AuthState.signedOut);
+  });
+
+  test('a stuck pre-sign-out cleanup cannot trap the session', () async {
+    final client = SupabaseClient('http://127.0.0.1:1', 'not-a-real-key');
+    addTearDown(client.dispose);
+    final never = Completer<void>();
+    final auth = SupabaseAuthService(
+      client,
+      resolveWithin: Duration.zero,
+      beforeSignOutTimeout: Duration.zero,
+      beforeSignOut: () => never.future,
+    );
+    addTearDown(auth.dispose);
+
+    await auth.signOut().timeout(
+      const Duration(seconds: 5),
+      onTimeout: () => fail('signOut() waited forever for optional cleanup'),
+    );
   });
 }

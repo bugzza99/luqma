@@ -27,6 +27,15 @@ void main() => luqmaBootstrap(() async {
   final config = RemoteConfigService(SupabaseConfigFetcher(supabase));
   unawaited(config.refresh());
 
+  final pushTokens = SupabasePushTokenRepository(supabase);
+  PushTokenRegistration? pushRegistration;
+  final auth = SupabaseAuthService(
+    supabase,
+    beforeSignOut: () async {
+      await pushRegistration?.forgetRegisteredToken();
+    },
+  );
+
   // The merchant's phone ringing when an order arrives — the one notification this
   // business depends on. Started from the same container the app runs on, so the token
   // it registers belongs to the session every screen is reading.
@@ -36,7 +45,8 @@ void main() => luqmaBootstrap(() async {
   final container = ProviderContainer(
     overrides: [
       remoteConfigServiceProvider.overrideWithValue(config),
-      authServiceProvider.overrideWithValue(SupabaseAuthService(supabase)),
+      authServiceProvider.overrideWithValue(auth),
+      pushTokenRepositoryProvider.overrideWithValue(pushTokens),
       // The only place this app names the gallery; see src/app/gallery.dart.
       pickImageProvider.overrideWithValue(pickImageFromGallery),
       // The courier's write queue survives an app being killed: shared_preferences,
@@ -50,7 +60,7 @@ void main() => luqmaBootstrap(() async {
   unawaited(LuqmaPush.start());
   // …and then the token follows the session. Registering at launch would run before
   // anybody has signed in, and RLS would refuse it without a word.
-  keepPushTokenRegistered(
+  pushRegistration = keepPushTokenRegistered(
     identities: container.read(authServiceProvider).changes,
     repository: container.read(pushTokenRepositoryProvider),
     token: LuqmaPush.token,

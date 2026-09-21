@@ -41,21 +41,23 @@ class CourierBillingScreen extends ConsumerWidget {
         // hasError first: a provider that fails before it has ever emitted stays
         // AsyncLoading with the error hanging off it, and the error arm never fires.
         AsyncValue(hasError: true, :final error) => LuqmaErrorView(
-            failure: error,
-            onRetry: () => ref.invalidate(couriersOutstandingProvider),
-          ),
-        AsyncValue(value: null) => const Center(child: CircularProgressIndicator()),
+          failure: error,
+          onRetry: () => ref.invalidate(couriersOutstandingProvider),
+        ),
+        AsyncValue(value: null) => const Center(
+          child: CircularProgressIndicator(),
+        ),
         AsyncValue(value: final rows!) when rows.isEmpty => const _Empty(),
         AsyncValue(value: final rows!) => RefreshIndicator(
-            onRefresh: () async => ref.invalidate(couriersOutstandingProvider),
-            child: ListView.separated(
-              key: listKey,
-              padding: const EdgeInsets.all(Space.gutter),
-              itemCount: rows.length,
-              separatorBuilder: (_, _) => const SizedBox(height: Space.sm),
-              itemBuilder: (context, i) => _CourierRow(balance: rows[i]),
-            ),
+          onRefresh: () async => ref.invalidate(couriersOutstandingProvider),
+          child: ListView.separated(
+            key: listKey,
+            padding: const EdgeInsets.all(Space.gutter),
+            itemCount: rows.length,
+            separatorBuilder: (_, _) => const SizedBox(height: Space.sm),
+            itemBuilder: (context, i) => _CourierRow(balance: rows[i]),
           ),
+        ),
       },
     );
   }
@@ -75,7 +77,9 @@ class _Empty extends StatelessWidget {
         child: Text(
           'كل المناديب حساباتهم مظبوطة، مفيش حد عليه حاجة.',
           textAlign: TextAlign.center,
-          style: theme.textTheme.bodyMedium?.copyWith(color: colors.textSecondary),
+          style: theme.textTheme.bodyMedium?.copyWith(
+            color: colors.textSecondary,
+          ),
         ),
       ),
     );
@@ -109,116 +113,89 @@ class _CourierRowState extends ConsumerState<_CourierRow> {
   }
 
   Future<void> _collect() async {
-    final balance = widget.balance;
-    final strings = LuqmaStrings.of(context);
-
-    // An attempt whose reply was lost. Its amount is not editable and its id is reused:
-    // if the first request landed, the server answers with the receipt it already holds
-    // and moves nothing; if it did not, this is the first one to arrive. Either way the
-    // cash is recorded exactly once.
-    final stored = await _pending.load(balance.uid);
-    if (!mounted) return;
-
-    final controller = TextEditingController(
-      text: stored != null
-          ? Money.format(stored.amount)
-          : (balance.owed > 0 ? Money.format(balance.owed) : ''),
-    );
-
-    final amount = await showDialog<int>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text('تحصيل من ${balance.name}'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            if (stored != null) ...[
-              Text(
-                key: CourierBillingScreen.frozenKey,
-                'في محاولة تحصيل سابقة بـ ${strings.price(stored.amount)} مردّتش. '
-                'اضغط تأكيد تاني — لو كانت وصلت مش هتتسجّل مرتين.',
-                style: Theme.of(dialogContext).textTheme.bodySmall,
-              ),
-              const SizedBox(height: Space.md),
-            ],
-            TextField(
-              key: CourierBillingScreen.amountKey,
-              controller: controller,
-              // Frozen with its receipt. An editable field on a retry is how a new figure
-              // gets sent under an old receipt id.
-              readOnly: stored != null,
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              decoration: const InputDecoration(labelText: 'المبلغ بالجنيه'),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(),
-            child: const Text('إلغاء'),
-          ),
-          FilledButton(
-            key: CourierBillingScreen.confirmKey,
-            onPressed: () {
-              final parsed = stored?.amount ?? Money.parse(controller.text);
-              if (parsed == null || parsed <= 0) return;
-              Navigator.of(dialogContext).pop(parsed);
-            },
-            child: const Text('تأكيد'),
-          ),
-        ],
-      ),
-    );
-
-    if (amount == null || !mounted) return;
-
-    // Frozen together, and written down *before* the request. A record made afterwards
-    // is a record that does not exist for the one failure it was built for.
-    final receiptId = stored?.receiptId ?? _uuid();
-    await _pending.save(
-      balance.uid,
-      PendingCollection(receiptId: receiptId, amount: amount),
-    );
-
+    if (_busy) return;
     setState(() => _busy = true);
-    final result = await ref.read(courierStatementRepositoryProvider).recordPayment(
-          courierUid: balance.uid,
-          amount: amount,
-          receiptId: receiptId,
-        );
-    if (!mounted) return;
-    setState(() => _busy = false);
 
-    switch (result) {
-      case Ok(:final value):
-        await _pending.clear(balance.uid);
-        if (!mounted) return;
-        ref.invalidate(couriersOutstandingProvider);
-        ref.invalidate(courierPaymentsProvider(courierUid: balance.uid));
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              value.remaining > 0
-                  ? 'اتسجّل. فاضل عليه ${strings.price(value.remaining)}'
-                  : value.remaining < 0
-                      ? 'اتسجّل. بقى ليه رصيد ${strings.price(-value.remaining)}'
-                      : 'اتسجّل. حسابه بقى مظبوط',
+    try {
+      final balance = widget.balance;
+      final strings = LuqmaStrings.of(context);
+
+      // An attempt whose reply was lost. Its amount is not editable and its id is reused:
+      // if the first request landed, the server answers with the receipt it already holds
+      // and moves nothing; if it did not, this is the first one to arrive. Either way the
+      // cash is recorded exactly once.
+      final stored = await _pending.load(balance.uid);
+      if (!mounted) return;
+
+      final amount = await showDialog<int>(
+        context: context,
+        builder: (_) => _CollectionDialog(
+          balance: balance,
+          stored: stored,
+          strings: strings,
+        ),
+      );
+
+      if (amount == null || !mounted) return;
+
+      // Frozen together, and written down *before* the request. A record made afterwards
+      // is a record that does not exist for the one failure it was built for.
+      final receiptId = stored?.receiptId ?? _uuid();
+      await _pending.save(
+        balance.uid,
+        PendingCollection(receiptId: receiptId, amount: amount),
+      );
+      if (!mounted) return;
+
+      final result = await ref
+          .read(courierStatementRepositoryProvider)
+          .recordPayment(
+            courierUid: balance.uid,
+            amount: amount,
+            receiptId: receiptId,
+          );
+      if (!mounted) return;
+
+      switch (result) {
+        case Ok(:final value):
+          await _pending.clear(balance.uid);
+          if (!mounted) return;
+          ref.invalidate(couriersOutstandingProvider);
+          ref.invalidate(courierPaymentsProvider(courierUid: balance.uid));
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                value.remaining > 0
+                    ? 'اتسجّل. فاضل عليه ${strings.price(value.remaining)}'
+                    : value.remaining < 0
+                    ? 'اتسجّل. بقى ليه رصيد ${strings.price(-value.remaining)}'
+                    : 'اتسجّل. حسابه بقى مظبوط',
+              ),
             ),
+          );
+        case Err(:final failure):
+          // The pending record stays. The reply not arriving is not the same as the money
+          // not moving, and the next attempt has to carry the same id to find out.
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                failure is OfflineFailure
+                    ? 'مفيش نت. التحصيل محفوظ، جرّب تاني لما الشبكة ترجع.'
+                    : 'مقدرناش نسجّل التحصيل. جرّب تاني.',
+              ),
+            ),
+          );
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('مقدرناش نحفظ محاولة التحصيل. جرّب تاني.'),
           ),
         );
-      case Err(:final failure):
-        // The pending record stays. The reply not arriving is not the same as the money
-        // not moving, and the next attempt has to carry the same id to find out.
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              failure is OfflineFailure
-                  ? 'مفيش نت. التحصيل محفوظ، جرّب تاني لما الشبكة ترجع.'
-                  : 'مقدرناش نسجّل التحصيل. جرّب تاني.',
-            ),
-          ),
-        );
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
     }
   }
 
@@ -250,15 +227,21 @@ class _CourierRowState extends ConsumerState<_CourierRow> {
                   children: [
                     Text(balance.name, style: theme.textTheme.titleSmall),
                     const SizedBox(height: Space.xs),
-                    Text(balance.phone,
-                        style: LuqmaType.caption.copyWith(color: colors.textSecondary)),
+                    Text(
+                      balance.phone,
+                      style: LuqmaType.caption.copyWith(
+                        color: colors.textSecondary,
+                      ),
+                    ),
                     if (!balance.isActive) ...[
                       const SizedBox(height: Space.xs),
                       // A dismissed courier can still owe, and the debt survives them
                       // leaving. Saying so stops the owner ringing a number that no
                       // longer works and assuming the balance is a mistake.
-                      Text('موقوف',
-                          style: LuqmaType.caption.copyWith(color: colors.danger)),
+                      Text(
+                        'موقوف',
+                        style: LuqmaType.caption.copyWith(color: colors.danger),
+                      ),
                     ],
                   ],
                 ),
@@ -276,7 +259,9 @@ class _CourierRowState extends ConsumerState<_CourierRow> {
                     // In words. A minus sign in front of a figure the platform owes gets
                     // read as a debt at the wrong moment.
                     owes ? 'عليه' : 'رصيد ليه',
-                    style: LuqmaType.caption.copyWith(color: colors.textSecondary),
+                    style: LuqmaType.caption.copyWith(
+                      color: colors.textSecondary,
+                    ),
                   ),
                 ],
               ),
@@ -292,6 +277,89 @@ class _CourierRowState extends ConsumerState<_CourierRow> {
           ],
         ],
       ),
+    );
+  }
+}
+
+class _CollectionDialog extends StatefulWidget {
+  const _CollectionDialog({
+    required this.balance,
+    required this.stored,
+    required this.strings,
+  });
+
+  final CourierBalance balance;
+  final PendingCollection? stored;
+  final LuqmaStrings strings;
+
+  @override
+  State<_CollectionDialog> createState() => _CollectionDialogState();
+}
+
+class _CollectionDialogState extends State<_CollectionDialog> {
+  late final TextEditingController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    final stored = widget.stored;
+    _controller = TextEditingController(
+      text: stored != null
+          ? Money.format(stored.amount)
+          : (widget.balance.owed > 0 ? Money.format(widget.balance.owed) : ''),
+    );
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final stored = widget.stored;
+    return AlertDialog(
+      title: Text('تحصيل من ${widget.balance.name}'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (stored != null) ...[
+            Text(
+              key: CourierBillingScreen.frozenKey,
+              'في محاولة تحصيل سابقة بـ ${widget.strings.price(stored.amount)} مردّتش. '
+              'اضغط تأكيد تاني — لو كانت وصلت مش هتتسجّل مرتين.',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+            const SizedBox(height: Space.md),
+          ],
+          TextField(
+            key: CourierBillingScreen.amountKey,
+            controller: _controller,
+            // Frozen with its receipt. An editable field on a retry is how a new figure
+            // gets sent under an old receipt id.
+            readOnly: stored != null,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: const InputDecoration(labelText: 'المبلغ بالجنيه'),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('إلغاء'),
+        ),
+        FilledButton(
+          key: CourierBillingScreen.confirmKey,
+          onPressed: () {
+            final parsed = stored?.amount ?? Money.parse(_controller.text);
+            if (parsed == null || parsed <= 0) return;
+            Navigator.of(context).pop(parsed);
+          },
+          child: const Text('تأكيد'),
+        ),
+      ],
     );
   }
 }

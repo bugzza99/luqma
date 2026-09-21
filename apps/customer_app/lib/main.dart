@@ -28,21 +28,32 @@ void main() => luqmaBootstrap(() async {
   final config = RemoteConfigService(SupabaseConfigFetcher(supabase));
   unawaited(config.refresh());
 
+  final pushTokens = SupabasePushTokenRepository(supabase);
+  PushTokenRegistration? pushRegistration;
+  final auth = SupabaseAuthService(
+    supabase,
+    beforeSignOut: () async {
+      await pushRegistration?.forgetRegisteredToken();
+    },
+  );
+
   // A container rather than an inline scope, so the push registration below can reach
   // the same providers the app runs on. Two containers would register a token against a
   // session the app does not have.
   final container = ProviderContainer(
     overrides: [
       remoteConfigServiceProvider.overrideWithValue(config),
-      authServiceProvider.overrideWithValue(SupabaseAuthService(supabase)),
+      authServiceProvider.overrideWithValue(auth),
+      pushTokenRepositoryProvider.overrideWithValue(pushTokens),
       // The one place the build number is read. حسابي shows it for support calls, and
       // it comes from the package rather than a constant somebody has to remember to
       // bump — a second copy is a copy that eventually disagrees with the store.
       appVersionProvider.overrideWithValue(
         '${info.version} (${info.buildNumber})',
       ),
-      themeModeStoreProvider
-          .overrideWithValue(SharedPreferencesThemeModeStore()),
+      themeModeStoreProvider.overrideWithValue(
+        SharedPreferencesThemeModeStore(),
+      ),
     ],
   );
 
@@ -54,7 +65,7 @@ void main() => luqmaBootstrap(() async {
   // The customer is told three things and no more: their order was accepted, it is on
   // the way, or it was cancelled. A phone that buzzes at every one of six steps is a
   // phone whose owner turns notifications off, taking those three with it.
-  keepPushTokenRegistered(
+  pushRegistration = keepPushTokenRegistered(
     identities: container.read(authServiceProvider).changes,
     repository: container.read(pushTokenRepositoryProvider),
     token: LuqmaPush.token,

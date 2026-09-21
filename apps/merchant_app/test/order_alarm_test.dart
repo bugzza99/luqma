@@ -11,21 +11,25 @@ import 'package:merchant_app/src/alarm/order_alarm.dart';
 /// who turns notifications off, and then never hears any of them again.
 void main() {
   Order order({String id = 'o1', int number = 101}) => Order(
-        id: id,
-        cityId: 'edku',
-        orderNumber: number,
-        customerUid: 'u1',
-        customerName: 'أحمد',
-        customerPhone: '0100',
-        merchantId: 'm1',
-        merchantName: 'مطعم',
-        zoneId: 'z1',
-        type: OrderType.instant,
-        items: const [
-          OrderLine(itemId: 'i1', name: 'فراخ', unitPrice: 12000, quantity: 1),
-        ],
-        pricing: const OrderPricing(subtotal: 12000, deliveryFee: 1000, total: 13000),
-      );
+    id: id,
+    cityId: 'edku',
+    orderNumber: number,
+    customerUid: 'u1',
+    customerName: 'أحمد',
+    customerPhone: '0100',
+    merchantId: 'm1',
+    merchantName: 'مطعم',
+    zoneId: 'z1',
+    type: OrderType.instant,
+    items: const [
+      OrderLine(itemId: 'i1', name: 'فراخ', unitPrice: 12000, quantity: 1),
+    ],
+    pricing: const OrderPricing(
+      subtotal: 12000,
+      deliveryFee: 1000,
+      total: 13000,
+    ),
+  );
 
   late FakeAlarm alarm;
   late FakeMerchantOrderRepository orders;
@@ -43,7 +47,11 @@ void main() {
           FakeAuthService(
             restoring: const LuqmaIdentity(
               uid: 'owner1',
-              claims: {'role': 'owner', 'scope': 'merchant', 'merchantId': 'm1'},
+              claims: {
+                'role': 'owner',
+                'scope': 'merchant',
+                'merchantId': 'm1',
+              },
             ),
           ),
         ),
@@ -126,13 +134,34 @@ void main() {
     });
 
     test('one of two answered keeps it ringing for the other', () async {
-      container = containerWith(seed: [order(), order(id: 'o2', number: 102)]);
+      container = containerWith(
+        seed: [
+          order(),
+          order(id: 'o2', number: 102),
+        ],
+      );
       await settle();
 
       await orders.accept('o1', prepMinutes: 20);
       await settle();
 
       expect(alarm.isPlaying, isTrue);
+    });
+
+    test('acknowledging one of two keeps ringing for the other', () async {
+      container = containerWith(
+        seed: [
+          order(),
+          order(id: 'o2', number: 102),
+        ],
+      );
+      await settle();
+
+      container.read(orderAlarmProvider.notifier).acknowledge('o1');
+      await settle();
+
+      expect(alarm.isPlaying, isTrue);
+      expect(container.read(orderAlarmProvider), isTrue);
     });
   });
 
@@ -167,16 +196,19 @@ void main() {
   });
 
   group('what the screen can ask', () {
-    test('it says whether it is ringing, so the screen can offer to stop it', () async {
-      container = containerWith(seed: [order()]);
-      await settle();
+    test(
+      'it says whether it is ringing, so the screen can offer to stop it',
+      () async {
+        container = containerWith(seed: [order()]);
+        await settle();
 
-      expect(container.read(orderAlarmProvider), isTrue);
+        expect(container.read(orderAlarmProvider), isTrue);
 
-      container.read(orderAlarmProvider.notifier).acknowledge();
-      await settle();
+        container.read(orderAlarmProvider.notifier).acknowledge();
+        await settle();
 
-      expect(container.read(orderAlarmProvider), isFalse);
-    });
+        expect(container.read(orderAlarmProvider), isFalse);
+      },
+    );
   });
 }

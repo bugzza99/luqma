@@ -271,6 +271,81 @@ describe('what the courier keeps', () => {
       assert.equal(payments.rows[0].n, 1);
     });
 
+    it('refuses the same receipt for a different amount', async () => {
+      const receipt = '12111111-2222-3333-4444-555555555555';
+      await db.query(
+        'select record_courier_payment($1, $2, null, $3)',
+        [RIDER, 100, receipt]);
+
+      await assert.rejects(
+        () => db.query(
+          'select record_courier_payment($1, $2, null, $3)',
+          [RIDER, 150, receipt]),
+        /another payment/);
+      assert.equal(await owed(RIDER), -100);
+      const payments = await db.query(
+        'select count(*)::int n from courier_commission_payments where courier_uid = $1', [RIDER]);
+      assert.equal(payments.rows[0].n, 1);
+    });
+
+    it('verifies a legacy receipt amount from its audit row', async () => {
+      const receipt = '13111111-2222-3333-4444-555555555555';
+      await db.query(
+        `insert into payment_receipts
+           (id, kind, merchant_id, courier_uid, result, recorded_by)
+         values ($1, 'courierCommission', null, $2, '{"remaining":25}'::jsonb, $3)`,
+        [receipt, RIDER, ADMIN]);
+      await db.query(
+        `insert into audit_log (action, actor, detail)
+         values ('recordCourierPayment', $1,
+                 jsonb_build_object('courier', $2::uuid, 'amount', 75, 'receipt', $3::uuid))`,
+        [ADMIN, RIDER, receipt]);
+
+      const repeated = (await db.query(
+        'select record_courier_payment($1, $2, null, $3) as r',
+        [RIDER, 75, receipt])).rows[0].r;
+      assert.equal(repeated.remaining, 25);
+      const stored = (await db.query(
+        'select result from payment_receipts where id = $1', [receipt])).rows[0].result;
+      assert.equal(stored.amount, 75);
+
+      await assert.rejects(
+        () => db.query(
+          'select record_courier_payment($1, $2, null, $3)',
+          [RIDER, 50, receipt]),
+        /another payment/);
+    });
+
+    it('refuses a receipt that belongs to a different courier', async () => {
+      const receipt = '21111111-2222-3333-4444-555555555555';
+      await db.query(
+        'select record_courier_payment($1, $2, null, $3)',
+        [RIDER, 100, receipt]);
+
+      await assert.rejects(
+        () => db.query(
+          'select record_courier_payment($1, $2, null, $3)',
+          [SHOP_RIDER, 100, receipt]),
+        /another payment/);
+      assert.equal(await owed(SHOP_RIDER), 0);
+    });
+
+    it('refuses a receipt created for a merchant payment', async () => {
+      const receipt = '31111111-2222-3333-4444-555555555555';
+      await db.query(
+        `insert into payment_receipts
+           (id, kind, merchant_id, courier_uid, result, recorded_by)
+         values ($1, 'walletTopUp', $2, null, '{"walletBalance":100}'::jsonb, $3)`,
+        [receipt, fish, ADMIN]);
+
+      await assert.rejects(
+        () => db.query(
+          'select record_courier_payment($1, $2, null, $3)',
+          [RIDER, 100, receipt]),
+        /another payment/);
+      assert.equal(await owed(RIDER), 0);
+    });
+
     it('lets the balance go negative, because that is credit', async () => {
       const id = await place();
       await move(id, 'delivered', RIDER);
@@ -286,6 +361,18 @@ describe('what the courier keeps', () => {
       await assert.rejects(
         () => db.query('select record_courier_payment($1, $2)', [RIDER, 100]),
         /only an admin/);
+    });
+
+    it('refuses to record courier cash against a non-courier staff row', async () => {
+      await admin();
+
+      await assert.rejects(
+        () => db.query('select record_courier_payment($1, $2)', [ADMIN, 100]),
+        /no such courier/);
+      const payments = await db.query(
+        'select count(*)::int n from courier_commission_payments where courier_uid = $1',
+        [ADMIN]);
+      assert.equal(payments.rows[0].n, 0);
     });
 
     it('refuses a payment that is not a positive amount', async () => {

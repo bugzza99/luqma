@@ -140,6 +140,42 @@ describe('a courier shows papers', () => {
       );
     });
 
+    it('refuses reusing one photograph for two document slots', async () => {
+      await upload(RIDER);
+      const [front, , selfie] = paths(RIDER);
+      await assert.rejects(
+        () => db.query('select set_my_staff_documents($1, $2, $3)',
+          [front, front, selfie]),
+        /staff_documents_paths_are_distinct|check constraint/,
+      );
+    });
+
+    it('does not let the owner delete a photograph currently in use', async () => {
+      await upload(RIDER);
+      await hand_in(RIDER);
+      const [front] = paths(RIDER);
+
+      // Hosted Storage grants these table privileges before applying its policies. The
+      // PGlite harness owns the table directly, so mirror that API-role boundary here.
+      await db.exec(`alter table storage.objects enable row level security;
+        grant usage on schema storage to authenticated;
+        grant select, delete on storage.objects to authenticated;`);
+      await db.exec('begin');
+      try {
+        await db.exec('set local role authenticated');
+        const deleted = await db.query(
+          `delete from storage.objects
+            where bucket_id = 'staff-docs' and name = $1 returning name`, [front]);
+        assert.equal(deleted.rows.length, 0);
+      } finally {
+        await db.exec('rollback');
+      }
+
+      const stillThere = await db.query(
+        `select 1 from storage.objects where bucket_id = 'staff-docs' and name = $1`, [front]);
+      assert.equal(stillThere.rows.length, 1);
+    });
+
     it('replaces a bad photograph rather than making a second row', async () => {
       await upload(RIDER);
       await hand_in(RIDER);
@@ -384,6 +420,26 @@ describe('a courier shows papers', () => {
       const { rows } = await db.query(
         `select count(*)::int as n from storage.objects where bucket_id = 'media'`);
       assert.equal(rows[0].n, 1);
+    });
+
+    it('removes old orphaned identity objects after the account is deleted', async () => {
+      await upload(RIDER);
+      await hand_in(RIDER);
+      await db.query('delete from auth.users where id = $1', [RIDER]);
+      await db.query(
+        `update storage.objects
+            set created_at = now() - interval '31 days'
+          where bucket_id = 'staff-docs'`);
+
+      await db.query('select sweep_staff_documents()');
+
+      const { rows } = await db.query(
+        `select count(*)::int as n from storage.objects where bucket_id = 'staff-docs'`);
+      assert.equal(rows[0].n, 0);
+
+      // Restore the account for the file's remaining fixtures and teardown.
+      await db.query(`insert into auth.users (id, email) values ($1, $2)`,
+        [RIDER, `${PHONES[RIDER]}@phone.luqma.app`]);
     });
   });
 });

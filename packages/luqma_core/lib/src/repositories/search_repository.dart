@@ -69,9 +69,12 @@ class SupabaseSearchRepository implements SearchRepository {
 
       // `%` and `_` are wildcards to ilike, so a customer typing one would silently
       // widen their own search.
-      final pattern = '%${trimmed.replaceAll('%', r'\%').replaceAll('_', r'\_')}%';
+      final pattern =
+          '%${trimmed.replaceAll('%', r'\%').replaceAll('_', r'\_')}%';
 
-      final merchantRows = await _db
+      // Start both independent reads before awaiting either. Search latency is then the
+      // slower query rather than the sum of two network round trips.
+      final merchantRowsFuture = _db
           .from('merchants')
           .select()
           .eq('city_id', cityId)
@@ -79,19 +82,26 @@ class SupabaseSearchRepository implements SearchRepository {
           .ilike('name', pattern)
           .limit(_limit);
 
-      final merchants =
-          merchantRows.map((r) => Merchant.fromJson(ColumnNames.toModel(r))).toList();
-
       // The dish carries its shop, so one query answers both halves — and a dish whose
       // shop is suspended or in another city never reaches the screen.
-      final dishRows = await _db
+      final dishRowsFuture = _db
           .from('menu_items')
-          .select('*, merchants!inner(*)')
+          .select('*, media(url,status), merchants!inner(*)')
           .eq('merchants.city_id', cityId)
           .eq('merchants.status', 'approved')
           .eq('is_available', true)
           .ilike('name', pattern)
           .limit(_limit);
+
+      // Attach error handlers to both requests immediately. Awaiting them one by one can
+      // leave the second future's error unobserved while the first request is still in
+      // flight.
+      final rows = await Future.wait([merchantRowsFuture, dishRowsFuture]);
+      final merchantRows = rows[0];
+      final dishRows = rows[1];
+      final merchants = merchantRows
+          .map((r) => Merchant.fromJson(ColumnNames.toModel(r)))
+          .toList();
 
       final dishes = <({MenuItem item, Merchant merchant})>[];
       for (final row in dishRows) {
@@ -99,6 +109,10 @@ class SupabaseSearchRepository implements SearchRepository {
         if (merchantRow == null) continue;
 
         final withoutJoin = Map<String, dynamic>.from(row)..remove('merchants');
+        final media = withoutJoin.remove('media') as Map<String, dynamic>?;
+        if (media?['status'] == 'approved') {
+          withoutJoin['image_url'] = media?['url'];
+        }
         dishes.add((
           item: MenuItem.fromRow(withoutJoin),
           merchant: Merchant.fromJson(ColumnNames.toModel(merchantRow)),
@@ -148,8 +162,7 @@ class FakeSearchRepository implements SearchRepository {
     final trimmed = query.trim();
     if (trimmed.isEmpty) return const Result.ok(SearchResults());
 
-    final matched =
-        merchants.where((m) => m.name.contains(trimmed)).toList();
+    final matched = merchants.where((m) => m.name.contains(trimmed)).toList();
 
     final dishes = <({MenuItem item, Merchant merchant})>[];
     for (final merchant in merchants) {

@@ -51,13 +51,15 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
 
   void _onChanged(String value) {
     _timer?.cancel();
+    // Invalidate an older request immediately, not when this value's debounce fires.
+    // Otherwise A can land during B's 300 ms window and briefly repaint stale results.
+    _lastQuery = value;
     if (value.trim().isEmpty) {
       setState(() {
         // Clearing the box also has to invalidate whatever is already in the air.
         // `_run` guards on `query != _lastQuery`, so leaving the old query here means a
         // response that lands after the customer hits clear passes that guard and
         // repopulates the list under an empty box.
-        _lastQuery = '';
         _results = null;
         _failure = null;
         _searching = false;
@@ -69,11 +71,9 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
   }
 
   Future<void> _run(String query) async {
-    _lastQuery = query;
-    final result = await ref.read(searchRepositoryProvider).search(
-          cityId: ref.read(currentCityProvider),
-          query: query,
-        );
+    final result = await ref
+        .read(searchRepositoryProvider)
+        .search(cityId: ref.read(currentCityProvider), query: query);
     if (!mounted) return;
 
     // A result for something the customer has since retyped is stale; dropping it stops
@@ -103,6 +103,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
           onChanged: _onChanged,
           onSubmitted: (v) {
             _timer?.cancel();
+            _lastQuery = v;
             _run(v);
           },
           decoration: InputDecoration(
@@ -222,7 +223,7 @@ class _DishRow extends StatelessWidget {
               child: SizedBox(
                 width: 52,
                 height: 52,
-                child: LuqmaImage(url: null, name: item.name),
+                child: LuqmaImage(url: item.imageUrl, name: item.name),
               ),
             ),
             const SizedBox(width: Space.md - 1),
@@ -233,8 +234,9 @@ class _DishRow extends StatelessWidget {
                   Text(item.name, style: theme.textTheme.titleMedium),
                   Text(
                     merchant.name,
-                    style: theme.textTheme.bodySmall
-                        ?.copyWith(color: colors.textSecondary),
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: colors.textSecondary,
+                    ),
                   ),
                 ],
               ),
@@ -270,8 +272,9 @@ class _Prompt extends ConsumerWidget {
         children: [
           Text(
             'دوّر على مطعم، أو على الأكلة نفسها.',
-            style: theme.textTheme.bodyMedium
-                ?.copyWith(color: colors.textSecondary),
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: colors.textSecondary,
+            ),
           ),
           if (cuisines.isNotEmpty) ...[
             const SizedBox(height: Space.lg),
@@ -319,8 +322,9 @@ class _NoResults extends StatelessWidget {
         child: Text(
           'مالقيناش «$query».',
           textAlign: TextAlign.center,
-          style:
-              theme.textTheme.bodyMedium?.copyWith(color: colors.textSecondary),
+          style: theme.textTheme.bodyMedium?.copyWith(
+            color: colors.textSecondary,
+          ),
         ),
       ),
     );

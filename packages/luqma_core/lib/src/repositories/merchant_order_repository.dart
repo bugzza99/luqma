@@ -1,4 +1,4 @@
-﻿import 'dart:async';
+import 'dart:async';
 
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -78,11 +78,14 @@ class SupabaseMerchantOrderRepository implements MerchantOrderRepository {
       table: 'orders',
       map: _toOrder,
       filters: [RowFilter('merchant_id', merchantId)],
-      ins: [RowIn('status', [for (final s in statuses) s.name])],
+      ins: [
+        RowIn('status', [for (final s in statuses) s.name]),
+      ],
     ).map(
       // Ascending: the order that has been waiting longest is the one about to time
       // out, and it belongs at the top of the screen.
-      (orders) => orders..sort((a, b) => a.orderNumber.compareTo(b.orderNumber)),
+      (orders) =>
+          orders..sort((a, b) => a.orderNumber.compareTo(b.orderNumber)),
     );
   }
 
@@ -112,6 +115,9 @@ class SupabaseMerchantOrderRepository implements MerchantOrderRepository {
 
   @override
   Future<Result<void>> accept(String orderId, {required int prepMinutes}) {
+    if (prepMinutes < _minPrepMinutes || prepMinutes > _maxPrepMinutes) {
+      return Future.value(const Result.err(ValidationFailure()));
+    }
     return Result.guardWrite(() async {
       // The count checks come first; a merchant tapping accept on an order the customer
       // cancelled a second ago would otherwise start cooking food nobody is coming for.
@@ -120,10 +126,14 @@ class SupabaseMerchantOrderRepository implements MerchantOrderRepository {
       final order = _toOrder(row);
       if (!_needsAnswer.contains(order.status)) throw const ConflictFailure();
 
-      return _db.from('orders').update({
-        'status': OrderStatus.accepted.name,
-        'prep_minutes': prepMinutes,
-      }).eq('id', orderId).select('id');
+      return _db
+          .from('orders')
+          .update({
+            'status': OrderStatus.accepted.name,
+            'prep_minutes': prepMinutes,
+          })
+          .eq('id', orderId)
+          .select('id');
     }, (_) {});
   }
 
@@ -136,15 +146,22 @@ class SupabaseMerchantOrderRepository implements MerchantOrderRepository {
       final row = await _rowOf(orderId);
       if (row == null) throw const NotFoundFailure();
       final order = _toOrder(row);
-      if (!order.status.canMoveTo(OrderStatus.cancelled, by: OrderActor.merchant)) {
+      if (!order.status.canMoveTo(
+        OrderStatus.cancelled,
+        by: OrderActor.merchant,
+      )) {
         throw const ConflictFailure();
       }
 
-      return _db.from('orders').update({
-        'status': OrderStatus.cancelled.name,
-        'cancel_reason': trimmed,
-        'cancelled_by': OrderActor.merchant.name,
-      }).eq('id', orderId).select('id');
+      return _db
+          .from('orders')
+          .update({
+            'status': OrderStatus.cancelled.name,
+            'cancel_reason': trimmed,
+            'cancelled_by': OrderActor.merchant.name,
+          })
+          .eq('id', orderId)
+          .select('id');
     }, (_) {});
   }
 
@@ -175,7 +192,7 @@ class SupabaseMerchantOrderRepository implements MerchantOrderRepository {
 /// bug the fake exists to catch.
 class FakeMerchantOrderRepository implements MerchantOrderRepository {
   FakeMerchantOrderRepository({List<Order> seed = const [], this.failure})
-      : _orders = {for (final o in seed) o.id: o};
+    : _orders = {for (final o in seed) o.id: o};
 
   final Map<String, Order> _orders;
   final Failure? failure;
@@ -189,10 +206,10 @@ class FakeMerchantOrderRepository implements MerchantOrderRepository {
   Order? operator [](String orderId) => _orders[orderId];
 
   Stream<T> _live<T>(T Function() read) => Stream.multi((listener) {
-        listener.add(read());
-        final sub = _changed.stream.listen((_) => listener.add(read()));
-        listener.onCancel = sub.cancel;
-      });
+    listener.add(read());
+    final sub = _changed.stream.listen((_) => listener.add(read()));
+    listener.onCancel = sub.cancel;
+  });
 
   void _notify() {
     if (!_changed.isClosed) _changed.add(null);
@@ -223,10 +240,14 @@ class FakeMerchantOrderRepository implements MerchantOrderRepository {
   Stream<List<Order>> _stream(String merchantId, List<OrderStatus> statuses) {
     if (failure != null) return Stream.error(failure!);
     return _live(
-      () => _orders.values
-          .where((o) => o.merchantId == merchantId && statuses.contains(o.status))
-          .toList()
-        ..sort((a, b) => a.orderNumber.compareTo(b.orderNumber)),
+      () =>
+          _orders.values
+              .where(
+                (o) =>
+                    o.merchantId == merchantId && statuses.contains(o.status),
+              )
+              .toList()
+            ..sort((a, b) => a.orderNumber.compareTo(b.orderNumber)),
     );
   }
 
@@ -240,15 +261,20 @@ class FakeMerchantOrderRepository implements MerchantOrderRepository {
   }
 
   @override
-  Future<Result<void>> accept(String orderId, {required int prepMinutes}) async {
+  Future<Result<void>> accept(
+    String orderId, {
+    required int prepMinutes,
+  }) async {
     if (failure != null) return Result.err(failure!);
     if (prepMinutes < _minPrepMinutes || prepMinutes > _maxPrepMinutes) {
-      return const Result.err(ConflictFailure());
+      return const Result.err(ValidationFailure());
     }
 
     final order = _orders[orderId];
     if (order == null) return const Result.err(NotFoundFailure());
-    if (!_needsAnswer.contains(order.status)) return const Result.err(ConflictFailure());
+    if (!_needsAnswer.contains(order.status)) {
+      return const Result.err(ConflictFailure());
+    }
 
     _orders[orderId] = order.copyWith(
       status: OrderStatus.accepted,
@@ -265,7 +291,10 @@ class FakeMerchantOrderRepository implements MerchantOrderRepository {
 
     final order = _orders[orderId];
     if (order == null) return const Result.err(NotFoundFailure());
-    if (!order.status.canMoveTo(OrderStatus.cancelled, by: OrderActor.merchant)) {
+    if (!order.status.canMoveTo(
+      OrderStatus.cancelled,
+      by: OrderActor.merchant,
+    )) {
       return const Result.err(ConflictFailure());
     }
 
@@ -279,7 +308,10 @@ class FakeMerchantOrderRepository implements MerchantOrderRepository {
   }
 
   @override
-  Future<Result<void>> advance(String orderId, {required OrderStatus to}) async {
+  Future<Result<void>> advance(
+    String orderId, {
+    required OrderStatus to,
+  }) async {
     if (failure != null) return Result.err(failure!);
 
     final order = _orders[orderId];

@@ -49,7 +49,9 @@ class OrderAlarm extends _$OrderAlarm {
       state = _decide(next.value ?? const []);
     });
 
-    return _decide(ref.read(incomingOrdersProvider(merchantId)).value ?? const []);
+    return _decide(
+      ref.read(incomingOrdersProvider(merchantId)).value ?? const [],
+    );
   }
 
   /// Works out whether the sound should be going, starts or stops it, and returns the
@@ -75,23 +77,32 @@ class OrderAlarm extends _$OrderAlarm {
     // the one failure worth knowing about in this whole app is the alarm not sounding.
     // So each is caught and named instead.
     final work = shouldRing ? alarm.start() : alarm.stop();
-    unawaited(work.catchError((Object error) {
-      LuqmaTelemetry.event('alarm_failed', data: {
-        'action': shouldRing ? 'start' : 'stop',
-        'error': error.toString(),
-      });
-    }));
+    unawaited(
+      work.catchError((Object error) {
+        LuqmaTelemetry.event(
+          'alarm_failed',
+          data: {
+            'action': shouldRing ? 'start' : 'stop',
+            'error': error.toString(),
+          },
+        );
+      }),
+    );
   }
 
-  /// The merchant has seen it. Silences the sound for everything waiting right now, and
-  /// for nothing that arrives after.
-  void acknowledge() {
+  /// The merchant has seen one order, or explicitly silenced everything currently
+  /// waiting from the banner when [orderId] is null.
+  void acknowledge([String? orderId]) {
     final merchantId = ref.read(staffIdentityProvider).merchantId;
     if (merchantId == null) return;
 
-    final waiting = ref.read(incomingOrdersProvider(merchantId)).value ?? const [];
-    _acknowledged.addAll(waiting.map((o) => o.id));
-    _apply(false);
-    state = false;
+    final waiting =
+        ref.read(incomingOrdersProvider(merchantId)).value ?? const [];
+    if (orderId == null) {
+      _acknowledged.addAll(waiting.map((o) => o.id));
+    } else {
+      _acknowledged.add(orderId);
+    }
+    state = _decide(waiting);
   }
 }

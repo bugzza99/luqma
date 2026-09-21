@@ -1,4 +1,4 @@
-﻿import 'dart:async';
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
@@ -105,6 +105,8 @@ class SupabaseAuthService implements AuthService {
   SupabaseAuthService(
     this._client, {
     Duration resolveWithin = const Duration(seconds: 8),
+    this.beforeSignOutTimeout = const Duration(seconds: 5),
+    this._beforeSignOut,
   }) : _auth = _client.auth {
     // Auth state changes, not just sign-in and sign-out: a claim granted while the app
     // is open arrives when the token refreshes, and a merchant whose account was set up
@@ -176,6 +178,10 @@ class SupabaseAuthService implements AuthService {
   final GoTrueClient _auth;
 
   final SupabaseClient _client;
+  final Future<void> Function()? _beforeSignOut;
+
+  /// Maximum time optional device cleanup may delay an explicit sign-out.
+  final Duration beforeSignOutTimeout;
   final _controller = StreamController<LuqmaIdentity?>.broadcast();
   final _resolved = Completer<void>();
   // Typed loosely: GoTrue's own `AuthState` shares a name with ours below, and the
@@ -200,14 +206,14 @@ class SupabaseAuthService implements AuthService {
   /// The subscription to the underlying controller is attached inside the same
   /// synchronous callback that emits the replay, so nothing can slip through the gap.
   Stream<LuqmaIdentity?> _replaying() => Stream.multi((listener) {
-        listener.add(_identity);
-        final sub = _controller.stream.listen(
-          listener.add,
-          onError: listener.addError,
-          onDone: listener.close,
-        );
-        listener.onCancel = sub.cancel;
-      });
+    listener.add(_identity);
+    final sub = _controller.stream.listen(
+      listener.add,
+      onError: listener.addError,
+      onDone: listener.close,
+    );
+    listener.onCancel = sub.cancel;
+  });
 
   @override
   Future<void> restore() => _resolved.future;
@@ -279,7 +285,17 @@ class SupabaseAuthService implements AuthService {
   }
 
   @override
-  Future<void> signOut() => _auth.signOut();
+  Future<void> signOut() async {
+    // Device-token ownership has to be removed while the access token still exists.
+    // Once GoTrue signs out, RLS quite correctly refuses the cleanup RPC. Cleanup is
+    // best effort: notification hygiene must never trap somebody in their account.
+    try {
+      await _beforeSignOut?.call().timeout(beforeSignOutTimeout);
+    } catch (error) {
+      debugPrint('pre-sign-out cleanup failed: $error');
+    }
+    await _auth.signOut();
+  }
 
   void dispose() {
     _giveUp.cancel();
@@ -325,7 +341,9 @@ class SupabaseAuthService implements AuthService {
 
     try {
       final payload = token.split('.')[1];
-      final decoded = utf8.decode(base64Url.decode(base64Url.normalize(payload)));
+      final decoded = utf8.decode(
+        base64Url.decode(base64Url.normalize(payload)),
+      );
       final claims = jsonDecode(decoded) as Map<String, dynamic>;
       return (claims['app_metadata'] as Map<String, dynamic>?) ?? const {};
     } catch (_) {
@@ -374,14 +392,14 @@ class FakeAuthService implements AuthService {
   /// The subscription to the underlying controller is attached inside the same
   /// synchronous callback that emits the replay, so nothing can slip through the gap.
   Stream<LuqmaIdentity?> _replaying() => Stream.multi((listener) {
-        listener.add(_identity);
-        final sub = _controller.stream.listen(
-          listener.add,
-          onError: listener.addError,
-          onDone: listener.close,
-        );
-        listener.onCancel = sub.cancel;
-      });
+    listener.add(_identity);
+    final sub = _controller.stream.listen(
+      listener.add,
+      onError: listener.addError,
+      onDone: listener.close,
+    );
+    listener.onCancel = sub.cancel;
+  });
 
   @override
   Future<void> restore() async {
@@ -433,7 +451,8 @@ class FakeAuthService implements AuthService {
       return Result.err(UnknownFailure(Exception('wrong password')));
     }
 
-    _identity = _restoring ??
+    _identity =
+        _restoring ??
         LuqmaIdentity(uid: _uidFor(key), name: 'عميل تجريبي', phone: key);
     _state = AuthState.signedIn;
     _controller.add(_identity);
@@ -450,7 +469,8 @@ class FakeAuthService implements AuthService {
       return Result.err(failure!);
     }
 
-    _identity = _restoring ??
+    _identity =
+        _restoring ??
         LuqmaIdentity(uid: 'fake-uid', email: email, name: 'حساب تجريبي');
     _state = AuthState.signedIn;
     _controller.add(_identity);

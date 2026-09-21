@@ -379,9 +379,40 @@ describe('staff', () => {
       null,
     );
   });
+
+  it('a merchant cannot carry a platform-only role', async () => {
+    const u = await uid();
+    const error = await refused(
+      "insert into staff (uid, scope, role, merchant_id) values ($1, 'merchant', 'admin', $2)",
+      [u, merchant],
+    );
+    assert.match(error ?? '', /staff_role_matches_scope/);
+  });
+
+  it('the platform cannot carry a merchant-owner role', async () => {
+    const u = await uid();
+    const error = await refused(
+      "insert into staff (uid, scope, role) values ($1, 'platform', 'owner')",
+      [u],
+    );
+    assert.match(error ?? '', /staff_role_matches_scope/);
+  });
 });
 
 describe('orders', () => {
+  it('prep time is bounded by the choices the product supports', async () => {
+    const customer = await uid();
+    const error = await refused(
+      `insert into orders (city_id, customer_uid, customer_name, customer_phone,
+                           merchant_id, merchant_name, zone_id, type, items, pricing,
+                           prep_minutes)
+       values ($1, $2, 'عميل', '0100', $3, 'مطعم', $4, 'instant', '[]'::jsonb,
+               '{"total":0}'::jsonb, 2)`,
+      [edku, customer, merchant, zone],
+    );
+    assert.match(error ?? '', /orders_prep_minutes_check/);
+  });
+
   // The countdown is shown on instant orders only: a pre-order is dated and collected in
   // a window, so a deadline on one is a countdown to nothing.
   it('a pre-order cannot carry an accept deadline', async () => {

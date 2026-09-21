@@ -68,7 +68,8 @@ class InboxScreen extends ConsumerWidget {
         body: Column(
           children: [
             const LuqmaNotificationBanner(
-              reason: 'من غيرها مش هتعرف إن فيه أوردر جديد إلا لما تفتح التطبيق '
+              reason:
+                  'من غيرها مش هتعرف إن فيه أوردر جديد إلا لما تفتح التطبيق '
                   'بنفسك — والعميل مستني رد في تسعين ثانية.',
               margin: EdgeInsets.all(Space.gutter),
             ),
@@ -98,11 +99,7 @@ class InboxScreen extends ConsumerWidget {
                   ),
                 Expanded(
                   child: value.length == 1
-                      ? _OrderView(
-                          order: value.first,
-                          index: 0,
-                          totalCount: 1,
-                        )
+                      ? _OrderView(order: value.first, index: 0, totalCount: 1)
                       : PageView.builder(
                           itemCount: value.length,
                           itemBuilder: (context, i) => _OrderView(
@@ -132,7 +129,12 @@ class _SilenceBar extends StatelessWidget {
     final colors = Theme.of(context).luqma;
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(Space.gutter, Space.xs, Space.gutter, Space.sm),
+      padding: const EdgeInsets.fromLTRB(
+        Space.gutter,
+        Space.xs,
+        Space.gutter,
+        Space.sm,
+      ),
       child: FilledButton.icon(
         key: InboxScreen.silenceKey,
         onPressed: onSilence,
@@ -175,7 +177,12 @@ class _OrderView extends ConsumerWidget {
         children: [
           // Top Burgundy Header: Urgent badge and order number.
           Padding(
-            padding: const EdgeInsets.fromLTRB(Space.gutter, Space.sm, Space.gutter, Space.xs),
+            padding: const EdgeInsets.fromLTRB(
+              Space.gutter,
+              Space.sm,
+              Space.gutter,
+              Space.xs,
+            ),
             child: Column(
               children: [
                 Container(
@@ -233,7 +240,8 @@ class _OrderView extends ConsumerWidget {
           ),
 
           // Ring countdown: instant orders only — pre-orders carry no deadline.
-          if (order.type == OrderType.instant && order.acceptDeadlineAt != null) ...[
+          if (order.type == OrderType.instant &&
+              order.acceptDeadlineAt != null) ...[
             const SizedBox(height: Space.xs),
             _CountdownRing(order: order),
             const SizedBox(height: Space.xs),
@@ -279,30 +287,36 @@ class _OrderView extends ConsumerWidget {
                                 children: [
                                   Text(
                                     '${item.quantity}×',
-                                    style: LuqmaType.bodyStrong
-                                        .copyWith(color: colors.brand),
+                                    style: LuqmaType.bodyStrong.copyWith(
+                                      color: colors.brand,
+                                    ),
                                   ),
                                   const SizedBox(width: Space.sm),
                                   Expanded(
                                     child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
                                       children: [
-                                        Text(item.name,
-                                            style: theme.textTheme.bodyMedium),
+                                        Text(
+                                          item.name,
+                                          style: theme.textTheme.bodyMedium,
+                                        ),
                                         if (item.options.isNotEmpty)
                                           Text(
                                             item.options
                                                 .map((o) => o.name)
                                                 .join('، '),
                                             style: LuqmaType.bodySmall.copyWith(
-                                                color: colors.textSecondary),
+                                              color: colors.textSecondary,
+                                            ),
                                           ),
                                         if (item.note != null &&
                                             item.note!.isNotEmpty)
                                           Text(
                                             item.note!,
                                             style: LuqmaType.bodySmall.copyWith(
-                                                color: colors.danger),
+                                              color: colors.danger,
+                                            ),
                                           ),
                                       ],
                                     ),
@@ -341,7 +355,10 @@ class _OrderView extends ConsumerWidget {
                               onPressed: () => _reject(context, ref),
                               style: OutlinedButton.styleFrom(
                                 foregroundColor: colors.danger,
-                                side: BorderSide(color: colors.danger, width: 2),
+                                side: BorderSide(
+                                  color: colors.danger,
+                                  width: 2,
+                                ),
                                 shape: const RoundedRectangleBorder(
                                   borderRadius: Radii.cardAll,
                                 ),
@@ -349,8 +366,9 @@ class _OrderView extends ConsumerWidget {
                               ),
                               child: Text(
                                 strings.rejectOrder,
-                                style: LuqmaType.button
-                                    .copyWith(color: colors.danger),
+                                style: LuqmaType.button.copyWith(
+                                  color: colors.danger,
+                                ),
                               ),
                             ),
                           ),
@@ -370,8 +388,9 @@ class _OrderView extends ConsumerWidget {
                               ),
                               child: Text(
                                 strings.acceptOrder,
-                                style: LuqmaType.button
-                                    .copyWith(color: colors.onBrand),
+                                style: LuqmaType.button.copyWith(
+                                  color: colors.onBrand,
+                                ),
                               ),
                             ),
                           ),
@@ -408,11 +427,14 @@ class _OrderView extends ConsumerWidget {
 
     if (minutes == null || !context.mounted) return;
 
-    ref.read(orderAlarmProvider.notifier).acknowledge();
     final result = await ref
         .read(merchantOrderRepositoryProvider)
         .accept(order.id, prepMinutes: minutes);
-    if (context.mounted) _reportIfFailed(context, result);
+    if (!context.mounted) return;
+    if (result.failureOrNull == null) {
+      ref.read(orderAlarmProvider.notifier).acknowledge(order.id);
+    }
+    _reportIfFailed(context, result);
   }
 
   Future<void> _reject(BuildContext context, WidgetRef ref) async {
@@ -436,11 +458,14 @@ class _OrderView extends ConsumerWidget {
 
     if (reason == null || !context.mounted) return;
 
-    ref.read(orderAlarmProvider.notifier).acknowledge();
     final result = await ref
         .read(merchantOrderRepositoryProvider)
         .reject(order.id, reason: reason);
-    if (context.mounted) _reportIfFailed(context, result);
+    if (!context.mounted) return;
+    if (result.failureOrNull == null) {
+      ref.read(orderAlarmProvider.notifier).acknowledge(order.id);
+    }
+    _reportIfFailed(context, result);
   }
 
   void _reportIfFailed(BuildContext context, Result<void> result) {
@@ -512,7 +537,9 @@ class _CountdownRingState extends ConsumerState<_CountdownRing> {
         ? deadline.difference(widget.order.placedAt!).inSeconds
         : 90;
     final validTotal = totalSeconds > 0 ? totalSeconds : 90;
-    final progress = isLate ? 1.0 : (left.inSeconds / validTotal).clamp(0.0, 1.0);
+    final progress = isLate
+        ? 1.0
+        : (left.inSeconds / validTotal).clamp(0.0, 1.0);
     final activeColor = isLate
         ? colors.danger
         : (minutes < 1 ? colors.danger : colors.accent);
@@ -691,13 +718,16 @@ class _CustomerCard extends StatelessWidget {
               ),
             ],
           ),
-          if (order.address?.street != null && order.address!.street!.isNotEmpty) ...[
+          if (order.address?.street != null &&
+              order.address!.street!.isNotEmpty) ...[
             const SizedBox(height: Space.xs),
             Row(
               children: [
                 Text(
                   'الشارع: ',
-                  style: LuqmaType.bodyStrong.copyWith(color: colors.textPrimary),
+                  style: LuqmaType.bodyStrong.copyWith(
+                    color: colors.textPrimary,
+                  ),
                 ),
                 Expanded(
                   child: Text(
@@ -708,14 +738,16 @@ class _CustomerCard extends StatelessWidget {
               ],
             ),
           ],
-          if ((order.address?.landmarkName ?? order.address?.landmarkNote) case final landmark?
-              when landmark.isNotEmpty) ...[
+          if ((order.address?.landmarkName ?? order.address?.landmarkNote)
+              case final landmark? when landmark.isNotEmpty) ...[
             const SizedBox(height: Space.xs),
             Row(
               children: [
                 Text(
                   'معلم: ',
-                  style: LuqmaType.bodyStrong.copyWith(color: colors.textPrimary),
+                  style: LuqmaType.bodyStrong.copyWith(
+                    color: colors.textPrimary,
+                  ),
                 ),
                 Expanded(
                   child: Text(
@@ -758,7 +790,11 @@ class _NewCustomerBadge extends StatelessWidget {
       ),
       child: Row(
         children: [
-          Icon(Icons.phone_outlined, size: Sizes.iconSm, color: colors.onAccent),
+          Icon(
+            Icons.phone_outlined,
+            size: Sizes.iconSm,
+            color: colors.onAccent,
+          ),
           const SizedBox(width: Space.sm),
           Expanded(
             child: Text(
@@ -863,8 +899,9 @@ class _NoMerchant extends StatelessWidget {
               const SizedBox(height: Space.sm),
               Text(
                 'كلّم الإدارة عشان يربطوه.',
-                style: theme.textTheme.bodyMedium
-                    ?.copyWith(color: theme.luqma.textSecondary),
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: theme.luqma.textSecondary,
+                ),
                 textAlign: TextAlign.center,
               ),
             ],
