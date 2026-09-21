@@ -14,14 +14,38 @@ select id from cities
     or id ~ '^(collect|img|settle|money|rbf|marketing|delete-account)-[0-9]+$';
 -->>
 
--- Money first, and it has to be. `order_settlements.order_id` and
--- `commission_payments.merchant_id` are both `on delete restrict`, because a record that
--- somebody was charged must not be removable by deleting the order or the shop it belongs
--- to. Nothing in the product deletes either; only this script and the test teardowns do,
--- and one that forgets these two fails on `23503` partway through — leaving the residue
--- half-cleared, which is worse than not having run it.
+-- Money first, and it still has to be, though the reason narrowed on 2026-09-21.
+-- `order_settlements.order_id` is `on delete restrict`: a settlement is evidence of a
+-- charge and the order must not be able to take it with it, so a teardown that forgets it
+-- fails on `23503` partway through and leaves the residue half-cleared — worse than not
+-- having run at all.
+--
+-- The shop-side money rows no longer restrict: `commission_payments`, `subscriptions` and
+-- `payment_receipts` are `on delete set null` since 20261022000000, so a shop can be
+-- deleted and its payments survive it, named by the frozen `merchant_name`. They are
+-- still deleted explicitly here, and they have to be — set to null they would no longer
+-- match the city filter below, and every run would leave a few more orphans behind that
+-- nothing else ever removes.
 delete from commission_payments
  where merchant_id in (select id from merchants where city_id in (select id from luqma_test_cities));
+-->>
+-- Receipts and courier payments used to leave with their subject: the first cascaded from
+-- the shop, the second was impossible to orphan because the shop could not be deleted
+-- while it existed. Both survive a deletion now, so both need removing by name or every
+-- run leaves a few more rows nothing will ever collect.
+delete from payment_receipts
+ where merchant_id in (select id from merchants where city_id in (select id from luqma_test_cities))
+    or courier_uid in (
+      select uid from staff where merchant_id in (
+        select id from merchants where city_id in (select id from luqma_test_cities)));
+-->>
+delete from courier_commission_payments
+ where courier_uid in (
+   select uid from staff where merchant_id in (
+     select id from merchants where city_id in (select id from luqma_test_cities)));
+-->>
+delete from courier_settlements
+ where order_id in (select id from orders where city_id in (select id from luqma_test_cities));
 -->>
 delete from order_settlements
  where merchant_id in (select id from merchants where city_id in (select id from luqma_test_cities))
