@@ -355,13 +355,25 @@ class _ModelState extends ConsumerState<_Model> {
   }
 }
 
-class _Wallet extends ConsumerWidget {
+class _Wallet extends ConsumerStatefulWidget {
   const _Wallet({required this.merchant});
 
   final Merchant merchant;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_Wallet> createState() => _WalletState();
+}
+
+class _WalletState extends ConsumerState<_Wallet> {
+  /// Shuts the door before the dialog opens, not after the request goes out. A second
+  /// tap that gets as far as a second dialog has already made a second receipt id, and
+  /// the server's protection only refuses a repeat of the *same* id.
+  bool _busy = false;
+
+  Merchant get merchant => widget.merchant;
+
+  @override
+  Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colors = theme.luqma;
     final strings = LuqmaStrings.of(context);
@@ -427,27 +439,62 @@ class _Wallet extends ConsumerWidget {
     );
   }
 
+  /// A permanent record of the attempt, written before it is sent.
+  ///
+  /// The receipt id used to be made in memory and nowhere else, so a double tap, or the
+  /// app being killed between the request and its reply, produced a *new* id — and the
+  /// server only refuses a repeat of the **same** id. The same handful of cash could be
+  /// credited to a shop twice.
+  PendingCollections get _journal =>
+      PendingCollections(SharedPreferencesAsync(), kind: PendingKind.topUp);
+
   Future<void> _topUp(BuildContext context, WidgetRef ref) async {
-    final amount = await showDialog<int>(
-      context: context,
-      builder: (_) => const _AmountDialog(
-        title: 'شحن رصيد',
-        fieldKey: MerchantBillingScreen.amountKey,
-        confirmKey: MerchantBillingScreen.confirmTopUpKey,
-        label: 'المبلغ المستلم',
-      ),
-    );
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      final stored = await _journal.load(merchant.id);
+      if (!mounted) return;
 
-    if (amount == null || !context.mounted) return;
+      final int? amount;
+      final String receipt;
+      if (stored != null) {
+        // Not the amount dialog: the figure is frozen with its id and is not the admin's
+        // to change. What is left to decide is whether this attempt happened at all.
+        final retry = await _confirmPending(context, stored, 'شحن رصيد');
+        if (retry != true || !mounted) return;
+        amount = stored.amount;
+        receipt = stored.receiptId;
+      } else {
+        amount = await showDialog<int>(
+          context: context,
+          builder: (_) => const _AmountDialog(
+            title: 'شحن رصيد',
+            fieldKey: MerchantBillingScreen.amountKey,
+            confirmKey: MerchantBillingScreen.confirmTopUpKey,
+            label: 'المبلغ المستلم',
+          ),
+        );
+        if (amount == null || !mounted) return;
+        receipt = newClientOrderId();
+      }
 
-    final by = ref.read(currentIdentityProvider).value?.uid;
-    if (by == null) return;
+      final by = ref.read(currentIdentityProvider).value?.uid;
+      if (by == null) return;
 
-    // One id for this top-up, made before the first attempt and reused by every retry: the
-    // server credits a receipt once. Without it a reply lost on the shop's wifi, then «جرّب
-    // تاني», credited the same cash twice.
-    final receipt = newClientOrderId();
-    Future<void> attempt() async {
+      // Written down before anything is sent. A record made afterwards does not exist for
+      // the one failure it was built for, and this throws rather than being swallowed:
+      // moving money we cannot reconcile later is the worse outcome.
+      await _journal.save(
+        merchant.id,
+        PendingCollection(
+          receiptId: receipt,
+          kind: PendingKind.topUp,
+          subjectId: merchant.id,
+          amount: amount,
+        ),
+      );
+      if (!mounted) return;
+
       final result = await ref.read(billingRepositoryProvider).topUpWallet(
             merchantId: merchant.id,
             amount: amount,
@@ -455,31 +502,83 @@ class _Wallet extends ConsumerWidget {
             receiptId: receipt,
           );
       ref.invalidate(merchantProvider(merchant.id));
-      if (!context.mounted) return;
+      if (!mounted) return;
+
+      if (result is Ok) await _journal.clear(merchant.id);
+      if (!mounted) return;
       ScaffoldMessenger.maybeOf(context)?.showSnackBar(
         result is Ok
             ? SnackBar(
                 key: MerchantBillingScreen.toppedUpKey,
                 content: Text('اتسجّل شحن ${LuqmaStrings.of(context).price(amount)}'),
               )
-            : SnackBar(
-                content: const Text('الشحن مااتسجّلش. جرّب تاني — مش هيتسجّل مرتين.'),
-                action: SnackBarAction(label: 'جرّب تاني', onPressed: attempt),
+            : const SnackBar(
+                content: Text('الشحن مااتسجّلش. افتحه تاني وأكّد — مش هيتسجّل مرتين.'),
               ),
       );
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+          const SnackBar(content: Text('مقدرناش نحفظ العملية. جرّب تاني.')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
     }
+  }
 
-    await attempt();
+  /// Names an attempt whose reply was never seen, and offers the only two honest
+  /// answers: send it again under the same receipt, or say it never happened.
+  Future<bool?> _confirmPending(
+    BuildContext context,
+    PendingCollection stored,
+    String title,
+  ) {
+    final strings = LuqmaStrings.of(context);
+    return showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(title),
+        content: Text(
+          key: MerchantBillingScreen.pendingNoticeKey,
+          'في عملية بـ ${strings.price(stored.amount)} اتبعتت وماتأكدتش. أكّد تاني بنفس '
+          'المبلغ — مش هتتسجّل مرتين. لو العملية دي ماحصلتش أصلاً، اضغط «دي مش عملية».',
+        ),
+        actions: [
+          TextButton(
+            key: MerchantBillingScreen.discardPendingKey,
+            onPressed: () async {
+              await _journal.clear(stored.subjectId);
+              if (dialogContext.mounted) Navigator.of(dialogContext).pop(false);
+            },
+            child: const Text('دي مش عملية'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('أكّد'),
+          ),
+        ],
+      ),
+    );
   }
 }
 
-class _Term extends ConsumerWidget {
+class _Term extends ConsumerStatefulWidget {
   const _Term({required this.merchantId});
 
   final String merchantId;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_Term> createState() => _TermState();
+}
+
+class _TermState extends ConsumerState<_Term> {
+  bool _busy = false;
+
+  String get merchantId => widget.merchantId;
+
+  @override
+  Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colors = theme.luqma;
     final strings = LuqmaStrings.of(context);
@@ -582,53 +681,133 @@ class _Term extends ConsumerWidget {
     );
   }
 
+  PendingCollections get _journal =>
+      PendingCollections(SharedPreferencesAsync(), kind: PendingKind.subscription);
+
   Future<void> _record(BuildContext context, WidgetRef ref, List<Plan> plans) async {
-    final now = ref.read(clockProvider)();
-    final current = ref.read(subscriptionProvider(merchantId)).value;
-    final payment = await showDialog<({String planId, int amount, int months})>(
-      context: context,
-      builder: (_) => _PaymentDialog(
-        plans: plans,
-        // Where the new term starts: after the current one if it is still running, which is
-        // what the server does, so the date the dialog promises is the date that happens.
-        startsAt: current != null && current.isActiveAt(now) ? current.expiresAt : now,
-      ),
-    );
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      // The attempt whose reply was never seen, if there is one. Its plan, months and
+      // amount are frozen with its receipt: a term is not the admin's to change once the
+      // server may already have recorded it.
+      final stored = await _journal.load(merchantId);
+      if (!mounted) return;
 
-    if (payment == null || !context.mounted) return;
+      final String planId;
+      final int amount;
+      final int months;
+      final String receipt;
 
-    final by = ref.read(currentIdentityProvider).value?.uid;
-    if (by == null) return;
+      if (stored != null && stored.planId != null && stored.months != null) {
+        final retry = await _confirmPending(context, stored);
+        if (retry != true || !mounted) return;
+        planId = stored.planId!;
+        amount = stored.amount;
+        months = stored.months!;
+        receipt = stored.receiptId;
+      } else {
+        final now = ref.read(clockProvider)();
+        final current = ref.read(subscriptionProvider(merchantId)).value;
+        final payment = await showDialog<({String planId, int amount, int months})>(
+          context: context,
+          builder: (_) => _PaymentDialog(
+            plans: plans,
+            // Where the new term starts: after the current one if it is still running,
+            // which is what the server does, so the date the dialog promises is the date
+            // that happens.
+            startsAt:
+                current != null && current.isActiveAt(now) ? current.expiresAt : now,
+          ),
+        );
+        if (payment == null || !mounted) return;
+        planId = payment.planId;
+        amount = payment.amount;
+        months = payment.months;
+        receipt = newClientOrderId();
+      }
 
-    // One receipt for this payment, reused by every retry: the server records it once.
-    final receipt = newClientOrderId();
-    Future<void> attempt() async {
+      final by = ref.read(currentIdentityProvider).value?.uid;
+      if (by == null) return;
+
+      await _journal.save(
+        merchantId,
+        PendingCollection(
+          receiptId: receipt,
+          kind: PendingKind.subscription,
+          subjectId: merchantId,
+          amount: amount,
+          planId: planId,
+          months: months,
+        ),
+      );
+      if (!mounted) return;
+
       final result = await ref.read(billingRepositoryProvider).recordPayment(
             merchantId: merchantId,
-            planId: payment.planId,
-            amount: payment.amount,
-            months: payment.months,
+            planId: planId,
+            amount: amount,
+            months: months,
             recordedBy: by,
             receiptId: receipt,
           );
       ref.invalidate(merchantProvider(merchantId));
-      if (!context.mounted) return;
+      if (!mounted) return;
+
+      if (result is Ok) await _journal.clear(merchantId);
+      if (!mounted) return;
       ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-        result is Ok
+        result is Ok<Subscription>
             ? SnackBar(
                 key: MerchantBillingScreen.recordedKey,
                 content: Text(
-                  'اتسجّلت الدفعة — الاشتراك لحد ${_date((result as Ok<Subscription>).value.expiresAt)}',
+                  'اتسجّلت الدفعة — الاشتراك لحد ${_date(result.value.expiresAt)}',
                 ),
               )
-            : SnackBar(
-                content: const Text('الدفعة مااتسجّلتش. جرّب تاني — مش هتتسجّل مرتين.'),
-                action: SnackBarAction(label: 'جرّب تاني', onPressed: attempt),
+            : const SnackBar(
+                content: Text(
+                  'الدفعة مااتسجّلتش. افتحها تاني وأكّد — مش هتتسجّل مرتين.',
+                ),
               ),
       );
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+          const SnackBar(content: Text('مقدرناش نحفظ الدفعة. جرّب تاني.')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
     }
+  }
 
-    await attempt();
+  Future<bool?> _confirmPending(BuildContext context, PendingCollection stored) {
+    final strings = LuqmaStrings.of(context);
+    return showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('تسجيل دفعة'),
+        content: Text(
+          key: MerchantBillingScreen.pendingNoticeKey,
+          'في دفعة بـ ${strings.price(stored.amount)} اتبعتت وماتأكدتش. أكّد تاني بنفس '
+          'البيانات — مش هتتسجّل مرتين. لو الدفعة دي ماحصلتش أصلاً، اضغط «دي مش دفعة».',
+        ),
+        actions: [
+          TextButton(
+            key: MerchantBillingScreen.discardPendingKey,
+            onPressed: () async {
+              await _journal.clear(stored.subjectId);
+              if (dialogContext.mounted) Navigator.of(dialogContext).pop(false);
+            },
+            child: const Text('دي مش دفعة'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('أكّد'),
+          ),
+        ],
+      ),
+    );
   }
 }
 
@@ -945,7 +1124,7 @@ class _Settlements extends ConsumerWidget {
     // courier collection needs the identical rule, and two copies of a rule about money
     // is how one of them drifts. The key it builds is the one this screen has always
     // used, so a pending record already on a phone is read unchanged.
-    final pending = PendingCollections(SharedPreferencesAsync(), kind: 'merchant');
+    final pending = PendingCollections(SharedPreferencesAsync(), kind: PendingKind.merchant);
     final stored = await pending.load(merchant.id);
     String? receiptId = stored?.receiptId;
     int? frozenAmount = stored?.amount;
@@ -1149,7 +1328,12 @@ class _Settlements extends ConsumerWidget {
                             // in this dialog either way, and refusing to take the cash
                             // because a preference would not write is the wrong failure.
                             await pending.save(merchant.id,
-                                PendingCollection(receiptId: receipt, amount: amount));
+                                PendingCollection(
+                                  receiptId: receipt,
+                                  kind: PendingKind.merchant,
+                                  subjectId: merchant.id,
+                                  amount: amount,
+                                ));
                             if (!dialogContext.mounted) return;
 
                             final result = await ref

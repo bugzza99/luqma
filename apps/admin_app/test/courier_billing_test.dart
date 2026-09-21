@@ -69,27 +69,79 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  group('the frozen pair', () {
-    test('reads back what it wrote', () {
-      const pending = PendingCollection(receiptId: 'r1', amount: 4500);
+  group('the frozen record', () {
+    PendingCollection? read(String? json,
+            {PendingKind kind = PendingKind.courier, String subject = 'c1'}) =>
+        PendingCollection.decode(json, kind: kind, subjectId: subject);
 
-      expect(PendingCollection.decode(pending.encode())?.amount, 4500);
-      expect(PendingCollection.decode(pending.encode())?.receiptId, 'r1');
+    test('reads back what it wrote', () {
+      const pending = PendingCollection(
+        receiptId: 'r1',
+        kind: PendingKind.courier,
+        subjectId: 'c1',
+        amount: 4500,
+      );
+
+      expect(read(pending.encode())?.amount, 4500);
+      expect(read(pending.encode())?.receiptId, 'r1');
     });
 
     test('refuses a record with only half of it', () {
-      // The id is written first, so a half-written record leaves the id set and the
-      // amount missing — an editable field and no notice, which is how a new figure gets
-      // sent under an old receipt id. Both or neither.
-      expect(PendingCollection.decode('{"receiptId":"r1"}'), isNull);
-      expect(PendingCollection.decode('{"amount":4500}'), isNull);
-      expect(PendingCollection.decode('{"receiptId":"r1","amount":"4500"}'), isNull);
-      expect(PendingCollection.decode('{"receiptId":"","amount":4500}'), isNull);
+      // The id is written first, so a half-written record leaves the id set and the rest
+      // missing — an editable field and no notice, which is how new figures get sent
+      // under an old receipt id. All or nothing.
+      expect(read('{"receiptId":"r1"}'), isNull);
+      expect(read('{"amount":4500}'), isNull);
+      expect(read('{"receiptId":"r1","amount":"4500"}'), isNull);
+      expect(read('{"receiptId":"","amount":4500}'), isNull);
+    });
+
+    test('refuses a record belonging to another kind or another subject', () {
+      // One receipt paying for the wrong thing is the failure this guards. A shop's
+      // top-up must never be replayable as a courier's collection.
+      const topUp = PendingCollection(
+        receiptId: 'r1',
+        kind: PendingKind.topUp,
+        subjectId: 'm1',
+        amount: 4500,
+      );
+
+      expect(read(topUp.encode()), isNull, reason: 'wrong kind and wrong subject');
+      expect(read(topUp.encode(), kind: PendingKind.topUp), isNull,
+          reason: 'right kind, wrong subject');
+      expect(read(topUp.encode(), kind: PendingKind.topUp, subject: 'm1'), isNotNull);
+    });
+
+    test('a subscription attempt without its term is not a record', () {
+      // The server is told a plan and a number of months. An attempt that cannot say
+      // both is one it cannot be told about, so it is corrupt rather than partial.
+      expect(
+        read('{"receiptId":"r1","amount":4500}',
+            kind: PendingKind.subscription, subject: 'm1'),
+        isNull,
+      );
+      expect(
+        read('{"receiptId":"r1","amount":4500,"planId":"p1","months":0}',
+            kind: PendingKind.subscription, subject: 'm1'),
+        isNull,
+      );
+      expect(
+        read('{"receiptId":"r1","amount":4500,"planId":"p1","months":3}',
+            kind: PendingKind.subscription, subject: 'm1'),
+        isNotNull,
+      );
+    });
+
+    test('still reads a record written before kinds were stored', () {
+      // An admin phone may be holding one right now. Its key already said which kind and
+      // which subject, so it is trusted to be what its key says — losing it would mean
+      // taking the same cash twice.
+      expect(read('{"receiptId":"r1","amount":4500}')?.receiptId, 'r1');
     });
 
     test('treats unreadable storage as no record rather than throwing', () {
-      expect(PendingCollection.decode('not json at all'), isNull);
-      expect(PendingCollection.decode(null), isNull);
+      expect(read('not json at all'), isNull);
+      expect(read(null), isNull);
     });
   });
 

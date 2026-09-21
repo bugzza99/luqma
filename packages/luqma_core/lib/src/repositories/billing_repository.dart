@@ -154,6 +154,9 @@ class FakeBillingRepository implements BillingRepository {
         _subscriptions = {for (final s in seedSubscriptions) s.id: s},
         _wallets = Map.of(wallets);
 
+  /// Every receipt id a top-up attempt carried, failures included.
+  final List<String> topUpReceipts = [];
+
   /// Receipts already recorded, and what each recorded — the server's `payment_receipts`.
   final Map<String, Object> _receipts = {};
 
@@ -269,6 +272,11 @@ class FakeBillingRepository implements BillingRepository {
     required String recordedBy,
     String? receiptId,
   }) async {
+    // Recorded before the failure check, and failures included: what a retry must repeat
+    // is the receipt id, and that is checkable even when the attempt it belongs to went
+    // nowhere. A test that could only see successful attempts could not tell a reused id
+    // from a fresh one.
+    if (receiptId != null) topUpReceipts.add(receiptId);
     if (failure != null) return Result.err(failure!);
     if (amount <= 0) return const Result.err(ConflictFailure());
     if (receiptId != null && _receipts.containsKey(receiptId)) {

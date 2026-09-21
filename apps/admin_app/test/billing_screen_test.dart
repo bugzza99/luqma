@@ -925,10 +925,60 @@ void main() {
       expect(find.textContaining('مااتسجّلش'), findsOneWidget);
       expect(billing.walletOf('m1'), 2000);
 
+      // The retry is the attempt itself, reopened — not a button on a SnackBar that
+      // vanishes after a few seconds and does not survive the app being killed, which is
+      // the failure this whole journal exists for.
       billing.failure = null;
-      await tester.tap(find.text('جرّب تاني'));
+      await tester.tap(find.byKey(MerchantBillingScreen.topUpKey));
       await tester.pumpAndSettle();
+
+      // Named, with its figure frozen: 50 ج is not the admin's to change once the server
+      // may already have credited it.
+      expect(find.byKey(MerchantBillingScreen.pendingNoticeKey), findsOneWidget);
+      expect(find.byKey(MerchantBillingScreen.amountKey), findsNothing);
+
+      await tester.tap(find.text('أكّد'));
+      await tester.pumpAndSettle();
+
       expect(billing.walletOf('m1'), 7000);
+      expect(billing.topUpReceipts.length, 2,
+          reason: 'both attempts went out');
+      expect(billing.topUpReceipts.first, billing.topUpReceipts.last,
+          reason: 'a retry that mints a new receipt credits the same cash twice');
+    });
+
+    testWidgets('a discarded top-up starts clean rather than resending', (tester) async {
+      await pump(
+        tester,
+        seed: merchant(model: RevenueModel.prepaid, value: 500, wallet: 2000),
+      );
+      billing.failure = const OfflineFailure();
+      await tester.scrollUntilVisible(
+        find.byKey(MerchantBillingScreen.topUpKey),
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(MerchantBillingScreen.topUpKey));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(MerchantBillingScreen.amountKey), '50');
+      await tester.tap(find.byKey(MerchantBillingScreen.confirmTopUpKey));
+      await tester.pumpAndSettle();
+
+      // Somebody who knows the cash was never handed over has to be able to say so, or
+      // the only way out of the dialog is to credit money nobody paid.
+      billing.failure = null;
+      await tester.tap(find.byKey(MerchantBillingScreen.topUpKey));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(MerchantBillingScreen.discardPendingKey));
+      await tester.pumpAndSettle();
+
+      expect(billing.walletOf('m1'), 2000, reason: 'nothing was credited');
+
+      await tester.tap(find.byKey(MerchantBillingScreen.topUpKey));
+      await tester.pumpAndSettle();
+      expect(find.byKey(MerchantBillingScreen.pendingNoticeKey), findsNothing);
+      expect(find.byKey(MerchantBillingScreen.amountKey), findsOneWidget);
     });
 
     testWidgets('a payment shows the amount and the new end date before recording',

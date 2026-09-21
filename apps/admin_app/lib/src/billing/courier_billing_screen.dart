@@ -99,7 +99,7 @@ class _CourierRowState extends ConsumerState<_CourierRow> {
   bool _busy = false;
 
   PendingCollections get _pending =>
-      PendingCollections(SharedPreferencesAsync(), kind: 'courier');
+      PendingCollections(SharedPreferencesAsync(), kind: PendingKind.courier);
 
   /// A v4 uuid, made once per collection and kept across every retry of it.
   static String _uuid() {
@@ -143,7 +143,12 @@ class _CourierRowState extends ConsumerState<_CourierRow> {
       final receiptId = stored?.receiptId ?? _uuid();
       await _pending.save(
         balance.uid,
-        PendingCollection(receiptId: receiptId, amount: amount),
+        PendingCollection(
+          receiptId: receiptId,
+          kind: PendingKind.courier,
+          subjectId: balance.uid,
+          amount: amount,
+        ),
       );
       if (!mounted) return;
 
