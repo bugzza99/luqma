@@ -193,10 +193,23 @@ class LiveDatabase {
       // it or, under cascade, quietly destroy the record that a merchant was billed.
       // In the product nothing deletes an order at all; only a test does.
       await client.from('order_settlements').delete().inFilter('merchant_id', ids);
-      // And the receipts, for the same reason and with the same `on delete restrict`:
-      // a record that money changed hands must not be removable by deleting the shop it
-      // was paid by.
+      // And the receipts. These are `on delete set null` since 20261022000000 rather than
+      // `restrict` — a payment outlives the shop it came from — so they no longer block
+      // the delete. They are still removed by name, and they have to be: nulled they
+      // would stop matching this filter and every run would leave a few more behind.
       await client.from('commission_payments').delete().inFilter('merchant_id', ids);
+    }
+
+    // The courier's side of the same rule, and the one this teardown was missing.
+    // `courier_settlements.order_id` is `on delete restrict` for the reason above, and it
+    // keys on the order rather than the merchant — so it has to be found through the
+    // orders of this city. Forgetting it fails the *order* delete on `23503`, which
+    // surfaces as every test in a file dying in teardown rather than as anything to do
+    // with what the file was testing.
+    final orders = await client.from('orders').select('id').eq('city_id', cityId);
+    final orderIds = orders.map((o) => o['id'] as String).toList();
+    if (orderIds.isNotEmpty) {
+      await client.from('courier_settlements').delete().inFilter('order_id', orderIds);
     }
     for (final table in ['orders', 'promotions', 'daily_meals', 'coupons', 'merchants',
                          'landmarks', 'home_sections', 'zones']) {
