@@ -14,9 +14,10 @@ import '../result.dart';
 /// a URL — a path becomes viewable by asking for a signed link that expires, and only for
 /// somebody the policy already lets read the object.
 ///
-/// There is no `delete`, and that is deliberate. When the papers go is the database's
-/// decision (`purge_after`, one writer, a nightly sweep), not a screen's: a courier who
-/// could delete their own papers could also delete them the morning a dispute started.
+/// **When the papers go is the database's decision** (`purge_after`, one writer, a nightly
+/// sweep), not a screen's: a courier who could delete their own papers could also delete
+/// them the morning a dispute started. So there is no delete a courier can reach, and
+/// [removeFor] is an admin's act with a reason attached — see its own comment.
 abstract interface class StaffDocumentsRepository {
   /// Uploads the three photographs and files them against the signed-in person.
   ///
@@ -46,6 +47,17 @@ abstract interface class StaffDocumentsRepository {
   /// Short by default: the link is for the seconds it takes to look at the picture, and a
   /// long-lived one for a national ID is a public URL with extra steps.
   Future<Result<String>> signedUrl(String path, {Duration expiresIn});
+
+  /// An admin removes somebody's papers, saying why.
+  ///
+  /// All three, because a row means three photographs on file and the approval guard asks
+  /// whether the row exists — there is no state in the product for two. So this is what an
+  /// admin does when a photograph is of the wrong thing, of somebody else, or of something
+  /// that should not be stored: the papers are not acceptable and are handed in again.
+  ///
+  /// [reason] is required by the server, not merely by this signature. The audit row exists
+  /// to answer «why are this courier's papers gone», and one that may be blank does not.
+  Future<Result<void>> removeFor(String uid, {required String reason});
 }
 
 class SupabaseStaffDocumentsRepository implements StaffDocumentsRepository {
@@ -145,6 +157,19 @@ class SupabaseStaffDocumentsRepository implements StaffDocumentsRepository {
     );
   }
 
+  @override
+  Future<Result<void>> removeFor(String uid, {required String reason}) {
+    // An RPC rather than a delete against storage, and the storage policy no longer
+    // grants an admin one (`20261025000000`). The bytes, the row and the audit entry move
+    // together or not at all, which a client making two calls cannot promise.
+    return Result.guard(
+      () => _db.rpc<void>(
+        'admin_delete_staff_documents',
+        params: {'p_uid': uid, 'p_reason': reason},
+      ),
+    );
+  }
+
   /// A v4 uuid, from the same generator `SupabaseMediaRepository` uses.
   static String _uuid() {
     final random = Random.secure();
@@ -234,5 +259,20 @@ class FakeStaffDocumentsRepository implements StaffDocumentsRepository {
   }) async {
     if (failWith case final failure?) return Err(failure);
     return Ok('https://example.test/signed/$path?expires=${expiresIn.inSeconds}');
+  }
+
+  /// What was removed and why, so a test can assert the reason reached the server.
+  final removals = <({String uid, String reason})>[];
+
+  @override
+  Future<Result<void>> removeFor(String uid, {required String reason}) async {
+    if (failWith case final failure?) return Err(failure);
+    // The server requires a reason and refuses a blank one. A fake that accepted one
+    // would let a screen ship a control the database will refuse.
+    if (reason.trim().isEmpty) return const Err(ValidationFailure());
+    if (!_byUid.containsKey(uid)) return const Err(NotFoundFailure());
+    _byUid.remove(uid);
+    removals.add((uid: uid, reason: reason));
+    return const Ok(null);
   }
 }

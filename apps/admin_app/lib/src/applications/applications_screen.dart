@@ -23,6 +23,11 @@ class ApplicationsScreen extends ConsumerWidget {
   static Key papersKey(String id) => Key('application.papers.$id');
   static const papersSheetKey = Key('application.papersSheet');
   static const papersEmptyKey = Key('application.papersEmpty');
+
+  /// Removing a courier's papers: the control, the reason, and the confirmation.
+  static const papersRemoveKey = Key('application.papersRemove');
+  static const papersRemoveReasonKey = Key('application.papersRemoveReason');
+  static const papersRemoveConfirmKey = Key('application.papersRemoveConfirm');
   static const zonePickerKey = Key('application.zone');
   static const shopPickerKey = Key('application.shop');
   static Key rejectKey(String id) => Key('application.reject.$id');
@@ -836,11 +841,153 @@ class _PapersSheet extends ConsumerWidget {
                     _SignedImage(path: path),
                     const SizedBox(height: Space.md),
                   ],
+                  // Removing papers is an admin's act and it is recorded with a reason
+                  // (`admin_delete_staff_documents`). It lives here rather than on the
+                  // card because it is a judgement about the photographs themselves:
+                  // somebody uploaded the wrong thing, somebody else's card, or something
+                  // that should not be stored at all.
+                  if (ref.watch(staffIdentityProvider).isPlatformAdmin) ...[
+                    const Divider(),
+                    const SizedBox(height: Space.sm),
+                    Text(
+                      'لو الصور غلط أو مش بتاعته، شيلها وهو هيرفعها تاني. الثلاثة بيروحوا '
+                      'مع بعض، لأن الطلب بيتقبل على الثلاثة.',
+                      style: theme.textTheme.bodySmall
+                          ?.copyWith(color: colors.textSecondary),
+                    ),
+                    const SizedBox(height: Space.sm),
+                    OutlinedButton.icon(
+                      key: ApplicationsScreen.papersRemoveKey,
+                      onPressed: () async {
+                        final removed = await showDialog<bool>(
+                          context: context,
+                          builder: (_) => _RemovePapersDialog(uid: applicantUid),
+                        );
+                        if (removed ?? false) {
+                          ref.invalidate(staffDocumentsForProvider(applicantUid));
+                        }
+                      },
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: colors.danger,
+                        side: BorderSide(color: colors.danger.withValues(alpha: 0.5)),
+                      ),
+                      icon: const Icon(Icons.delete_outline, size: Sizes.iconSm),
+                      label: const Text('شيل الصور'),
+                    ),
+                  ],
                 ],
               ),
             ),
         },
       ),
+    );
+  }
+}
+
+/// Removing somebody's papers, with the reason the server requires.
+///
+/// A widget rather than a `StatefulBuilder` over a controller made outside it: the
+/// controller has to outlive the dialog's closing animation, and disposing it the moment
+/// `showDialog` returns throws while the route is still painting itself out. A `State`
+/// owns it and disposes it when the element really goes, which is the only place that
+/// knows when that is.
+///
+/// The reason is not a formality and not this screen's idea. The function refuses a blank
+/// one, because the audit row exists to answer «why are this courier's papers gone» and
+/// one that may be empty does not answer it.
+class _RemovePapersDialog extends ConsumerStatefulWidget {
+  const _RemovePapersDialog({required this.uid});
+
+  final String uid;
+
+  @override
+  ConsumerState<_RemovePapersDialog> createState() => _RemovePapersDialogState();
+}
+
+class _RemovePapersDialogState extends ConsumerState<_RemovePapersDialog> {
+  final _reason = TextEditingController();
+  bool _busy = false;
+
+  @override
+  void dispose() {
+    _reason.dispose();
+    super.dispose();
+  }
+
+  Future<void> _confirm() async {
+    setState(() => _busy = true);
+    final result = await ref
+        .read(staffDocumentsRepositoryProvider)
+        .removeFor(widget.uid, reason: _reason.text.trim());
+    if (!mounted) return;
+    switch (result) {
+      case Ok():
+        Navigator.of(context).pop(true);
+      case Err(:final failure):
+        setState(() => _busy = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(switch (failure) {
+            OfflineFailure() => 'مفيش نت — جرّب تاني.',
+            PermissionFailure() => 'مش من حقك تشيل الصور.',
+            ValidationFailure() => 'اكتب السبب الأول.',
+            // The papers are already gone: somebody else removed them, or the retention
+            // sweep reached them. Saying «we failed» would be wrong — what was asked for
+            // is true.
+            NotFoundFailure() => 'الصور مش موجودة أصلاً.',
+            _ => 'مقدرناش نشيل الصور. جرّب تاني.',
+          })),
+        );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('تشيل صور البطاقة؟'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const Text(
+            'الصور هتتمسح خالص ومش هترجع، وهو هيحتاج يرفعها تاني قبل ما تقدر تقبله.',
+          ),
+          const SizedBox(height: Space.md),
+          TextField(
+            key: ApplicationsScreen.papersRemoveReasonKey,
+            controller: _reason,
+            enabled: !_busy,
+            autofocus: true,
+            // Without this nothing rebuilds as the reason is typed, so the confirm
+            // button — disabled until there is one — stays dead while the admin looks at
+            // the sentence they have just written.
+            onChanged: (_) => setState(() {}),
+            decoration: const InputDecoration(
+              labelText: 'السبب',
+              hintText: 'صورة مش واضحة / البطاقة مش بتاعته',
+            ),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: _busy ? null : () => Navigator.of(context).pop(false),
+          child: const Text('بلاش'),
+        ),
+        FilledButton(
+          key: ApplicationsScreen.papersRemoveConfirmKey,
+          // Single-flight: a second tap while the first is in flight sends a second
+          // deletion for papers that are already gone, and the reply to that is «no papers
+          // on file» — which reads as a failure for a request that worked.
+          onPressed: _busy || _reason.text.trim().isEmpty ? null : _confirm,
+          child: _busy
+              ? const SizedBox(
+                  width: Sizes.iconSm,
+                  height: Sizes.iconSm,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Text('شيلها'),
+        ),
+      ],
     );
   }
 }

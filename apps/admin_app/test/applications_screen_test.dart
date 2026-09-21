@@ -327,6 +327,104 @@ void main() {
     });
   });
 
+  /// Removing papers is an admin's act, with a reason, and it is recorded.
+  ///
+  /// The storage policy no longer grants an admin a direct delete
+  /// (`20261025000000_a_document_is_removed_on_the_record.sql`), so this control is the
+  /// only way the capability exists — and the server refuses a blank reason, because the
+  /// audit row exists to answer «why are this courier's papers gone».
+  group("removing somebody's papers", () {
+    const admin = StaffIdentity(
+      uid: 'u-admin',
+      role: StaffRole.admin,
+      scope: StaffScope.platform,
+      isAdmin: true,
+    );
+    const moderator = StaffIdentity(
+      uid: 'u-mod',
+      role: StaffRole.moderator,
+      scope: StaffScope.platform,
+      isAdmin: true,
+    );
+
+    // A 360x780 window is a phone, and the card's buttons sit below the fold on one —
+    // which is what a real admin's handset does too. Scroll to what is being tapped
+    // rather than tapping where it happens to be.
+    Future<void> openPapers(WidgetTester tester) async {
+      await tester.ensureVisible(find.byKey(ApplicationsScreen.papersKey('app-old')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(ApplicationsScreen.papersKey('app-old')));
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.byKey(ApplicationsScreen.papersRemoveKey));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('sends the reason the admin typed', (tester) async {
+      await pump(tester, who: admin);
+      await openPapers(tester);
+
+      await tester.tap(find.byKey(ApplicationsScreen.papersRemoveKey));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(ApplicationsScreen.papersRemoveReasonKey), 'البطاقة مش بتاعته');
+      await tester.pump();
+      await tester.tap(find.byKey(ApplicationsScreen.papersRemoveConfirmKey));
+      await tester.pumpAndSettle();
+
+      expect(papers.removals, hasLength(1));
+      expect(papers.removals.single.uid, 'u-courier');
+      expect(papers.removals.single.reason, 'البطاقة مش بتاعته',
+          reason: 'the reason is the whole point of the audit row');
+    });
+
+    testWidgets('will not confirm with no reason', (tester) async {
+      // Not this screen's idea: the function refuses a blank one, so offering the button
+      // would be offering a door the database shuts.
+      await pump(tester, who: admin);
+      await openPapers(tester);
+
+      await tester.tap(find.byKey(ApplicationsScreen.papersRemoveKey));
+      await tester.pumpAndSettle();
+
+      final confirm = tester.widget<FilledButton>(
+        find.byKey(ApplicationsScreen.papersRemoveConfirmKey));
+      expect(confirm.onPressed, isNull);
+      expect(papers.removals, isEmpty);
+    });
+
+    testWidgets('a whitespace reason is not a reason', (tester) async {
+      await pump(tester, who: admin);
+      await openPapers(tester);
+
+      await tester.tap(find.byKey(ApplicationsScreen.papersRemoveKey));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(ApplicationsScreen.papersRemoveReasonKey), '   ');
+      await tester.pump();
+
+      expect(
+        tester.widget<FilledButton>(
+          find.byKey(ApplicationsScreen.papersRemoveConfirmKey)).onPressed,
+        isNull,
+      );
+    });
+
+    testWidgets('a moderator is not offered it at all', (tester) async {
+      // Deletion is the half the owner excepted, and papers are the sharpest case of it.
+      // Not routed through `openPapers`, which scrolls to the control this asserts is
+      // absent — a helper that has to find the thing cannot prove it is missing.
+      await pump(tester, who: moderator);
+      await tester.ensureVisible(find.byKey(ApplicationsScreen.papersKey('app-old')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(ApplicationsScreen.papersKey('app-old')));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(ApplicationsScreen.papersSheetKey), findsOneWidget,
+          reason: 'they can still look at the papers');
+      expect(find.byKey(ApplicationsScreen.papersRemoveKey), findsNothing);
+    });
+  });
+
   /// The one module a moderator half-owns.
   ///
   /// Rejecting an application mints nothing and is moderation, so it stays theirs;

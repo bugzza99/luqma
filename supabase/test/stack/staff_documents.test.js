@@ -170,6 +170,90 @@ describe('a courier\'s papers', () => {
     });
   });
 
+  describe('removing them is an act with a name on it', () => {
+    // H-03. The storage policy used to grant an admin a direct delete, so papers could go
+    // with nothing anywhere recording that they had — which breaks the rule H-09 settled.
+    // These are the assertions PGlite cannot make: the policy, and the RPC through a real
+    // token rather than as the owner of the database.
+    let moderator;
+
+    before(async () => {
+      moderator = { uid: await uid(),
+                    claims: { admin: true, role: 'moderator', scope: 'platform' } };
+      await q("insert into staff (uid,scope,role) values ($1,'platform','moderator')",
+              [moderator.uid]);
+    });
+
+    after(async () => {
+      await q('delete from staff where uid = $1', [moderator.uid]).catch(() => {});
+      await q('delete from auth.users where id = $1', [moderator.uid]).catch(() => {});
+    });
+
+    // Asked of the catalogue rather than by attempting a delete, for two reasons. Hosted
+    // storage's own `protect_delete` raises before RLS is consulted, so a SQL attempt
+    // tests Supabase's guard and not ours — and the real client path is the Storage HTTP
+    // API, which consults exactly this expression. Reading the policy is the only way to
+    // assert what that path will decide.
+    //
+    // It is also how the hole was found: `refuse_moderator_delete` was installed on 25
+    // tables chosen by reading the migrations, and `storage.objects` is in a schema those
+    // did not enumerate. Ask the catalogue.
+    it('no longer names is_admin, so no moderator reaches it', async () => {
+      const { rows } = await q(`
+        select p.polname, pg_get_expr(p.polqual, p.polrelid) as expr
+          from pg_policy p
+          join pg_class c on c.oid = p.polrelid
+          join pg_namespace n on n.oid = c.relnamespace
+         where n.nspname = 'storage' and c.relname = 'objects'
+           and p.polcmd in ('d','*')`);
+
+      assert.ok(rows.length > 0, 'there are delete policies to check');
+      for (const r of rows) {
+        assert.doesNotMatch(r.expr ?? '', /is_admin\(\)/,
+          `${r.polname} would let a moderator delete`);
+      }
+    });
+
+    it('refuses a moderator the audited path too', async () => {
+      const message = await refused(moderator, () =>
+        q('select admin_delete_staff_documents($1, $2)', [rider.uid, 'مش عايزها']));
+
+      assert.match(message ?? '', /only an admin/);
+    });
+
+    it('refuses an admin who gives no reason', async () => {
+      const message = await refused(admin, () =>
+        q('select admin_delete_staff_documents($1, $2)', [rider.uid, '  ']));
+
+      assert.match(message ?? '', /say why/);
+    });
+
+    it('lets an admin, with a reason, and writes the evidence', async () => {
+      // Inside the `as()` block: it rolls back, so anything asserted afterwards reads a
+      // database where none of this happened.
+      await as(admin, async () => {
+        await q('select admin_delete_staff_documents($1, $2)',
+                [rider.uid, 'البطاقة مش بتاعته']);
+
+        const left = await q(
+          "select count(*)::int as n from storage.objects where bucket_id = 'staff-docs' " +
+          'and name = any($1)', [paths(rider.uid)]);
+        assert.equal(left.rows[0].n, 0, 'the bytes went');
+
+        const row = await q('select count(*)::int as n from staff_documents where uid = $1',
+                            [rider.uid]);
+        assert.equal(row.rows[0].n, 0, 'and the row with them');
+
+        const log = await q(
+          "select actor, detail from audit_log where action = 'staffDocuments.deleted' " +
+          "and detail->>'uid' = $1", [rider.uid]);
+        assert.equal(log.rows.length, 1);
+        assert.equal(log.rows[0].actor, admin.uid, 'the actor is who really called');
+        assert.equal(log.rows[0].detail.reason, 'البطاقة مش بتاعته');
+      });
+    });
+  });
+
   describe('the clock is not theirs to move', () => {
     it('refuses to let a person clear their own purge_after', async () => {
       // The whole retention rule rests on this. A courier who can null their own
