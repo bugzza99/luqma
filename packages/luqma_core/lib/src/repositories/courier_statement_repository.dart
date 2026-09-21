@@ -138,9 +138,22 @@ class SupabaseCourierStatementRepository implements CourierStatementRepository {
       );
       // What the server says is left, never what this screen computed. A reply that does
       // not say is a reply this screen must not put a number on.
-      final remaining = result['remaining'];
-      if (remaining is! num) throw const UnknownFailure('no balance in the reply');
-      return CourierCollection(remaining: remaining.toInt());
+      if (result['remaining'] is! num) {
+        throw const UnknownFailure('no balance in the reply');
+      }
+      final reply = CourierCollection.fromJson(result);
+
+      // And it has to be a reply to *this* attempt. A server that says nothing about the
+      // receipt is an older one and is trusted; one that names a different receipt,
+      // courier or amount is answering about somebody else's money.
+      if (!reply.answers(
+        receiptId: receiptId ?? reply.receiptId ?? '',
+        courierUid: courierUid,
+        amount: amount,
+      )) {
+        throw const UnknownFailure('the reply is for another payment');
+      }
+      return reply;
     });
   }
 }
@@ -223,7 +236,18 @@ class FakeCourierStatementRepository implements CourierStatementRepository {
 
     if (receiptId != null) {
       final stored = _receipts[receiptId];
-      if (stored != null) return Result.ok(stored);
+      if (stored != null) {
+        // Marked as a replay, because the fake being kinder than the server about this
+        // is how a screen learns to call a repeat a fresh collection.
+        return Result.ok(CourierCollection(
+          remaining: stored.remaining,
+          receiptId: stored.receiptId,
+          courierUid: stored.courierUid,
+          amount: stored.amount,
+          repeated: true,
+          createdAt: stored.createdAt,
+        ));
+      }
     }
 
     final remaining = (_owed[courierUid] ?? 0) - amount;
@@ -239,7 +263,14 @@ class FakeCourierStatementRepository implements CourierStatementRepository {
     );
     recorded.add((courierUid: courierUid, amount: amount));
 
-    final result = CourierCollection(remaining: remaining);
+    final result = CourierCollection(
+      remaining: remaining,
+      receiptId: receiptId,
+      courierUid: courierUid,
+      amount: amount,
+      repeated: false,
+      createdAt: DateTime.now(),
+    );
     if (receiptId != null) _receipts[receiptId] = result;
     return Result.ok(result);
   }

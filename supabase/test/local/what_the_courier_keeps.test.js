@@ -264,7 +264,14 @@ describe('what the courier keeps', () => {
         'select record_courier_payment($1, $2, null, $3) as r',
         [RIDER, 100, receipt])).rows[0].r;
 
-      assert.deepEqual(again, first);
+      // The money is identical; the reply is not. A replay says so, because «اتسجّل» and
+      // «كان متسجّل» are two different sentences and only one is true of the tap that
+      // produced this call.
+      assert.equal(first.repeated, false);
+      assert.equal(again.repeated, true);
+      for (const field of ['receiptId', 'kind', 'courierUid', 'amount', 'remaining']) {
+        assert.deepEqual(again[field], first[field], field);
+      }
       assert.equal(await owed(RIDER), 100);
       const payments = await db.query(
         'select count(*)::int n from courier_commission_payments where courier_uid = $1', [RIDER]);
@@ -304,7 +311,12 @@ describe('what the courier keeps', () => {
       const repeated = (await db.query(
         'select record_courier_payment($1, $2, null, $3) as r',
         [RIDER, 75, receipt])).rows[0].r;
-      assert.equal(repeated.remaining, 25);
+      // The balance as it stands now, and the receipt named so a screen can check the
+      // reply belongs to the attempt it sent.
+      assert.equal(repeated.remaining, await owed(RIDER));
+      assert.equal(repeated.repeated, true);
+      assert.equal(repeated.amount, 75);
+      assert.equal(repeated.receiptId, receipt);
       const stored = (await db.query(
         'select result from payment_receipts where id = $1', [receipt])).rows[0].result;
       assert.equal(stored.amount, 75);

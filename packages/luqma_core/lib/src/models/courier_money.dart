@@ -307,10 +307,62 @@ class CourierBalance {
   final bool isActive;
 }
 
-/// What `record_courier_payment` gives back: what it stored, and what is left.
+/// What `record_courier_payment` gives back — the whole identity of the receipt, not
+/// just a balance.
+///
+/// A reply that says only «الباقي كذا» cannot be checked against the attempt that asked
+/// for it, so a stale pending record and a later collection look identical to the screen
+/// reconciling them. In a cash business the receipt is the only evidence there is, so the
+/// reply names itself and the screen refuses anything that does not match.
 @immutable
 class CourierCollection {
-  const CourierCollection({required this.remaining});
+  const CourierCollection({
+    required this.remaining,
+    required this.receiptId,
+    required this.courierUid,
+    required this.amount,
+    required this.repeated,
+    this.createdAt,
+  });
 
+  factory CourierCollection.fromJson(Map<String, dynamic> json) => CourierCollection(
+        remaining: (json['remaining'] as num?)?.toInt() ?? 0,
+        receiptId: json['receiptId'] as String?,
+        courierUid: json['courierUid'] as String?,
+        amount: (json['amount'] as num?)?.toInt(),
+        repeated: json['repeated'] as bool? ?? false,
+        createdAt: switch (json['createdAt']) {
+          final String at => DateTime.tryParse(at)?.toLocal(),
+          _ => null,
+        },
+      );
+
+  /// What the courier still owes, as it stands now.
   final int remaining;
+
+  /// The receipt this reply belongs to. Null only from a server too old to say.
+  final String? receiptId;
+  final String? courierUid;
+  final int? amount;
+
+  /// True when the server had already recorded this receipt and this call changed
+  /// nothing. Without it, "the cash was taken" and "the cash had already been taken" are
+  /// the same sentence, and only one is true of the tap in front of the operator.
+  final bool repeated;
+
+  final DateTime? createdAt;
+
+  /// Whether this reply is an answer to the attempt that was actually sent.
+  ///
+  /// A server that says nothing about the receipt is trusted, because an older one
+  /// cannot be made to say it; a server that names a *different* receipt, courier or
+  /// amount is not.
+  bool answers({
+    required String receiptId,
+    required String courierUid,
+    required int amount,
+  }) =>
+      (this.receiptId == null || this.receiptId == receiptId) &&
+      (this.courierUid == null || this.courierUid == courierUid) &&
+      (this.amount == null || this.amount == amount);
 }

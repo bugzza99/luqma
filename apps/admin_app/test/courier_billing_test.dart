@@ -284,4 +284,65 @@ void main() {
       expect(find.byKey(CourierBillingScreen.confirmKey), findsOneWidget);
     });
   });
+
+  group('a reply has to be about this payment', () {
+    test('a second call with the same receipt is marked as a replay', () async {
+      // Where this is checkable. Through the screen it is not: a successful collection
+      // clears the pending record, so the next tap is a genuinely new payment with a new
+      // receipt. The replay is a server behaviour and the fake has to agree with it, or a
+      // screen gets written against a reply production never sends.
+      final repo = FakeCourierStatementRepository(owed: {'c1': 4500});
+
+      final first = (await repo.recordPayment(
+        courierUid: 'c1', amount: 4500, receiptId: 'r1')).valueOrNull;
+      final again = (await repo.recordPayment(
+        courierUid: 'c1', amount: 4500, receiptId: 'r1')).valueOrNull;
+
+      expect(first?.repeated, isFalse);
+      expect(again?.repeated, isTrue, reason: 'the server already held this receipt');
+      expect(again?.remaining, first?.remaining, reason: 'and nothing moved again');
+    });
+
+    test('refuses a reply that names another receipt, courier or amount', () {
+      // The whole point of H-13: a reply carrying only a balance cannot be checked, so a
+      // stale pending record and a later collection look identical to the screen.
+      const reply = CourierCollection(
+        remaining: 0,
+        receiptId: 'r1',
+        courierUid: 'c1',
+        amount: 4500,
+        repeated: false,
+      );
+
+      expect(reply.answers(receiptId: 'r1', courierUid: 'c1', amount: 4500), isTrue);
+      expect(reply.answers(receiptId: 'r2', courierUid: 'c1', amount: 4500), isFalse);
+      expect(reply.answers(receiptId: 'r1', courierUid: 'c2', amount: 4500), isFalse);
+      expect(reply.answers(receiptId: 'r1', courierUid: 'c1', amount: 9000), isFalse);
+    });
+
+    test('trusts a server too old to name the receipt', () {
+      // An older server cannot be made to say it, and refusing every reply from one
+      // would stop collections working the day an APK runs ahead of the database.
+      const older = CourierCollection(remaining: 0, receiptId: null,
+          courierUid: null, amount: null, repeated: false);
+
+      expect(older.answers(receiptId: 'r1', courierUid: 'c1', amount: 4500), isTrue);
+    });
+
+    test('reads the identity off the reply', () {
+      final reply = CourierCollection.fromJson(const {
+        'receiptId': 'r1',
+        'courierUid': 'c1',
+        'amount': 4500,
+        'remaining': 500,
+        'repeated': true,
+        'createdAt': '2026-09-21T10:00:00Z',
+      });
+
+      expect(reply.repeated, isTrue);
+      expect(reply.amount, 4500);
+      expect(reply.remaining, 500);
+      expect(reply.createdAt, isNotNull);
+    });
+  });
 }

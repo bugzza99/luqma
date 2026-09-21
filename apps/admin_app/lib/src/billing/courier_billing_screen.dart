@@ -101,6 +101,9 @@ class _CourierRowState extends ConsumerState<_CourierRow> {
   PendingCollections get _pending =>
       PendingCollections(SharedPreferencesAsync(), kind: PendingKind.courier);
 
+  static String _opening(CourierCollection result) =>
+      result.repeated ? 'الدفعة دي كانت متسجّلة قبل كده' : 'اتسجّل';
+
   /// A v4 uuid, made once per collection and kept across every retry of it.
   static String _uuid() {
     final random = Random.secure();
@@ -170,11 +173,14 @@ class _CourierRowState extends ConsumerState<_CourierRow> {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text(
+                // «اتسجّل» and «كان متسجّل» are two different things, and only one is true
+                // of the tap in front of the operator. Saying the first about a replay
+                // tells somebody holding cash it has just been taken.
                 value.remaining > 0
-                    ? 'اتسجّل. فاضل عليه ${strings.price(value.remaining)}'
+                    ? '${_opening(value)}. فاضل عليه ${strings.price(value.remaining)}'
                     : value.remaining < 0
-                    ? 'اتسجّل. بقى ليه رصيد ${strings.price(-value.remaining)}'
-                    : 'اتسجّل. حسابه بقى مظبوط',
+                    ? '${_opening(value)}. بقى ليه رصيد ${strings.price(-value.remaining)}'
+                    : '${_opening(value)}. حسابه بقى مظبوط',
               ),
             ),
           );
