@@ -593,6 +593,71 @@ DATABASE_URL=<luqma-test session pooler> npm --prefix supabase run test:stack
 - **A payment is recorded once.** `top_up_wallet` and `record_subscription_payment` take a
   `p_receipt_id` the screen generates once per payment; a retry after a lost reply returns
   the stored result instead of charging twice (`payment_receipts`).
+- **A financial row outlives its subject, and a frozen name is how it stays readable.**
+  Settled 2026-09-21 while closing H-06/M-05, and it is one rule where there were three:
+  `courier_commission_payments` was `on delete restrict`, `payment_receipts.courier_uid`
+  was `set null` under a CHECK demanding NOT NULL, and the shop side was `cascade`. So a
+  courier who had ever been charged **could not be deleted at all** — one constraint
+  refused and the other nulled a column into a violation — while deleting a shop silently
+  threw away its paid subscription terms and the receipts that exist so a payment cannot
+  be recorded twice. Every subject FK is `on delete set null` now, the subject columns are
+  nullable, and `stamp_payment_subject_name` freezes the name at insert. **The name is
+  stamped by a trigger, not by the four functions that write these tables across six
+  migrations** — a rule every writer has to remember is a rule the next writer forgets.
+- **A receipt's reply says which payment it is.** `record_courier_payment` answered with a
+  balance and an amount, neither of which says *which* — so a screen reconciling a pending
+  attempt had nothing to check against and could report a success belonging to a different
+  payment. The reply carries the receipt, kind, subject, amount, when it was first
+  recorded, the balance **as it stands now**, and `repeated`. That last one is not
+  decoration: without it «اتسجّل» and «كان متسجّل» are the same sentence, and only one is
+  true of the tap in front of somebody holding cash. `CourierCollection.answers()` is
+  lenient in exactly one direction — a server that says nothing about the receipt is an
+  older one and is trusted, because refusing it would stop collections the day an APK runs
+  ahead of the database.
+- **The idempotency key is written to disk before the request, or the money does not
+  move.** C-01: both AdminApp money paths minted their key in memory and nowhere else, so
+  a double tap, or the app being killed between request and reply, produced a *new* key —
+  and the server only refuses a repeat of the **same** one. `PendingCollection` now carries
+  the kind, the subject and everything the server will be told, and `decode` refuses a
+  half-written record, a record belonging to another kind or subject, and a subscription
+  attempt that cannot name its plan and months. Single-flight shuts the door **before** the
+  dialog opens: a second tap that reaches a second dialog has already made a second key.
+- **An installation can take itself off an account without a session.** H-10. Removing a
+  device token needed the JWT, which is the wrong shape for the one moment it exists for:
+  if that last deletion fails after GoTrue has signed out, the token waits for an auth
+  emission that never comes on a phone somebody signed out of and put down, and the old
+  account goes on being woken on it. `register_device_token` mints a secret and returns
+  it; `revoke_device_token(token, secret)` needs no JWT at all. **`anon` may call it, and
+  that is safe because the secret is the authorisation** — the worst its holder can do is
+  stop their own device being woken. The secret rotates on every registration, so an
+  account that has handed a shared till on cannot take it back off the shop using it now.
+- **A deleted customer keeps their zone and nothing else.** H-02: both deletion paths
+  scrubbed the two contact fields and left the order's frozen `address` holding the street,
+  building, floor, flat and **exact coordinates**, readable by the merchant, the courier
+  and every admin. It is `jsonb_build_object('zoneId', zone_id)` now — the zone because the
+  delivery fee is a zone's fee and the statements are built from these rows, and a quarter
+  of a town is not a doorstep. Nothing is left as an empty string: «we removed this» must
+  not look like «this was blank».
+- **Every sensitive admin mutation goes through an audited function.** H-09 began with a
+  survey whose first finding was structural: `audit_log` has **no table triggers anywhere**
+  and is written by fourteen functions — all of them things built as RPCs for money or
+  identity reasons — so *every* PostgREST write AdminApp made was unaudited, without
+  exception. Staff creation, media moderation, merchant status and deletion, coupons and
+  `setRevenueModel` now go through functions that write the row and its evidence together,
+  and the table grants were taken away, because a write that skips the function skips the
+  audit with it.
+- **`moderator` is a live role with no permissions and no way in.** Decided 2026-09-21:
+  it gets everything an admin has **except money and deletion** — which does give it
+  courier ID documents and customer numbers, and the owner chose that knowingly. Until it
+  is implemented, creating a moderator account produces an account that cannot sign in at
+  all, which is a dead account nobody notices making.
+- **A new table keyed on an order needs a line in every teardown.** `courier_settlements`
+  is `on delete restrict` for the same reason `order_settlements` is, and adding it without
+  touching `test_live/harness.dart` killed **eighteen tests** in teardown — where the
+  symptom names whatever the file was testing rather than the cleanup that threw. Nothing
+  else could catch it: PGlite builds its own fixtures and deletes no cities, the stack
+  tests roll back so no delete is real, and a release build runs no queries. This is what
+  `test_live` is for.
 - **A courier shows their papers, and the papers belong to the person.** Settled
   2026-09-20 with the owner, after a structural review parked an earlier attempt
   (`park/courier-papers-and-commission`, still parked). A courier applicant hands in three
