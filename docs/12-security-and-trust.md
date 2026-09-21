@@ -27,6 +27,13 @@
 Admin identity is a Firebase custom claim, never a client-side role field, so a compromised
 client cannot promote itself.
 
+When a customer account is deleted, its orders remain as financial records with their
+items, pricing, revenue and broad `zoneId` snapshot intact. The frozen name and phone are
+replaced with **حساب محذوف**, while every more precise address field -- including
+landmark details, notes, street, building, floor, apartment, label and coordinates -- is
+removed; the zone stays because delivery fees and the merchant and platform accounts are
+built from these retained rows, and a town quarter does not identify a doorstep.
+
 ## Home kitchen vetting
 Sellers are approved manually: national ID plus kitchen photos, reviewed in AdminApp.
 Terms of service state explicitly that Luqma is an intermediary and the seller bears

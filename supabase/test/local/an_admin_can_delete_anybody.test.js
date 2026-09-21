@@ -74,6 +74,34 @@ describe('an admin can delete anybody', () => {
   });
 
   it('admin deletes a customer with an order: order survives, customer fields scrubbed', async () => {
+    const addressBefore = {
+      zoneId,
+      landmarkId: '00000000-0000-0000-0000-0000000000d1',
+      landmarkName: 'المسجد الكبير',
+      landmarkNote: 'بجوار الصيدلية',
+      street: 'شارع البحر',
+      building: '١٢',
+      floor: '٣',
+      apartment: '٧',
+      label: 'البيت',
+      lat: 31.3065,
+      lng: 30.2994,
+    };
+    const itemsBefore = [
+      { itemId: 'dish-1', name: 'كشري', unitPrice: 15000, quantity: 2 },
+    ];
+    const pricingBefore = {
+      subtotal: 30000,
+      deliveryFee: 1000,
+      discount: 500,
+      total: 30500,
+    };
+    const revenueBefore = {
+      model: 'commission',
+      value: 500,
+      basis: 30000,
+      amount: 1500,
+    };
     const orderId = (await db.query(`
       insert into orders (
         city_id, customer_uid, customer_name, customer_phone,
@@ -81,10 +109,18 @@ describe('an admin can delete anybody', () => {
         type, items, pricing, revenue, status
       ) values (
         'edku', $1, 'أحمد العميل', '01012345678',
-        $2, 'مطعم الاختبار', $3, '{"street":"شارع"}'::jsonb, 'platform',
-        'instant', '[]'::jsonb, '{"total":1000}'::jsonb, '{"platformShare":100}'::jsonb, 'delivered'
+        $2, 'مطعم الاختبار', $3, $4::jsonb, 'platform',
+        'instant', $5::jsonb, $6::jsonb, $7::jsonb, 'delivered'
       ) returning id;
-    `, [CUSTOMER, merchantId, zoneId])).rows[0].id;
+    `, [
+      CUSTOMER,
+      merchantId,
+      zoneId,
+      JSON.stringify(addressBefore),
+      JSON.stringify(itemsBefore),
+      JSON.stringify(pricingBefore),
+      JSON.stringify(revenueBefore),
+    ])).rows[0].id;
 
     await as(ADMIN, { admin: true });
     await role('authenticated', () => db.query('select public.admin_delete_account($1)', [CUSTOMER]));
@@ -98,6 +134,11 @@ describe('an admin can delete anybody', () => {
     assert.equal(order.customer_uid, null);
     assert.equal(order.customer_name, 'حساب محذوف');
     assert.equal(order.customer_phone, 'حساب محذوف');
+    assert.deepEqual(order.address, { zoneId });
+    assert.equal(order.zone_id, zoneId);
+    assert.deepEqual(order.items, itemsBefore);
+    assert.deepEqual(order.pricing, pricingBefore);
+    assert.deepEqual(order.revenue, revenueBefore);
 
     // Audit log records deletion without personal details
     const audit = (await db.query(`
