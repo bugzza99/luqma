@@ -46,7 +46,11 @@ abstract interface class MerchantRepository {
   /// [saveMerchant] writes every column the form knows about from whatever the screen
   /// loaded — so a billing change made from a stale copy of the shop would put back an
   /// old status, old hours, an old description. These two write only what they are about.
-  Future<Result<void>> setRevenueModel(String id, RevenueModel model, int value);
+  Future<Result<void>> setRevenueModel(
+    String id,
+    RevenueModel model,
+    int value,
+  );
 
   /// Commission for this shop: its own rate in basis points, or null to follow the one
   /// rate in «الإعدادات» (`admin_set_shop_commission`).
@@ -197,7 +201,9 @@ class SupabaseMerchantRepository implements MerchantRepository {
     // against clockProvider's local now, and Dart's DateTime equality insists on the
     // same zone, not merely the same moment.
     if (base['pausedUntil'] is String) {
-      base['pausedUntil'] = DateTime.parse(base['pausedUntil'] as String).toLocal();
+      base['pausedUntil'] = DateTime.parse(
+        base['pausedUntil'] as String,
+      ).toLocal();
     }
     return Merchant.fromJson({
       ...base,
@@ -260,9 +266,11 @@ class SupabaseMerchantRepository implements MerchantRepository {
   @override
   Future<Result<void>> setPausedUntil(String id, DateTime? until) {
     return Result.guardWrite(
-      () => _db.from('merchants').update({
-        'paused_until': until?.toUtc().toIso8601String(),
-      }).eq('id', id).select('id'),
+      () => _db
+          .from('merchants')
+          .update({'paused_until': until?.toUtc().toIso8601String()})
+          .eq('id', id)
+          .select('id'),
       (_) {},
     );
   }
@@ -304,23 +312,26 @@ class SupabaseMerchantRepository implements MerchantRepository {
   }
 
   @override
-  Future<Result<void>> setRevenueModel(String id, RevenueModel model, int value) {
-    return Result.guardWrite(
-      () => _db.from('merchants').update({
-        'revenue_model': model.name,
-        'revenue_value': value,
-      }).eq('id', id).select('id'),
-      (_) {},
-    );
+  Future<Result<void>> setRevenueModel(
+    String id,
+    RevenueModel model,
+    int value,
+  ) {
+    return Result.guard(() async {
+      await _db.rpc(
+        'admin_set_revenue_model',
+        params: {'p_id': id, 'p_model': model.name, 'p_value': value},
+      );
+    });
   }
 
   @override
   Future<Result<void>> setShopCommission(String id, {int? customBps}) {
     return Result.guard(() async {
-      await _db.rpc('admin_set_shop_commission', params: {
-        'p_merchant_id': id,
-        'p_custom_bps': customBps,
-      });
+      await _db.rpc(
+        'admin_set_shop_commission',
+        params: {'p_merchant_id': id, 'p_custom_bps': customBps},
+      );
     });
   }
 
@@ -332,31 +343,34 @@ class SupabaseMerchantRepository implements MerchantRepository {
     required String? description,
   }) {
     return Result.guardWrite(
-      () => _db.from('merchants').update({
-        'logo_media_id': logoMediaId,
-        'cover_media_id': coverMediaId,
-        'description': description,
-      }).eq('id', id).select('id'),
+      () => _db
+          .from('merchants')
+          .update({
+            'logo_media_id': logoMediaId,
+            'cover_media_id': coverMediaId,
+            'description': description,
+          })
+          .eq('id', id)
+          .select('id'),
       (_) {},
     );
   }
 
   @override
   Future<Result<void>> setStatus(String id, MerchantStatus status) {
-    return Result.guardWrite(
-      () => _db.from('merchants').update({
-        'status': status.name,
-      }).eq('id', id).select('id'),
-      (_) {},
-    );
+    return Result.guard(() async {
+      await _db.rpc(
+        'admin_set_merchant_status',
+        params: {'p_id': id, 'p_status': status.name},
+      );
+    });
   }
 
   @override
   Future<Result<void>> deleteMerchant(String id) {
-    return Result.guardWrite(
-      () => _db.from('merchants').delete().eq('id', id).select('id'),
-      (_) {},
-    );
+    return Result.guard(() async {
+      await _db.rpc('admin_delete_merchant', params: {'p_id': id});
+    });
   }
 
   @override
@@ -384,8 +398,8 @@ class FakeMerchantRepository implements MerchantRepository {
     Map<String, int> orderCounts = const {},
     this.failure,
     this.saveFailure,
-  })  : _merchants = {for (final m in seed) m.id: m},
-        _orderCounts = Map.of(orderCounts);
+  }) : _merchants = {for (final m in seed) m.id: m},
+       _orderCounts = Map.of(orderCounts);
 
   final Map<String, Merchant> _merchants;
 
@@ -410,7 +424,9 @@ class FakeMerchantRepository implements MerchantRepository {
     if (failure != null) return Stream.error(failure!);
     return Stream.value(
       _merchants.values
-          .where((m) => m.cityId == cityId && m.status == MerchantStatus.approved)
+          .where(
+            (m) => m.cityId == cityId && m.status == MerchantStatus.approved,
+          )
           .toList(),
     );
   }
@@ -464,12 +480,19 @@ class FakeMerchantRepository implements MerchantRepository {
   }
 
   @override
-  Future<Result<void>> setRevenueModel(String id, RevenueModel model, int value) async {
+  Future<Result<void>> setRevenueModel(
+    String id,
+    RevenueModel model,
+    int value,
+  ) async {
     if (failure != null) return Result.err(failure!);
     if (saveFailure != null) return Result.err(saveFailure!);
     final merchant = _merchants[id];
     if (merchant == null) return const Result.err(NotFoundFailure());
-    _merchants[id] = merchant.copyWith(revenueModel: model, revenueValue: value);
+    _merchants[id] = merchant.copyWith(
+      revenueModel: model,
+      revenueValue: value,
+    );
     return const Result.ok(null);
   }
 

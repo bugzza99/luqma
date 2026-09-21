@@ -100,46 +100,61 @@ describe('a shop writes its own coupons', () => {
     await db?.close();
   });
 
+  // ---------------------------------------------------------------- writing a coupon
+  //
+  // Coupons are money, so since 20261020000000 every write goes through an audited
+  // function and `insert, update, delete` were taken from `authenticated` on the table
+  // itself. Leaving the table writable would have meant an admin could move a discount
+  // without leaving evidence, which is the whole point of that migration.
+  //
+  // The rules these tests are about did not change — they moved out of `with check` and
+  // into the function, which re-states every one of them. So the assertions below are the
+  // same assertions, asked at the boundary that now answers them.
+  const createCoupon = ({
+    code, cityId = 'edku', type = 'percentage', value = 1000, maxDiscount = 3000,
+    minOrder = 0, merchantId, firstOrderOnly = false, perUserLimit = 0,
+    totalLimit = 0, isActive = true, fundedBy = 'merchant',
+  }) => role('authenticated', () => db.query(
+    'select * from create_coupon($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,null,null)',
+    [code, cityId, type, value, maxDiscount, minOrder, merchantId,
+      firstOrderOnly, perUserLimit, totalLimit, isActive, fundedBy]));
+
+  const updateCoupon = (id, {
+    code = 'SHOP10', type = 'percentage', value = 1000, maxDiscount = 3000,
+    minOrder = 0, firstOrderOnly = false, perUserLimit = 0, totalLimit = 0,
+    isActive = true, fundedBy = 'merchant',
+  }) => role('authenticated', () => db.query(
+    'select update_coupon($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,null,null)',
+    [id, code, type, value, maxDiscount, minOrder, firstOrderOnly,
+      perUserLimit, totalLimit, isActive, fundedBy]));
+
+  const read = (id, columns = '*') => db.query(
+    `select ${columns} from coupons where id = $1`, [id]);
+
   it('an owner creates, lists, pauses and edits a coupon for their shop', async () => {
     await as(OWNER_A, { role: 'owner', scope: 'merchant', merchant_id: shopA });
 
-    // Create coupon
-    const inserted = (await role('authenticated', () => db.query(`
-      insert into coupons (
-        code, city_id, type, value, max_discount, merchant_id, funded_by
-      ) values (
-        'SHOP10', 'edku', 'percentage', 1000, 3000, $1, 'merchant'
-      ) returning *;
-    `, [shopA]))).rows[0];
+    const inserted = (await createCoupon({ code: 'SHOP10', merchantId: shopA })).rows[0];
 
     assert.equal(inserted.code, 'SHOP10');
     assert.equal(inserted.merchant_id, shopA);
     assert.equal(inserted.used_count, 0);
+    // `auth.uid()` is still the caller's inside a definer function — it runs as another
+    // *role*, not as another person — so the trigger stamps the owner exactly as before.
     assert.equal(inserted.created_by, OWNER_A);
     assert.equal(inserted.is_active, true);
 
-    // List coupons
     const list = (await role('authenticated', () => db.query(
       'select * from coupons where merchant_id = $1', [shopA]
     ))).rows;
     assert.ok(list.some((c) => c.code === 'SHOP10'));
 
-    // Pause coupon (is_active = false)
     await role('authenticated', () => db.query(
-      'update coupons set is_active = false where id = $1', [inserted.id]
-    ));
-    const paused = (await role('authenticated', () => db.query(
-      'select is_active from coupons where id = $1', [inserted.id]
-    ))).rows[0];
-    assert.equal(paused.is_active, false);
+      'select set_coupon_active($1, false)', [inserted.id]));
+    assert.equal((await read(inserted.id, 'is_active')).rows[0].is_active, false);
 
-    // Edit coupon (e.g. value and reactivate)
-    await role('authenticated', () => db.query(
-      'update coupons set is_active = true, value = 1500 where id = $1', [inserted.id]
-    ));
-    const edited = (await role('authenticated', () => db.query(
-      'select is_active, value from coupons where id = $1', [inserted.id]
-    ))).rows[0];
+    await updateCoupon(inserted.id, { value: 1500, isActive: true });
+    const edited = (await read(inserted.id, 'is_active, value')).rows[0];
     assert.equal(edited.is_active, true);
     assert.equal(edited.value, 1500);
   });
@@ -148,126 +163,95 @@ describe('a shop writes its own coupons', () => {
     await as(OWNER_A, { role: 'owner', scope: 'merchant', merchant_id: shopA });
 
     await assert.rejects(
-      () => role('authenticated', () => db.query(`
-        insert into coupons (
-          code, city_id, type, value, max_discount, merchant_id, funded_by
-        ) values (
-          'OTHER10', 'edku', 'percentage', 1000, 3000, $1, 'merchant'
-        );
-      `, [shopB])),
-      /row-level security/i
+      () => createCoupon({ code: 'OTHER10', merchantId: shopB }),
+      /not allowed to create this coupon/i
     );
   });
 
   // Found in review: the funding restriction lived only in `with check`, which does not
   // guard a read or a delete. A coupon the platform pays for, placed on this shop by an
-  // admin, is not the shop's to see, change or remove.
-  it('owner cannot read, update or delete a platform-funded coupon on their own shop', async () => {
+  // admin, is not the shop's to see or change.
+  it('owner cannot read or change a platform-funded coupon on their own shop', async () => {
     const id = (await db.query(`
       insert into coupons (code, city_id, type, value, max_discount, merchant_id, funded_by)
       values ('PLATONA', 'edku', 'percentage', 1000, 3000, $1, 'platform') returning id;
     `, [shopA])).rows[0].id;
     await as(OWNER_A, { role: 'owner', scope: 'merchant', merchant_id: shopA });
 
+    // Reading is still RLS's answer, and it is still nothing.
     const seen = await role('authenticated', () =>
-      db.query(`select id from coupons where id = $1`, [id]));
+      db.query('select id from coupons where id = $1', [id]));
     assert.equal(seen.rows.length, 0);
-    const updated = await role('authenticated', () =>
-      db.query(`update coupons set is_active = false where id = $1 returning id`, [id]));
-    assert.equal(updated.rows.length, 0);
-    const deleted = await role('authenticated', () =>
-      db.query(`delete from coupons where id = $1 returning id`, [id]));
-    assert.equal(deleted.rows.length, 0);
 
-    const still = await db.query(`select is_active from coupons where id = $1`, [id]);
-    assert.equal(still.rows.length, 1);
-    assert.equal(still.rows[0].is_active, true);
+    await assert.rejects(
+      () => updateCoupon(id, { code: 'PLATONA', fundedBy: 'platform' }),
+      /not allowed to update this coupon/i
+    );
+    await assert.rejects(
+      () => role('authenticated', () => db.query(
+        'select set_coupon_active($1, false)', [id])),
+      /not allowed/i
+    );
+
+    assert.equal((await read(id, 'is_active')).rows[0].is_active, true);
   });
 
   it('owner cannot create coupon with funded_by = platform', async () => {
     await as(OWNER_A, { role: 'owner', scope: 'merchant', merchant_id: shopA });
 
     await assert.rejects(
-      () => role('authenticated', () => db.query(`
-        insert into coupons (
-          code, city_id, type, value, max_discount, merchant_id, funded_by
-        ) values (
-          'PLAT10', 'edku', 'percentage', 1000, 3000, $1, 'platform'
-        );
-      `, [shopA])),
-      /row-level security/i
+      () => createCoupon({ code: 'PLAT10', merchantId: shopA, fundedBy: 'platform' }),
+      /not allowed to create this coupon/i
     );
   });
 
-  it('cannot set used_count or fake created_by on insert or update', async () => {
+  it('nobody writes the table directly any more, not even an admin', async () => {
+    // The reason every test above had to move. A write that skips the function skips the
+    // audit row with it, so the grant is gone rather than merely discouraged.
+    for (const uid of [OWNER_A, ADMIN]) {
+      await as(uid, uid === ADMIN
+        ? { admin: true, role: 'admin', scope: 'platform' }
+        : { role: 'owner', scope: 'merchant', merchant_id: shopA });
+      await assert.rejects(
+        () => role('authenticated', () => db.query(`
+          insert into coupons (code, city_id, type, value, max_discount, merchant_id, funded_by)
+          values ('DIRECT', 'edku', 'percentage', 1000, 3000, $1, 'merchant')
+        `, [shopA])),
+        /permission denied/i,
+        `${uid} should not be able to insert directly`);
+    }
+  });
+
+  it('cannot set used_count or fake created_by', async () => {
     await as(OWNER_A, { role: 'owner', scope: 'merchant', merchant_id: shopA });
 
-    // Try setting used_count = 99 and created_by = ADMIN on insert
-    const c = (await role('authenticated', () => db.query(`
-      insert into coupons (
-        code, city_id, type, value, max_discount, merchant_id, funded_by,
-        used_count, created_by
-      ) values (
-        'GUARD10', 'edku', 'percentage', 1000, 3000, $1, 'merchant',
-        99, '${ADMIN}'
-      ) returning used_count, created_by, id;
-    `, [shopA]))).rows[0];
-
-    // Trigger forces used_count = 0 and created_by = auth.uid()
+    // Neither is a parameter of the function, which is the strongest form of "you may not
+    // set this": there is nowhere to put it.
+    const c = (await createCoupon({ code: 'GUARD10', merchantId: shopA })).rows[0];
     assert.equal(c.used_count, 0);
     assert.equal(c.created_by, OWNER_A);
 
-    // Try altering used_count and created_by on update
-    await role('authenticated', () => db.query(`
-      update coupons set used_count = 50, created_by = '${ADMIN}' where id = $1
-    `, [c.id]));
-
-    const afterUpdate = (await role('authenticated', () => db.query(
-      'select used_count, created_by from coupons where id = $1', [c.id]
-    ))).rows[0];
+    await updateCoupon(c.id, { code: 'GUARD10', value: 1200 });
+    const afterUpdate = (await read(c.id, 'used_count, created_by')).rows[0];
     assert.equal(afterUpdate.used_count, 0);
     assert.equal(afterUpdate.created_by, OWNER_A);
   });
 
-  it('refuses mismatching city_id on insert and changing merchant_id or city_id on update', async () => {
+  it('refuses a coupon whose city is not the shop own city', async () => {
     await as(OWNER_A, { role: 'owner', scope: 'merchant', merchant_id: shopA });
 
-    // Insert with wrong city_id ('alex' instead of shop's 'edku')
     await assert.rejects(
-      () => role('authenticated', () => db.query(`
-        insert into coupons (
-          code, city_id, type, value, max_discount, merchant_id, funded_by
-        ) values (
-          'WRONGCITY', 'alex', 'percentage', 1000, 3000, $1, 'merchant'
-        );
-      `, [shopA])),
+      () => createCoupon({ code: 'WRONGCITY', cityId: 'alex', merchantId: shopA }),
       /coupon city must match merchant city/i
     );
 
-    // Create valid coupon first
-    const couponId = (await role('authenticated', () => db.query(`
-      insert into coupons (
-        code, city_id, type, value, max_discount, merchant_id, funded_by
-      ) values (
-        'UPDATEGUARD', 'edku', 'percentage', 1000, 3000, $1, 'merchant'
-      ) returning id;
-    `, [shopA]))).rows[0].id;
-
-    // Refuse changing merchant_id
-    await assert.rejects(
-      () => role('authenticated', () => db.query(
-        'update coupons set merchant_id = $1 where id = $2', [shopB, couponId]
-      )),
-      /cannot change merchant on a coupon/i
-    );
-
-    // Refuse changing city_id
-    await assert.rejects(
-      () => role('authenticated', () => db.query(
-        "update coupons set city_id = 'alex' where id = $1", [couponId]
-      )),
-      /cannot change city on a coupon/i
-    );
+    // The shop and the city of an existing coupon are not parameters of `update_coupon`
+    // at all, so there is no call that moves a coupon to another shop or another city.
+    const id = (await createCoupon({ code: 'UPDATEGUARD', merchantId: shopA })).rows[0].id;
+    await updateCoupon(id, { code: 'UPDATEGUARD', value: 1100 });
+    const after = (await read(id, 'merchant_id, city_id')).rows[0];
+    assert.equal(after.merchant_id, shopA);
+    assert.equal(after.city_id, 'edku');
   });
 
   it('courier of that shop cannot read or write coupons', async () => {
@@ -279,14 +263,8 @@ describe('a shop writes its own coupons', () => {
     assert.equal(list.length, 0);
 
     await assert.rejects(
-      () => role('authenticated', () => db.query(`
-        insert into coupons (
-          code, city_id, type, value, max_discount, merchant_id, funded_by
-        ) values (
-          'COUR10', 'edku', 'percentage', 1000, 3000, $1, 'merchant'
-        );
-      `, [shopA])),
-      /row-level security/i
+      () => createCoupon({ code: 'COUR10', merchantId: shopA }),
+      /not allowed to create this coupon/i
     );
   });
 
@@ -299,37 +277,45 @@ describe('a shop writes its own coupons', () => {
   it('admin still does everything (including platform funded and all shops)', async () => {
     await as(ADMIN, { admin: true, role: 'admin', scope: 'platform' });
 
-    // Admin can create platform-funded coupon
-    const adminCoupon = (await role('authenticated', () => db.query(`
-      insert into coupons (
-        code, city_id, type, value, max_discount, merchant_id, funded_by, used_count
-      ) values (
-        'ADMINPLAT', 'edku', 'percentage', 2000, 5000, null, 'platform', 10
-      ) returning *;
-    `))).rows[0];
+    const adminCoupon = (await createCoupon({
+      code: 'ADMINPLAT', value: 2000, maxDiscount: 5000,
+      merchantId: null, fundedBy: 'platform',
+    })).rows[0];
 
     assert.equal(adminCoupon.code, 'ADMINPLAT');
     assert.equal(adminCoupon.funded_by, 'platform');
-    assert.equal(adminCoupon.used_count, 10);
+    // Not 10, which the old test seeded directly: a redemption count is the server's to
+    // keep, and the function gives nobody anywhere to put one.
+    assert.equal(adminCoupon.used_count, 0);
 
-    // Admin can see all coupons
     const all = (await role('authenticated', () => db.query('select * from coupons'))).rows;
     assert.ok(all.length >= 2);
   });
 
-  it('placing an order with a merchant-created coupon applies discount and increments used_count', async () => {
-    // Owner creates coupon 'SAVE20'
+  it('every write leaves an audit row naming who made it', async () => {
     await as(OWNER_A, { role: 'owner', scope: 'merchant', merchant_id: shopA });
-    const coupon = (await role('authenticated', () => db.query(`
-      insert into coupons (
-        code, city_id, type, value, max_discount, merchant_id, funded_by
-      ) values (
-        'SAVE20', 'edku', 'percentage', 2000, 5000, $1, 'merchant'
-      ) returning *;
-    `, [shopA]))).rows[0];
+    const before = (await db.query(
+      "select count(*)::int n from audit_log where action like 'coupon.%'")).rows[0].n;
+
+    const id = (await createCoupon({ code: 'AUDITED', merchantId: shopA })).rows[0].id;
+    await updateCoupon(id, { code: 'AUDITED', value: 1400 });
+    await role('authenticated', () => db.query('select set_coupon_active($1, false)', [id]));
+
+    const rows = (await db.query(
+      "select action, actor from audit_log where action like 'coupon.%' order by at")).rows;
+    assert.equal(rows.length - before, 3);
+    for (const row of rows.slice(before)) {
+      assert.equal(row.actor, OWNER_A, 'the actor is auth.uid(), never a parameter');
+    }
+  });
+
+  it('placing an order with a merchant-created coupon applies discount and increments used_count', async () => {
+    await as(OWNER_A, { role: 'owner', scope: 'merchant', merchant_id: shopA });
+    const coupon = (await createCoupon({
+      code: 'SAVE20', value: 2000, maxDiscount: 5000, merchantId: shopA,
+    })).rows[0];
     assert.equal(coupon.used_count, 0);
 
-    // Customer places an order using SAVE20
     await as(CUSTOMER, {});
     const orderRes = (await role('authenticated', () => db.query(`
       select place_order($1::jsonb) as o
@@ -342,14 +328,9 @@ describe('a shop writes its own coupons', () => {
     })]))).rows[0].o;
 
     assert.equal(orderRes.pricing.subtotal, 10000);
-    // 20% of 10000 is 2000 discount
     assert.equal(orderRes.pricing.subtotalDiscount, 2000);
-    assert.equal(orderRes.pricing.total, 9000); // 10000 - 2000 + 1000 delivery
+    assert.equal(orderRes.pricing.total, 9000);
 
-    // Verify used_count incremented in coupons table
-    const afterOrder = (await db.query(
-      'select used_count from coupons where id = $1', [coupon.id]
-    )).rows[0];
-    assert.equal(afterOrder.used_count, 1);
+    assert.equal((await read(coupon.id, 'used_count')).rows[0].used_count, 1);
   });
 });

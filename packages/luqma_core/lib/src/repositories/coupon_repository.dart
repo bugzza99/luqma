@@ -62,29 +62,26 @@ class SupabaseCouponRepository implements CouponRepository {
     }
 
     return Result.guard(() async {
-      final row = await _db
-          .from('coupons')
-          .insert({
-            'code': Coupon.normalizeCode(draft.code),
-            'city_id': draft.cityId,
-            'type': draft.type.name,
-            'value': draft.value,
-            'max_discount': draft.maxDiscount,
-            'min_order': draft.minOrder,
-            if (draft.merchantId != null) 'merchant_id': draft.merchantId,
-            'first_order_only': draft.firstOrderOnly,
-            'per_user_limit': draft.perUserLimit,
-            'total_limit': draft.totalLimit,
-            'is_active': draft.isActive,
-            'funded_by': draft.fundedBy.name,
-            if (draft.validFrom != null)
-              'valid_from': draft.validFrom!.toUtc().toIso8601String(),
-            if (draft.validUntil != null)
-              'valid_until': draft.validUntil!.toUtc().toIso8601String(),
-          })
-          .select()
-          .single();
-      return _fromRow(row);
+      final row = await _db.rpc(
+        'create_coupon',
+        params: {
+          'p_code': Coupon.normalizeCode(draft.code),
+          'p_city_id': draft.cityId,
+          'p_type': draft.type.name,
+          'p_value': draft.value,
+          'p_max_discount': draft.maxDiscount,
+          'p_min_order': draft.minOrder,
+          'p_merchant_id': draft.merchantId,
+          'p_first_order_only': draft.firstOrderOnly,
+          'p_per_user_limit': draft.perUserLimit,
+          'p_total_limit': draft.totalLimit,
+          'p_is_active': draft.isActive,
+          'p_funded_by': draft.fundedBy.name,
+          'p_valid_from': draft.validFrom?.toUtc().toIso8601String(),
+          'p_valid_until': draft.validUntil?.toUtc().toIso8601String(),
+        },
+      );
+      return _fromRow(Map<String, dynamic>.from(row as Map));
     });
   }
 
@@ -94,43 +91,36 @@ class SupabaseCouponRepository implements CouponRepository {
       return Future.value(const Result.err(ValidationFailure()));
     }
 
-    return Result.guardWrite(
-      () => _db
-          .from('coupons')
-          .update({
-            'code': Coupon.normalizeCode(coupon.code),
-            'type': coupon.type.name,
-            'value': coupon.value,
-            'max_discount': coupon.maxDiscount,
-            'min_order': coupon.minOrder,
-            'first_order_only': coupon.firstOrderOnly,
-            'per_user_limit': coupon.perUserLimit,
-            'total_limit': coupon.totalLimit,
-            'valid_from': coupon.validFrom?.toUtc().toIso8601String(),
-            'valid_until': coupon.validUntil?.toUtc().toIso8601String(),
-            'is_active': coupon.isActive,
-            'funded_by': coupon.fundedBy.name,
-            'updated_at': DateTime.now().toUtc().toIso8601String(),
-          })
-          .eq('id', coupon.id)
-          .select('id'),
-      (_) {},
-    );
+    return Result.guard(() async {
+      await _db.rpc(
+        'update_coupon',
+        params: {
+          'p_id': coupon.id,
+          'p_code': Coupon.normalizeCode(coupon.code),
+          'p_type': coupon.type.name,
+          'p_value': coupon.value,
+          'p_max_discount': coupon.maxDiscount,
+          'p_min_order': coupon.minOrder,
+          'p_first_order_only': coupon.firstOrderOnly,
+          'p_per_user_limit': coupon.perUserLimit,
+          'p_total_limit': coupon.totalLimit,
+          'p_is_active': coupon.isActive,
+          'p_funded_by': coupon.fundedBy.name,
+          'p_valid_from': coupon.validFrom?.toUtc().toIso8601String(),
+          'p_valid_until': coupon.validUntil?.toUtc().toIso8601String(),
+        },
+      );
+    });
   }
 
   @override
   Future<Result<void>> setActive(String id, bool active) {
-    return Result.guardWrite(
-      () => _db
-          .from('coupons')
-          .update({
-            'is_active': active,
-            'updated_at': DateTime.now().toUtc().toIso8601String(),
-          })
-          .eq('id', id)
-          .select('id'),
-      (_) {},
-    );
+    return Result.guard(() async {
+      await _db.rpc(
+        'set_coupon_active',
+        params: {'p_id': id, 'p_active': active},
+      );
+    });
   }
 
   static Coupon _fromRow(Map<String, dynamic> row) {
@@ -190,10 +180,10 @@ class FakeCouponRepository implements CouponRepository {
   final _changed = StreamController<void>.broadcast();
 
   Stream<T> _live<T>(T Function() read) => Stream.multi((listener) {
-        listener.add(read());
-        final sub = _changed.stream.listen((_) => listener.add(read()));
-        listener.onCancel = sub.cancel;
-      });
+    listener.add(read());
+    final sub = _changed.stream.listen((_) => listener.add(read()));
+    listener.onCancel = sub.cancel;
+  });
 
   void _notify() {
     if (!_changed.isClosed) _changed.add(null);
@@ -210,7 +200,9 @@ class FakeCouponRepository implements CouponRepository {
         return const [];
       }
       return _newestFirst(
-        _coupons.values.where((c) => c.merchantId == targetMerchantId && _visible(c)),
+        _coupons.values.where(
+          (c) => c.merchantId == targetMerchantId && _visible(c),
+        ),
       );
     });
   }
@@ -219,7 +211,9 @@ class FakeCouponRepository implements CouponRepository {
   /// shop's merchant-funded coupons, anybody else nothing.
   bool _visible(Coupon c) =>
       isAdmin ||
-      (merchantId != null && c.merchantId == merchantId && c.fundedBy == CouponFunder.merchant);
+      (merchantId != null &&
+          c.merchantId == merchantId &&
+          c.fundedBy == CouponFunder.merchant);
 
   /// The table's check constraints.
   static bool _valid(Coupon c) =>
@@ -229,12 +223,15 @@ class FakeCouponRepository implements CouponRepository {
       c.perUserLimit >= 0 &&
       c.totalLimit >= 0 &&
       (c.type != CouponType.percentage || c.maxDiscount != null) &&
-      (c.validFrom == null || c.validUntil == null || c.validUntil!.isAfter(c.validFrom!));
+      (c.validFrom == null ||
+          c.validUntil == null ||
+          c.validUntil!.isAfter(c.validFrom!));
 
   /// Newest first, the way production orders by `created_at`: insertion order reversed.
   List<Coupon> _newestFirst(Iterable<Coupon> coupons) {
     final order = _coupons.keys.toList();
-    return coupons.toList()..sort((a, b) => order.indexOf(b.id).compareTo(order.indexOf(a.id)));
+    return coupons.toList()
+      ..sort((a, b) => order.indexOf(b.id).compareTo(order.indexOf(a.id)));
   }
 
   @override
@@ -267,7 +264,8 @@ class FakeCouponRepository implements CouponRepository {
 
     // Unique code per city
     final hasDuplicate = _coupons.values.any(
-      (c) => c.cityId == draft.cityId && Coupon.normalizeCode(c.code) == normCode,
+      (c) =>
+          c.cityId == draft.cityId && Coupon.normalizeCode(c.code) == normCode,
     );
     if (hasDuplicate) {
       return const Result.err(ConflictFailure());
@@ -293,11 +291,15 @@ class FakeCouponRepository implements CouponRepository {
 
     final existing = _coupons[coupon.id];
     // A row the policy hides updates nothing, and `guardWrite` reads that as not found.
-    if (existing == null || !_visible(existing)) return const Result.err(NotFoundFailure());
+    if (existing == null || !_visible(existing)) {
+      return const Result.err(NotFoundFailure());
+    }
 
     if (!_valid(coupon)) return const Result.err(ValidationFailure());
 
-    if (!isAdmin && (coupon.merchantId != merchantId || coupon.fundedBy != CouponFunder.merchant)) {
+    if (!isAdmin &&
+        (coupon.merchantId != merchantId ||
+            coupon.fundedBy != CouponFunder.merchant)) {
       return const Result.err(PermissionFailure());
     }
 
@@ -305,7 +307,10 @@ class FakeCouponRepository implements CouponRepository {
 
     // Unique code per city (excluding self)
     final hasDuplicate = _coupons.values.any(
-      (c) => c.id != coupon.id && c.cityId == existing.cityId && Coupon.normalizeCode(c.code) == normCode,
+      (c) =>
+          c.id != coupon.id &&
+          c.cityId == existing.cityId &&
+          Coupon.normalizeCode(c.code) == normCode,
     );
     if (hasDuplicate) {
       return const Result.err(ConflictFailure());
@@ -336,7 +341,9 @@ class FakeCouponRepository implements CouponRepository {
     if (failure != null) return Result.err(failure!);
 
     final existing = _coupons[id];
-    if (existing == null || !_visible(existing)) return const Result.err(NotFoundFailure());
+    if (existing == null || !_visible(existing)) {
+      return const Result.err(NotFoundFailure());
+    }
 
     _coupons[id] = existing.copyWith(isActive: active);
     _notify();

@@ -47,6 +47,14 @@ Deno.serve(async (req: Request) => {
   if (userError || !userData.user) return json({ error: 'unauthorized' }, 401);
   const callerUid = userData.user.id;
 
+  // Database writes use the caller's verified token, not the service role. The RPC
+  // repeats the active-admin check, inserts the staff grant and its audit row in one
+  // transaction, and derives the audit actor from auth.uid().
+  const callerDb = createClient(url, anonKey, {
+    auth: { autoRefreshToken: false, persistSession: false },
+    global: { headers: { Authorization: `Bearer ${token}` } },
+  });
+
   const service = createClient(url, serviceKey, {
     auth: { autoRefreshToken: false, persistSession: false },
   });
@@ -116,11 +124,11 @@ Deno.serve(async (req: Request) => {
   }
   const uid = created.user!.id;
 
-  const { error: staffError } = await service.from('staff').insert({
-    uid,
-    scope,
-    role,
-    merchant_id: merchantId,
+  const { error: staffError } = await callerDb.rpc('create_staff_profile', {
+    p_uid: uid,
+    p_scope: scope,
+    p_role: role,
+    p_merchant_id: merchantId,
   });
   if (staffError) {
     // No half-made accounts: an Auth user nobody can reach is worse than none.

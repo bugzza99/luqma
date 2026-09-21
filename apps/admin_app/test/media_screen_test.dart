@@ -29,7 +29,14 @@ void main() {
     tester.view.devicePixelRatio = devicePixelRatio;
     addTearDown(tester.view.reset);
 
-    repository = FakeMediaRepository(seed: seed, failure: failure);
+    // The fake stamps the reviewer itself, the way the server takes it from the token —
+    // so «who rejected this» is still answerable here without the screen being able to
+    // sign somebody else's name to a decision.
+    repository = FakeMediaRepository(
+      seed: seed,
+      failure: failure,
+      signedInUid: 'admin1',
+    );
 
     await tester.pumpWidget(
       ProviderScope(

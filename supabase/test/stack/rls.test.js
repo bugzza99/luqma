@@ -1111,18 +1111,41 @@ describe('uploading an image', () => {
     assert.ok(error);
   });
 
-  it('only an admin moves an image out of pending', async () => {
+  it('only an admin moves an image out of pending, and the decision is signed', async () => {
     const id = (await q(
       `insert into media (kind, url, status, uploaded_by)
        values ('menuItem', 'x.jpg', 'pending', $1) returning id`, [customer.uid])).rows[0].id;
 
-    const byUploader = await as(customer,
+    // `update` on media was taken from `authenticated` in 20261020000000, so nobody edits
+    // a decision in place any more — not even an admin. What used to be two RLS answers
+    // is now one function that decides, records, and signs.
+    const direct = await refused(admin,
       () => db.query("update media set status = 'approved' where id = $1", [id]));
-    assert.equal(byUploader.rowCount, 0);
+    assert.match(direct ?? '', /permission denied/i);
 
-    const byAdmin = await as(admin,
-      () => db.query("update media set status = 'approved' where id = $1", [id]));
-    assert.equal(byAdmin.rowCount, 1);
+    const byUploader = await refused(customer,
+      () => db.query("select admin_review_media($1, 'approved', null)", [id]));
+    assert.match(byUploader ?? '', /only an admin reviews media/i);
+
+    // Everything below happens inside the one `as()` block on purpose: it rolls back, so
+    // an assertion made after it would read a database where the review never happened.
+    await as(admin, async () => {
+      await db.query("select admin_review_media($1, 'rejected', 'مش واضحة')", [id]);
+
+      const row = (await db.query(
+        'select status, reviewed_by, review_note from media where id = $1', [id])).rows[0];
+      assert.equal(row.status, 'rejected');
+      // Taken from the token, never sent — so a rejection cannot be signed with somebody
+      // else's name.
+      assert.equal(row.reviewed_by, admin.uid);
+      assert.equal(row.review_note, 'مش واضحة');
+
+      const logged = (await db.query(
+        `select actor from audit_log
+          where action = 'media.reviewed' and detail->>'mediaId' = $1`, [id])).rows;
+      assert.equal(logged.length, 1, 'a decision leaves evidence');
+      assert.equal(logged[0].actor, admin.uid);
+    });
   });
 });
 

@@ -40,10 +40,16 @@ abstract interface class MediaRepository {
 
   Future<Result<Media>> get(String id);
 
+  /// Records a decision, and who made it.
+  ///
+  /// There is no `reviewedBy` parameter, for the reason `MediaPicker` has no
+  /// `uploadedBy`: the server stamps it from `auth.uid()`, so there was only ever one
+  /// correct value — and a parameter is somewhere a caller can put a different one. The
+  /// fake stamps the identity it was built with, so a screen tested against it cannot
+  /// pass a reviewer the server would refuse to believe.
   Future<Result<void>> setStatus(
     String id,
     MediaStatus status, {
-    String? reviewedBy,
     String? note,
   });
 
@@ -76,7 +82,9 @@ class SupabaseMediaRepository implements MediaRepository {
     // Local, like Firestore's Timestamp.toDate() handed back: Dart's DateTime equality
     // insists on the same zone, not merely the same moment.
     if (model['createdAt'] is String) {
-      model['createdAt'] = DateTime.parse(model['createdAt'] as String).toLocal();
+      model['createdAt'] = DateTime.parse(
+        model['createdAt'] as String,
+      ).toLocal();
     }
     return Media.fromJson(model);
   }
@@ -111,15 +119,20 @@ class SupabaseMediaRepository implements MediaRepository {
       );
 
       try {
-        final row = await _db.from('media').insert({
-          'kind': kind.name,
-          'url': storage.getPublicUrl(path),
-          'status': (approved ? MediaStatus.approved : MediaStatus.pending).name,
-          'uploaded_by': uploadedBy,
-          'owner_id': _uuidOrNull(ownerId),
-          'width': width,
-          'height': height,
-        }).select().single();
+        final row = await _db
+            .from('media')
+            .insert({
+              'kind': kind.name,
+              'url': storage.getPublicUrl(path),
+              'status':
+                  (approved ? MediaStatus.approved : MediaStatus.pending).name,
+              'uploaded_by': uploadedBy,
+              'owner_id': _uuidOrNull(ownerId),
+              'width': width,
+              'height': height,
+            })
+            .select()
+            .single();
         return _toMedia(row);
       } catch (_) {
         // The row is what everything reads. Bytes with no row are invisible to the
@@ -170,7 +183,8 @@ class SupabaseMediaRepository implements MediaRepository {
   Future<Result<Map<String, MediaContext>>> contextOf(List<String> ids) {
     return Result.guard(() async {
       if (ids.isEmpty) return const <String, MediaContext>{};
-      final rows = await _db.rpc('admin_media_context', params: {'p_ids': ids}) as List;
+      final rows =
+          await _db.rpc('admin_media_context', params: {'p_ids': ids}) as List;
       return {
         for (final row in rows.cast<Map<String, dynamic>>())
           row['media_id'] as String: MediaContext(
@@ -186,27 +200,34 @@ class SupabaseMediaRepository implements MediaRepository {
   Future<Result<void>> setStatus(
     String id,
     MediaStatus status, {
-    String? reviewedBy,
     String? note,
   }) {
-    return Result.guardWrite(() {
-      // Recorded even when there is no note: knowing a decision was made, and by whom,
-      // is what separates "reviewed and refused" from "nobody has looked yet". An empty
-      // note is no note.
+    return Result.guard(() async {
+      // The RPC owns both halves: the decision and its evidence. The reviewer is never
+      // sent — the server takes it from `auth.uid()`, so nobody can sign somebody else's
+      // name to a rejection. An empty note is no note.
       final reviewNote = (note == null || note.isEmpty) ? null : note;
-      return _db.from('media').update({
-        'status': status.name,
-        'reviewed_by': _uuidOrNull(reviewedBy),
-        'review_note': reviewNote,
-      }).eq('id', id).select('id');
-    }, (_) {});
+      await _db.rpc(
+        'admin_review_media',
+        params: {'p_id': id, 'p_status': status.name, 'p_note': reviewNote},
+      );
+    });
   }
 }
 
 /// In-memory media, for tests and for building screens before anyone uploads anything.
 class FakeMediaRepository implements MediaRepository {
-  FakeMediaRepository({List<Media> seed = const [], this.failure})
-      : _media = {for (final m in seed) m.id: m};
+  FakeMediaRepository({
+    List<Media> seed = const [],
+    this.failure,
+
+    /// Who the fake believes is signed in. Stamped onto a decision the way the server
+    /// stamps `auth.uid()`, so «who reviewed this» is still answerable in a widget test
+    /// without a caller being able to name somebody else.
+    this.signedInUid,
+  }) : _media = {for (final m in seed) m.id: m};
+
+  final String? signedInUid;
 
   final Map<String, Media> _media;
   Failure? failure;
@@ -279,7 +300,6 @@ class FakeMediaRepository implements MediaRepository {
   Future<Result<void>> setStatus(
     String id,
     MediaStatus status, {
-    String? reviewedBy,
     String? note,
   }) async {
     if (failure != null) return Result.err(failure!);
@@ -287,7 +307,7 @@ class FakeMediaRepository implements MediaRepository {
     if (media == null) return const Result.err(NotFoundFailure());
     _media[id] = media.copyWith(
       status: status,
-      reviewedBy: reviewedBy ?? media.reviewedBy,
+      reviewedBy: signedInUid ?? media.reviewedBy,
       reviewNote: note ?? media.reviewNote,
     );
     return const Result.ok(null);

@@ -1,7 +1,6 @@
 import 'package:luqma_core/luqma_core.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
-
 part 'media_controller.g.dart';
 
 /// Images waiting for a decision.
@@ -14,9 +13,9 @@ Stream<List<Media>> pendingMedia(Ref ref) =>
 @riverpod
 Future<Map<String, MediaContext>> pendingMediaContext(Ref ref) async {
   final pending = await ref.watch(pendingMediaProvider.future);
-  final result = await ref
-      .read(mediaRepositoryProvider)
-      .contextOf([for (final m in pending) m.id]);
+  final result = await ref.read(mediaRepositoryProvider).contextOf([
+    for (final m in pending) m.id,
+  ]);
   return result.valueOrNull ?? const {};
 }
 
@@ -35,11 +34,9 @@ class MediaActions extends _$MediaActions {
   String? build() => ref.watch(currentIdentityProvider).value?.uid;
 
   Future<Result<void>> approve(String id) async {
-    final res = await ref.read(mediaRepositoryProvider).setStatus(
-          id,
-          MediaStatus.approved,
-          reviewedBy: state,
-        );
+    final res = await ref
+        .read(mediaRepositoryProvider)
+        .setStatus(id, MediaStatus.approved);
     if (res.isOk) {
       ref.invalidate(pendingMediaProvider);
     }
@@ -47,12 +44,9 @@ class MediaActions extends _$MediaActions {
   }
 
   Future<Result<void>> reject(String id, String reason) async {
-    final res = await ref.read(mediaRepositoryProvider).setStatus(
-          id,
-          MediaStatus.rejected,
-          reviewedBy: state,
-          note: reason,
-        );
+    final res = await ref
+        .read(mediaRepositoryProvider)
+        .setStatus(id, MediaStatus.rejected, note: reason);
     if (res.isOk) {
       ref.invalidate(pendingMediaProvider);
     }

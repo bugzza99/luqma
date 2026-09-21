@@ -428,7 +428,7 @@ class _WalletState extends ConsumerState<_Wallet> {
           const SizedBox(height: Space.md),
           OutlinedButton(
             key: MerchantBillingScreen.topUpKey,
-            onPressed: () => _topUp(context, ref),
+            onPressed: _busy ? null : () => _topUp(ref),
             style: OutlinedButton.styleFrom(
               minimumSize: const Size.fromHeight(Sizes.minTarget),
             ),
@@ -448,7 +448,7 @@ class _WalletState extends ConsumerState<_Wallet> {
   PendingCollections get _journal =>
       PendingCollections(SharedPreferencesAsync(), kind: PendingKind.topUp);
 
-  Future<void> _topUp(BuildContext context, WidgetRef ref) async {
+  Future<void> _topUp(WidgetRef ref) async {
     if (_busy) return;
     setState(() => _busy = true);
     try {
@@ -460,7 +460,7 @@ class _WalletState extends ConsumerState<_Wallet> {
       if (stored != null) {
         // Not the amount dialog: the figure is frozen with its id and is not the admin's
         // to change. What is left to decide is whether this attempt happened at all.
-        final retry = await _confirmPending(context, stored, 'شحن رصيد');
+        final retry = await _confirmPending(stored, 'شحن رصيد');
         if (retry != true || !mounted) return;
         amount = stored.amount;
         receipt = stored.receiptId;
@@ -529,11 +529,7 @@ class _WalletState extends ConsumerState<_Wallet> {
 
   /// Names an attempt whose reply was never seen, and offers the only two honest
   /// answers: send it again under the same receipt, or say it never happened.
-  Future<bool?> _confirmPending(
-    BuildContext context,
-    PendingCollection stored,
-    String title,
-  ) {
+  Future<bool?> _confirmPending(PendingCollection stored, String title) {
     final strings = LuqmaStrings.of(context);
     return showDialog<bool>(
       context: context,
@@ -670,7 +666,7 @@ class _TermState extends ConsumerState<_Term> {
           const SizedBox(height: Space.md),
           FilledButton(
             key: MerchantBillingScreen.recordKey,
-            onPressed: () => _record(context, ref, plans),
+            onPressed: _busy ? null : () => _record(ref, plans),
             style: FilledButton.styleFrom(
               minimumSize: const Size.fromHeight(Sizes.minTarget),
             ),
@@ -684,7 +680,7 @@ class _TermState extends ConsumerState<_Term> {
   PendingCollections get _journal =>
       PendingCollections(SharedPreferencesAsync(), kind: PendingKind.subscription);
 
-  Future<void> _record(BuildContext context, WidgetRef ref, List<Plan> plans) async {
+  Future<void> _record(WidgetRef ref, List<Plan> plans) async {
     if (_busy) return;
     setState(() => _busy = true);
     try {
@@ -700,7 +696,7 @@ class _TermState extends ConsumerState<_Term> {
       final String receipt;
 
       if (stored != null && stored.planId != null && stored.months != null) {
-        final retry = await _confirmPending(context, stored);
+        final retry = await _confirmPending(stored);
         if (retry != true || !mounted) return;
         planId = stored.planId!;
         amount = stored.amount;
@@ -781,7 +777,7 @@ class _TermState extends ConsumerState<_Term> {
     }
   }
 
-  Future<bool?> _confirmPending(BuildContext context, PendingCollection stored) {
+  Future<bool?> _confirmPending(PendingCollection stored) {
     final strings = LuqmaStrings.of(context);
     return showDialog<bool>(
       context: context,

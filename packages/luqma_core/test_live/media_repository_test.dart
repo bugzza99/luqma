@@ -16,9 +16,20 @@ void main() {
   late SupabaseMediaRepository repository;
   late String uploaderUid;
 
+  /// Moderation goes through `admin_review_media`, which takes the reviewer from
+  /// `auth.uid()` and refuses anybody who is not an admin — so the service-key client
+  /// every other test here uses cannot make a decision at all. That is the boundary
+  /// working, not a test problem, and it needs a real admin token.
+  late SupabaseMediaRepository asAdmin;
+  late String adminUid;
+
   setUpAll(() async {
     live = await LiveDatabase.open();
     repository = SupabaseMediaRepository(live.client);
+    final (adminClient, uid) =
+        await live.openAsStaff(scope: 'platform', role: 'admin');
+    asAdmin = SupabaseMediaRepository(adminClient);
+    adminUid = uid;
   });
 
   setUp(() async {
@@ -88,22 +99,34 @@ void main() {
   test('a review records who decided and why', () async {
     final id = await upload();
 
-    await repository.setStatus(
-      id,
-      MediaStatus.rejected,
-      reviewedBy: uploaderUid,
-      note: 'الصورة مش واضحة',
-    );
+    await asAdmin.setStatus(id, MediaStatus.rejected, note: 'الصورة مش واضحة');
 
     final read = (await repository.get(id)).valueOrNull!;
     expect(read.status, MediaStatus.rejected);
     expect(read.reviewNote, 'الصورة مش واضحة');
+    // Stamped by the server from the token, never sent by the caller. The old version of
+    // this test passed the *uploader's* uid as the reviewer and asserted nothing about
+    // it, so it could not have caught a decision signed with the wrong name.
+    expect(read.reviewedBy, adminUid);
+  });
+
+  test('a review by somebody who is not an admin is refused', () async {
+    final id = await upload();
+
+    // The service key has no `auth.uid()`, so it is nobody — and the RPC asks who is
+    // deciding before it asks anything else. A repository test is normally allowed to
+    // bypass the boundary; this one is *about* it.
+    final result = await repository.setStatus(id, MediaStatus.approved);
+
+    expect(result.isOk, isFalse);
+    final read = (await repository.get(id)).valueOrNull!;
+    expect(read.status, MediaStatus.pending, reason: 'nothing was decided');
   });
 
   test('an empty note is no note', () async {
     final id = await upload();
 
-    await repository.setStatus(id, MediaStatus.approved, note: '');
+    await asAdmin.setStatus(id, MediaStatus.approved, note: '');
 
     final read = (await repository.get(id)).valueOrNull!;
     expect(read.status, MediaStatus.approved);
