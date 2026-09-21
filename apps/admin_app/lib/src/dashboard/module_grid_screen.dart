@@ -13,11 +13,20 @@ class AdminModule {
     required this.icon,
     required this.route,
     this.waiting,
+    this.adminOnly = false,
   });
 
   final String label;
   final IconData icon;
   final String route;
+
+  /// Whether a moderator is shown this module at all.
+  ///
+  /// The database refuses them the money, the roster and the control plane whatever the
+  /// app draws, and a refusal reaches the screen as an ordinary Arabic "مش من حقك" — so
+  /// this is not the boundary. It is here because a tile that always ends in that
+  /// sentence is a tile somebody taps every day and learns nothing from.
+  final bool adminOnly;
 
   /// How many things in this module are waiting, given what the server said. Null for a
   /// module where "waiting" means nothing — settings does not have a queue.

@@ -54,6 +54,31 @@ class StaffIdentity {
   /// that looks like a quiet evening.
   bool get ownsAMerchant => scope == StaffScope.merchant && merchantId != null;
 
+  /// Whether this account is an admin and not a moderator.
+  ///
+  /// [isAdmin] is the *gate* — a moderator carries the `admin` claim on purpose, because
+  /// without it they sign into nothing. This is the narrower question, and it exists so
+  /// no screen offers a door the database will shut: money, deletion, and the roster are
+  /// refused to a moderator by triggers in
+  /// `20261024000000_a_moderator_is_an_admin_except.sql`.
+  ///
+  /// It decides what is *shown*, never what is permitted. The claim is stamped from the
+  /// `staff` row at sign-in and a demotion an hour ago is not in it yet; the server reads
+  /// the row on every call, which is why it is the boundary and this is not.
+  bool get isPlatformAdmin => isAdmin && role != StaffRole.moderator;
+
+  /// Whether the token says this account is a moderator.
+  ///
+  /// The opposite of [isPlatformAdmin] on a *known* account, and deliberately not its
+  /// negation: [StaffIdentity.none] is neither. Use this to take something away — hiding
+  /// a module, dimming a control — and [isPlatformAdmin] to grant one, so an identity
+  /// that has not resolved yet loses nothing and gains nothing.
+  ///
+  /// Asking the wrong one of the pair is visible rather than dangerous, because the
+  /// server refuses a moderator whatever the screen drew. It reads as the grid briefly
+  /// shedding six modules while a token refreshes.
+  bool get isModerator => role == StaffRole.moderator;
+
   bool get isSignedIn => uid != null;
 
   static StaffIdentity from(LuqmaIdentity? identity) {

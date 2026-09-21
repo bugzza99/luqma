@@ -516,7 +516,7 @@ in the repository — and `flutter test` on a *package* does not run the generat
 the way an app build does. Without it a new string is a compile error that points at the
 call site rather than at the missing step.
 
-**~1197 Dart tests · 131 schema tests · 205 stack tests · 258 live-repository tests.**
+**~2004 Dart tests · 507 schema tests · 247 stack tests · 273 live-repository tests.**
 `flutter analyze` clean.
 
 There are no `function` tests and no `tsc`: the TypeScript Cloud Functions went with
@@ -646,11 +646,34 @@ DATABASE_URL=<luqma-test session pooler> npm --prefix supabase run test:stack
   `setRevenueModel` now go through functions that write the row and its evidence together,
   and the table grants were taken away, because a write that skips the function skips the
   audit with it.
-- **`moderator` is a live role with no permissions and no way in.** Decided 2026-09-21:
-  it gets everything an admin has **except money and deletion** — which does give it
-  courier ID documents and customer numbers, and the owner chose that knowingly. Until it
-  is implemented, creating a moderator account produces an account that cannot sign in at
-  all, which is a dead account nobody notices making.
+- **A moderator is an admin except money, deletion, and who anybody is.** Decided and
+  built 2026-09-21 (`20261024000000_a_moderator_is_an_admin_except.sql`). The role has
+  been in the schema, in `StaffRole` and on the admin's own staff form since Phase 2, and
+  the gate only ever asked `is_admin()` — so creating one produced an account that opened
+  nothing and said nothing about it. It **does** give a moderator courier ID documents and
+  customer numbers, and the owner chose that knowingly.
+  **It is granted, then excepted, and that shape is the decision.** `is_admin()` widens to
+  answer for both roles, so all 47 policies and 44 functions that ask it keep working
+  untouched; widening them one at a time is 91 judgements, and the ones that get missed
+  fail silently in the direction of «this screen is empty for no reason». What is taken
+  back is taken back in three narrow places: a strict `is_platform_admin()` that 14 money
+  and deletion functions ask instead, a `refuse_moderator_delete` trigger on 25 tables,
+  and `refuse_moderator_privilege_write` on `staff`, `courier_merchants`, `config` and
+  `plans`. A second migration (`20261024010000`) narrows the four that *mint* an identity
+  — `approve_staff_application`, `create_staff_profile`, `attach_courier_by_phone`,
+  `admin_set_config` — because a function that asks the wide question and then trips the
+  trigger refuses at the wrong depth: after it has agreed to the write and logged it.
+  **Rejecting an application is not narrowed, and that is the role.** It mints nothing, so
+  a moderator triages the queue and an admin closes it; AdminApp puts a sentence where the
+  قبول button would be rather than offering one the database will refuse.
+  Two exceptions the owner's sentence does not name and plainly does not mean: **`staff`
+  carries a `for all` policy**, so a moderator with an admin's reach writes
+  `role = 'admin'` onto their own row — a permission that can grant itself is not a
+  permission; and **`config`** holds `default_commission_percent`, which is money by
+  another name, and `min_supported_version`, which walls every customer out with no back
+  door.
+  Reading is not taking: a moderator can still read the receipts and the roster. That is
+  what the role is for.
 - **A new table keyed on an order needs a line in every teardown.** `courier_settlements`
   is `on delete restrict` for the same reason `order_settlements` is, and adding it without
   touching `test_live/harness.dart` killed **eighteen tests** in teardown — where the
@@ -1414,6 +1437,29 @@ DATABASE_URL=<luqma-test session pooler> npm --prefix supabase run test:stack
   `payment_receipts` grants no insert, by design; `top_up_wallet` ran as the caller and so
   every receipt-bearing payment from a real admin token failed, while every owner-run test
   passed. Test money paths through `set role authenticated`.
+- **Rewriting a function in place beats listing its signature.** The moderator migration
+  narrows 14 money and deletion functions, which live across eight migrations and have
+  had their argument lists changed twice — `top_up_wallet` alone has four versions in the
+  history. Naming each signature by hand is where a typo leaves a door open and nothing
+  says so. It reads `pg_get_functiondef`, swaps `public.is_admin()` for
+  `public.is_platform_admin()`, and executes the result, so overloads and defaults come
+  along and the grants and the owner survive a `create or replace`. **Verify by reading
+  the functions back**, not by trusting the loop: the dry-run against a real Postgres
+  counts all fourteen before anything is pushed.
+- **Grant on `isPlatformAdmin`, take away on `isModerator`, and they are not one question
+  asked twice.** `StaffIdentity.none` is neither — so asking "is this a strict admin?"
+  in order to *hide* something hides it from an identity that has not resolved yet, and
+  AdminApp's rail shed six modules for the moment a token spends refreshing. A widget
+  test that granted access without supplying an identity is what caught it, and it was
+  a real defect rather than a test artefact.
+- **A trigger is the safe way to take back a verb that `for all` handed out.** Twenty-five
+  tables carry a `for all` policy gated on `is_admin()`, so widening that function opened
+  the delete on every one of them at once. Splitting twenty-five policies into
+  select/insert/update is twenty-five chances to widen something by accident; a trigger
+  only ever refuses, so the worst a mistake in it can do is stop an admin deleting
+  something — which is loud. It lets `app.server_mode` through, because cascades and
+  scheduled work declare it and a guard that stopped those would break account deletion
+  for everybody.
 
 ## Coupons
 

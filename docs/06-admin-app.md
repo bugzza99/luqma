@@ -41,3 +41,21 @@ Every mutation writes to `auditLog`.
 `staff` documents with `scope = platform` and `role = admin|moderator` are mirrored to a
 Firebase custom claim. Firestore Security Rules check the claim; no client-side-only gating
 is trusted.
+
+**Amended 2026-09-21: what `moderator` means, now that it means something.** For nine
+phases the role existed here, in `StaffRole` and on the staff form, and the gate asked
+only whether somebody was an admin — so a moderator account opened nothing at all. The
+owner's decision is that a moderator is **an admin except money, deletion, and who
+anybody is**: they moderate photographs, work the ticket queue, correct a shop's details,
+approve banners and read whatever an admin reads — including courier ID documents and
+customer telephone numbers, which the owner accepted knowingly.
+
+They may not record a payment, top up a wallet, move the commission rate, write a coupon,
+delete anything anywhere, or edit `staff`, `courier_merchants`, `config` or `plans`.
+Reading those is still allowed; reading the till is not taking from it.
+
+The boundary is the database
+(`supabase/migrations/20261024000000_a_moderator_is_an_admin_except.sql`), never the app.
+AdminApp hides the six modules that are nothing but those, so a moderator is not offered
+a door that will shut — but a refusal reaches any screen as an ordinary
+`PermissionFailure` whatever was drawn, and that is what actually holds.

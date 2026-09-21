@@ -616,15 +616,31 @@ class _ApplicationCard extends ConsumerWidget {
                   child: const Text('رفض'),
                 ),
                 const SizedBox(width: Space.sm),
-                FilledButton(
-                  key: ApplicationsScreen.approveKey(application.id),
-                  onPressed: () => _decide(
-                    context,
-                    ref,
-                    status: StaffApplicationStatus.approved,
+                // A moderator works this queue and cannot close it: approval mints the
+                // `staff` row, which is the one permission that hands out every other
+                // one, and the database refuses it
+                // (`20261024010000_and_who_mints_an_account.sql`). Rejecting mints
+                // nothing and stays theirs. Saying so here is the difference between a
+                // divided job and a button that fails.
+                if (ref.watch(staffIdentityProvider).isModerator)
+                  Flexible(
+                    child: Text(
+                      'القبول بيعمل الحساب، وده للأدمن. ابعتله الطلب بعد المكالمة.',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: colors.textSecondary,
+                      ),
+                    ),
+                  )
+                else
+                  FilledButton(
+                    key: ApplicationsScreen.approveKey(application.id),
+                    onPressed: () => _decide(
+                      context,
+                      ref,
+                      status: StaffApplicationStatus.approved,
+                    ),
+                    child: const Text('قبول'),
                   ),
-                  child: const Text('قبول'),
-                ),
               ],
             ),
           ],

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:luqma_core/luqma_core.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
@@ -75,12 +76,19 @@ const _modules = [
     label: 'الكوبونات',
     icon: Icons.confirmation_number_outlined,
     route: Routes.coupons,
+    adminOnly: true,
   ),
-  AdminModule(label: 'الفريق', icon: Icons.badge, route: Routes.staff),
+  AdminModule(
+    label: 'الفريق',
+    icon: Icons.badge,
+    route: Routes.staff,
+    adminOnly: true,
+  ),
   AdminModule(
     label: 'حسابات المناديب',
     icon: Icons.delivery_dining,
     route: Routes.courierBilling,
+    adminOnly: true,
   ),
   AdminModule(
     label: 'طلبات الانضمام',
@@ -91,11 +99,41 @@ const _modules = [
     label: 'الاشتراكات',
     icon: Icons.card_membership,
     route: Routes.subscriptions,
+    adminOnly: true,
   ),
-  AdminModule(label: 'الخطط', icon: Icons.workspace_premium, route: Routes.plans),
+  AdminModule(
+    label: 'الخطط',
+    icon: Icons.workspace_premium,
+    route: Routes.plans,
+    adminOnly: true,
+  ),
   AdminModule(label: 'حول لقمة', icon: Icons.info_outline, route: Routes.about),
-  AdminModule(label: 'الإعدادات', icon: Icons.settings, route: Routes.settings),
+  AdminModule(
+    label: 'الإعدادات',
+    icon: Icons.settings,
+    route: Routes.settings,
+    adminOnly: true,
+  ),
 ];
+
+/// The modules [staff] is shown.
+///
+/// A moderator holds the `admin` claim — without it they would sign in and land on
+/// «مالكش صلاحية», which is the whole defect H-08 closes — and the database then refuses
+/// them the money, the roster and the control plane. This drops the six modules that are
+/// nothing *but* those, so the grid and the rail agree with what the server will do.
+///
+/// It is not a permission. Everything here is still refused server-side to a token that
+/// reaches it another way, and a demotion that has not yet reached the claim is caught
+/// there rather than here.
+///
+/// It asks whether the token *says* moderator rather than whether it says admin, because
+/// those differ on an identity that has not resolved: `StaffIdentity.none` is neither,
+/// and treating it as a moderator sheds six modules from the rail for the moment a token
+/// spends refreshing. Taking something away is the question to ask negatively.
+List<AdminModule> modulesFor(StaffIdentity staff) => staff.isModerator
+    ? [for (final m in _modules) if (!m.adminOnly) m]
+    : _modules;
 
 // Named functions rather than closures: a const list cannot hold a lambda.
 int _pendingMedia(AdminAttention a) => a.pendingMedia;
@@ -149,11 +187,15 @@ GoRouter router(Ref ref) {
               context.push(destination);
             }
           },
-          child: AdminShell(
-            modules: _modules,
-            currentRoute: state.matchedLocation,
-            onDestination: (m) => context.go(m.route),
-            child: child,
+          // The rail is built from what this account may open, so a moderator is not
+          // shown six destinations that end in a refusal.
+          child: Consumer(
+            builder: (context, ref, _) => AdminShell(
+              modules: modulesFor(ref.watch(staffIdentityProvider)),
+              currentRoute: state.matchedLocation,
+              onDestination: (m) => context.go(m.route),
+              child: child,
+            ),
           ),
         ),
         routes: [
@@ -162,7 +204,10 @@ GoRouter router(Ref ref) {
           // land.
           GoRoute(
             path: Routes.dashboard,
-            builder: (_, _) => const ModuleGridScreen(modules: _modules),
+            builder: (_, _) => Consumer(
+              builder: (context, ref, _) =>
+                  ModuleGridScreen(modules: modulesFor(ref.watch(staffIdentityProvider))),
+            ),
           ),
           GoRoute(path: Routes.today, builder: (_, _) => const DashboardScreen()),
           GoRoute(

@@ -19,10 +19,15 @@ describe('a collection recorded twice', () => {
   const setup = async (owed) => {
     db = await freshDatabase();
     await db.query('insert into auth.users (id) values ($1)', [ADMIN]);
+    // A real staff row rather than a stubbed `is_admin()`. Collecting cash asks
+    // `is_platform_admin()` now — which reads the row, not the claim, so an admin demoted
+    // an hour ago loses the till at once — and a fixture that fakes the predicate proves
+    // only that the fake returns what it was told to. Written while the harness's own
+    // admin is still signed in, which is who creates staff in production too.
+    await db.query(
+      `insert into staff (uid, scope, role) values ($1, 'platform', 'admin')`, [ADMIN]);
     await db.query(`create or replace function auth.uid() returns uuid
       language sql stable as $fn$ select '${ADMIN}'::uuid $fn$`);
-    await db.query(`create or replace function public.is_admin() returns boolean
-      language sql stable as $fn$ select true $fn$`);
 
     await db.query(`insert into cities (id,name) values ('p','مدينة')`);
     const zone = (await db.query(

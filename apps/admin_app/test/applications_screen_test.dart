@@ -33,6 +33,7 @@ void main() {
     List<StaffApplication> seed = const [appOld, appNew],
     bool courierHasPapers = true,
     Failure? papersFailure,
+    StaffIdentity who = StaffIdentity.none,
   }) async {
     tester.view.physicalSize = const Size(1080, 2340);
     tester.view.devicePixelRatio = 3;
@@ -60,6 +61,7 @@ void main() {
         overrides: [
           staffApplicationRepositoryProvider.overrideWithValue(applications),
           staffDocumentsRepositoryProvider.overrideWithValue(papers),
+          staffIdentityProvider.overrideWithValue(who),
           // Approval builds the account now, so it needs the zone a shop sits in and the
           // shop a courier starts at.
           geographyRepositoryProvider.overrideWithValue(
@@ -322,6 +324,53 @@ void main() {
 
       expect(find.byKey(ApplicationsScreen.papersEmptyKey), findsNothing);
       expect(find.byType(LuqmaErrorView), findsOneWidget);
+    });
+  });
+
+  /// The one module a moderator half-owns.
+  ///
+  /// Rejecting an application mints nothing and is moderation, so it stays theirs;
+  /// approving writes the `staff` row, which is the permission that hands out every
+  /// other one, and the database refuses it. The screen has to say which half is theirs
+  /// rather than offering a button that fails.
+  group('a moderator works the queue and cannot close it', () {
+    const moderator = StaffIdentity(
+      uid: 'u-mod',
+      role: StaffRole.moderator,
+      scope: StaffScope.platform,
+      isAdmin: true,
+    );
+
+    testWidgets('is not offered a button the database will refuse', (tester) async {
+      await pump(tester, who: moderator);
+
+      expect(find.byKey(ApplicationsScreen.approveKey('app-old')), findsNothing);
+      expect(
+        find.text('القبول بيعمل الحساب، وده للأدمن. ابعتله الطلب بعد المكالمة.'),
+        findsWidgets,
+        reason: 'a control that vanishes with no sentence is its own puzzle',
+      );
+    });
+
+    testWidgets('and still rejects, which is the half that is theirs', (tester) async {
+      await pump(tester, who: moderator);
+
+      expect(find.byKey(ApplicationsScreen.rejectKey('app-old')), findsOneWidget);
+    });
+
+    testWidgets('an admin is offered both', (tester) async {
+      await pump(
+        tester,
+        who: const StaffIdentity(
+          uid: 'u-admin',
+          role: StaffRole.admin,
+          scope: StaffScope.platform,
+          isAdmin: true,
+        ),
+      );
+
+      expect(find.byKey(ApplicationsScreen.approveKey('app-old')), findsOneWidget);
+      expect(find.byKey(ApplicationsScreen.rejectKey('app-old')), findsOneWidget);
     });
   });
 }
