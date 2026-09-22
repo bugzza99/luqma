@@ -98,6 +98,12 @@ delete from orders where city_id in (select id from luqma_test_cities);
 -->>
 delete from home_sections where city_id in (select id from luqma_test_cities);
 -->>
+-- Addresses reference zones (and landmarks), they are otherwise only removed by the auth.users
+-- cascade at the end, so a test-city zone with an address on it refuses its delete with 23503 and
+-- the whole cleanup rolls back.
+delete from addresses
+ where zone_id in (select id from zones where city_id in (select id from luqma_test_cities));
+-->>
 delete from landmarks where city_id in (select id from luqma_test_cities);
 -->>
 delete from merchants where city_id in (select id from luqma_test_cities);
