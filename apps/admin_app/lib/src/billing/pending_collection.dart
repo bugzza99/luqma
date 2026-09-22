@@ -47,6 +47,7 @@ class PendingCollection {
     required this.kind,
     required this.subjectId,
     required this.amount,
+    this.expectedBalance,
     this.planId,
     this.months,
   });
@@ -72,7 +73,9 @@ class PendingCollection {
       final map = jsonDecode(json) as Map<String, dynamic>;
       final receiptId = map['receiptId'];
       final amount = map['amount'];
-      if (receiptId is! String || receiptId.isEmpty || amount is! int) return null;
+      if (receiptId is! String || receiptId.isEmpty || amount is! int) {
+        return null;
+      }
 
       // Absent on a record written by the release that only knew about collections. Its
       // key already carried both, so an old record is trusted to be what its key says.
@@ -83,10 +86,14 @@ class PendingCollection {
 
       final planId = map['planId'];
       final months = map['months'];
+      final expectedBalance = map['expectedBalance'];
       // A subscription is a term on a plan. An attempt missing either is one the server
       // cannot be told about, so it is not a record — it is a corrupt one.
       if (kind == PendingKind.subscription &&
-          (planId is! String || planId.isEmpty || months is! int || months <= 0)) {
+          (planId is! String ||
+              planId.isEmpty ||
+              months is! int ||
+              months <= 0)) {
         return null;
       }
 
@@ -95,6 +102,7 @@ class PendingCollection {
         kind: kind,
         subjectId: subjectId,
         amount: amount,
+        expectedBalance: expectedBalance is int ? expectedBalance : null,
         planId: planId is String ? planId : null,
         months: months is int ? months : null,
       );
@@ -112,18 +120,23 @@ class PendingCollection {
   /// Integer piastres, frozen with the id.
   final int amount;
 
+  /// Courier collection only: the balance the operator acted on. Null belongs to a
+  /// pending record written before balance reconciliation shipped.
+  final int? expectedBalance;
+
   /// Subscription only: which plan, and for how many months.
   final String? planId;
   final int? months;
 
   String encode() => jsonEncode({
-        'receiptId': receiptId,
-        'kind': kind.slug,
-        'subject': subjectId,
-        'amount': amount,
-        if (planId != null) 'planId': planId,
-        if (months != null) 'months': months,
-      });
+    'receiptId': receiptId,
+    'kind': kind.slug,
+    'subject': subjectId,
+    'amount': amount,
+    if (expectedBalance != null) 'expectedBalance': expectedBalance,
+    if (planId != null) 'planId': planId,
+    if (months != null) 'months': months,
+  });
 }
 
 /// Where pending money movements are kept between attempts.

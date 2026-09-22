@@ -22,7 +22,10 @@ abstract interface class CourierStatementRepository {
   Future<Result<List<CourierCharge>>> charges({String? courierUid, int limit});
 
   /// Cash handed over, newest first.
-  Future<Result<List<CourierPayment>>> payments({String? courierUid, int limit});
+  Future<Result<List<CourierPayment>>> payments({
+    String? courierUid,
+    int limit,
+  });
 
   /// What one courier owes right now. Null is the signed-in rider.
   ///
@@ -46,6 +49,7 @@ abstract interface class CourierStatementRepository {
     required int amount,
     String? note,
     String? receiptId,
+    int? expectedBalance,
   });
 }
 
@@ -74,7 +78,9 @@ class SupabaseCourierStatementRepository implements CourierStatementRepository {
 
       // Spelled out, because postgrest-dart's `order()` defaults to descending and the
       // one query in this package that leaned on that default was wrong for a month.
-      final rows = await query.order('settled_at', ascending: false).limit(limit);
+      final rows = await query
+          .order('settled_at', ascending: false)
+          .limit(limit);
       return [for (final row in rows) CourierCharge.fromRow(row)];
     });
   }
@@ -88,7 +94,9 @@ class SupabaseCourierStatementRepository implements CourierStatementRepository {
       var query = _db.from('courier_commission_payments').select();
       if (courierUid != null) query = query.eq('courier_uid', courierUid);
 
-      final rows = await query.order('created_at', ascending: false).limit(limit);
+      final rows = await query
+          .order('created_at', ascending: false)
+          .limit(limit);
       return [for (final row in rows) CourierPayment.fromRow(row)];
     });
   }
@@ -125,17 +133,28 @@ class SupabaseCourierStatementRepository implements CourierStatementRepository {
     required int amount,
     String? note,
     String? receiptId,
+    int? expectedBalance,
   }) {
     return Result.guard(() async {
-      final result = await _db.rpc<Map<String, dynamic>>(
-        'record_courier_payment',
-        params: {
-          'p_courier_uid': courierUid,
-          'p_amount': amount,
-          'p_note': note,
-          'p_receipt_id': receiptId,
-        },
-      );
+      late final Map<String, dynamic> result;
+      try {
+        result = await _db.rpc<Map<String, dynamic>>(
+          'record_courier_payment',
+          params: {
+            'p_courier_uid': courierUid,
+            'p_amount': amount,
+            'p_note': note,
+            'p_receipt_id': receiptId,
+            'p_expected_balance': expectedBalance,
+          },
+        );
+      } on PostgrestException catch (error) {
+        if (error.code == 'P0001' &&
+            error.message == 'courier balance changed') {
+          throw const ConflictFailure();
+        }
+        rethrow;
+      }
       // What the server says is left, never what this screen computed. A reply that does
       // not say is a reply this screen must not put a number on.
       if (result['remaining'] is! num) {
@@ -170,10 +189,10 @@ class FakeCourierStatementRepository implements CourierStatementRepository {
     Map<String, int>? owed,
     List<CourierBalance>? balances,
     this.failure,
-  })  : _charges = [...?charges],
-        _payments = [...?payments],
-        _owed = {...?owed},
-        _balances = [...?balances];
+  }) : _charges = [...?charges],
+       _payments = [...?payments],
+       _owed = {...?owed},
+       _balances = [...?balances];
 
   final List<CourierCharge> _charges;
   final List<CourierPayment> _payments;
@@ -230,6 +249,7 @@ class FakeCourierStatementRepository implements CourierStatementRepository {
     required int amount,
     String? note,
     String? receiptId,
+    int? expectedBalance,
   }) async {
     receiptIds.add(receiptId);
     if (failure case final f?) return Result.err(f);
@@ -239,15 +259,22 @@ class FakeCourierStatementRepository implements CourierStatementRepository {
       if (stored != null) {
         // Marked as a replay, because the fake being kinder than the server about this
         // is how a screen learns to call a repeat a fresh collection.
-        return Result.ok(CourierCollection(
-          remaining: stored.remaining,
-          receiptId: stored.receiptId,
-          courierUid: stored.courierUid,
-          amount: stored.amount,
-          repeated: true,
-          createdAt: stored.createdAt,
-        ));
+        return Result.ok(
+          CourierCollection(
+            remaining: stored.remaining,
+            receiptId: stored.receiptId,
+            courierUid: stored.courierUid,
+            amount: stored.amount,
+            repeated: true,
+            createdAt: stored.createdAt,
+          ),
+        );
       }
+    }
+
+    if (expectedBalance != null &&
+        (_owed[courierUid] ?? 0) != expectedBalance) {
+      return const Result.err(ConflictFailure());
     }
 
     final remaining = (_owed[courierUid] ?? 0) - amount;

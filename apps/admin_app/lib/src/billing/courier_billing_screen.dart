@@ -144,6 +144,9 @@ class _CourierRowState extends ConsumerState<_CourierRow> {
       // Frozen together, and written down *before* the request. A record made afterwards
       // is a record that does not exist for the one failure it was built for.
       final receiptId = stored?.receiptId ?? _uuid();
+      final expectedBalance = stored == null
+          ? balance.owed
+          : stored.expectedBalance;
       await _pending.save(
         balance.uid,
         PendingCollection(
@@ -151,6 +154,7 @@ class _CourierRowState extends ConsumerState<_CourierRow> {
           kind: PendingKind.courier,
           subjectId: balance.uid,
           amount: amount,
+          expectedBalance: expectedBalance,
         ),
       );
       if (!mounted) return;
@@ -161,6 +165,7 @@ class _CourierRowState extends ConsumerState<_CourierRow> {
             courierUid: balance.uid,
             amount: amount,
             receiptId: receiptId,
+            expectedBalance: expectedBalance,
           );
       if (!mounted) return;
 
@@ -185,6 +190,21 @@ class _CourierRowState extends ConsumerState<_CourierRow> {
             ),
           );
         case Err(:final failure):
+          if (failure is ConflictFailure) {
+            // The locked server row proved this attempt moved nothing. Keeping it would
+            // replay a figure known to be stale and leave the operator trapped behind it.
+            await _pending.clear(balance.uid);
+            if (!mounted) return;
+            ref.invalidate(couriersOutstandingProvider);
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text(
+                  'الحساب اتغيّر قبل تسجيل التحصيل. راجع الرقم الجديد وسجّل من أول وجديد.',
+                ),
+              ),
+            );
+            break;
+          }
           // The pending record stays. The reply not arriving is not the same as the money
           // not moving, and the next attempt has to carry the same id to find out.
           ScaffoldMessenger.of(context).showSnackBar(

@@ -22,32 +22,35 @@ void main() {
     String name = 'كابتن محمود',
     int owed = 4500,
     bool isActive = true,
-  }) =>
-      CourierBalance(
-        uid: uid,
-        name: name,
-        phone: '01011111111',
-        owed: owed,
-        isActive: isActive,
-      );
+  }) => CourierBalance(
+    uid: uid,
+    name: name,
+    phone: '01011111111',
+    owed: owed,
+    isActive: isActive,
+  );
 
   Future<void> pump(
     WidgetTester tester, {
     List<CourierBalance> balances = const [],
     Map<String, int> owed = const {'c1': 4500},
     Failure? failure,
+    FakeCourierStatementRepository? repository,
   }) async {
     tester.view.physicalSize = const Size(1080, 2340);
     tester.view.devicePixelRatio = 3;
     addTearDown(tester.view.reset);
 
-    SharedPreferencesAsyncPlatform.instance = InMemorySharedPreferencesAsync.empty();
+    SharedPreferencesAsyncPlatform.instance =
+        InMemorySharedPreferencesAsync.empty();
 
-    statement = FakeCourierStatementRepository(
-      balances: balances,
-      owed: owed,
-      failure: failure,
-    );
+    statement =
+        repository ??
+        FakeCourierStatementRepository(
+          balances: balances,
+          owed: owed,
+          failure: failure,
+        );
 
     await tester.pumpWidget(
       ProviderScope(
@@ -70,9 +73,11 @@ void main() {
   }
 
   group('the frozen record', () {
-    PendingCollection? read(String? json,
-            {PendingKind kind = PendingKind.courier, String subject = 'c1'}) =>
-        PendingCollection.decode(json, kind: kind, subjectId: subject);
+    PendingCollection? read(
+      String? json, {
+      PendingKind kind = PendingKind.courier,
+      String subject = 'c1',
+    }) => PendingCollection.decode(json, kind: kind, subjectId: subject);
 
     test('reads back what it wrote', () {
       const pending = PendingCollection(
@@ -80,10 +85,12 @@ void main() {
         kind: PendingKind.courier,
         subjectId: 'c1',
         amount: 4500,
+        expectedBalance: 5000,
       );
 
       expect(read(pending.encode())?.amount, 4500);
       expect(read(pending.encode())?.receiptId, 'r1');
+      expect(read(pending.encode())?.expectedBalance, 5000);
     });
 
     test('refuses a record with only half of it', () {
@@ -106,28 +113,47 @@ void main() {
         amount: 4500,
       );
 
-      expect(read(topUp.encode()), isNull, reason: 'wrong kind and wrong subject');
-      expect(read(topUp.encode(), kind: PendingKind.topUp), isNull,
-          reason: 'right kind, wrong subject');
-      expect(read(topUp.encode(), kind: PendingKind.topUp, subject: 'm1'), isNotNull);
+      expect(
+        read(topUp.encode()),
+        isNull,
+        reason: 'wrong kind and wrong subject',
+      );
+      expect(
+        read(topUp.encode(), kind: PendingKind.topUp),
+        isNull,
+        reason: 'right kind, wrong subject',
+      );
+      expect(
+        read(topUp.encode(), kind: PendingKind.topUp, subject: 'm1'),
+        isNotNull,
+      );
     });
 
     test('a subscription attempt without its term is not a record', () {
       // The server is told a plan and a number of months. An attempt that cannot say
       // both is one it cannot be told about, so it is corrupt rather than partial.
       expect(
-        read('{"receiptId":"r1","amount":4500}',
-            kind: PendingKind.subscription, subject: 'm1'),
+        read(
+          '{"receiptId":"r1","amount":4500}',
+          kind: PendingKind.subscription,
+          subject: 'm1',
+        ),
         isNull,
       );
       expect(
-        read('{"receiptId":"r1","amount":4500,"planId":"p1","months":0}',
-            kind: PendingKind.subscription, subject: 'm1'),
+        read(
+          '{"receiptId":"r1","amount":4500,"planId":"p1","months":0}',
+          kind: PendingKind.subscription,
+          subject: 'm1',
+        ),
         isNull,
       );
       expect(
-        read('{"receiptId":"r1","amount":4500,"planId":"p1","months":3}',
-            kind: PendingKind.subscription, subject: 'm1'),
+        read(
+          '{"receiptId":"r1","amount":4500,"planId":"p1","months":3}',
+          kind: PendingKind.subscription,
+          subject: 'm1',
+        ),
         isNotNull,
       );
     });
@@ -154,7 +180,9 @@ void main() {
       expect(find.text('عليه'), findsOneWidget);
     });
 
-    testWidgets('says credit in words rather than with a minus sign', (tester) async {
+    testWidgets('says credit in words rather than with a minus sign', (
+      tester,
+    ) async {
       await pump(tester, balances: [owing(owed: -1000)]);
 
       expect(find.text('رصيد ليه'), findsOneWidget);
@@ -171,8 +199,9 @@ void main() {
       expect(find.text('موقوف'), findsOneWidget);
     });
 
-    testWidgets('says everybody is square rather than drawing an empty page',
-        (tester) async {
+    testWidgets('says everybody is square rather than drawing an empty page', (
+      tester,
+    ) async {
       await pump(tester, balances: const []);
 
       expect(find.byKey(CourierBillingScreen.emptyKey), findsOneWidget);
@@ -216,8 +245,9 @@ void main() {
       expect(find.textContaining('فاضل عليه'), findsOneWidget);
     });
 
-    testWidgets('a retry carries the first attempt’s receipt, not a new one',
-        (tester) async {
+    testWidgets('a retry carries the first attempt’s receipt, not a new one', (
+      tester,
+    ) async {
       // The invariant, asserted directly. The reply not arriving is not the same as the
       // money not moving, so the second attempt has to reuse the id — that is what lets
       // the server answer with the receipt it already holds instead of collecting again.
@@ -238,14 +268,18 @@ void main() {
 
       expect(statement.receiptIds.length, 2);
       expect(statement.receiptIds.first, isNotNull);
-      expect(statement.receiptIds[1], statement.receiptIds.first,
-          reason: 'a retry that mints a new id collects the same cash twice');
+      expect(
+        statement.receiptIds[1],
+        statement.receiptIds.first,
+        reason: 'a retry that mints a new id collects the same cash twice',
+      );
       // And the amount went with it: 45 ج, not whatever the field was reset to.
       expect(statement.recorded.single.amount, 4500);
     });
 
-    testWidgets('keeps the attempt when the line drops, and freezes its amount',
-        (tester) async {
+    testWidgets('keeps the attempt when the line drops, and freezes its amount', (
+      tester,
+    ) async {
       await pump(tester, balances: [owing()]);
       statement.failure = const OfflineFailure();
 
@@ -270,7 +304,9 @@ void main() {
       expect(field.readOnly, isTrue);
     });
 
-    testWidgets('refuses an empty or zero amount instead of sending it', (tester) async {
+    testWidgets('refuses an empty or zero amount instead of sending it', (
+      tester,
+    ) async {
       await pump(tester, balances: [owing()]);
 
       await tester.tap(find.byKey(CourierBillingScreen.collectKey('c1')));
@@ -283,6 +319,45 @@ void main() {
       // The dialog stays open rather than closing on a figure it refused to send.
       expect(find.byKey(CourierBillingScreen.confirmKey), findsOneWidget);
     });
+
+    testWidgets('rejects a stale balance and starts the next attempt fresh', (
+      tester,
+    ) async {
+      final repo = _BalanceChangedOnce(
+        balances: [owing()],
+        owed: const {'c1': 4500},
+      );
+      await pump(tester, repository: repo);
+
+      await tester.tap(find.byKey(CourierBillingScreen.collectKey('c1')));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(CourierBillingScreen.amountKey), '45');
+      await tester.tap(find.byKey(CourierBillingScreen.confirmKey));
+      await tester.pumpAndSettle();
+
+      expect(
+        repo.expectedBalances.single,
+        4500,
+        reason:
+            'the server must compare the row with the figure the admin acted on',
+      );
+      expect(find.textContaining('الحساب اتغيّر'), findsOneWidget);
+
+      await tester.tap(find.byKey(CourierBillingScreen.collectKey('c1')));
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(CourierBillingScreen.frozenKey),
+        findsNothing,
+        reason:
+            'a definite server rejection moved no money and must not be retried',
+      );
+      expect(
+        tester
+            .widget<TextField>(find.byKey(CourierBillingScreen.amountKey))
+            .readOnly,
+        isFalse,
+      );
+    });
   });
 
   group('a reply has to be about this payment', () {
@@ -294,13 +369,27 @@ void main() {
       final repo = FakeCourierStatementRepository(owed: {'c1': 4500});
 
       final first = (await repo.recordPayment(
-        courierUid: 'c1', amount: 4500, receiptId: 'r1')).valueOrNull;
+        courierUid: 'c1',
+        amount: 4500,
+        receiptId: 'r1',
+      )).valueOrNull;
       final again = (await repo.recordPayment(
-        courierUid: 'c1', amount: 4500, receiptId: 'r1')).valueOrNull;
+        courierUid: 'c1',
+        amount: 4500,
+        receiptId: 'r1',
+      )).valueOrNull;
 
       expect(first?.repeated, isFalse);
-      expect(again?.repeated, isTrue, reason: 'the server already held this receipt');
-      expect(again?.remaining, first?.remaining, reason: 'and nothing moved again');
+      expect(
+        again?.repeated,
+        isTrue,
+        reason: 'the server already held this receipt',
+      );
+      expect(
+        again?.remaining,
+        first?.remaining,
+        reason: 'and nothing moved again',
+      );
     });
 
     test('refuses a reply that names another receipt, courier or amount', () {
@@ -314,19 +403,39 @@ void main() {
         repeated: false,
       );
 
-      expect(reply.answers(receiptId: 'r1', courierUid: 'c1', amount: 4500), isTrue);
-      expect(reply.answers(receiptId: 'r2', courierUid: 'c1', amount: 4500), isFalse);
-      expect(reply.answers(receiptId: 'r1', courierUid: 'c2', amount: 4500), isFalse);
-      expect(reply.answers(receiptId: 'r1', courierUid: 'c1', amount: 9000), isFalse);
+      expect(
+        reply.answers(receiptId: 'r1', courierUid: 'c1', amount: 4500),
+        isTrue,
+      );
+      expect(
+        reply.answers(receiptId: 'r2', courierUid: 'c1', amount: 4500),
+        isFalse,
+      );
+      expect(
+        reply.answers(receiptId: 'r1', courierUid: 'c2', amount: 4500),
+        isFalse,
+      );
+      expect(
+        reply.answers(receiptId: 'r1', courierUid: 'c1', amount: 9000),
+        isFalse,
+      );
     });
 
     test('trusts a server too old to name the receipt', () {
       // An older server cannot be made to say it, and refusing every reply from one
       // would stop collections working the day an APK runs ahead of the database.
-      const older = CourierCollection(remaining: 0, receiptId: null,
-          courierUid: null, amount: null, repeated: false);
+      const older = CourierCollection(
+        remaining: 0,
+        receiptId: null,
+        courierUid: null,
+        amount: null,
+        repeated: false,
+      );
 
-      expect(older.answers(receiptId: 'r1', courierUid: 'c1', amount: 4500), isTrue);
+      expect(
+        older.answers(receiptId: 'r1', courierUid: 'c1', amount: 4500),
+        isTrue,
+      );
     });
 
     test('reads the identity off the reply', () {
@@ -345,4 +454,33 @@ void main() {
       expect(reply.createdAt, isNotNull);
     });
   });
+}
+
+class _BalanceChangedOnce extends FakeCourierStatementRepository {
+  _BalanceChangedOnce({required super.balances, required super.owed});
+
+  final List<int?> expectedBalances = [];
+  bool _changed = true;
+
+  @override
+  Future<Result<CourierCollection>> recordPayment({
+    required String courierUid,
+    required int amount,
+    String? note,
+    String? receiptId,
+    int? expectedBalance,
+  }) async {
+    expectedBalances.add(expectedBalance);
+    if (_changed) {
+      _changed = false;
+      return const Result.err(ConflictFailure());
+    }
+    return super.recordPayment(
+      courierUid: courierUid,
+      amount: amount,
+      note: note,
+      receiptId: receiptId,
+      expectedBalance: expectedBalance,
+    );
+  }
 }

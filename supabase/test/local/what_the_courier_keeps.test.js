@@ -278,6 +278,35 @@ describe('what the courier keeps', () => {
       assert.equal(payments.rows[0].n, 1);
     });
 
+    it('rejects a new receipt after the balance changed but still reconciles a retry', async () => {
+      const id = await place();
+      await move(id, 'delivered', RIDER);
+      await admin();
+      const firstReceipt = '14111111-2222-3333-4444-555555555555';
+      const staleReceipt = '15111111-2222-3333-4444-555555555555';
+
+      const first = (await db.query(
+        'select record_courier_payment($1, $2, null, $3, $4) as r',
+        [RIDER, 100, firstReceipt, 200])).rows[0].r;
+
+      assert.equal(first.remaining, 100);
+      const repeated = (await db.query(
+        'select record_courier_payment($1, $2, null, $3, $4) as r',
+        [RIDER, 100, firstReceipt, 200])).rows[0].r;
+      assert.equal(repeated.repeated, true,
+        'a lost reply must reconcile before checking the now-stale opening balance');
+
+      await assert.rejects(
+        () => db.query(
+          'select record_courier_payment($1, $2, null, $3, $4)',
+          [RIDER, 100, staleReceipt, 200]),
+        /courier balance changed/);
+      assert.equal(await owed(RIDER), 100);
+      const payments = await db.query(
+        'select count(*)::int n from courier_commission_payments where courier_uid = $1', [RIDER]);
+      assert.equal(payments.rows[0].n, 1);
+    });
+
     it('refuses the same receipt for a different amount', async () => {
       const receipt = '12111111-2222-3333-4444-555555555555';
       await db.query(
