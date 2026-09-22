@@ -34,6 +34,7 @@ void main() {
     WidgetTester tester, {
     List<Merchant>? seed,
     Map<String, int> orderCounts = const {},
+    Failure? countsFail,
     Size size = const Size(1400, 1000),
   }) async {
     tester.view.physicalSize = size;
@@ -47,7 +48,7 @@ void main() {
             merchant('b', name: 'كشري المحطة', status: MerchantStatus.pending),
           ],
       orderCounts: orderCounts,
-    );
+    )..orderCountsFailure = countsFail;
     menus = FakeMenuRepository(
       categories: const [MenuCategory(id: 'c1', name: 'مشويات')],
       items: const [
@@ -207,6 +208,37 @@ void main() {
 
       final saved = await merchants.watchAllMerchants(cityId: 'edku').first;
       expect(saved.where((m) => m.id == 'a'), isEmpty);
+    });
+
+    testWidgets('the list asks for the counts once, not once per shop', (tester) async {
+      // The N+1 this replaced. A test that only reads the right numbers off the screen
+      // passes just as happily against one request per card, which is why this counts the
+      // requests instead — with fifteen shops on a phone connection that was fifteen
+      // round trips to draw a label.
+      await pump(
+        tester,
+        seed: [
+          merchant('a', name: 'مطعم الشاطئ'),
+          merchant('b', name: 'كشري المحطة'),
+          merchant('c', name: 'مطعم البحر'),
+        ],
+        orderCounts: {'a': 7, 'b': 2, 'c': 1},
+      );
+
+      expect(merchants.orderCountsCalls, 1,
+          reason: 'three shops, one request');
+      expect(find.textContaining('7'), findsWidgets, reason: 'and the label is right');
+    });
+
+    testWidgets('a card without the counts yet still draws', (tester) async {
+      // The count is a detail under a shop's name. A list that refuses to render because
+      // a label could not be fetched is worse than a list with no labels — and this is
+      // the screen the owner approves shops on.
+      await pump(tester, countsFail: const OfflineFailure());
+
+      expect(find.text('مطعم الشاطئ'), findsWidgets);
+      expect(find.byType(LuqmaErrorView), findsNothing,
+          reason: 'a missing label is not a broken screen');
     });
 
     testWidgets('a merchant with orders cannot be deleted', (tester) async {

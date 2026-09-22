@@ -278,7 +278,10 @@ class _Row extends ConsumerWidget {
     final theme = Theme.of(context);
     final colors = theme.luqma;
     final strings = LuqmaStrings.of(context);
-    final orderCount = ref.watch(merchantOrderCountProvider(merchant.id));
+    // One request for the whole list, not one per card. Null while it loads or if it
+    // fails — the count is a detail under the name, and a card that will not draw
+    // because a label is missing is worse than a card with no label.
+    final orders = ref.watch(merchantOrderCountsProvider).value?[merchant.id];
 
     final typeLabel = switch (merchant.type) {
       MerchantType.homeKitchen => 'أكل بيتي',
@@ -364,10 +367,10 @@ class _Row extends ConsumerWidget {
                     background: colors.success.withValues(alpha: 0.15),
                     foreground: colors.success,
                   ),
-                if ((orderCount.value ?? 0) > 0) ...[
+                if ((orders ?? 0) > 0) ...[
                   const SizedBox(height: 4),
                   Text(
-                    strings.merchantsOrderCount(orderCount.value!),
+                    strings.merchantsOrderCount(orders!),
                     style: theme.textTheme.labelSmall?.copyWith(
                       color: colors.textSecondary,
                     ),

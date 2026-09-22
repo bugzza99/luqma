@@ -77,6 +77,20 @@ abstract interface class MerchantRepository {
   /// How many orders a merchant has taken. The real query, never a denormalized count
   /// that could drift — the screen uses it to offer delete only to a merchant with none.
   Future<Result<int>> orderCount(String merchantId);
+
+  /// The same figure for every shop in a city, in one request.
+  ///
+  /// The merchants list drew a card per shop and each one asked [orderCount] for itself,
+  /// so opening the screen cost one round trip per merchant over a phone connection.
+  ///
+  /// **This is the label, not the decision.** [orderCount] stays, and the delete control
+  /// keeps using it: `orders.merchant_id` is `on delete restrict`, so a figure fetched
+  /// when the list was built would offer a delete for a shop that took an order a minute
+  /// later, and the database would refuse after the admin had already confirmed.
+  ///
+  /// A shop with no orders is present with a count of zero rather than absent, so a
+  /// caller can tell "none yet" from "not in this answer".
+  Future<Result<Map<String, int>>> orderCounts({required String cityId});
 }
 
 /// Pending first, then approved, then suspended.
@@ -384,6 +398,21 @@ class SupabaseMerchantRepository implements MerchantRepository {
           .eq('merchant_id', merchantId);
     });
   }
+
+  @override
+  Future<Result<Map<String, int>>> orderCounts({required String cityId}) {
+    return Result.guard(() async {
+      final rows = await _db.rpc<List<dynamic>>(
+        'admin_merchant_order_counts',
+        params: {'p_city_id': cityId},
+      );
+
+      return {
+        for (final row in rows.cast<Map<String, dynamic>>())
+          row['merchant_id'] as String: (row['orders'] as num).toInt(),
+      };
+    });
+  }
 }
 
 /// An in-memory merchant repository for tests and for building screens before the
@@ -559,5 +588,35 @@ class FakeMerchantRepository implements MerchantRepository {
   Future<Result<int>> orderCount(String merchantId) async {
     if (failure != null) return Result.err(failure!);
     return Result.ok(_orderCounts[merchantId] ?? 0);
+  }
+
+  /// How many times the batched count was asked for.
+  ///
+  /// The whole point of the change is that the screen asks once rather than once per
+  /// shop, and only a counter can say whether that is true — a test that merely reads
+  /// the right numbers passes just as happily against the N+1 it replaced.
+  int orderCountsCalls = 0;
+
+  /// Fails the batched count alone, leaving the list itself readable.
+  ///
+  /// `failure` is set once in the constructor and fails everything, which cannot express
+  /// the case that matters here: the shops load and the label behind them does not. A
+  /// screen is meant to survive that, and a claim like this with no test is how the same
+  /// claim turned out to be false elsewhere in this repository.
+  Failure? orderCountsFailure;
+
+  @override
+  Future<Result<Map<String, int>>> orderCounts({required String cityId}) async {
+    orderCountsCalls++;
+    if (orderCountsFailure case final f?) return Result.err(f);
+    if (failure != null) return Result.err(failure!);
+
+    // Every shop in the city, including the ones with none: the server answers with a
+    // zero rather than an absence, and a fake that omitted them would let a screen rely
+    // on a shape production does not have.
+    return Result.ok({
+      for (final m in _merchants.values.where((m) => m.cityId == cityId))
+        m.id: _orderCounts[m.id] ?? 0,
+    });
   }
 }

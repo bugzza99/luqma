@@ -15,10 +15,31 @@ Stream<List<Merchant>> allMerchants(Ref ref) => ref
 
 /// How many orders one merchant has taken — the real query the delete control is
 /// decided on. Delete is offered only while this is zero.
+///
+/// Deliberately still per merchant. `orders.merchant_id` is `on delete restrict`, so this
+/// number is a decision rather than a label, and it has to be true at the moment the
+/// control is offered — not when the list behind it was built.
 @riverpod
 Future<int> merchantOrderCount(Ref ref, String merchantId) async {
   final result =
       await ref.watch(merchantRepositoryProvider).orderCount(merchantId);
+  return result.valueOrThrow;
+}
+
+/// The same figure for every shop in the city, fetched once for the whole list.
+///
+/// Each card used to watch `merchantOrderCount` for its own shop, so the screen cost one
+/// round trip per merchant — invisible with two shops, and the screen the owner lives on
+/// during the launch.
+///
+/// A card reads this and draws nothing while it is loading or if it fails: the count is a
+/// detail under a shop's name, and a list that refuses to render because a label could
+/// not be fetched is worse than a list with no labels.
+@riverpod
+Future<Map<String, int>> merchantOrderCounts(Ref ref) async {
+  final result = await ref
+      .watch(merchantRepositoryProvider)
+      .orderCounts(cityId: ref.watch(currentCityProvider));
   return result.valueOrThrow;
 }
 
