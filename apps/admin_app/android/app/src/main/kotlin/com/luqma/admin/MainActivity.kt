@@ -11,6 +11,7 @@ class MainActivity : FlutterActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         createAttentionChannel()
+        createQuietChannel()
     }
 
     /**
@@ -49,6 +50,39 @@ class MainActivity : FlutterActivity() {
         manager.createNotificationChannel(channel)
     }
 
+    /**
+     * Everything that is not an order nobody answered.
+     *
+     * The commission collection reminder and a merchant's advert request are written into
+     * `push_outbox` on the `orders` channel deliberately — the promotion trigger's own
+     * comment says an advert can wait for the owner to look, and that sharing the alarm
+     * teaches somebody to ignore it. **This app had no such channel**, so FCM fell back to
+     * the id named in AndroidManifest.xml as the default, which is the attention channel:
+     * a request for a banner arrived bypassing Do Not Disturb, as though an order had gone
+     * unanswered.
+     *
+     * The intent was right and the effect was the exact thing it warned against.
+     *
+     * DEFAULT importance, no Do Not Disturb bypass: it waits in the shade for the owner
+     * to look, which is what the trigger said it wanted.
+     */
+    private fun createQuietChannel() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+
+        val manager = getSystemService(NotificationManager::class.java) ?: return
+        if (manager.getNotificationChannel(QUIET_CHANNEL_ID) != null) return
+
+        val channel = NotificationChannel(
+            QUIET_CHANNEL_ID,
+            "تنبيهات عادية",
+            NotificationManager.IMPORTANCE_DEFAULT,
+        ).apply {
+            description = "العمولة وطلبات الإعلانات والاشتراكات. مش أوردرات متأخرة."
+        }
+
+        manager.createNotificationChannel(channel)
+    }
+
     companion object {
         /**
          * The same id the merchant's alarm uses, and the same one the trigger writes:
@@ -56,5 +90,13 @@ class MainActivity : FlutterActivity() {
          * what keep somebody who muted marketing from silencing it by accident.
          */
         const val ORDERS_CHANNEL_ID = "orders_critical"
+
+        /**
+         * Matches the `orders` value the commission and promotion triggers write into
+         * `push_outbox.channel`. Without this channel existing, FCM falls back to the
+         * manifest's default — `orders_critical` — and an advert request bypasses Do Not
+         * Disturb.
+         */
+        const val QUIET_CHANNEL_ID = "orders"
     }
 }

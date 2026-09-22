@@ -113,8 +113,16 @@ Deno.serve(async (req: Request) => {
     // boundary defensive if that contract ever regresses.
     const tokens = [...new Set<string>(row.tokens ?? [])];
     if (tokens.length === 0) {
-      // Nobody has this app installed. Settled rather than retried: five attempts
-      // against an account with no phone is five minutes of nothing.
+      // Nobody has a device registered for this account *yet*, which is not the same
+      // as nobody ever will — the owner who installs AdminApp that evening is exactly
+      // this case. Reported as a failure so the row is tried again, and `settle_push`
+      // spaces the remaining attempts out over about seven hours
+      // (`20261026000000_a_notification_waits_for_a_phone.sql`).
+      //
+      // This comment used to claim the row was settled rather than retried. It was not:
+      // `settle_push` never sets `sent_at` on a failure, so the row came straight back on
+      // the next minute's cron and died five minutes after it was written. Seven rows on
+      // production were lost that way, five of them join applications to the owner.
       await service.rpc('settle_push', {
         p_id: row.id,
         p_claim_token: row.claim_token,
