@@ -516,7 +516,7 @@ in the repository — and `flutter test` on a *package* does not run the generat
 the way an app build does. Without it a new string is a compile error that points at the
 call site rather than at the missing step.
 
-**~2013 Dart tests · 530 schema tests · 251 stack tests · 273 live-repository tests.**
+**~2023 Dart tests · 537 schema tests · 251 stack tests · 273 live-repository tests.**
 `flutter analyze` clean.
 
 There are no `function` tests and no `tsc`: the TypeScript Cloud Functions went with
@@ -571,6 +571,22 @@ DATABASE_URL=<luqma-test session pooler> npm --prefix supabase run test:stack
 
 ## Decisions that are settled — do not relitigate
 
+- **No OTP, no SMS provider, and public signup stays open.** Settled 2026-09-22 by the
+  owner, closing H-01: they will not build the OTP feature. So the protection is what the
+  server can check without one. **GoTrue already caps sign-up and sign-in at 30 per five
+  minutes per IP** (`[auth.rate_limit] sign_in_sign_ups`), which is the only layer that
+  can see an IP at all — a trigger on `auth.users` is handed a row, not a request — so a
+  database-side cap could only be global, and a global cap turns real customers away
+  during a launch to slow an attacker who can wait. Not built, deliberately.
+  What *was* wrong was not the rate: `ensure_user_profile` copied
+  `raw_user_meta_data ->> 'phone'` onto the profile unchecked, and that column is where
+  `place_order` reads **the number the courier rings** and where the admin's customer
+  search looks when somebody telephones about a forgotten password. The account's real
+  identity is the number folded into the synthetic address, and nothing made the two
+  agree — so an account held on one number could carry a different one on every order.
+  The number is derived from the address now, and the name is bounded at 80 characters
+  because signup metadata is client-controlled and unbounded. A staff account on a real
+  address keeps its metadata number: an email carries none to derive.
 - **There is no self-service password reset, and that is settled.** A customer signs in
   with a phone number folded into a synthetic address on a domain with no mailbox, and
   there is no SMS provider — so an emailed link and an SMS code are both impossible
