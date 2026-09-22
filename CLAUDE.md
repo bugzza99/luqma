@@ -516,7 +516,7 @@ in the repository — and `flutter test` on a *package* does not run the generat
 the way an app build does. Without it a new string is a compile error that points at the
 call site rather than at the missing step.
 
-**~2005 Dart tests · 515 schema tests · 251 stack tests · 273 live-repository tests.**
+**~2013 Dart tests · 530 schema tests · 251 stack tests · 273 live-repository tests.**
 `flutter analyze` clean.
 
 There are no `function` tests and no `tsc`: the TypeScript Cloud Functions went with
@@ -1452,6 +1452,40 @@ DATABASE_URL=<luqma-test session pooler> npm --prefix supabase run test:stack
   AdminApp's rail shed six modules for the moment a token spends refreshing. A widget
   test that granted access without supplying an identity is what caught it, and it was
   a real defect rather than a test artefact.
+- **A channel the phone has never created is not dropped — it falls back, and on a staff
+  app the fallback is the alarm.** `commissionDue` and `promotionRequest` are written on
+  the `orders` channel deliberately, and neither MerchantApp nor AdminApp had ever created
+  one, so FCM used the manifest default: `orders_critical`, which bypasses Do Not Disturb
+  and in MerchantApp plays the looping alarm on the **alarm stream**. The Saturday
+  commission reminder rang the kitchen. The trigger's own comment had warned that sharing
+  the alarm teaches somebody to ignore it — the intent was right and the effect was the
+  thing it warned against. `push_channels_test.dart` scans the Kotlin and the manifests,
+  because nothing in Dart can observe this and the failure only shows up on a handset
+  weeks later.
+- **A comment that says "settled rather than retried" is not a settlement.** `send-push`
+  reports a recipient with no registered device as an error; `settle_push` records the
+  error and never sets `sent_at`, so the row came back on the next minute's cron and died
+  five attempts later — about five minutes after it was written. Seven rows on production
+  went that way, five of them join applications to the owner. **The count was never the
+  problem, the spacing was**: `next_attempt_at` and `push_retry_delay` now spread the same
+  five attempts over roughly seven hours, which is long enough for somebody to install the
+  app that evening and short enough that nothing stale ever lands.
+- **An index is earned, not assumed — and the plan is how it is earned.** M-12's first
+  draft added `orders (merchant_id)`. `orders_merchant_status_idx` has led with
+  `merchant_id` since the first schema, and `EXPLAIN` against `luqma-test` showed the
+  planner using it: a second index would have been a write on every order placed, buying
+  nothing. Twenty-one foreign keys in this schema have no covering index
+  (`node supabase/fk-index-audit.mjs prod` lists them) and exactly five were given one.
+  The rule: **index the key when the child table grows without bound and the parent is
+  deleted by a path somebody is waiting on.** `app_opens` is the case in point — a row per
+  device per app per day, and `delete_my_account` nulls `uid` across all of it while a
+  customer watches a spinner.
+- **A count on a list and a count on a delete button are different queries.** The
+  merchants list asks `admin_merchant_order_counts` once for the whole city; the detail
+  pane keeps its own exact per-shop count, because `orders.merchant_id` is
+  `on delete restrict` and a figure fetched when the list was built would offer a delete
+  the database then refuses with `23503`, after the admin has confirmed. One is a label
+  and one is a decision.
 - **Widening a predicate reaches every policy that reads it, including ones in a schema
   you did not enumerate.** `refuse_moderator_delete` went on 25 tables in `public`, chosen
   by reading the `for all` policies in the migrations. `storage.objects` is in another
