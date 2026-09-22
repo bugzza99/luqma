@@ -1,4 +1,3 @@
-import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -6,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../data/column_names.dart';
 import '../data/live_query.dart';
 import '../models/media.dart';
+import '../ids.dart';
 import '../result.dart';
 
 /// Getting an image in, and the moderation queue that decides whether it is ever seen.
@@ -110,7 +110,7 @@ class SupabaseMediaRepository implements MediaRepository {
       // The policy compares the first segment to `auth.uid()`, which means a caller that
       // passes somebody else's `uploadedBy` is refused here rather than one statement
       // later at the row — the same refusal, arriving before the bytes are stored.
-      final path = '$uploadedBy/${kind.name}/${_uuid()}.jpg';
+      final path = '$uploadedBy/${kind.name}/${luqmaUuid()}.jpg';
 
       await storage.uploadBinary(
         path,
@@ -146,16 +146,6 @@ class SupabaseMediaRepository implements MediaRepository {
 
   static const _bucket = 'media';
 
-  /// A v4 uuid, from the same generator the database uses for everything else.
-  static String _uuid() {
-    final random = Random.secure();
-    final bytes = List<int>.generate(16, (_) => random.nextInt(256));
-    bytes[6] = (bytes[6] & 0x0f) | 0x40;
-    bytes[8] = (bytes[8] & 0x3f) | 0x80;
-    final hex = bytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
-    return '${hex.substring(0, 8)}-${hex.substring(8, 12)}-${hex.substring(12, 16)}'
-        '-${hex.substring(16, 20)}-${hex.substring(20)}';
-  }
 
   @override
   Stream<List<Media>> watchPending() {

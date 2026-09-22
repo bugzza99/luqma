@@ -76,15 +76,25 @@ class MerchantActions extends _$MerchantActions {
   /// Left pending on purpose. Entering the data and deciding the merchant is ready to
   /// take orders are two different moments, often days apart — a menu is usually half
   /// finished when the first visit ends.
-  Future<Merchant?> create({
+  /// Adds a shop under an id the form minted when it opened.
+  ///
+  /// Returns the [Result] rather than a nullable merchant: the dialog has to tell the
+  /// three failures apart — no connection, not allowed, a name the server refused — and
+  /// a null says only that something went wrong. It used to return null and the dialog
+  /// closed anyway, so a failed create looked exactly like a successful one and took the
+  /// owner's typing with it.
+  ///
+  /// [id] is the idempotency. The same id on a retry cannot make a second shop.
+  Future<Result<Merchant>> create({
+    required String id,
     required String name,
     required String phone,
     required String zoneId,
     required MerchantType type,
   }) async {
-    final result = await ref.read(merchantRepositoryProvider).saveMerchant(
+    final result = await ref.read(merchantRepositoryProvider).createMerchant(
           Merchant(
-            id: '',
+            id: id,
             cityId: ref.read(currentCityProvider),
             type: type,
             name: name,
@@ -94,7 +104,8 @@ class MerchantActions extends _$MerchantActions {
           ),
         );
     ref.invalidate(allMerchantsProvider);
-    return result.valueOrNull;
+    ref.invalidate(merchantOrderCountsProvider);
+    return result;
   }
 
   Future<void> update(Merchant merchant) async {

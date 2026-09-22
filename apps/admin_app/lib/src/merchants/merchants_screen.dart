@@ -19,6 +19,9 @@ class MerchantsScreen extends ConsumerWidget {
   const MerchantsScreen({super.key});
 
   static const addKey = Key('merchants.add');
+  static const zoneFieldKey = Key('merchants.zoneField');
+  static const noZonesKey = Key('merchants.noZones');
+  static const createErrorKey = Key('merchants.createError');
   static const emptyKey = Key('merchants.empty');
   static const detailKey = Key('merchants.detail');
   static const identityKey = Key('merchants.identity');
@@ -791,119 +794,201 @@ Future<void> _addMerchant(BuildContext context, WidgetRef ref) async {
   final zones = await ref.read(zonesProvider.future);
   if (!context.mounted) return;
 
-  await showDialog<void>(
+  final created = await showDialog<Merchant>(
     context: context,
-    builder: (dialogContext) => _NewMerchantDialog(
-      zones: zones,
-      onSave: (name, phone, zoneId, type) async {
-        final created = await ref.read(merchantActionsProvider.notifier).create(
-              name: name,
-              phone: phone,
-              zoneId: zoneId,
-              type: type,
-            );
-        if (created != null) {
-          // Straight into the new merchant: the next thing after adding one is always
-          // entering its menu.
-          ref.read(selectedMerchantProvider.notifier).select(created.id);
-        }
-        if (dialogContext.mounted) Navigator.of(dialogContext).pop();
-      },
-    ),
+    // The owner types a name, a number and a zone into this. Dismissing it by tapping
+    // beside it throws all three away with no warning, and they are adding fifteen shops
+    // in an afternoon.
+    barrierDismissible: false,
+    builder: (_) => _NewMerchantDialog(zones: zones),
   );
+
+  if (created != null) {
+    // Straight into the new merchant: the next thing after adding one is always
+    // entering its menu.
+    ref.read(selectedMerchantProvider.notifier).select(created.id);
+  }
 }
 
-class _NewMerchantDialog extends StatefulWidget {
-  const _NewMerchantDialog({required this.zones, required this.onSave});
+class _NewMerchantDialog extends ConsumerStatefulWidget {
+  const _NewMerchantDialog({required this.zones});
 
   final List<Zone> zones;
-  final Future<void> Function(
-    String name,
-    String phone,
-    String zoneId,
-    MerchantType type,
-  ) onSave;
 
   @override
-  State<_NewMerchantDialog> createState() => _NewMerchantDialogState();
+  ConsumerState<_NewMerchantDialog> createState() => _NewMerchantDialogState();
 }
 
-class _NewMerchantDialogState extends State<_NewMerchantDialog> {
+class _NewMerchantDialogState extends ConsumerState<_NewMerchantDialog> {
   final _formKey = GlobalKey<FormState>();
+
+  /// Minted once, when the dialog opens, and sent again on every retry.
+  ///
+  /// This is the idempotency, and it has to live here rather than inside the save: an id
+  /// made at the moment of sending is a new id each time, and the server can only refuse
+  /// a repeat of the *same* one. The lesson C-01 left, where both money paths minted
+  /// their key in memory at the point of the request and a lost reply charged twice.
+  final _id = luqmaUuid();
 
   var _name = '';
   var _phone = '';
   late String? _zoneId = widget.zones.firstOrNull?.id;
   var _type = MerchantType.restaurant;
 
+  bool _saving = false;
+  String? _error;
+
+  Future<void> _save() async {
+    if (!_formKey.currentState!.validate()) return;
+    _formKey.currentState!.save();
+
+    setState(() {
+      _saving = true;
+      _error = null;
+    });
+
+    final result = await ref.read(merchantActionsProvider.notifier).create(
+          id: _id,
+          name: _name,
+          phone: _phone,
+          zoneId: _zoneId!,
+          type: _type,
+        );
+    if (!mounted) return;
+
+    switch (result) {
+      case Ok(:final value):
+        Navigator.of(context).pop(value);
+      case Err(:final failure):
+        // Stays open, with everything still typed in it. It used to pop whatever the
+        // answer was, so a shop that was never created looked exactly like one that was —
+        // and the name, the number and the zone went with it.
+        setState(() {
+          _saving = false;
+          _error = switch (failure) {
+            OfflineFailure() => 'مفيش نت. المحل لسه مااتضافش — جرّب تاني.',
+            PermissionFailure() => 'مش من حقك تضيف محل.',
+            ConflictFailure() => 'فيه محل بنفس البيانات دي.',
+            ValidationFailure() => 'فيه بيانات السيرفر مارضيش عليها. راجع الاسم والرقم.',
+            _ => 'مقدرناش نضيف المحل. جرّب تاني.',
+          };
+        });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = theme.luqma;
+
+    // A shop with no zone cannot be delivered to and has nothing to price a delivery
+    // against, so there is no useful thing to create. The form said so only by hiding the
+    // picker and then saving an empty string, which the database refuses — as an error
+    // nobody could act on.
+    final noZones = widget.zones.isEmpty;
+
     return AlertDialog(
       title: const Text('مطعم جديد'),
       content: Form(
         key: _formKey,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextFormField(
-              key: MerchantsScreen.nameFieldKey,
-              autofocus: true,
-              decoration: const InputDecoration(labelText: 'الاسم'),
-              validator: (v) =>
-                  (v == null || v.trim().isEmpty) ? 'اكتب اسم المطعم' : null,
-              onSaved: (v) => _name = v!.trim(),
-            ),
-            const SizedBox(height: Space.md),
-            TextFormField(
-              key: MerchantsScreen.phoneFieldKey,
-              decoration: const InputDecoration(labelText: 'التليفون'),
-              keyboardType: TextInputType.phone,
-              onSaved: (v) => _phone = v?.trim() ?? '',
-            ),
-            const SizedBox(height: Space.md),
-            DropdownButtonFormField<MerchantType>(
-              initialValue: _type,
-              decoration: const InputDecoration(labelText: 'النوع'),
-              items: const [
-                DropdownMenuItem(
-                  value: MerchantType.restaurant,
-                  child: Text('مطعم'),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (noZones)
+                Padding(
+                  key: MerchantsScreen.noZonesKey,
+                  padding: const EdgeInsets.only(bottom: Space.md),
+                  child: Text(
+                    'مفيش مناطق في المدينة دي. ضيف منطقة من «الأماكن» الأول — المحل من '
+                    'غير منطقة مش هيعرف يستقبل أوردر.',
+                    style:
+                        theme.textTheme.bodySmall?.copyWith(color: colors.danger),
+                  ),
                 ),
-                DropdownMenuItem(
-                  value: MerchantType.homeKitchen,
-                  child: Text('أكل بيتي'),
+              TextFormField(
+                key: MerchantsScreen.nameFieldKey,
+                autofocus: true,
+                enabled: !_saving,
+                decoration: const InputDecoration(labelText: 'الاسم'),
+                validator: (v) =>
+                    (v == null || v.trim().isEmpty) ? 'اكتب اسم المطعم' : null,
+                onSaved: (v) => _name = v!.trim(),
+              ),
+              const SizedBox(height: Space.md),
+              TextFormField(
+                key: MerchantsScreen.phoneFieldKey,
+                enabled: !_saving,
+                decoration: const InputDecoration(labelText: 'التليفون'),
+                keyboardType: TextInputType.phone,
+                onSaved: (v) => _phone = v?.trim() ?? '',
+              ),
+              const SizedBox(height: Space.md),
+              DropdownButtonFormField<MerchantType>(
+                initialValue: _type,
+                decoration: const InputDecoration(labelText: 'النوع'),
+                items: const [
+                  DropdownMenuItem(
+                    value: MerchantType.restaurant,
+                    child: Text('مطعم'),
+                  ),
+                  DropdownMenuItem(
+                    value: MerchantType.homeKitchen,
+                    child: Text('أكل بيتي'),
+                  ),
+                ],
+                onChanged:
+                    _saving ? null : (v) => setState(() => _type = v ?? _type),
+              ),
+              if (!noZones) ...[
+                const SizedBox(height: Space.md),
+                DropdownButtonFormField<String>(
+                  key: MerchantsScreen.zoneFieldKey,
+                  initialValue: _zoneId,
+                  decoration: const InputDecoration(labelText: 'المنطقة'),
+                  // Required, and said so rather than assumed. The picker starts on the
+                  // first zone, but a form that cannot express «none chosen» is a form
+                  // nobody can correct.
+                  validator: (v) => v == null ? 'اختار المنطقة' : null,
+                  items: [
+                    for (final zone in widget.zones)
+                      DropdownMenuItem(value: zone.id, child: Text(zone.name)),
+                  ],
+                  onChanged: _saving ? null : (v) => setState(() => _zoneId = v),
                 ),
               ],
-              onChanged: (v) => setState(() => _type = v ?? _type),
-            ),
-            if (widget.zones.isNotEmpty) ...[
-              const SizedBox(height: Space.md),
-              DropdownButtonFormField<String>(
-                initialValue: _zoneId,
-                decoration: const InputDecoration(labelText: 'المنطقة'),
-                items: [
-                  for (final zone in widget.zones)
-                    DropdownMenuItem(value: zone.id, child: Text(zone.name)),
-                ],
-                onChanged: (v) => setState(() => _zoneId = v),
-              ),
+              if (_error case final message?) ...[
+                const SizedBox(height: Space.md),
+                Text(
+                  message,
+                  key: MerchantsScreen.createErrorKey,
+                  style:
+                      theme.textTheme.bodySmall?.copyWith(color: colors.danger),
+                ),
+              ],
             ],
-          ],
+          ),
         ),
       ),
       actions: [
         TextButton(
-          onPressed: () => Navigator.of(context).pop(),
+          onPressed: _saving ? null : () => Navigator.of(context).pop(),
           child: const Text('إلغاء'),
         ),
         FilledButton(
           key: MerchantsScreen.saveKey,
-          onPressed: () {
-            if (!_formKey.currentState!.validate()) return;
-            _formKey.currentState!.save();
-            widget.onSave(_name, _phone, _zoneId ?? '', _type);
-          },
-          child: const Text('احفظ'),
+          // Single-flight, and no zones is a precondition rather than a message: a second
+          // tap while the first is in flight is a second shop on a slow connection, which
+          // is the connection this is used on.
+          onPressed: _saving || noZones ? null : _save,
+          child: _saving
+              ? const SizedBox(
+                  width: Sizes.iconSm,
+                  height: Sizes.iconSm,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Text('احفظ'),
         ),
       ],
     );

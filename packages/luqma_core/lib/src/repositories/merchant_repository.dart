@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../data/column_names.dart';
@@ -38,6 +39,20 @@ abstract interface class MerchantRepository {
 
   /// Creates or replaces. An empty id means create.
   Future<Result<Merchant>> saveMerchant(Merchant merchant);
+
+  /// Adds a shop that does not exist yet, under an id the caller minted.
+  ///
+  /// Separate from [saveMerchant] because creating and editing fail differently, and
+  /// because this one is **idempotent** and that is the whole reason it exists. The form
+  /// mints one id when it opens and sends the same id on every retry, so a reply lost on
+  /// a weak connection — which is how the owner will add the first fifteen shops, from a
+  /// phone — cannot produce two of the same restaurant.
+  ///
+  /// A repeat returns the shop that already landed, as an [Ok]. It is not an error: the
+  /// thing the caller asked for is true.
+  ///
+  /// The same shape as `p_receipt_id` on the money paths, and for the same reason.
+  Future<Result<Merchant>> createMerchant(Merchant merchant);
 
   Future<Result<void>> setStatus(String id, MerchantStatus status);
 
@@ -304,6 +319,33 @@ class SupabaseMerchantRepository implements MerchantRepository {
   }
 
   @override
+  Future<Result<Merchant>> createMerchant(Merchant merchant) {
+    assert(merchant.id.isNotEmpty, 'the caller mints the id — that is the idempotency');
+
+    return Result.guard(() async {
+      try {
+        final saved = await _db
+            .from('merchants')
+            .insert({..._row(merchant), 'id': merchant.id})
+            .select(_readColumns)
+            .single();
+        return _toMerchant(saved);
+      } on PostgrestException catch (error) {
+        // 23505 on the primary key means this exact attempt already landed — the reply
+        // was lost, not the write. Read back what it wrote rather than reporting a
+        // failure for something that succeeded.
+        if (error.code != '23505') rethrow;
+        final existing = await _db
+            .from('merchants')
+            .select(_readColumns)
+            .eq('id', merchant.id)
+            .single();
+        return _toMerchant(existing);
+      }
+    });
+  }
+
+  @override
   Future<Result<Merchant>> saveMerchant(Merchant merchant) {
     if (merchant.id.isEmpty) {
       return Result.guard(() async {
@@ -446,7 +488,11 @@ class FakeMerchantRepository implements MerchantRepository {
   /// Fails only the *writes*. A screen that loads fine and then cannot save is a
   /// different situation from one that never loaded, and it is the one where an
   /// ignored `Result` shows the person something that did not happen.
-  final Failure? saveFailure;
+  ///
+  /// Mutable, because the case worth testing is a write that fails and is then retried:
+  /// a fake that can only be failing or working for its whole life cannot express the
+  /// lost reply that idempotency exists for.
+  Failure? saveFailure;
 
   @override
   Stream<List<Merchant>> watchMerchants({required String cityId}) {
@@ -492,6 +538,44 @@ class FakeMerchantRepository implements MerchantRepository {
       _merchants.values.where((m) => m.cityId == cityId).toList()
         ..sort(_byAttentionThenName),
     );
+  }
+
+  /// Every id this fake was asked to create, repeats included.
+  ///
+  /// The point of [createMerchant] is that a retry adds nothing, and only a record of the
+  /// attempts can show that — a test that counts the shops afterwards passes just as
+  /// happily against a create that overwrote itself.
+  final createAttempts = <String>[];
+
+  /// Holds a create open, so a test can tap the button again while the first is in
+  /// flight. Without it single-flight cannot be tested at all: the fake answers within
+  /// the same frame, and the second tap always lands after the first has finished.
+  bool holdSave = false;
+  Completer<void>? _held;
+
+  /// Lets the held create finish.
+  void releaseSave() {
+    holdSave = false;
+    _held?.complete();
+    _held = null;
+  }
+
+  @override
+  Future<Result<Merchant>> createMerchant(Merchant merchant) async {
+    createAttempts.add(merchant.id);
+    if (holdSave) {
+      _held ??= Completer<void>();
+      await _held!.future;
+    }
+    if (failure != null) return Result.err(failure!);
+    if (saveFailure != null) return Result.err(saveFailure!);
+
+    // The same id twice is the lost-reply case, and it answers with the shop that already
+    // landed rather than adding a second one.
+    if (_merchants[merchant.id] case final existing?) return Result.ok(existing);
+
+    _merchants[merchant.id] = merchant;
+    return Result.ok(merchant);
   }
 
   @override

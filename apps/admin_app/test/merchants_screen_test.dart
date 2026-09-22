@@ -35,6 +35,7 @@ void main() {
     List<Merchant>? seed,
     Map<String, int> orderCounts = const {},
     Failure? countsFail,
+    List<Zone> zones = const [Zone(id: 'z1', cityId: 'edku', name: 'المعمورة')],
     Size size = const Size(1400, 1000),
   }) async {
     tester.view.physicalSize = size;
@@ -68,9 +69,7 @@ void main() {
           merchantRepositoryProvider.overrideWithValue(merchants),
           menuRepositoryProvider.overrideWithValue(menus),
           geographyRepositoryProvider.overrideWithValue(
-            FakeGeographyRepository(zones: const [
-              Zone(id: 'z1', cityId: 'edku', name: 'المعمورة'),
-            ]),
+            FakeGeographyRepository(zones: zones),
           ),
         ],
         child: MaterialApp(
@@ -209,6 +208,111 @@ void main() {
       final saved = await merchants.watchAllMerchants(cityId: 'edku').first;
       expect(saved.where((m) => m.id == 'a'), isEmpty);
     });
+
+  /// Adding a shop, which is what the owner does fifteen times in an afternoon.
+  ///
+  /// The dialog used to pop whichever way the save went, so a shop that was never created
+  /// looked exactly like one that was — and took the name, the number and the zone with
+  /// it. On the connection this is used on, that is the common case rather than the edge.
+  group('adding a shop', () {
+    Future<void> openAdd(WidgetTester tester) async {
+      await tester.tap(find.byKey(MerchantsScreen.addKey));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+          find.byKey(MerchantsScreen.nameFieldKey), 'مطعم جديد');
+      await tester.enterText(
+          find.byKey(MerchantsScreen.phoneFieldKey), '01000000009');
+      await tester.pump();
+    }
+
+    testWidgets('stays open and keeps what was typed when the save fails',
+        (tester) async {
+      await pump(tester);
+      await openAdd(tester);
+      merchants.saveFailure = const OfflineFailure();
+
+      await tester.tap(find.byKey(MerchantsScreen.saveKey));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(MerchantsScreen.saveKey), findsOneWidget,
+          reason: 'the dialog is still there');
+      expect(find.byKey(MerchantsScreen.createErrorKey), findsOneWidget);
+      expect(find.text('مطعم جديد'), findsWidgets,
+          reason: 'and the name has not been thrown away');
+    });
+
+    testWidgets('says which failure it was, not "something went wrong"',
+        (tester) async {
+      await pump(tester);
+      await openAdd(tester);
+      merchants.saveFailure = const PermissionFailure();
+
+      await tester.tap(find.byKey(MerchantsScreen.saveKey));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('مش من حقك'), findsOneWidget);
+    });
+
+    testWidgets('a retry after a lost reply adds one shop, not two',
+        (tester) async {
+      // The idempotency, and the only assertion that can show it: the same id twice.
+      // Counting the shops afterwards passes just as happily against a create that
+      // overwrote itself.
+      await pump(tester);
+      await openAdd(tester);
+      merchants.saveFailure = const OfflineFailure();
+      await tester.tap(find.byKey(MerchantsScreen.saveKey));
+      await tester.pumpAndSettle();
+
+      merchants.saveFailure = null;
+      await tester.tap(find.byKey(MerchantsScreen.saveKey));
+      await tester.pumpAndSettle();
+
+      expect(merchants.createAttempts, hasLength(2), reason: 'it was tried twice');
+      expect(merchants.createAttempts.toSet(), hasLength(1),
+          reason: 'under one id, so the server can refuse the repeat');
+    });
+
+    testWidgets('will not save into a city with no zones', (tester) async {
+      // A shop with no zone cannot be delivered to and has nothing to price a delivery
+      // against. The form used to hide the picker and save an empty string, which the
+      // database refuses — as an error nobody could act on.
+      await pump(tester, zones: const []);
+
+      await tester.tap(find.byKey(MerchantsScreen.addKey));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(MerchantsScreen.noZonesKey), findsOneWidget);
+      expect(
+        tester
+            .widget<FilledButton>(find.byKey(MerchantsScreen.saveKey))
+            .onPressed,
+        isNull,
+      );
+    });
+
+    testWidgets('a second tap while the first is in flight is refused',
+        (tester) async {
+      await pump(tester);
+      await openAdd(tester);
+      merchants.holdSave = true;
+
+      await tester.tap(find.byKey(MerchantsScreen.saveKey));
+      await tester.pump();
+
+      expect(
+        tester
+            .widget<FilledButton>(find.byKey(MerchantsScreen.saveKey))
+            .onPressed,
+        isNull,
+        reason: 'a second shop on a slow connection is exactly what this prevents',
+      );
+
+      merchants.releaseSave();
+      await tester.pumpAndSettle();
+      expect(merchants.createAttempts, hasLength(1));
+    });
+  });
 
     testWidgets('the list asks for the counts once, not once per shop', (tester) async {
       // The N+1 this replaced. A test that only reads the right numbers off the screen

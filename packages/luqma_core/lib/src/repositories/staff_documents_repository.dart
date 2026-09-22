@@ -1,9 +1,9 @@
-import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../models/staff_documents.dart';
+import '../ids.dart';
 import '../result.dart';
 
 /// A courier's identity papers: handing them in, and an admin looking at them.
@@ -90,7 +90,7 @@ class SupabaseStaffDocumentsRepository implements StaffDocumentsRepository {
         Future<String> put(String slot, Uint8List bytes) async {
           // A uuid rather than a fixed name per slot, so replacing a bad photograph
           // cannot leave a reviewer looking at a cached copy of the old one.
-          final path = '$uid/$slot-${_uuid()}.jpg';
+          final path = '$uid/$slot-${luqmaUuid()}.jpg';
           await storage.uploadBinary(
             path,
             bytes,
@@ -170,16 +170,6 @@ class SupabaseStaffDocumentsRepository implements StaffDocumentsRepository {
     );
   }
 
-  /// A v4 uuid, from the same generator `SupabaseMediaRepository` uses.
-  static String _uuid() {
-    final random = Random.secure();
-    final bytes = List<int>.generate(16, (_) => random.nextInt(256));
-    bytes[6] = (bytes[6] & 0x0f) | 0x40;
-    bytes[8] = (bytes[8] & 0x3f) | 0x80;
-    final hex = bytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
-    return '${hex.substring(0, 8)}-${hex.substring(8, 12)}-${hex.substring(12, 16)}'
-        '-${hex.substring(16, 20)}-${hex.substring(20)}';
-  }
 }
 
 /// In-memory papers, for widget tests and for the apps running against fakes.

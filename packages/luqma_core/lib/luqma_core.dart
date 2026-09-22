@@ -76,6 +76,7 @@ export 'src/repositories/staff_documents_repository.dart';
 export 'src/repositories/staff_repository.dart';
 export 'src/repositories/zaatar_repository.dart';
 export 'src/repositories/merchant_repository.dart';
+export 'src/ids.dart';
 export 'src/result.dart';
 export 'src/theme/colors.dart';
 export 'src/theme/dimens.dart';
