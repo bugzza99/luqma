@@ -1,4 +1,4 @@
-// Writes the current definition of every function that migrations patch in place.
+﻿// Writes the current definition of every function that migrations patch in place.
 //
 // E1. `place_order_priced` and its neighbours are amended by `replace()` on their own
 // definition, migration after migration, so the function as it runs exists in full only
@@ -17,6 +17,7 @@ const PATCHED = [
   'place_order', 'place_order_priced', 'check_draft_bounds', 'claim_push_batch',
   'queue_order_status_push', 'guard_columns', 'delete_my_account',
   'admin_delete_account', 'set_staff_active', 'record_commission_payment',
+  'hold_prepaid_credit',
 ];
 
 const db = new pg.Client({ connectionString: process.env.DATABASE_URL,
