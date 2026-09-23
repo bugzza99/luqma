@@ -1,5 +1,6 @@
 // deno-lint-ignore-file
 import { createClient } from 'jsr:@supabase/supabase-js@2';
+import { isDeadToken } from './dead_token.ts';
 
 /**
  * Drains `push_outbox` and hands each row to FCM.
@@ -67,8 +68,6 @@ async function accessToken(sa: { client_email: string; private_key: string }) {
   return body.access_token as string;
 }
 
-/** The codes FCM uses for a token that will never work again. */
-const DEAD = ['UNREGISTERED', 'INVALID_ARGUMENT', 'SENDER_ID_MISMATCH'];
 
 Deno.serve(async (req: Request) => {
   // The only caller is pg_cron. Without this the service role sits behind a public URL.
@@ -196,8 +195,8 @@ Deno.serve(async (req: Request) => {
       }
 
       const body = await res.json().catch(() => ({}));
-      const status = body?.error?.details?.[0]?.errorCode ?? body?.error?.status ?? '';
-      if (DEAD.includes(status)) dead.push(to);
+      // Only an answer about the token prunes it (A14); see dead_token.ts.
+      if (isDeadToken(body)) dead.push(to);
     }
 
     await service.rpc('settle_push', {
