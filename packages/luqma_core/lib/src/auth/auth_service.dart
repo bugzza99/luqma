@@ -482,6 +482,22 @@ class FakeAuthService implements AuthService {
     if (failure != null) return Result.err(failure!);
     // Nothing to refresh, and it has to say so truthfully: a fake that invented new claims
     // would let a screen pass a test the server would fail.
+    //
+    // But a *new object* carrying the same values, because that is what the real one
+    // emits: every GoTrue event builds a fresh `LuqmaIdentity`. Re-emitting the same
+    // instance let Riverpod see nothing change, which is how a courier's write queue could
+    // be torn down and rebuilt on every hourly token refresh with no test noticing.
+    final current = _identity;
+    _identity = current == null
+        ? null
+        : LuqmaIdentity(
+            uid: current.uid,
+            name: current.name,
+            email: current.email,
+            phone: current.phone,
+            photoUrl: current.photoUrl,
+            claims: Map.of(current.claims),
+          );
     _controller.add(_identity);
     return const Result.ok(null);
   }

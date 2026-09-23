@@ -27,6 +27,11 @@ class _OfflineOnce implements CourierOrderRepository {
   /// While true every write is refused the way a dead connection refuses it.
   bool offline = true;
 
+  /// While true every write reaches the database and its reply is lost on the way back —
+  /// "Connection closed before full header was received" — which the app also reads as
+  /// offline.
+  bool dropReplies = false;
+
   int attempts = 0;
 
   Result<void> get _dead => const Result.err(OfflineFailure());
@@ -42,7 +47,8 @@ class _OfflineOnce implements CourierOrderRepository {
   Future<Result<void>> markDelivered(String orderId) async {
     attempts++;
     if (offline) return _dead;
-    return _real.markDelivered(orderId);
+    final result = await _real.markDelivered(orderId);
+    return dropReplies ? _dead : result;
   }
 
   @override
@@ -223,10 +229,14 @@ void main() {
     expect(store.snapshotFor(courierUid), isEmpty);
   });
 
-  test('an order somebody else already finished is refused, not queued for ever',
+  // A delivered order found by a *delivery* from the courier carrying it is their own
+  // write whose reply was lost, and settles — see the test after this one. What is still
+  // refused is a different ending: a return tapped against an order already recorded as
+  // delivered.
+  test('an order already finished another way is refused, not queued for ever',
       () async {
     final orderId = await orderOutForDelivery();
-    // Answered on another phone in the shop, or by the deadline task.
+    // Recorded delivered, from another phone or before the courier changed their mind.
     await courierRepository.markDelivered(orderId);
 
     final queue = CourierWriteQueue(
@@ -235,12 +245,37 @@ void main() {
     );
     addTearDown(queue.dispose);
 
-    final outcome = await queue.markDelivered(orderId);
+    final outcome = await queue.markFailed(orderId, reason: 'العميل رفض الطلب');
 
     expect(outcome, isA<CourierRejected>(),
         reason: 'retrying will not change it, and the courier should be told now');
     expect((outcome as CourierRejected).failure, isA<ConflictFailure>());
     expect(queue.pendingCount, 0);
+  });
+
+  // The request committed and the reply died on the way back, so the app read it as
+  // offline and queued a write the database already had. The replay found the order
+  // delivered and reported «تحديث محصلش — الأوردر اتغيّر» to a courier whose delivery
+  // had gone through.
+  test('a replay of a write that already landed settles instead of rejecting',
+      () async {
+    final orderId = await orderOutForDelivery();
+    final flaky = _OfflineOnce(courierRepository)
+      ..offline = false
+      ..dropReplies = true;
+    final queue = CourierWriteQueue(flaky, accountId: courierUid);
+    addTearDown(queue.dispose);
+
+    expect(await queue.markDelivered(orderId), isA<CourierQueued>());
+    expect(await statusOf(orderId), 'delivered',
+        reason: 'the write landed; only the answer was lost');
+
+    flaky.dropReplies = false;
+    await queue.flush();
+
+    expect(queue.pending, isEmpty);
+    expect(queue.rejected, isEmpty,
+        reason: 'the replay found this courier\'s own delivery, not somebody else\'s');
   });
 
   test('a failed delivery keeps its reason across the queue', () async {
@@ -292,16 +327,20 @@ void main() {
   // Dropping it is right: retrying a conflict for ever is noise. Dropping it *silently*
   // is not. The count on the banner falls by one, the courier reads that as sent, and
   // the cash in their pocket is against an order the system says nobody delivered.
+  //
+  // The order is finished here by the same courier's account, with a *different* ending
+  // from the one queued: a replay of the same ending by the courier carrying it is their
+  // own lost reply and settles, so it can no longer stand in for somebody else.
   test('a queued write refused on replay is reported, not silently dropped', () async {
     final orderId = await orderOutForDelivery();
     final flaky = _OfflineOnce(courierRepository);
     final queue = CourierWriteQueue(flaky, accountId: courierUid);
     addTearDown(queue.dispose);
 
-    await queue.markDelivered(orderId);
+    await queue.markFailed(orderId, reason: 'العميل رفض الطلب');
     expect(queue.pendingCount, 1);
 
-    // While the courier had no signal, the order was finished by somebody else.
+    // While the courier had no signal, the order was recorded as delivered.
     await courierRepository.markDelivered(orderId);
 
     flaky.offline = false;
@@ -311,7 +350,7 @@ void main() {
     expect(queue.rejected, hasLength(1),
         reason: 'but the courier has to be told it never landed');
     expect(queue.rejected.single.orderId, orderId);
-    expect(queue.rejected.single.kind, CourierWriteKind.delivered);
+    expect(queue.rejected.single.kind, CourierWriteKind.failed);
   });
 
   test('and clearing what was reported empties it', () async {
@@ -320,13 +359,13 @@ void main() {
     final queue = CourierWriteQueue(flaky, accountId: courierUid);
     addTearDown(queue.dispose);
 
-    await queue.markDelivered(orderId);
+    await queue.markFailed(orderId, reason: 'العميل رفض الطلب');
     await courierRepository.markDelivered(orderId);
     flaky.offline = false;
     await queue.flush();
     expect(queue.rejected, isNotEmpty);
 
-    queue.clearRejected();
+    await queue.clearRejected();
     expect(queue.rejected, isEmpty,
         reason: 'the courier has read it; it must not stay on the screen for ever');
   });

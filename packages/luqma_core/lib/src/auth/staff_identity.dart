@@ -81,6 +81,28 @@ class StaffIdentity {
 
   bool get isSignedIn => uid != null;
 
+  /// Equal when every field is, because what this is compared for is "did anything a
+  /// screen reads change".
+  ///
+  /// `staffIdentityProvider` builds a new one on every GoTrue event, and a token refresh
+  /// is one — hourly on its own, and on every resume. Riverpod filters updates with `==`,
+  /// so without this every refresh read as a new person: whatever was built from the
+  /// identity was torn down and rebuilt with the same account, which for the courier's
+  /// write queue meant two queues replaying the same cash writes and the «محصلش» banner
+  /// disappearing by itself.
+  @override
+  bool operator ==(Object other) =>
+      other is StaffIdentity &&
+      other.uid == uid &&
+      other.email == email &&
+      other.role == role &&
+      other.scope == scope &&
+      other.merchantId == merchantId &&
+      other.isAdmin == isAdmin;
+
+  @override
+  int get hashCode => Object.hash(uid, email, role, scope, merchantId, isAdmin);
+
   static StaffIdentity from(LuqmaIdentity? identity) {
     if (identity == null) return none;
 

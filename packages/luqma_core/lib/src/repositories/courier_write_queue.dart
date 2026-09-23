@@ -57,40 +57,74 @@ class PendingCourierWrite {
       );
 }
 
-/// Where the queue's pending writes live between launches.
+/// Everything one account's queue keeps between launches.
+///
+/// The refused writes travel with the pending ones because both are promises to the
+/// courier: one that a tap is still coming, the other that they will be told it never
+/// arrived. Kept only in memory, the second was broken by any app kill — the «محصلش»
+/// banner vanished with the process, and the cash for that order was still in their
+/// pocket.
+class StoredCourierWrites {
+  const StoredCourierWrites({this.pending = const [], this.rejected = const []});
+
+  static const empty = StoredCourierWrites();
+
+  final List<PendingCourierWrite> pending;
+  final List<PendingCourierWrite> rejected;
+
+  bool get isEmpty => pending.isEmpty && rejected.isEmpty;
+}
+
+/// Where the queue's writes live between launches.
 ///
 /// An interface so the queue is testable without a device and so the store can be
 /// swapped (shared_preferences on the phone, memory in a test). The account travels
 /// with each call because the phone store exists before there is a signed-in identity;
 /// putting it in the store constructor would make start-up guess who will use it.
+///
+/// One call writes both lists, so they are one record on disk and cannot be half-saved.
 abstract interface class CourierWriteStore {
-  Future<List<PendingCourierWrite>> load({required String accountId});
+  Future<StoredCourierWrites> load({required String accountId});
   Future<void> save({
     required String accountId,
     required List<PendingCourierWrite> pending,
+    required List<PendingCourierWrite> rejected,
   });
 }
 
 /// An in-memory store for tests.
 class InMemoryCourierWriteStore implements CourierWriteStore {
-  final Map<String, List<PendingCourierWrite>> _pendingByAccount = {};
+  final Map<String, StoredCourierWrites> _byAccount = {};
 
   List<PendingCourierWrite> snapshotFor(String accountId) =>
-      List.unmodifiable(_pendingByAccount[accountId] ?? const []);
+      List.unmodifiable(_byAccount[accountId]?.pending ?? const []);
+
+  List<PendingCourierWrite> rejectedSnapshotFor(String accountId) =>
+      List.unmodifiable(_byAccount[accountId]?.rejected ?? const []);
 
   @override
-  Future<List<PendingCourierWrite>> load({required String accountId}) async =>
-      List.of(_pendingByAccount[accountId] ?? const []);
+  Future<StoredCourierWrites> load({required String accountId}) async {
+    final stored = _byAccount[accountId];
+    if (stored == null) return StoredCourierWrites.empty;
+    return StoredCourierWrites(
+      pending: List.of(stored.pending),
+      rejected: List.of(stored.rejected),
+    );
+  }
 
   @override
   Future<void> save({
     required String accountId,
     required List<PendingCourierWrite> pending,
+    required List<PendingCourierWrite> rejected,
   }) async {
-    if (pending.isEmpty) {
-      _pendingByAccount.remove(accountId);
+    if (pending.isEmpty && rejected.isEmpty) {
+      _byAccount.remove(accountId);
     } else {
-      _pendingByAccount[accountId] = List.of(pending);
+      _byAccount[accountId] = StoredCourierWrites(
+        pending: List.of(pending),
+        rejected: List.of(rejected),
+      );
     }
   }
 }
@@ -199,7 +233,8 @@ class CourierWriteQueue {
   /// standing in the street with the cash for that order.
   final List<PendingCourierWrite> _rejected = [];
 
-  bool _loaded = false;
+  /// The read of the store, once started — kept so every caller waits for the same one.
+  Future<void>? _loading;
 
   final _changed = StreamController<void>.broadcast();
 
@@ -211,11 +246,14 @@ class CourierWriteQueue {
   /// What a replay could not land. Cleared by [clearRejected] once it has been shown.
   List<PendingCourierWrite> get rejected => List.unmodifiable(_rejected);
 
-  /// The courier has read it.
-  void clearRejected() {
+  /// The courier has read it — and it is gone from the store too, or it would be back on
+  /// the screen at the next launch.
+  Future<void> clearRejected() async {
+    await load();
     if (_rejected.isEmpty) return;
     _rejected.clear();
     _notify();
+    await _persist();
   }
 
   /// Emits when the pending set changes, so the screen can show the honest
@@ -223,10 +261,29 @@ class CourierWriteQueue {
   Stream<void> get changes => _changed.stream;
 
   /// Loads persisted writes. Called once, before the first read of [pending].
-  Future<void> load() async {
-    if (_loaded) return;
-    _loaded = true;
-    _pending.addAll(await _store.load(accountId: accountId));
+  ///
+  /// Every caller waits for the same read, including one that arrives while it is still
+  /// in progress. A flag set before the read finished told a second caller the queue was
+  /// loaded while it still held nothing: after a cold start the first tap sent a delivery
+  /// straight past the start stored for the same order, and its `_persist` saved a list
+  /// without the stored writes over the one that had them.
+  ///
+  /// A read that fails is not remembered. Latching it would leave a queue that believes
+  /// itself loaded and empty, and the next tap would save that emptiness over writes that
+  /// are still on the disk — the courier's cash, lost to one bad read. So the failure
+  /// reaches this caller, and the next caller reads the store again.
+  Future<void> load() => _loading ??= _read().then(
+        (_) {},
+        onError: (Object error, StackTrace stack) {
+          _loading = null;
+          Error.throwWithStackTrace(error, stack);
+        },
+      );
+
+  Future<void> _read() async {
+    final stored = await _store.load(accountId: accountId);
+    _pending.addAll(stored.pending);
+    _rejected.addAll(stored.rejected);
   }
 
   Future<CourierSubmitOutcome> markOnTheWay(
@@ -255,6 +312,32 @@ class CourierWriteQueue {
 
   Future<CourierSubmitOutcome> _submit(PendingCourierWrite write) async {
     await load();
+
+    // Behind anything already waiting for the same order, never ahead of it. «بدأت
+    // التوصيل» queued in a stairwell and «تم التسليم» tapped at the door with signal: sent
+    // at once, the delivery reached an order the server still had as `preparing`, was
+    // refused, and was not even kept — the tap that records the cash, lost, while the
+    // start sat in the queue waiting to be replayed. The queue is the order the courier
+    // did things in, and an order's writes only make sense in that order.
+    //
+    // Queued, and then tried at once rather than left to the drain: the drain may be
+    // backed off for minutes, and a courier at the door with the signal back should not
+    // be told «هيتبعت أول ما النت يرجع» about a network that has already returned. The
+    // flush replays this order oldest first, so the start still goes before the
+    // delivery; with no signal the start fails offline and the delivery waits behind it.
+    if (_pending.any((w) => w.orderId == write.orderId)) {
+      _pending.add(write);
+      await _persist();
+      _notify();
+      await flush();
+      if (_rejected.contains(write)) {
+        return const CourierRejected(ConflictFailure());
+      }
+      return _pending.contains(write)
+          ? const CourierQueued()
+          : const CourierSubmitted();
+    }
+
     final result = await _perform(write);
     if (result case Err(:final failure) when failure is OfflineFailure) {
       _pending.add(write);
@@ -268,11 +351,23 @@ class CourierWriteQueue {
     return const CourierSubmitted();
   }
 
+  /// The pass in progress, which a second caller joins rather than starting another.
+  Future<void>? _flushing;
+
   /// Replays the queue, oldest first. A write that fails offline again stays queued; a
   /// write that fails for any other reason is not retried — retrying a conflict for ever
   /// is noise, and the order has already moved on — but it lands in [rejected] rather
   /// than vanishing, because the courier was promised it would be sent.
-  Future<void> flush() async {
+  ///
+  /// One pass at a time, whoever asks. The drain had its own guard and the «حاول تاني»
+  /// button went round it, so a tap during a timer drain made two passes over the same
+  /// snapshot: every write sent twice, and the second copy refused and reported as
+  /// «محصلش» for a delivery that had landed. The guard lives here now, where every
+  /// caller has to pass through it.
+  Future<void> flush() =>
+      _flushing ??= _flushOnce().whenComplete(() => _flushing = null);
+
+  Future<void> _flushOnce() async {
     await load();
     if (_pending.isEmpty) return;
 
@@ -287,10 +382,20 @@ class CourierWriteQueue {
     // this class exists to prevent, arriving through the code that prevents it.
     final attempted = List.of(_pending);
     final stillWaiting = <PendingCourierWrite>[];
+
+    // Orders whose earlier write could not be sent this pass. Everything after it for the
+    // same order waits too, in place: a delivery sent past its unsent start reaches an
+    // order that has not left the kitchen, is refused, and is reported as «محصلش».
+    final held = <String>{};
     for (final write in attempted) {
+      if (held.contains(write.orderId)) {
+        stillWaiting.add(write);
+        continue;
+      }
       final result = await _perform(write);
       if (result case Err(:final failure) when failure is OfflineFailure) {
         stillWaiting.add(write);
+        held.add(write.orderId);
       } else if (result case Err()) {
         _rejected.add(write);
       }
@@ -322,6 +427,7 @@ class CourierWriteQueue {
   Future<void> _persist() => _store.save(
         accountId: accountId,
         pending: List.of(_pending),
+        rejected: List.of(_rejected),
       );
 
   void _notify() {

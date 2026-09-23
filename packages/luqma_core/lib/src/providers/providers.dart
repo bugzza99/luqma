@@ -1,6 +1,8 @@
 import 'package:flutter/foundation.dart';
 import 'dart:async';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
+// For `select`, which `riverpod_annotation` does not re-export.
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../auth/auth_service.dart';
 import '../auth/staff_identity.dart';
@@ -518,6 +520,12 @@ CourierWriteStore courierWriteStore(Ref ref) => InMemoryCourierWriteStore();
 /// changing couriers is ordinary, and the writes held here are cash already collected —
 /// replaying one courier's under another's name is the failure this watch prevents.
 ///
+/// **The account id, and nothing else.** Watching the whole identity rebuilt the queue on
+/// every token refresh — hourly, and on every resume — for the same account, while the
+/// old one might still be flushing: two queues replaying the same writes, whichever saved
+/// last deciding what was on disk, and the refused-writes banner vanishing with the old
+/// instance. A new queue is right for a new person and wrong for a new token.
+///
 /// Throwing rather than falling back to some placeholder account is deliberate, and it
 /// is unreachable by construction: every reader is inside `CourierScreen`, which
 /// MerchantApp's gate only builds for a signed-in `StaffRole.courier`. If that ever
@@ -525,7 +533,7 @@ CourierWriteStore courierWriteStore(Ref ref) => InMemoryCourierWriteStore();
 /// between people.
 @Riverpod(keepAlive: true)
 CourierWriteQueue courierWriteQueue(Ref ref) {
-  final accountId = ref.watch(staffIdentityProvider).uid;
+  final accountId = ref.watch(staffIdentityProvider.select((staff) => staff.uid));
   if (accountId == null) {
     throw StateError('A courier write queue needs a signed-in staff account.');
   }

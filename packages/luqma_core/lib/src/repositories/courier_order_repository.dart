@@ -55,10 +55,47 @@ abstract interface class CourierOrderRepository {
 
 /// What a courier has on their hands: ready to collect, or already out.
 const _onTheRun = [OrderStatus.preparing, OrderStatus.outForDelivery];
+
+/// Whether [order] is already where a write moving it [to] would put it, because
+/// [courierUid] put it there.
+///
+/// A reply that dies on the way back — "Connection closed before full header was
+/// received", a timeout — reaches the app as `OfflineFailure`, so the courier's queue
+/// holds a write that has already committed. Its replay then finds the order at the
+/// target status, and calling that a conflict told a courier with the cash in their
+/// pocket «تحديث محصلش — الأوردر اتغيّر. كلّم الإدارة» about a delivery that went through.
+///
+/// "Put there by this courier" is read the way `is_courier_for_order` reads it: their
+/// name on the order, or — on a shop's own order that the shop sent out with nobody's
+/// name on it — no name at all, which any rider the shop has attached may deliver and
+/// which the row does not tell apart afterwards. A platform order is never delivered
+/// without a name (`20261101020000`), so a nameless one is nobody's to claim. Leaving
+/// a finished order as it is, is all this ever does: nothing is written on its strength.
+///
+/// One rule, shared by the real repository and the fake, so the two cannot come to
+/// disagree about which replay settles.
+bool _alreadyLanded(Order order, OrderStatus to, {required String? courierUid}) {
+  if (courierUid == null || order.status != to) return false;
+  final carried = order.courierUid == courierUid ||
+      (order.courierUid == null && order.deliveryBy == DeliveryBy.merchant);
+  return switch (to) {
+    // `markOnTheWay` writes the name in the same update, so its own write left the name.
+    OrderStatus.outForDelivery => order.courierUid == courierUid,
+    OrderStatus.delivered => carried,
+    // A return somebody else recorded — the shop, an admin — is theirs, not a lost reply.
+    OrderStatus.cancelled => carried && order.cancelledBy == OrderActor.courier,
+    _ => false,
+  };
+}
 class SupabaseCourierOrderRepository implements CourierOrderRepository {
-  SupabaseCourierOrderRepository(this._db);
+  /// [currentUid] is who is signed in, and defaults to the session's user. It is a
+  /// parameter only so a test with no session can say which courier is asking.
+  SupabaseCourierOrderRepository(this._db, {this._currentUid});
 
   final SupabaseClient _db;
+  final String? Function()? _currentUid;
+
+  String? get _me => _currentUid != null ? _currentUid() : _db.auth.currentUser?.id;
 
   Order _toOrder(Map<String, dynamic> row) {
     final model = ColumnNames.toModel(row);
@@ -149,24 +186,41 @@ class SupabaseCourierOrderRepository implements CourierOrderRepository {
   /// Reads the order and checks the move as a courier would make it. The same rules are
   /// enforced again in the policies; this copy exists so the app can hide a button
   /// rather than offer an action that is about to be refused.
-  Future<Order> _checked(String orderId, OrderStatus to) async {
+  ///
+  /// False when there is nothing to write because [courierUid]'s own earlier write of
+  /// this move already landed — see [_alreadyLanded].
+  Future<bool> _checked(
+    String orderId,
+    OrderStatus to, {
+    required String? courierUid,
+  }) async {
     final row = await _rowOf(orderId);
     if (row == null) throw const NotFoundFailure();
 
     final order = _toOrder(row);
+    if (_alreadyLanded(order, to, courierUid: courierUid)) return false;
     if (!order.status.canMoveTo(to, by: OrderActor.courier)) {
       throw const ConflictFailure();
     }
-    return order;
+    return true;
   }
+
+  /// What `guardWrite` is handed when the write had already landed: the row it would
+  /// have changed, so the answer is the success it is rather than "nothing matched".
+  List<Map<String, dynamic>> _landed(String orderId) => [
+        {'id': orderId},
+      ];
 
   @override
   Future<Result<void>> markOnTheWay(
     String orderId, {
     required String courierUid,
   }) {
-    return Result.guardWrite(() async {
-      await _checked(orderId, OrderStatus.outForDelivery);
+    return Result.guardWrite<void, Map<String, dynamic>>(() async {
+      if (!await _checked(orderId, OrderStatus.outForDelivery,
+          courierUid: courierUid)) {
+        return _landed(orderId);
+      }
 
       // Written in the same breath as the status. It is what keeps a platform courier
       // able to read the order afterwards, and what tells a customer who is holding
@@ -180,8 +234,10 @@ class SupabaseCourierOrderRepository implements CourierOrderRepository {
 
   @override
   Future<Result<void>> markDelivered(String orderId) {
-    return Result.guardWrite(() async {
-      await _checked(orderId, OrderStatus.delivered);
+    return Result.guardWrite<void, Map<String, dynamic>>(() async {
+      if (!await _checked(orderId, OrderStatus.delivered, courierUid: _me)) {
+        return _landed(orderId);
+      }
 
       return _db.from('orders').update({
         'status': OrderStatus.delivered.name,
@@ -192,11 +248,13 @@ class SupabaseCourierOrderRepository implements CourierOrderRepository {
 
   @override
   Future<Result<void>> markFailed(String orderId, {required String reason}) {
-    return Result.guardWrite(() async {
+    return Result.guardWrite<void, Map<String, dynamic>>(() async {
       final trimmed = reason.trim();
       if (trimmed.isEmpty) throw const ConflictFailure();
 
-      await _checked(orderId, OrderStatus.cancelled);
+      if (!await _checked(orderId, OrderStatus.cancelled, courierUid: _me)) {
+        return _landed(orderId);
+      }
 
       return _db.from('orders').update({
         'status': OrderStatus.cancelled.name,
@@ -372,13 +430,15 @@ class FakeCourierOrderRepository implements CourierOrderRepository {
   @override
   Future<Result<void>> markOnTheWay(String orderId, {required String courierUid}) =>
       _move(orderId, OrderStatus.outForDelivery,
-          (o) => o.copyWith(courierUid: courierUid));
+          (o) => o.copyWith(courierUid: courierUid),
+          by: courierUid);
 
   @override
   Future<Result<void>> markDelivered(String orderId) => _move(
         orderId,
         OrderStatus.delivered,
         (o) => o.copyWith(deliveredAt: _now()),
+        by: courierUid,
       );
 
   @override
@@ -391,23 +451,37 @@ class FakeCourierOrderRepository implements CourierOrderRepository {
         cancelReason: reason.trim(),
         cancelledBy: OrderActor.courier,
       ),
+      by: courierUid,
     );
   }
 
   Future<Result<void>> _move(
     String orderId,
     OrderStatus to,
-    Order Function(Order order) apply,
-  ) async {
+    Order Function(Order order) apply, {
+    required String? by,
+  }) async {
     if (failure != null) return Result.err(failure!);
 
     final order = _orders[orderId];
     if (order == null) return const Result.err(NotFoundFailure());
+    // The same rule as the real pre-check: this courier's own write, landed already.
+    if (_alreadyLanded(order, to, courierUid: by)) return const Result.ok(null);
     if (!order.status.canMoveTo(to, by: OrderActor.courier)) {
       return const Result.err(ConflictFailure());
     }
+    // A platform order goes out and is delivered only with a courier on it. The server
+    // refuses otherwise with a check violation, which reaches the app as a validation
+    // failure — and a fake that allowed it would let a screen pass against a state
+    // production cannot reach.
+    final moved = apply(order);
+    if (order.deliveryBy == DeliveryBy.platform &&
+        (to == OrderStatus.outForDelivery || to == OrderStatus.delivered) &&
+        moved.courierUid == null) {
+      return const Result.err(ValidationFailure());
+    }
 
-    _orders[orderId] = apply(order).copyWith(status: to);
+    _orders[orderId] = moved.copyWith(status: to);
     _updatedAt[orderId] = _now();
     _notify();
     return const Result.ok(null);

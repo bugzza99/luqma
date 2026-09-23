@@ -138,20 +138,51 @@ void main() {
             'as out');
   });
 
-  test('flushing twice at once does not throw', () async {
+  // Not throwing was never the bar. The «حاول تاني» button called `flush` straight past
+  // the drain's guard, so a tap during a timer drain made two passes over one snapshot:
+  // every write sent twice, and the second copy of each refused as a conflict and shown
+  // to the courier as «محصلش» — for deliveries that had landed.
+  test('two concurrent flushes send each write once', () async {
     final store = InMemoryCourierWriteStore();
     final offline = CourierWriteQueue(_Dead(), accountId: 'c1', store: store);
     await offline.markDelivered('o1');
     await offline.markDelivered('o2');
     offline.dispose();
 
-    final queue = CourierWriteQueue(_Slow(), accountId: 'c1', store: store);
+    final server = _Counting({'o1': OrderStatus.outForDelivery, 'o2': OrderStatus.outForDelivery});
+    final queue = CourierWriteQueue(server, accountId: 'c1', store: store);
     addTearDown(queue.dispose);
     await queue.load();
 
-    // A connectivity listener that fires twice in quick succession is ordinary.
+    // A connectivity listener that fires twice in quick succession is ordinary, and so is
+    // a courier pressing retry while the timer is already draining.
     await Future.wait([queue.flush(), queue.flush()]);
 
+    expect(server.calls, {'o1': 1, 'o2': 1},
+        reason: 'one tap is one request, however many flushes overlap');
     expect(queue.pending, isEmpty);
+    expect(queue.rejected, isEmpty);
+    expect(server.status, {'o1': OrderStatus.delivered, 'o2': OrderStatus.delivered});
   });
+}
+
+/// A server that counts every write and applies the courier's transitions, so a second
+/// copy of the same delivery is refused the way the database refuses it.
+class _Counting extends _Dead {
+  _Counting(Map<String, OrderStatus> seed) : status = Map.of(seed);
+
+  final Map<String, OrderStatus> status;
+  final calls = <String, int>{};
+
+  @override
+  Future<Result<void>> markDelivered(String orderId) async {
+    calls[orderId] = (calls[orderId] ?? 0) + 1;
+    // The network gap, where an overlapping pass gets its turn.
+    await Future<void>.delayed(Duration.zero);
+    if (!status[orderId]!.canMoveTo(OrderStatus.delivered, by: OrderActor.courier)) {
+      return const Result.err(ConflictFailure());
+    }
+    status[orderId] = OrderStatus.delivered;
+    return const Result.ok(null);
+  }
 }

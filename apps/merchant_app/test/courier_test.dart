@@ -97,6 +97,7 @@ void main() {
   late FakeExternalLinks links;
   late FakeMerchantRepository merchantRepo;
   late FakeStaffRepository staffRepo;
+  late FakeAuthService auth;
   late DateTime clockTime;
 
   Future<void> pump(
@@ -114,6 +115,7 @@ void main() {
     Failure? merchantFailure,
     DateTime? pausedUntil,
     DateTime? now,
+    CourierWriteStore? store,
   }) async {
     tester.view.physicalSize = const Size(1080, 2340);
     tester.view.devicePixelRatio = 3;
@@ -158,14 +160,13 @@ void main() {
       failure: merchantFailure,
     );
 
+    auth = FakeAuthService(restoring: LuqmaIdentity(uid: 'c1', claims: claims));
+
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
-          authServiceProvider.overrideWithValue(
-            FakeAuthService(
-              restoring: LuqmaIdentity(uid: 'c1', claims: claims),
-            ),
-          ),
+          authServiceProvider.overrideWithValue(auth),
+          if (store != null) courierWriteStoreProvider.overrideWithValue(store),
           courierOrderRepositoryProvider.overrideWithValue(deliveries),
           merchantRepositoryProvider.overrideWithValue(merchantRepo),
           geographyRepositoryProvider
@@ -947,6 +948,74 @@ void main() {
     });
   });
 
+  // On a shared shop handset the only way off a courier account was Android's "Clear
+  // storage" — which deletes the very cash writes the queue exists to keep.
+  group('signing out of courier mode', () {
+    Future<void> tapSignOut(WidgetTester tester) async {
+      await tester.tap(find.byKey(CourierScreen.signOutKey));
+      await tester.pumpAndSettle();
+    }
+
+    Future<void> deliverOffline(WidgetTester tester) async {
+      deliveries.failure = const OfflineFailure();
+      await tester.tap(find.byKey(CourierScreen.deliveredKey('o1')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('اه، تم'));
+      await tester.pumpAndSettle();
+      expect(find.byKey(CourierScreen.pendingKey), findsOneWidget);
+    }
+
+    testWidgets('courier mode has a sign-out', (tester) async {
+      await pump(tester, seed: [order()]);
+
+      await tapSignOut(tester);
+      expect(find.byKey(CourierScreen.unsentWarningKey), findsNothing,
+          reason: 'nothing is waiting, so there is nothing to warn about');
+      await tester.tap(find.byKey(CourierScreen.confirmSignOutKey));
+      await tester.pumpAndSettle();
+
+      expect(auth.state, AuthState.signedOut);
+    });
+
+    testWidgets('with pending writes it warns first', (tester) async {
+      await pump(
+        tester,
+        seed: [order(status: OrderStatus.outForDelivery, courierUid: 'c1')],
+      );
+      await deliverOffline(tester);
+
+      await tapSignOut(tester);
+
+      expect(find.byKey(CourierScreen.unsentWarningKey), findsOneWidget);
+      expect(find.textContaining('1 تحديث'), findsWidgets);
+
+      // Changing their mind leaves them where they were.
+      await tester.tap(find.text('لا'));
+      await tester.pumpAndSettle();
+      expect(auth.state, AuthState.signedIn);
+    });
+
+    testWidgets('signing out keeps the stored writes', (tester) async {
+      final store = InMemoryCourierWriteStore();
+      await pump(
+        tester,
+        seed: [order(status: OrderStatus.outForDelivery, courierUid: 'c1')],
+        store: store,
+      );
+      await deliverOffline(tester);
+      expect(store.snapshotFor('c1'), hasLength(1));
+
+      await tapSignOut(tester);
+      await tester.tap(find.byKey(CourierScreen.confirmSignOutKey));
+      await tester.pumpAndSettle();
+
+      expect(auth.state, AuthState.signedOut);
+      expect(store.snapshotFor('c1'), hasLength(1),
+          reason: 'they wait for this account on this phone, as the dialog promised');
+      expect(deliveries['o1']!.status, OrderStatus.outForDelivery);
+    });
+  });
+
   group('the durable queue store', () {
     late SharedPreferencesAsyncPlatform? previousPlatform;
     late SharedPreferencesAsync prefs;
@@ -968,15 +1037,61 @@ void main() {
     tearDown(() => SharedPreferencesAsyncPlatform.instance = previousPlatform);
 
     test('an account gets a versioned envelope of only its own writes', () async {
-      await store.save(accountId: 'c1', pending: const [delivered]);
+      await store.save(
+        accountId: 'c1',
+        pending: const [delivered],
+        rejected: const [],
+      );
 
-      expect(await store.load(accountId: 'c2'), isEmpty);
-      expect(await store.load(accountId: 'c1'), hasLength(1));
+      expect((await store.load(accountId: 'c2')).isEmpty, isTrue);
+      expect((await store.load(accountId: 'c1')).pending, hasLength(1));
 
-      final raw = await prefs.getString('courier_write_queue.account.c1.v1');
+      final raw = await prefs.getString('courier_write_queue.account.c1.v2');
       final envelope = jsonDecode(raw!) as Map<String, dynamic>;
-      expect(envelope['version'], 1);
+      expect(envelope['version'], 2);
       expect(envelope['writes'], hasLength(1));
+      expect(envelope['rejected'], isEmpty);
+    });
+
+    // The «محصلش» banner is the courier being told a tap never landed, and the cash for
+    // it is in their pocket. Kept only in memory, it went with the first app kill.
+    test('rejected writes survive a reload from the store', () async {
+      await store.save(
+        accountId: 'c1',
+        pending: const [],
+        rejected: const [delivered],
+      );
+
+      final reloaded =
+          await SharedPreferencesCourierWriteStore(prefs: prefs).load(accountId: 'c1');
+
+      expect(reloaded.pending, isEmpty);
+      expect(reloaded.rejected.single.orderId, 'o1');
+    });
+
+    // A phone upgrading from the build before refused writes were stored has its queued
+    // cash writes under the version-1 key. They are this courier's, and they come along.
+    test('a store written by the previous version loads its pending writes', () async {
+      await prefs.setString(
+        'courier_write_queue.account.c1.v1',
+        jsonEncode({
+          'version': 1,
+          'writes': [delivered.toJson()],
+        }),
+      );
+
+      final loaded = await store.load(accountId: 'c1');
+
+      expect(loaded.pending.single.orderId, 'o1');
+      expect(loaded.rejected, isEmpty);
+      // Moved, not copied: a later save must not leave the old writes behind to be
+      // loaded a second time.
+      expect(await prefs.getString('courier_write_queue.account.c1.v1'), isNull);
+      expect(
+        (await store.load(accountId: 'c1')).pending.single.orderId,
+        'o1',
+      );
+      expect((await store.load(accountId: 'c2')).isEmpty, isTrue);
     });
 
     test('the signed-in account claims the old bare list once', () async {
@@ -985,32 +1100,36 @@ void main() {
 
       final migrated = await store.load(accountId: 'c1');
 
-      expect(migrated.single.orderId, 'o1');
+      expect(migrated.pending.single.orderId, 'o1');
       expect(await prefs.getString('courier_write_queue'), isNull);
 
       // Even an interrupted removal or an old build putting the key back cannot make
       // cash writes that were claimed by one courier appear under the next courier.
       await prefs.setString('courier_write_queue', legacy);
-      expect(await store.load(accountId: 'c2'), isEmpty);
-      expect(await store.load(accountId: 'c1'), hasLength(1));
+      expect((await store.load(accountId: 'c2')).isEmpty, isTrue);
+      expect((await store.load(accountId: 'c1')).pending, hasLength(1));
     });
 
     test('a newer schema survives this build saving its own queue', () async {
-      const futureKey = 'courier_write_queue.account.c1.v2';
+      const futureKey = 'courier_write_queue.account.c1.v3';
       final futureRaw = jsonEncode({
-        'version': 2,
+        'version': 3,
         'writes': [
           {'futureOrder': 'o2'},
         ],
       });
       await prefs.setString(futureKey, futureRaw);
 
-      expect(await store.load(accountId: 'c1'), isEmpty);
-      await store.save(accountId: 'c1', pending: const [delivered]);
+      expect((await store.load(accountId: 'c1')).isEmpty, isTrue);
+      await store.save(
+        accountId: 'c1',
+        pending: const [delivered],
+        rejected: const [],
+      );
 
       expect(await prefs.getString(futureKey), futureRaw);
       expect(
-        await prefs.getString('courier_write_queue.account.c1.v1'),
+        await prefs.getString('courier_write_queue.account.c1.v2'),
         isNotNull,
       );
     });

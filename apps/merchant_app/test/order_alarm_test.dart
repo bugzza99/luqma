@@ -33,28 +33,28 @@ void main() {
 
   late FakeAlarm alarm;
   late FakeMerchantOrderRepository orders;
+  late FakeAuthService auth;
   late ProviderContainer container;
 
   ProviderContainer containerWith({List<Order> seed = const []}) {
     alarm = FakeAlarm();
     orders = FakeMerchantOrderRepository(seed: seed);
+    auth = FakeAuthService(
+      restoring: const LuqmaIdentity(
+        uid: 'owner1',
+        claims: {
+          'role': 'owner',
+          'scope': 'merchant',
+          'merchantId': 'm1',
+        },
+      ),
+    );
 
     final c = ProviderContainer(
       overrides: [
         alarmProvider.overrideWithValue(alarm),
         merchantOrderRepositoryProvider.overrideWithValue(orders),
-        authServiceProvider.overrideWithValue(
-          FakeAuthService(
-            restoring: const LuqmaIdentity(
-              uid: 'owner1',
-              claims: {
-                'role': 'owner',
-                'scope': 'merchant',
-                'merchantId': 'm1',
-              },
-            ),
-          ),
-        ),
+        authServiceProvider.overrideWithValue(auth),
       ],
     );
     addTearDown(c.dispose);
@@ -188,6 +188,22 @@ void main() {
 
       // The list re-emits for reasons of its own; nothing about the order changed.
       await orders.touch();
+      await settle();
+
+      expect(alarm.isPlaying, isFalse);
+      expect(alarm.starts, 1);
+    });
+
+    // GoTrue emits a new identity on every token refresh — hourly, and on every resume.
+    // The alarm was built from the whole identity, so each refresh rebuilt it, and an
+    // order the merchant had already silenced would ring again for no reason at all.
+    test('a token refresh does not ring an order already acknowledged', () async {
+      container = containerWith(seed: [order()]);
+      await settle();
+      container.read(orderAlarmProvider.notifier).acknowledge();
+      await settle();
+
+      await auth.refreshSession();
       await settle();
 
       expect(alarm.isPlaying, isFalse);

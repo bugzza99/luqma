@@ -1,5 +1,10 @@
+import 'dart:convert';
+
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 import 'package:luqma_core/luqma_core.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 void main() {
   const address = Address(
@@ -444,6 +449,139 @@ void main() {
 
       final result = await repo.daySummary();
       expect(result.failureOrNull, isA<OfflineFailure>());
+    });
+  });
+
+  /// The real pre-check, with the database replaced by a canned row. A reply that died on
+  /// the way back leaves a write queued that has already committed; its replay reads the
+  /// order where that write put it, and until now called that a conflict.
+  group('a replay of a write that already landed settles instead of rejecting', () {
+    Map<String, dynamic> row({
+      required String status,
+      String? courierUid,
+      String deliveryBy = 'merchant',
+      String? cancelledBy,
+    }) =>
+        {
+          'id': 'o1',
+          'city_id': 'edku',
+          'order_number': 101,
+          'customer_uid': 'u1',
+          'customer_name': 'أحمد',
+          'customer_phone': '01000000000',
+          'merchant_id': 'm1',
+          'merchant_name': 'مطعم',
+          'zone_id': 'z1',
+          'delivery_by': deliveryBy,
+          'type': 'instant',
+          'items': <Object>[],
+          'pricing': {'subtotal': 5000, 'deliveryFee': 1000, 'total': 6000},
+          'status': status,
+          'courier_uid': courierUid,
+          'cancelled_by': cancelledBy,
+        };
+
+    /// A repository reading [order], acting as [me], and recording every write it sends.
+    (SupabaseCourierOrderRepository, List<String>) against(
+      Map<String, dynamic> order, {
+      required String me,
+    }) {
+      final writes = <String>[];
+      final client = SupabaseClient(
+        'https://example.supabase.co',
+        'anon-key',
+        httpClient: MockClient((request) async {
+          if (request.method != 'GET') writes.add(request.method);
+          final wantsObject =
+              request.headers['Accept']?.contains('vnd.pgrst.object') ?? false;
+          return http.Response(
+            jsonEncode(
+              request.method == 'GET'
+                  ? (wantsObject ? order : [order])
+                  : [
+                      {'id': 'o1'},
+                    ],
+            ),
+            200,
+            headers: {'content-type': 'application/json; charset=utf-8'},
+            request: request,
+          );
+        }),
+      );
+      addTearDown(client.dispose);
+      return (SupabaseCourierOrderRepository(client, currentUid: () => me), writes);
+    }
+
+    test('delivered, carried by this courier, is success and sends nothing', () async {
+      final (repo, writes) =
+          against(row(status: 'delivered', courierUid: 'c1'), me: 'c1');
+
+      expect((await repo.markDelivered('o1')).isOk, isTrue);
+      expect(writes, isEmpty, reason: 'there is nothing left to write');
+    });
+
+    test("delivered on a shop's order nobody's name went out on is its rider's",
+        () async {
+      final (repo, _) = against(row(status: 'delivered'), me: 'c1');
+      expect((await repo.markDelivered('o1')).isOk, isTrue);
+    });
+
+    test('delivered by another courier stays a conflict', () async {
+      final (repo, writes) =
+          against(row(status: 'delivered', courierUid: 'c2'), me: 'c1');
+
+      expect((await repo.markDelivered('o1')).failureOrNull, isA<ConflictFailure>());
+      expect(writes, isEmpty);
+    });
+
+    test('a platform order delivered with nobody on it is nobody\'s to claim', () async {
+      final (repo, _) =
+          against(row(status: 'delivered', deliveryBy: 'platform'), me: 'c1');
+      expect((await repo.markDelivered('o1')).failureOrNull, isA<ConflictFailure>());
+    });
+
+    test('out with this courier on it is success; with another it is a conflict',
+        () async {
+      final (mine, _) =
+          against(row(status: 'outForDelivery', courierUid: 'c1'), me: 'c1');
+      expect((await mine.markOnTheWay('o1', courierUid: 'c1')).isOk, isTrue);
+
+      final (theirs, _) =
+          against(row(status: 'outForDelivery', courierUid: 'c2'), me: 'c1');
+      expect((await theirs.markOnTheWay('o1', courierUid: 'c1')).failureOrNull,
+          isA<ConflictFailure>());
+    });
+
+    test('a return this courier recorded is success; the shop\'s is a conflict',
+        () async {
+      final (mine, _) = against(
+        row(status: 'cancelled', courierUid: 'c1', cancelledBy: 'courier'),
+        me: 'c1',
+      );
+      expect((await mine.markFailed('o1', reason: 'مفيش حد')).isOk, isTrue);
+
+      final (shop, _) = against(
+        row(status: 'cancelled', courierUid: 'c1', cancelledBy: 'merchant'),
+        me: 'c1',
+      );
+      expect((await shop.markFailed('o1', reason: 'مفيش حد')).failureOrNull,
+          isA<ConflictFailure>());
+    });
+
+    test('a delivery that finds a return is a conflict', () async {
+      final (repo, _) = against(
+        row(status: 'cancelled', courierUid: 'c1', cancelledBy: 'courier'),
+        me: 'c1',
+      );
+      expect((await repo.markDelivered('o1')).failureOrNull, isA<ConflictFailure>());
+    });
+
+    test('an order still waiting is written, as before', () async {
+      final (repo, writes) =
+          against(row(status: 'outForDelivery', courierUid: 'c1'), me: 'c1');
+
+      expect((await repo.markDelivered('o1')).isOk, isTrue);
+      expect(writes, ['PATCH']);
     });
   });
 }

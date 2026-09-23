@@ -21,6 +21,9 @@ class CourierScreen extends ConsumerStatefulWidget {
   static const retryKey = Key('courier.retry');
   static const rejectedKey = Key('courier.rejected');
   static const dismissRejectedKey = Key('courier.dismissRejected');
+  static const signOutKey = Key('courier.signOut');
+  static const confirmSignOutKey = Key('courier.confirmSignOut');
+  static const unsentWarningKey = Key('courier.unsentWarning');
 
   static const pauseKey = Key('courier.pause');
   static const resumeKey = Key('courier.resume');
@@ -176,6 +179,53 @@ class _CourierScreenState extends ConsumerState<CourierScreen> {
         );
   }
 
+  /// The way off this account, which courier mode never had.
+  ///
+  /// On a shared shop handset the only other way was Android's "Clear storage" — which
+  /// deletes the very writes the queue exists to keep, cash already collected. Signing
+  /// out deletes nothing: the queue is stored under this account and loads again, and
+  /// sends, the next time this account signs in on this phone. So a courier with taps
+  /// still waiting is told exactly that before they go, and not told anything scarier.
+  Future<void> _confirmSignOut(BuildContext context) async {
+    final queue = ref.read(courierWriteQueueProvider);
+    await queue.load();
+    final unsent = queue.pendingCount;
+    if (!context.mounted) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('تسجّل خروج؟'),
+        content: unsent > 0
+            ? Text(
+                'فيه $unsent تحديث لسه متبعتش. هيفضل مستني على التليفون ده لحد ما '
+                'تدخل بحسابك ده تاني، وساعتها يتبعت.',
+                key: CourierScreen.unsentWarningKey,
+              )
+            : const Text(
+                'مش هتوصلك طلبات توصيل على التليفون ده لحد ما تدخل تاني.',
+              ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('لا'),
+          ),
+          FilledButton(
+            key: CourierScreen.confirmSignOutKey,
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('اخرج'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed ?? false) {
+      // The push token comes off the account through `keepPushTokenRegistered`, which is
+      // watching the session — the same as the shop screen's sign-out.
+      await ref.read(authServiceProvider).signOut();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     // A pickup notification is a delivery for any of the courier's shops; showing them all
@@ -220,6 +270,12 @@ class _CourierScreenState extends ConsumerState<CourierScreen> {
               icon: const Icon(Icons.pause_circle_outline_rounded),
               onPressed: () => _pause(context, staff.uid!),
             ),
+          IconButton(
+            key: CourierScreen.signOutKey,
+            tooltip: 'تسجيل الخروج',
+            icon: const Icon(Icons.logout_rounded),
+            onPressed: () => _confirmSignOut(context),
+          ),
         ],
       ),
       body: Column(
@@ -835,6 +891,8 @@ class _PendingBanner extends ConsumerWidget {
           ),
           TextButton(
             key: CourierScreen.retryKey,
+            // Straight to the queue, which joins a pass already running rather than
+            // starting a second one over the same writes.
             onPressed: () => ref.read(courierWriteQueueProvider).flush(),
             style: TextButton.styleFrom(foregroundColor: colors.onAccent),
             child: const Text('حاول تاني'),

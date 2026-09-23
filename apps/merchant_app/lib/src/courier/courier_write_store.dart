@@ -11,6 +11,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 /// street and a connection coming back. The account is in the key because a shared shop
 /// handset changing couriers must change queues before anything can be replayed.
 ///
+/// The envelope holds the writes still waiting and the ones the server refused on
+/// replay, because the courier is owed news of both and an app kill must not erase
+/// either.
+///
 /// **`SharedPreferencesAsync`, not the legacy `SharedPreferences`.** The legacy API keeps
 /// an in-memory cache and writes through to the platform store afterwards, so its
 /// documentation says plainly that a completed `setString` is not yet a write to disk and
@@ -31,7 +35,11 @@ class SharedPreferencesCourierWriteStore implements CourierWriteStore {
   static const _legacyKey = 'courier_write_queue';
   static const _legacyOwnerKey = 'courier_write_queue.legacy_owner';
   static const _keyStem = 'courier_write_queue.account';
-  static const _schemaVersion = 1;
+
+  /// 2 carries the refused writes beside the pending ones. Version 1 held pending only,
+  /// and a phone upgrading from it still has its queued cash writes there — see
+  /// [_fromVersion1].
+  static const _schemaVersion = 2;
 
   static String _key(String accountId, int version) =>
       '$_keyStem.$accountId.v$version';
@@ -40,7 +48,7 @@ class SharedPreferencesCourierWriteStore implements CourierWriteStore {
       '$_keyStem.$accountId.v';
 
   @override
-  Future<List<PendingCourierWrite>> load({required String accountId}) async {
+  Future<StoredCourierWrites> load({required String accountId}) async {
     // A value that cannot be read is an empty queue, not an exception.
     //
     // `load()` is awaited at the top of every `_submit`, so a throw here would not lose
@@ -49,22 +57,32 @@ class SharedPreferencesCourierWriteStore implements CourierWriteStore {
     // that *and* everything the courier does for the rest of the shift is worse.
     try {
       final raw = await _prefs.getString(_key(accountId, _schemaVersion));
-      if (raw != null && raw.isNotEmpty) return _decodeEnvelope(raw);
+      if (raw != null && raw.isNotEmpty) {
+        // A move from version 1 killed between its write and its removal leaves the old
+        // key behind. Harmless while this key exists; the day the queue empties and this
+        // key goes, it would bring back writes that were settled long ago.
+        await _prefs.remove(_key(accountId, 1));
+        return _decodeEnvelope(raw);
+      }
+
+      final previous = await _fromVersion1(accountId);
+      if (previous != null) return previous;
 
       final legacy = await _prefs.getString(_legacyKey);
       if (legacy != null && legacy.isNotEmpty) {
         final writes = _decodeWrites(jsonDecode(legacy));
         final owner = await _prefs.getString(_legacyOwnerKey);
-        if (owner != null && owner != accountId) return const [];
+        if (owner != null && owner != accountId) return StoredCourierWrites.empty;
 
         // The claim lands before the copy, so an interrupted migration can be retried
         // only by the courier who was signed in when this build first saw the old key.
         // Without it, a kill between copying and removing could hand the same cash writes
         // to whoever signs in next.
         if (owner == null) await _prefs.setString(_legacyOwnerKey, accountId);
-        await _write(accountId, writes);
+        final migrated = StoredCourierWrites(pending: writes);
+        await _write(accountId, migrated);
         await _prefs.remove(_legacyKey);
-        return writes;
+        return migrated;
       }
 
       final newerVersion = await _newerVersionFor(accountId);
@@ -74,43 +92,66 @@ class SharedPreferencesCourierWriteStore implements CourierWriteStore {
           'preserving it and starting a separate queue',
         );
       }
-      return const [];
+      return StoredCourierWrites.empty;
     } on Object catch (error) {
       debugPrint('courier queue unreadable, starting empty: $error');
-      return const [];
+      return StoredCourierWrites.empty;
     }
+  }
+
+  /// This account's queue as the previous build left it, moved to the current key.
+  ///
+  /// Written first and removed second, so a kill between the two leaves the current key
+  /// in place — which [load] reads before it ever looks here — rather than no queue at
+  /// all. Version 1 never kept refused writes, so there are none to bring.
+  Future<StoredCourierWrites?> _fromVersion1(String accountId) async {
+    final key = _key(accountId, 1);
+    final raw = await _prefs.getString(key);
+    if (raw == null || raw.isEmpty) return null;
+
+    final decoded = jsonDecode(raw);
+    if (decoded is! Map || decoded['version'] != 1) return null;
+    final migrated = StoredCourierWrites(pending: _decodeWrites(decoded['writes']));
+    await _write(accountId, migrated);
+    await _prefs.remove(key);
+    return migrated;
   }
 
   @override
   Future<void> save({
     required String accountId,
     required List<PendingCourierWrite> pending,
+    required List<PendingCourierWrite> rejected,
   }) async {
-    if (pending.isEmpty) {
+    if (pending.isEmpty && rejected.isEmpty) {
       await _prefs.remove(_key(accountId, _schemaVersion));
       return;
     }
-    await _write(accountId, pending);
+    await _write(
+      accountId,
+      StoredCourierWrites(pending: pending, rejected: rejected),
+    );
   }
 
-  Future<void> _write(
-    String accountId,
-    List<PendingCourierWrite> pending,
-  ) =>
+  Future<void> _write(String accountId, StoredCourierWrites stored) =>
       _prefs.setString(
         _key(accountId, _schemaVersion),
         jsonEncode({
           'version': _schemaVersion,
-          'writes': [for (final write in pending) write.toJson()],
+          'writes': [for (final write in stored.pending) write.toJson()],
+          'rejected': [for (final write in stored.rejected) write.toJson()],
         }),
       );
 
-  List<PendingCourierWrite> _decodeEnvelope(String raw) {
+  StoredCourierWrites _decodeEnvelope(String raw) {
     final decoded = jsonDecode(raw);
-    if (decoded is! Map) return const [];
+    if (decoded is! Map) return StoredCourierWrites.empty;
     final envelope = Map<String, dynamic>.from(decoded);
-    if (envelope['version'] != _schemaVersion) return const [];
-    return _decodeWrites(envelope['writes']);
+    if (envelope['version'] != _schemaVersion) return StoredCourierWrites.empty;
+    return StoredCourierWrites(
+      pending: _decodeWrites(envelope['writes']),
+      rejected: _decodeWrites(envelope['rejected']),
+    );
   }
 
   List<PendingCourierWrite> _decodeWrites(Object? decoded) {
