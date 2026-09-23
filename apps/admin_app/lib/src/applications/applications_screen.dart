@@ -160,6 +160,20 @@ class _ApplicationCard extends ConsumerWidget {
     bool isSaving = false;
     String? saveError;
 
+    // A courier is approved on their papers, and the database refuses one without them.
+    // Asked before the dialog, from the repository rather than an auto-dispose provider
+    // nobody is listening to, so the button can be off and say why instead of ending in
+    // a refusal read as «حاول تاني» (D4). A read that fails decides nothing: the server
+    // still has the last word, and its refusal is now said in words below.
+    var noPapers = false;
+    final applicantUid = application.applicantUid;
+    if (isApproval && isCourier && applicantUid != null) {
+      final papers =
+          await ref.read(staffDocumentsRepositoryProvider).forPerson(applicantUid);
+      noPapers = papers is Ok<StaffDocuments?> && papers.value == null;
+      if (!context.mounted) return;
+    }
+
     await showDialog<void>(
       context: context,
       builder: (dialogContext) => StatefulBuilder(
@@ -191,6 +205,17 @@ class _ApplicationCard extends ConsumerWidget {
                             : 'القبول هيعمل حساب صاحب المحل والمحل نفسه، وهيفضل «تحت المراجعة» لحد ما تكمّل بياناته.',
                         style: theme.textTheme.bodySmall?.copyWith(
                           color: colors.textSecondary,
+                        ),
+                      ),
+                    ),
+                  if (noPapers)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: Space.md),
+                      child: Text(
+                        'المندوب لسه مارفعش صور البطاقة (الوش والضهر) والسيلفي، ومينفعش '
+                        'يتقبل من غيرهم. كلّمه يرفعهم من تطبيق لقمة شريك وبعدين اقبله.',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: colors.danger,
                         ),
                       ),
                     ),
@@ -366,6 +391,7 @@ class _ApplicationCard extends ConsumerWidget {
                     isSaving ||
                         (isApproval &&
                             (application.applicantUid == null ||
+                                noPapers ||
                                 (isCourier ? shopId == null : zoneId == null)))
                     ? null
                     : () async {
@@ -408,9 +434,24 @@ class _ApplicationCard extends ConsumerWidget {
                             );
                           }
                         } else {
+                          // Each refusal the server names, in words: «حاول تاني» is
+                          // only true of a dropped line, and it was said for all of them
+                          // — including an application another admin already decided,
+                          // which no retry can ever change (D4).
                           setDialogState(() {
                             isSaving = false;
-                            saveError = 'حصل خطأ في حفظ القرار — حاول تاني';
+                            saveError = switch (result.failureOrNull) {
+                              ValidationFailure() when isApproval && isCourier =>
+                                'المندوب لسه مارفعش صور البطاقة والسيلفي، فمينفعش يتقبل.',
+                              ValidationFailure() =>
+                                'البيانات ناقصة — اتأكد من المنطقة أو المحل اللي اخترته.',
+                              NotFoundFailure() => 'الطلب ده اتقرّر قبل كده.',
+                              ConflictFailure() =>
+                                'الشخص ده عنده حساب في الفريق بالفعل.',
+                              PermissionFailure() => 'مش مسموح لك تاخد القرار ده.',
+                              OfflineFailure() => 'مفيش نت — جرّب تاني.',
+                              _ => 'حصل خطأ في حفظ القرار — حاول تاني',
+                            };
                           });
                         }
                       },

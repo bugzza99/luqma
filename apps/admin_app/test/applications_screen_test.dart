@@ -228,6 +228,25 @@ void main() {
       expect(applications.approvals.single, ('app-old', null, 'm1'));
     });
 
+    // D4: a courier is approved on their papers, and the database refuses one without
+    // them — but the button was always on, and the refusal came back as «حاول تاني»,
+    // which the admin could press for ever without learning what was missing.
+    testWidgets('a courier with no papers says so and cannot be approved', (tester) async {
+      await pump(tester, seed: [appOld], courierHasPapers: false);
+
+      await tester.tap(find.byKey(ApplicationsScreen.approveKey('app-old')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(ApplicationsScreen.shopPickerKey));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('مطعم البحر').last);
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('لسه مارفعش'), findsOneWidget);
+      final confirm = tester.widget<FilledButton>(find.byKey(ApplicationsScreen.confirmKey));
+      expect(confirm.onPressed, isNull);
+      expect(applications.approvals, isEmpty);
+    });
+
     testWidgets('an application from before there were accounts says so and cannot be approved',
         (tester) async {
       await pump(tester, seed: [
