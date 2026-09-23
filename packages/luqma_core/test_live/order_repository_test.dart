@@ -122,9 +122,11 @@ void main() {
       expect(order.items.single.name, 'سمك مشوي');
       expect(order.items.single.unitPrice, 12000);
       expect(order.pricing.subtotal, 24000);
-      // No address on a draft means collected by the customer: no fee.
-      expect(order.pricing.deliveryFee, 0);
-      expect(order.pricing.total, 24000);
+      // Delivered to the customer's address in the shop's own zone: the zone's fee, read
+      // from the zone rather than believed. (It was 0 while an instant order could name no
+      // address and slip down the collection branch — 20261101190000 closed that.)
+      expect(order.pricing.deliveryFee, 1500);
+      expect(order.pricing.total, 25500);
     });
 
     // A blocked customer is the whole of the abuse defence, and `users.is_blocked` was
