@@ -59,8 +59,9 @@ abstract final class OrderHelper {
   }) {
     final pounds = money ?? _pounds;
     final shop = order.merchantName;
-    final canCancel =
-        order.status.canMoveTo(OrderStatus.cancelled, by: OrderActor.customer);
+    // The rule the server enforces, time included: an escalated order is the admin's for
+    // fifteen minutes before it is the customer's to cancel.
+    final canCancel = order.customerMayCancelAt(now);
 
     if (order.status == OrderStatus.cancelled && topic != HelpTopic.money) {
       final why = order.cancelReason?.trim();

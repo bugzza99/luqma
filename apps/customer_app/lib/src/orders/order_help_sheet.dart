@@ -259,8 +259,8 @@ class _OrderHelpSheetState extends ConsumerState<OrderHelpSheet> {
     // already on screen is a thing that was said and stays said; a *button* is an offer
     // made now, so «ألغِ الطلب» is withdrawn the moment the database would refuse it.
     final live = ref.watch(orderProvider(widget.order.id)).value ?? widget.order;
-    final canCancel =
-        live.status.canMoveTo(OrderStatus.cancelled, by: OrderActor.customer);
+    ref.watch(minuteTickProvider);
+    final canCancel = live.customerMayCancelAt(ref.watch(clockProvider)());
     final actions = [
       for (final action in _actions)
         if (action != HelpAction.cancelOrder || canCancel) action,

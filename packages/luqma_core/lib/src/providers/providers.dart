@@ -871,6 +871,15 @@ Stream<Order> order(Ref ref, String orderId) =>
 Stream<bool> hasRated(Ref ref, String orderId) =>
     ref.watch(orderRepositoryProvider).watchHasRated(orderId);
 
+/// A beat once a minute, so what depends on the time of day is asked again (C6).
+///
+/// A row does not change when time passes: a pause that ran out, or an escalated order
+/// whose fifteen minutes are up, would otherwise wait for some unrelated rebuild. A
+/// provider rather than a timer in each widget, so a test can tick it.
+final minuteTickProvider = StreamProvider.autoDispose<int>(
+  (ref) => Stream<int>.periodic(const Duration(minutes: 1), (i) => i),
+);
+
 // ------------------------------------------------------------------ config
 
 /// The one path from AdminApp to this phone.

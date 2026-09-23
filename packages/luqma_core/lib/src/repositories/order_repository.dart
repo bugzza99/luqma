@@ -216,9 +216,12 @@ class SupabaseOrderRepository implements OrderRepository {
             'cancelled_by': OrderActor.customer.name,
           })
           .eq('id', orderId)
-          // Only while nobody has answered. Once a kitchen has started, cancelling
-          // costs somebody food they already cooked.
-          .eq('status', OrderStatus.placed.name)
+          // Only while nobody has answered — placed, or escalated because nobody did.
+          // Once a kitchen has started, cancelling costs somebody food they already
+          // cooked. The fifteen minutes after an escalation are the server's to judge
+          // (`enforce_order_transition`); the screen offers the button only after them.
+          .inFilter('status',
+              [OrderStatus.placed.name, OrderStatus.needsAttention.name])
           .select();
       if (updated.isNotEmpty) return;
 
@@ -331,8 +334,15 @@ class SupabaseOrderRepository implements OrderRepository {
 
 /// In-memory orders, for tests and for the screens above before the server exists.
 class FakeOrderRepository implements OrderRepository {
-  FakeOrderRepository({List<Order> seed = const [], this.failure})
-      : _orders = {for (final o in seed) o.id: o};
+  FakeOrderRepository({
+    List<Order> seed = const [],
+    this.failure,
+    DateTime Function()? now,
+  })  : _orders = {for (final o in seed) o.id: o},
+        _now = now ?? DateTime.now;
+
+  /// The clock the cancellation rule is judged against, as the server's `now()` is.
+  final DateTime Function() _now;
 
   final Map<String, Order> _orders;
   final Map<String, String> _clientOrders = {};
@@ -432,7 +442,7 @@ class FakeOrderRepository implements OrderRepository {
 
     final order = _orders[orderId];
     if (order == null) return const Result.err(NotFoundFailure());
-    if (!order.status.canMoveTo(OrderStatus.cancelled, by: OrderActor.customer)) {
+    if (!order.customerMayCancelAt(_now())) {
       return const Result.err(ConflictFailure());
     }
 

@@ -264,6 +264,10 @@ abstract class Order with _$Order {
 
     /// Minutes the merchant quoted when accepting.
     int? prepMinutes,
+
+    /// Every move the order made, as the server recorded it: `from`, `to`, `by`, `at`.
+    /// Read, never written — the database appends to it.
+    @Default(<Map<String, dynamic>>[]) List<Map<String, dynamic>> statusHistory,
   }) = _Order;
 
   const Order._();
@@ -285,4 +289,36 @@ abstract class Order with _$Order {
 
   bool get isOpen =>
       status != OrderStatus.delivered && status != OrderStatus.cancelled;
+
+  /// How long an escalated order stays the admin's to rescue before the customer may let
+  /// it go (the owner's decision, 2026-09-23).
+  static const customerWaitAfterEscalation = Duration(minutes: 15);
+
+  /// When the order was moved to needsAttention: the last such entry in its history, or
+  /// the accept deadline, which is when the escalation fires. The same answer
+  /// `needs_attention_since` gives on the server.
+  DateTime? get needsAttentionSince {
+    for (final entry in statusHistory.reversed) {
+      if (entry['to'] == OrderStatus.needsAttention.name && entry['at'] is String) {
+        return DateTime.tryParse(entry['at'] as String) ?? acceptDeadlineAt;
+      }
+    }
+    return acceptDeadlineAt;
+  }
+
+  /// From when the customer may cancel an escalated order; null for any other.
+  DateTime? get customerMayCancelFrom {
+    if (status != OrderStatus.needsAttention) return null;
+    return needsAttentionSince?.add(customerWaitAfterEscalation);
+  }
+
+  /// Whether the customer may cancel this order at [now] — the rule the server enforces
+  /// in `enforce_order_transition`. While nobody has answered, always; once escalated,
+  /// fifteen minutes later; once a kitchen has started, never.
+  bool customerMayCancelAt(DateTime now) => switch (status) {
+        OrderStatus.placed => true,
+        OrderStatus.needsAttention =>
+          customerMayCancelFrom != null && !now.isBefore(customerMayCancelFrom!),
+        _ => false,
+      };
 }

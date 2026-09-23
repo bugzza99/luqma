@@ -201,4 +201,61 @@ void main() {
       expect(deadline, isNull);
     });
   });
+  // The owner's decision, 2026-09-23: an order the shop never answered is escalated to
+  // needsAttention, and after fifteen minutes there the customer may let it go. The
+  // server asks the same question of the same history (needs_attention_since).
+  group('whether the customer may cancel', () {
+    final now = DateTime.utc(2026, 9, 23, 22);
+    Order order(OrderStatus status, {List<Map<String, dynamic>> history = const [],
+        DateTime? deadline}) =>
+        Order(
+          id: 'o1',
+          cityId: 'edku',
+          orderNumber: 1,
+          customerName: 'عميل',
+          customerPhone: '01000000000',
+          merchantId: 'm1',
+          merchantName: 'مطعم',
+          zoneId: 'z1',
+          type: OrderType.instant,
+          items: const [],
+          pricing: const OrderPricing(subtotal: 0, deliveryFee: 0, total: 0),
+          status: status,
+          statusHistory: history,
+          acceptDeadlineAt: deadline,
+        );
+    Map<String, dynamic> escalated(Duration ago) => {
+          'from': 'placed',
+          'to': 'needsAttention',
+          'by': 'system',
+          'at': now.subtract(ago).toIso8601String(),
+        };
+
+    test('while nobody has answered, yes', () {
+      expect(order(OrderStatus.placed).customerMayCancelAt(now), isTrue);
+    });
+
+    test('fifteen minutes after the escalation, yes', () {
+      final o = order(OrderStatus.needsAttention,
+          history: [escalated(const Duration(minutes: 16))]);
+      expect(o.customerMayCancelAt(now), isTrue);
+    });
+
+    test('before then, no — the admin may still rescue it', () {
+      final o = order(OrderStatus.needsAttention,
+          history: [escalated(const Duration(minutes: 5))]);
+      expect(o.customerMayCancelAt(now), isFalse);
+      expect(o.customerMayCancelFrom, now.add(const Duration(minutes: 10)));
+    });
+
+    test('with no history, the deadline is when it escalated', () {
+      final o = order(OrderStatus.needsAttention,
+          deadline: now.subtract(const Duration(minutes: 20)));
+      expect(o.customerMayCancelAt(now), isTrue);
+    });
+
+    test('once the kitchen has started, no', () {
+      expect(order(OrderStatus.accepted).customerMayCancelAt(now), isFalse);
+    });
+  });
 }

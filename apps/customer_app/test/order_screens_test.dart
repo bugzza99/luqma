@@ -589,6 +589,47 @@ void main() {
       expect(find.byKey(OrderScreen.cancelKey), findsOneWidget);
     });
 
+    // The owner's decision, 2026-09-23: an order the shop never answered is escalated,
+    // and fifteen minutes later the customer may let it go. Before then the admin may
+    // still rescue it, and the screen says when the button will come.
+    testWidgets('is offered fifteen minutes after nobody answered', (tester) async {
+      await pump(
+        tester,
+        const OrderScreen(orderId: 'o1'),
+        seed: [
+          order(
+            status: OrderStatus.needsAttention,
+            deadline: DateTime.now().subtract(const Duration(minutes: 20)),
+          ),
+        ],
+      );
+
+      await reveal(tester, find.byKey(OrderScreen.cancelKey));
+      await tester.tap(find.byKey(OrderScreen.cancelKey));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(OrderScreen.confirmCancelKey));
+      await tester.pumpAndSettle();
+
+      expect((await orders.watchOrder('o1').first).status, OrderStatus.cancelled);
+    });
+
+    testWidgets('before then it says when, and offers nothing yet', (tester) async {
+      await pump(
+        tester,
+        const OrderScreen(orderId: 'o1'),
+        seed: [
+          order(
+            status: OrderStatus.needsAttention,
+            deadline: DateTime.now().subtract(const Duration(minutes: 5)),
+          ),
+        ],
+      );
+
+      expect(find.byKey(OrderScreen.cancelKey), findsNothing);
+      await reveal(tester, find.byKey(OrderScreen.cancelLaterKey));
+      expect(find.textContaining('تقدر تلغيه'), findsOneWidget);
+    });
+
     // Once a kitchen has started, cancelling costs somebody food they already cooked.
     testWidgets('is not offered once the merchant has accepted', (tester) async {
       await pump(

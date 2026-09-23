@@ -20,6 +20,7 @@ class OrderScreen extends ConsumerWidget {
   static const errorKey = Key('order.error');
   static const cancelKey = Key('order.cancel');
   static const confirmCancelKey = Key('order.confirmCancel');
+  static const cancelLaterKey = Key('order.cancelLater');
   static const issueKey = Key('order.issue');
   static const issueTextKey = Key('order.issueText');
   static const sendIssueKey = Key('order.sendIssue');
@@ -81,8 +82,12 @@ class _Loaded extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final colors = Theme.of(context).luqma;
 
-    final canCancel =
-        order.status.canMoveTo(OrderStatus.cancelled, by: OrderActor.customer);
+    // Asked again every minute: an escalated order becomes cancellable fifteen minutes
+    // in, and the row does not change when that happens.
+    ref.watch(minuteTickProvider);
+    final now = ref.watch(clockProvider)();
+    final canCancel = order.customerMayCancelAt(now);
+    final cancelFrom = order.customerMayCancelFrom;
 
     final zoneName = ref
         .watch(zonesProvider)
@@ -110,6 +115,22 @@ class _Loaded extends ConsumerWidget {
             minimumSize: const Size.fromHeight(Sizes.minTarget),
           ),
           child: const Text('إلغاء الطلب'),
+        )
+      else if (cancelFrom != null)
+        // Escalated, and still the admin's to rescue. Said, so the customer is not left
+        // wondering whether there is anything they can do at all.
+        Padding(
+          key: OrderScreen.cancelLaterKey,
+          padding: const EdgeInsets.symmetric(horizontal: Space.md),
+          child: Text(
+            'المطعم مردّش، وفريق لقمة بيحاول يوصله. لو محدش ردّ، تقدر تلغيه بنفسك '
+            'بعد ${_minutesUntil(now, cancelFrom)} دقيقة.',
+            textAlign: TextAlign.center,
+            style: Theme.of(context)
+                .textTheme
+                .bodySmall
+                ?.copyWith(color: colors.textSecondary),
+          ),
         ),
     ];
 
@@ -138,6 +159,12 @@ class _Loaded extends ConsumerWidget {
           ),
       ],
     );
+  }
+
+  /// Whole minutes left, never less than one: «بعد 0 دقيقة» is a sentence nobody can act on.
+  static int _minutesUntil(DateTime now, DateTime then) {
+    final seconds = then.difference(now).inSeconds;
+    return seconds <= 60 ? 1 : (seconds / 60).ceil();
   }
 
   Future<void> _confirmCancel(BuildContext context, WidgetRef ref) async {

@@ -4,16 +4,6 @@ import 'package:luqma_core/luqma_core.dart';
 
 import 'hours_screen.dart';
 
-/// A beat once a minute, so what depends on the time of day is asked again (C6).
-///
-/// The bar read the clock once per build, and nothing rebuilt it when a pause ran out:
-/// the merchant row does not change when time passes. An owner who paused for thirty
-/// minutes read «متوقف» an hour later while customers could order — and might never look
-/// at the inbox. A provider rather than a timer in the widget, so a test can tick it.
-final minuteTickProvider = StreamProvider.autoDispose<int>(
-  (ref) => Stream<int>.periodic(const Duration(minutes: 1), (i) => i),
-);
-
 /// Whether this kitchen is taking orders, and the one control that changes it.
 ///
 /// Pausing writes a **timestamp**, never a flag. A flag produces merchants stuck closed
