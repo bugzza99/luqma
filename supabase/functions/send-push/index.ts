@@ -1,6 +1,7 @@
 // deno-lint-ignore-file
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 import { isDeadToken } from './dead_token.ts';
+import { fcmMessage } from './message.ts';
 
 /**
  * Drains `push_outbox` and hands each row to FCM.
@@ -140,53 +141,7 @@ Deno.serve(async (req: Request) => {
           Authorization: `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          message: {
-            token: to,
-            // **Both** blocks, and this is the whole delivery story.
-            //
-            // It was `data` only, on the reasoning that a `notification` payload makes
-            // Android draw the alert itself so the app never runs and the looping alarm
-            // never plays. That reasoning is wrong, and it cost the feature: the alarm
-            // does not come from the app drawing the notification, it comes from the
-            // **channel** — `orders_critical` is created natively with the alarm sound,
-            // MAX importance and DND bypass, so a system-drawn alert on that channel
-            // sounds exactly like an app-drawn one.
-            //
-            // What data-only actually bought was silence. A data-only message displays
-            // nothing by itself; it needs the background isolate to wake and render, and
-            // that isolate does not run when the app has been swiped away, on a phone in
-            // battery saver, or on most of the OEM builds sold in Egypt. So the merchant
-            // got their alarm only while the app was open — which is the one case that
-            // needed no notification at all.
-            notification: { title: row.title, body: row.body },
-            data: {
-              title: row.title,
-              body: row.body,
-              channel: row.channel,
-              ...Object.fromEntries(
-                Object.entries(row.data ?? {}).map(([k, v]) => [k, String(v)]),
-              ),
-            },
-            android: {
-              priority: 'HIGH',
-              // Woken even in Doze. This is the notification the shop's evening depends
-              // on, and a phone on a shelf is a phone Android has put to sleep.
-              ttl: '3600s',
-              notification: {
-                // Which channel decides the sound, the importance and whether it gets
-                // through Do Not Disturb. Named per message rather than fixed, because
-                // the customer's "your food is on the way" must not arrive with the
-                // kitchen's alarm.
-                channel_id: row.channel,
-                notification_priority: 'PRIORITY_MAX',
-                // Tapping it opens the app; the payload is still in `data`, so the app
-                // reads which order it was about exactly as before.
-                click_action: 'FLUTTER_NOTIFICATION_CLICK',
-              },
-            },
-          },
-        }),
+        body: JSON.stringify({ message: fcmMessage(row, to) }),
       });
 
       if (res.ok) {
