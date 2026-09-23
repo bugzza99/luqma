@@ -19,6 +19,7 @@ describe('what the courier keeps', () => {
   const RIDER = '00000000-0000-0000-0000-0000000000f1';
   const SHOP_RIDER = '00000000-0000-0000-0000-0000000000f2';
   const ADMIN = '00000000-0000-0000-0000-0000000000f3';
+  const SECOND_RIDER = '00000000-0000-0000-0000-0000000000f4';
 
   let db, fish, zone;
 
@@ -65,7 +66,8 @@ describe('what the courier keeps', () => {
   before(async () => {
     db = await freshDatabase();
     await db.exec(`
-      insert into auth.users (id) values ('${RIDER}'), ('${SHOP_RIDER}'), ('${ADMIN}');
+      insert into auth.users (id) values
+        ('${RIDER}'), ('${SHOP_RIDER}'), ('${ADMIN}'), ('${SECOND_RIDER}');
       grant usage on schema auth to authenticated;
       insert into cities (id,name) values ('edku','إدكو');`);
 
@@ -81,8 +83,9 @@ describe('what the courier keeps', () => {
       `insert into staff (uid,scope,role,merchant_id,is_active) values
          ($1,'platform','courier',null,true),
          ($2,'merchant','courier',$3,true),
-         ($4,'platform','admin',null,true)`,
-      [RIDER, SHOP_RIDER, fish, ADMIN]);
+         ($4,'platform','admin',null,true),
+         ($5,'platform','courier',null,true)`,
+      [RIDER, SHOP_RIDER, fish, ADMIN, SECOND_RIDER]);
 
     // No inserts into `courier_merchants` here on purpose: `staff_attach_initial_courier`
     // already mints the initial grant from the staff row's own scope, so the platform
@@ -178,6 +181,31 @@ describe('what the courier keeps', () => {
 
       assert.equal(await owed(RIDER), 0);
       assert.notEqual((await settlement(id)).reversed_at, null);
+    });
+
+    // A15. A reopened order delivered again kept the first charge's row: the conflict
+    // clause reset the timestamps and nothing else. The second courier was charged on
+    // their balance while the row still named the first, so the next reversal refunded
+    // the wrong person an amount they may not have been charged at all.
+    it('charging again after a reversal follows whoever carried it this time', async () => {
+      const id = await place({ fee: 2000 });
+      await move(id, 'delivered', RIDER);
+      await move(id, 'outForDelivery', SECOND_RIDER);
+      assert.equal(await owed(RIDER), 0, 'the first charge was given back');
+
+      await db.query(
+        `update config set value = '20'::jsonb where key = 'courier_commission_percent'`);
+      await move(id, 'delivered', SECOND_RIDER);
+
+      const row = await settlement(id);
+      assert.equal(row.courier_uid, SECOND_RIDER);
+      assert.equal(row.bps, 2000);
+      assert.equal(row.amount, 400);
+      assert.equal(await owed(SECOND_RIDER), 400);
+
+      await move(id, 'cancelled', SECOND_RIDER);
+      assert.equal(await owed(SECOND_RIDER), 0, 'and a later reversal refunds them, exactly');
+      assert.equal(await owed(RIDER), 0, 'not the first rider');
     });
 
     it('gives back what was taken, not what today would charge', async () => {
