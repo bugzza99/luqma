@@ -92,16 +92,22 @@ Deno.serve(async (req: Request) => {
     return json({ error: 'updateFailed' }, 500);
   }
 
-  // GoTrue's admin sign-out needs the target's access JWT; it has no user-id logout API,
-  // and this function never possesses another person's bearer token. The service-role
-  // ban is the strongest user-id control available: it blocks sign-in and refresh, and
-  // current GoTrue rejects a banned token when Auth validates it. It still cannot recall
-  // a stateless access JWT already accepted by PostgREST, which is why the database reads
-  // staff.is_active on every sensitive staff predicate.
-  const { error: authError } = await service.auth.admin.updateUserById(uid, {
-    ban_duration: active ? 'none' : '876000h',
-  });
-  if (authError) return json({ error: active ? 'enableFailed' : 'revokeFailed' }, 500);
+  // No ban on dismissal any more (A10, the owner's decision of 2026-09-23). Approval turns
+  // an applicant's ordinary phone account into the staff account, so a hundred-year ban
+  // took the whole person — a dismissed courier could not even order dinner in
+  // CustomerApp. What the ban was for is done elsewhere: `set_staff_active` ends the
+  // person's sessions in the same transaction as the dismissal, so the staff app has to
+  // sign in again and meets the no-access wall, and every staff predicate reads
+  // staff.is_active, so a token already issued opens nothing a staff member can do.
+  //
+  // Bringing somebody back still lifts a ban: accounts dismissed before this change were
+  // banned, and without it they would stay locked out of everything after reinstatement.
+  if (active) {
+    const { error: authError } = await service.auth.admin.updateUserById(uid, {
+      ban_duration: 'none',
+    });
+    if (authError) return json({ error: 'enableFailed' }, 500);
+  }
 
   return json({ uid, active });
 });

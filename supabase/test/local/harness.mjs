@@ -55,6 +55,15 @@ export async function freshDatabase({ realtime = false } = {}) {
       raw_user_meta_data jsonb not null default '{}'::jsonb
     );
 
+    -- GoTrue's sessions, reduced to what set_staff_active touches: dismissing somebody
+    -- ends their sessions rather than banning the account (A10), so a dismissed courier's
+    -- phone has to sign in again and meets the no-access wall, while the same number
+    -- still works in CustomerApp.
+    create table auth.sessions (
+      id uuid primary key default gen_random_uuid(),
+      user_id uuid not null references auth.users on delete cascade
+    );
+
     -- The token here always says admin, deliberately. The fixed uid gets a matching
     -- active staff row after the migrations land, because claims alone are no longer an
     -- administrator and weakening that rule for PGlite would make the harness lie.
