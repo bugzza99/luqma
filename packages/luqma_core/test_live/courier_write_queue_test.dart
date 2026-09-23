@@ -44,10 +44,10 @@ class _OfflineOnce implements CourierOrderRepository {
   }
 
   @override
-  Future<Result<void>> markDelivered(String orderId) async {
+  Future<Result<void>> markDelivered(String orderId, {DateTime? at}) async {
     attempts++;
     if (offline) return _dead;
-    final result = await _real.markDelivered(orderId);
+    final result = await _real.markDelivered(orderId, at: at);
     return dropReplies ? _dead : result;
   }
 

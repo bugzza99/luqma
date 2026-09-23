@@ -35,7 +35,9 @@ abstract interface class CourierOrderRepository {
   /// Takes the order out, and puts this courier's name on it.
   Future<Result<void>> markOnTheWay(String orderId, {required String courierUid});
 
-  Future<Result<void>> markDelivered(String orderId);
+  /// [at] is the moment the courier tapped; the server keeps it only between the order
+  /// going out and now (`date_the_delivery`), and dates it on arrival when it is null.
+  Future<Result<void>> markDelivered(String orderId, {DateTime? at});
 
   /// Nobody at the door, wrong address, order refused. Needs a reason: it is what the
   /// admin reads, and what eventually blocks a customer who does this repeatedly.
@@ -233,7 +235,7 @@ class SupabaseCourierOrderRepository implements CourierOrderRepository {
   }
 
   @override
-  Future<Result<void>> markDelivered(String orderId) {
+  Future<Result<void>> markDelivered(String orderId, {DateTime? at}) {
     return Result.guardWrite<void, Map<String, dynamic>>(() async {
       if (!await _checked(orderId, OrderStatus.delivered, courierUid: _me)) {
         return _landed(orderId);
@@ -241,7 +243,8 @@ class SupabaseCourierOrderRepository implements CourierOrderRepository {
 
       return _db.from('orders').update({
         'status': OrderStatus.delivered.name,
-        'delivered_at': DateTime.now().toUtc().toIso8601String(),
+        // The tap's moment, not the send's (L3); the server bounds it either way.
+        if (at != null) 'delivered_at': at.toUtc().toIso8601String(),
       }).eq('id', orderId).select('id');
     }, (_) {});
   }
@@ -434,10 +437,10 @@ class FakeCourierOrderRepository implements CourierOrderRepository {
           by: courierUid);
 
   @override
-  Future<Result<void>> markDelivered(String orderId) => _move(
+  Future<Result<void>> markDelivered(String orderId, {DateTime? at}) => _move(
         orderId,
         OrderStatus.delivered,
-        (o) => o.copyWith(deliveredAt: _now()),
+        (o) => o.copyWith(deliveredAt: at ?? _now()),
         by: courierUid,
       );
 

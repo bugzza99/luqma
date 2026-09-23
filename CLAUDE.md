@@ -1630,15 +1630,20 @@ choice against the risk of touching a live boundary without being able to prove 
 - **L2** — `subscriptions.settled_at` and its partial index are left alone. Dropping a
   column in a migration for a system with no production data would be safe, but the
   nightly pass still reads it, and removing it is churn with no reader.
-- **L3** — `markDelivered` stamps `delivered_at` from the client clock. Making it server
-  time needs a `SECURITY DEFINER` RPC plus a repository and fake change; that is more
-  than the finding is worth right now, and the client clock is the courier's own device.
+- **L3 — done, 2026-09-23.** `delivered_at` was the phone's clock at the moment the
+  request was *sent*, so a tap queued offline at 23:50 and sent at 01:10 landed on the
+  next day's statement. The courier queue now carries the moment of the tap, and
+  `date_the_delivery` (`20261101300000`) keeps it only between the order going out and
+  `now()` — a wrong phone clock cannot date a delivery outside what the server saw.
 - **L5 — done, 2026-08-26.** The staff read policy tested `belongs_to_merchant`, which
   is true for an owner *and* their courier: a rider could read every account under the
   shop, the owner's phone number included. It reads `is_merchant_owner` now, and six
   tests in `supabase/test/stack/rls.test.js` say so — the policy had none before.
-- **L1 / L4 / L6 / L8** — recorded, not fixed: low-severity findings whose only correct
-  home is a stack or a design pass, not a PGlite-only change.
+- **L1 / L4 / L6 / L8 — closed as superseded, 2026-09-23.** Their text was never written
+  into the repository and cannot be recovered from any file or session. They came from
+  the Firestore-rules audit of 2026-08-24; that boundary was replaced wholesale by the
+  Supabase policies, which were audited again on 2026-09-21 and in the pre-launch QA of
+  2026-09-23. Nothing is known to be open under these names.
 
 ## Deferred, deliberately
 
@@ -1646,9 +1651,6 @@ choice against the risk of touching a live boundary without being able to prove 
 switch on — Google's network would serve competitor ads inside the app, weakening the
 pitch to merchants paying for placement — is work with no reader. The flag exists; the
 decision stays reversible. See `docs/15-simplifications.md`.
-
-**The audit's L1 / L3 / L4 / L6 / L8.** Recorded, not fixed: low-severity findings whose
-only correct home is a stack or a design pass.
 
 `prepaid` shipped filled in — that decision is closed.
 

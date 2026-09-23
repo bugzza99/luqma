@@ -76,6 +76,41 @@ void main() {
     expect(repo['o1']!.courierUid, 'c1');
   });
 
+  // L3. The delivery is dated when the courier tapped, not when the connection came
+  // back: a tap at 23:50 sent at 01:10 belongs to the day it happened on.
+  test('a queued delivery carries the moment of the tap', () async {
+    var clock = DateTime.utc(2026, 9, 23, 23, 50);
+    final repo = FakeCourierOrderRepository(
+      seed: [order(status: OrderStatus.outForDelivery)],
+      now: () => clock,
+    );
+    final queue = CourierWriteQueue(repo, accountId: 'c1', now: () => clock);
+    repo.failure = const OfflineFailure();
+
+    await queue.markDelivered('o1');
+    clock = DateTime.utc(2026, 9, 24, 1, 10);
+    repo.failure = null;
+    await queue.flush();
+
+    expect(repo['o1']!.deliveredAt, DateTime.utc(2026, 9, 23, 23, 50));
+  });
+
+  test('the moment of the tap survives the app being closed', () {
+    final write = PendingCourierWrite(
+      orderId: 'o1',
+      kind: CourierWriteKind.delivered,
+      at: DateTime.utc(2026, 9, 23, 23, 50),
+    );
+    final back = PendingCourierWrite.fromJson(write.toJson());
+    expect(back.at, DateTime.utc(2026, 9, 23, 23, 50));
+  });
+
+  test('a write stored before the moment was kept still reads', () {
+    final back = PendingCourierWrite.fromJson(
+        const {'orderId': 'o1', 'kind': 'delivered'});
+    expect(back.at, isNull, reason: 'the server then dates it when it arrives');
+  });
+
   test('a write that fails offline again stays queued', () async {
     final repo = FakeCourierOrderRepository(seed: [order()]);
     final queue = CourierWriteQueue(repo, accountId: 'c1');
@@ -628,8 +663,8 @@ class _Wire implements CourierOrderRepository {
           () => _real.markOnTheWay(orderId, courierUid: courierUid));
 
   @override
-  Future<Result<void>> markDelivered(String orderId) =>
-      _send('delivered', orderId, () => _real.markDelivered(orderId));
+  Future<Result<void>> markDelivered(String orderId, {DateTime? at}) =>
+      _send('delivered', orderId, () => _real.markDelivered(orderId, at: at));
 
   @override
   Future<Result<void>> markFailed(String orderId, {required String reason}) =>

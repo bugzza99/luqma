@@ -30,6 +30,7 @@ class PendingCourierWrite {
     required this.kind,
     this.courierUid,
     this.reason,
+    this.at,
   });
 
   final String orderId;
@@ -41,11 +42,17 @@ class PendingCourierWrite {
   /// For [CourierWriteKind.failed]: what the admin eventually reads.
   final String? reason;
 
+  /// For [CourierWriteKind.delivered]: the moment of the tap, not of the send (L3). A tap
+  /// at 23:50 that reaches the server at 01:10 belongs to the day it happened on. Null
+  /// on a record written before this was kept; the server then dates it on arrival.
+  final DateTime? at;
+
   Map<String, Object?> toJson() => {
         'orderId': orderId,
         'kind': kind.name,
         if (courierUid != null) 'courierUid': courierUid,
         if (reason != null) 'reason': reason,
+        if (at != null) 'at': at!.toUtc().toIso8601String(),
       };
 
   factory PendingCourierWrite.fromJson(Map<String, dynamic> json) =>
@@ -54,6 +61,7 @@ class PendingCourierWrite {
         kind: CourierWriteKind.fromName(json['kind'] as String),
         courierUid: json['courierUid'] as String?,
         reason: json['reason'] as String?,
+        at: json['at'] is String ? DateTime.tryParse(json['at'] as String) : null,
       );
 }
 
@@ -217,7 +225,12 @@ class CourierWriteQueue {
     this._repository, {
     required this.accountId,
     CourierWriteStore? store,
-  }) : _store = store ?? InMemoryCourierWriteStore();
+    DateTime Function()? now,
+  })  : _store = store ?? InMemoryCourierWriteStore(),
+        _now = now ?? DateTime.now;
+
+  /// When a tap happened. Read at the tap, carried with the write.
+  final DateTime Function() _now;
 
   final CourierOrderRepository _repository;
   final String accountId;
@@ -297,7 +310,11 @@ class CourierWriteQueue {
       ));
 
   Future<CourierSubmitOutcome> markDelivered(String orderId) => _submit(
-        PendingCourierWrite(orderId: orderId, kind: CourierWriteKind.delivered),
+        PendingCourierWrite(
+          orderId: orderId,
+          kind: CourierWriteKind.delivered,
+          at: _now().toUtc(),
+        ),
       );
 
   Future<CourierSubmitOutcome> markFailed(
@@ -417,7 +434,7 @@ class CourierWriteQueue {
             courierUid: write.courierUid ?? '',
           ),
         CourierWriteKind.delivered =>
-          _repository.markDelivered(write.orderId),
+          _repository.markDelivered(write.orderId, at: write.at),
         CourierWriteKind.failed => _repository.markFailed(
             write.orderId,
             reason: write.reason ?? '',

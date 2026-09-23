@@ -31,7 +31,7 @@ class _Slow implements CourierOrderRepository {
   }
 
   @override
-  Future<Result<void>> markDelivered(String orderId) => _run(orderId);
+  Future<Result<void>> markDelivered(String orderId, {DateTime? at}) => _run(orderId);
 
   @override
   Future<Result<void>> markOnTheWay(String orderId, {required String courierUid}) =>
@@ -68,7 +68,7 @@ class _Slow implements CourierOrderRepository {
 /// Refuses everything as a dead connection, so writes queue rather than send.
 class _Dead implements CourierOrderRepository {
   @override
-  Future<Result<void>> markDelivered(String orderId) async =>
+  Future<Result<void>> markDelivered(String orderId, {DateTime? at}) async =>
       const Result.err(OfflineFailure());
 
   @override
@@ -175,7 +175,7 @@ class _Counting extends _Dead {
   final calls = <String, int>{};
 
   @override
-  Future<Result<void>> markDelivered(String orderId) async {
+  Future<Result<void>> markDelivered(String orderId, {DateTime? at}) async {
     calls[orderId] = (calls[orderId] ?? 0) + 1;
     // The network gap, where an overlapping pass gets its turn.
     await Future<void>.delayed(Duration.zero);
