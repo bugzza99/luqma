@@ -40,6 +40,18 @@ void main() {
       expect(failure, isA<ConflictFailure>());
     });
 
+    // `invalid_parameter_value`: the server read the request and said a value in it is
+    // wrong — «a shop needs a zone», «all three documents are required». It fell through
+    // to UnknownFailure, while the fakes answer those same refusals with
+    // ValidationFailure, so the admin screens were tested against a sentence production
+    // never showed.
+    test('an invalid parameter value is a validation failure', () {
+      final failure = Failure.from(
+        PostgrestException(code: '22023', message: 'a shop needs a zone'),
+      );
+      expect(failure, isA<ValidationFailure>());
+    });
+
     // Every reason the order function refuses by name reaches the checkout as its own
     // sentence. Five of them used to fall through to UnknownFailure — «جرّب تاني» for a
     // dish that was switched off or a basket under the minimum, which no retry can fix —

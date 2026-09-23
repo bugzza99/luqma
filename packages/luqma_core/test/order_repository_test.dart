@@ -139,6 +139,20 @@ void main() {
       expect(await repository.watchMyOrders('fake-uid').single, hasLength(2));
     });
 
+    // `place_order` refuses an empty basket («an empty basket is not an order»); the
+    // fake made an order out of nothing, so a screen could pass a test by sending one.
+    test('an empty basket is refused, as the server refuses it', () async {
+      final repository = FakeOrderRepository();
+      final result = await repository.placeOrder(
+        const OrderDraft(merchantId: 'merchant-1', type: OrderType.instant, items: []),
+      );
+
+      expect(result.failureOrNull, isA<OrderRefusedFailure>());
+      expect((result.failureOrNull! as OrderRefusedFailure).reason,
+          OrderRefusal.emptyBasket);
+      expect(repository.drafts, hasLength(1), reason: 'it still records what it was sent');
+    });
+
     test('an omitted client id keeps making orders for old clients', () async {
       final repository = FakeOrderRepository();
       final first = (await repository.placeOrder(draft())).valueOrNull!;

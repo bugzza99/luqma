@@ -123,6 +123,15 @@ if ($SkipCloud) {
     $env:LUQMA_TEST_PROJECT_REF = $ref
 
     try {
+        # First, whether the test database has every migration this repository has. It
+        # fell 34 behind production once and the suites went on passing against the old
+        # schema for a week; a green run against a stale schema reads as proof and is
+        # none. Behind is a hard stop for both suites, and the check names the files.
+        Invoke-Check 'cloud schema is current' (Join-Path $root 'supabase') {
+            node test\schema-is-current.mjs
+        }
+        $schemaCurrent = $script:results[-1].Result -eq '0'
+
         # The hosted suite has to start and finish empty. File-level tearDown hooks are
         # still useful, but a killed runner never reaches them; this outer boundary is
         # what makes the next run independent of the previous one. A failed boundary is
@@ -132,7 +141,11 @@ if ($SkipCloud) {
         }
         $cleanBefore = $script:results[-1].Result -eq '0'
 
-        if (-not $cleanBefore) {
+        if (-not $schemaCurrent) {
+            Skip-Check 'supabase test:stack' 'the test database is behind the repository'
+            Skip-Check 'cloud cleanup: between suites' 'the stack suite did not run'
+            Skip-Check 'luqma_core test_live' 'the test database is behind the repository'
+        } elseif (-not $cleanBefore) {
             Skip-Check 'supabase test:stack' 'cloud isolation could not be established'
             Skip-Check 'cloud cleanup: between suites' 'the stack suite did not run'
             Skip-Check 'luqma_core test_live' 'cloud isolation could not be established'

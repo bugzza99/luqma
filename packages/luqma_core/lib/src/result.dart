@@ -76,6 +76,12 @@ sealed class Failure {
           }
           return const PermissionFailure();
         case '23514':
+        // `invalid_parameter_value`: the functions that check their own arguments —
+        // «a shop needs a zone», «all three documents are required» — raise it. It fell
+        // through to UnknownFailure while the fakes answered the same refusals with
+        // ValidationFailure, so the screens were tested against a sentence production
+        // never showed.
+        case '22023':
           return const ValidationFailure();
         case 'P0002':
           return const NotFoundFailure();

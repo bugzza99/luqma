@@ -368,6 +368,11 @@ class FakeOrderRepository implements OrderRepository {
   Future<Result<Order>> placeOrder(OrderDraft draft) async {
     drafts.add(draft);
     if (failure != null) return Result.err(failure!);
+    // What `place_order` says to an empty basket. A fake that made an order out of
+    // nothing let a screen pass a test by sending one.
+    if (draft.items.isEmpty) {
+      return const Result.err(OrderRefusedFailure(OrderRefusal.emptyBasket));
+    }
 
     final existingId = draft.clientOrderId == null
         ? null
