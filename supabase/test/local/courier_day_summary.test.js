@@ -33,12 +33,16 @@ describe('what a rider did today', () => {
     const id = (await db.query(
       `insert into orders (city_id,customer_uid,customer_name,customer_phone,
                            merchant_id,merchant_name,zone_id,type,items,pricing,status,
-                           delivery_by)
+                           delivery_by,created_at)
        values ('edku',null,'عميل','01000000000',$1,
                (select name from merchants where id=$1),$2,'instant','[]',
-               jsonb_build_object('total',$3::int),'placed',$4)
+               jsonb_build_object('total',$3::int),'placed',$4,
+               -- A past delivery was a past order: the server keeps a delivery's date
+               -- between the order going out and now (date_the_delivery, L3), so an
+               -- order made today cannot have been delivered in 2020.
+               coalesce($5::timestamptz - interval '1 hour', now()))
        returning id`,
-      [merchant, zone, total, platform ? 'platform' : 'merchant'])).rows[0].id;
+      [merchant, zone, total, platform ? 'platform' : 'merchant', at])).rows[0].id;
 
     await db.query(`do $$ begin
       perform set_config('app.server_mode','on',true);
