@@ -521,6 +521,20 @@ void main() {
   });
 
   group('the two buttons', () {
+    // A courier dismissed mid-shift: the database filters the order away from them, the
+    // write finds nothing, and «جرّب تاني» sent them round a door that will not open.
+    testWidgets('an order no longer theirs to see says so, not «جرّب تاني»',
+        (tester) async {
+      await pump(tester, seed: [order()]);
+      deliveries.failure = const NotFoundFailure();
+
+      await tester.tap(find.byKey(CourierScreen.outKey('o1')));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('مبقاش ظاهر ليك'), findsOneWidget);
+      expect(find.textContaining('جرّب تاني'), findsNothing);
+    });
+
     testWidgets('an order in the kitchen can be taken out', (tester) async {
       await pump(tester, seed: [order()]);
 

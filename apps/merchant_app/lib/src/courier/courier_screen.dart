@@ -566,7 +566,13 @@ class _Card extends ConsumerWidget {
                         // The most expensive silent failure in the product: a courier
                         // at the door taps to ring the customer, the dialer refuses,
                         // and nothing on the screen changes.
-                        onPressed: () => openExternalLink(
+                        // Not when there is no number to ring: an account deleted
+                        // under an order leaves «حساب محذوف» where the phone was, and
+                        // the dialer was handed that text (A9 now refuses the deletion
+                        // while an order is live; older rows can still carry it).
+                        onPressed: !Phone.isValidEgyptianMobile(order.customerPhone)
+                            ? null
+                            : () => openExternalLink(
                           context,
                           ref,
                           Uri(scheme: 'tel', path: order.customerPhone),
@@ -853,6 +859,10 @@ class _Card extends ConsumerWidget {
             OfflineFailure() => 'مفيش نت — جرّب تاني.',
             ConflictFailure() => 'الطلب ده اتغير. حدّث الشاشة.',
             PermissionFailure() => 'الطلب ده مع حد تاني.',
+            // The order is no longer this account's to see — a courier dismissed
+            // mid-shift, whose reads the database now filters away. «جرّب تاني» would send
+            // them round a door that will not open.
+            NotFoundFailure() => 'الطلب ده مبقاش ظاهر ليك. كلّم الإدارة.',
             _ => 'مقدرناش نحفظ ده. جرّب تاني.',
           }),
         ),
