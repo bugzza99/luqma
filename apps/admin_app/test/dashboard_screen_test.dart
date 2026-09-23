@@ -43,6 +43,7 @@ void main() {
     AdminToday? value,
     Failure? failure,
     List<Merchant> shops = const [],
+    FakeAdminRepository? admin,
   }) async {
     tester.view.physicalSize = const Size(1080, 2340);
     tester.view.devicePixelRatio = 3;
@@ -52,7 +53,7 @@ void main() {
       ProviderScope(
         overrides: [
           adminRepositoryProvider.overrideWithValue(
-            FakeAdminRepository(todayValue: value ?? today(), failure: failure),
+            admin ?? FakeAdminRepository(todayValue: value ?? today(), failure: failure),
           ),
           merchantRepositoryProvider.overrideWithValue(
             FakeMerchantRepository(seed: shops),
@@ -186,9 +187,56 @@ void main() {
     expect(tileText(tester, DashboardScreen.moneyKey), contains('4525'));
   });
 
+  // «إلغي الأوردر» went through the customer's own cancel, which matches only `placed` —
+  // and every order in this queue is `needsAttention`, so the tap never cancelled anything
+  // and always said «مقدرناش نلغيه».
+  group('cancelling an order nobody answered', () {
+    Future<void> cancelFromTheSheet(WidgetTester tester) async {
+      await tester.tap(find.byKey(DashboardScreen.attentionRowKey('o1')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('dashboard.cancelOrder')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(FilledButton, 'إلغي'));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('cancels it as staff, and it leaves the queue', (tester) async {
+      final admin = FakeAdminRepository(todayValue: today(needsAttention: [waiting()]));
+      await pump(tester, admin: admin);
+
+      await cancelFromTheSheet(tester);
+
+      expect(admin.cancelledOrders.keys, ['o1']);
+      expect(find.text('اتلغى أوردر #104'), findsOneWidget);
+      expect(find.byKey(DashboardScreen.attentionRowKey('o1')), findsNothing);
+    });
+
+    // The order moved while the sheet was open — a shop accepted it at the last moment.
+    // That is a sentence about the world, not «جرّب تاني»: trying again cannot work.
+    testWidgets('a conflict is said in words, not as a retry', (tester) async {
+      final admin = _MovesBeforeCancel(todayValue: today(needsAttention: [waiting()]));
+      await pump(tester, admin: admin);
+
+      await cancelFromTheSheet(tester);
+
+      expect(find.text('الأوردر اتحرك قبل ما تلغيه'), findsOneWidget);
+      expect(find.text('مقدرناش نلغيه. جرّب تاني.'), findsNothing);
+    });
+  });
+
   testWidgets('says when the figures were read', (tester) async {
     await pump(tester);
 
     expect(find.byKey(DashboardScreen.updatedKey), findsOneWidget);
   });
+}
+
+/// A queue drawn while the order was still waiting, and a shop that answered it between the
+/// list being read and the cancel arriving.
+class _MovesBeforeCancel extends FakeAdminRepository {
+  _MovesBeforeCancel({super.todayValue});
+
+  @override
+  Future<Result<void>> cancelUnansweredOrder(String orderId, {required String reason}) async =>
+      const Result.err(ConflictFailure());
 }

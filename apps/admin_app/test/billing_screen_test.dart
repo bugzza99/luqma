@@ -65,6 +65,15 @@ void main() {
     /// A repository of the test's own, for the cases about *retrying* a collection —
     /// where what happened on the first attempt is the whole question.
     FakeSettlementRepository? settlementRepoOverride,
+
+    /// Who is looking. Left null, the identity is whatever the admin session above
+    /// resolves to — which is how every test before the moderator's was written.
+    StaffIdentity? who,
+
+    /// A window tall enough for every card to be built at once. A lazy `ListView` never
+    /// builds a card below the fold, so a test that asserts a control is *absent* would
+    /// pass on a card that simply was not there yet.
+    bool tall = false,
   }) async {
     settlementRepo = settlementRepoOverride ??
         FakeSettlementRepository(
@@ -77,7 +86,7 @@ void main() {
     // unlike anything this ships on. `ListView` builds lazily, so a card below the fold
     // of a window that shape is not merely off-screen: it does not exist, and every
     // assertion about it reads as "the screen does not draw this".
-    tester.view.physicalSize = const Size(1080, 2340);
+    tester.view.physicalSize = Size(1080, tall ? 9000 : 2340);
     tester.view.devicePixelRatio = 3;
     addTearDown(tester.view.reset);
 
@@ -97,6 +106,7 @@ void main() {
               const LuqmaIdentity(uid: 'admin1', claims: {'admin': true}),
             ),
           ),
+          if (who != null) staffIdentityProvider.overrideWithValue(who),
           merchantRepositoryProvider.overrideWithValue(merchants),
           billingRepositoryProvider.overrideWithValue(billing),
           settlementRepositoryProvider.overrideWithValue(settlementRepo),
@@ -131,6 +141,82 @@ void main() {
         expiresAt: expires ?? DateTime.now().add(const Duration(days: 25)),
         recordedBy: 'admin1',
       );
+
+  // A moderator is an admin except money (`20261101010000_a_moderator_cannot_move_money.sql`).
+  // The server refuses every one of these four for a moderator; the screen's job is not to
+  // offer a button that ends in «مااتحفظتش», and to say whose job it is instead.
+  group('who may move the money', () {
+    // Prepaid with a debt outstanding: the one shop where all four controls are drawn at
+    // once — the model, the wallet's top-up, a subscription term, and «سجّل تحصيل».
+    Merchant everyControl() =>
+        merchant(model: RevenueModel.prepaid, value: 500, wallet: 2000, owed: 5000);
+
+    final moneyControls = [
+      MerchantBillingScreen.saveModelKey,
+      MerchantBillingScreen.topUpKey,
+      MerchantBillingScreen.recordKey,
+      MerchantBillingScreen.collectKey,
+    ];
+
+    testWidgets('a moderator reads every figure and is offered none of the controls',
+        (tester) async {
+      await pump(
+        tester,
+        seed: everyControl(),
+        tall: true,
+        who: const StaffIdentity(
+          uid: 'mod1',
+          role: StaffRole.moderator,
+          scope: StaffScope.platform,
+          isAdmin: true,
+        ),
+      );
+
+      // The figures, so the absences below are about the controls and not about a card
+      // that was never built.
+      expect(find.byKey(MerchantBillingScreen.currentModelKey(RevenueModel.prepaid)),
+          findsOneWidget);
+      expect(find.byKey(MerchantBillingScreen.walletKey), findsOneWidget);
+      expect(find.byKey(MerchantBillingScreen.noTermKey), findsOneWidget);
+      expect(find.byKey(MerchantBillingScreen.owedKey), findsOneWidget);
+      expect(find.textContaining('50 ج'), findsWidgets);
+
+      for (final control in moneyControls) {
+        expect(find.byKey(control), findsNothing, reason: '$control is money');
+      }
+      expect(find.byKey(MerchantBillingScreen.moderatorNoteKey), findsWidgets);
+    });
+
+    testWidgets('a platform admin is offered all four', (tester) async {
+      await pump(
+        tester,
+        seed: everyControl(),
+        tall: true,
+        who: const StaffIdentity(
+          uid: 'admin1',
+          role: StaffRole.admin,
+          scope: StaffScope.platform,
+          isAdmin: true,
+        ),
+      );
+
+      for (final control in moneyControls) {
+        expect(find.byKey(control), findsOneWidget, reason: '$control');
+      }
+      expect(find.byKey(MerchantBillingScreen.moderatorNoteKey), findsNothing);
+    });
+
+    // An identity that has not resolved is neither. Hiding on «not a platform admin» would
+    // take the till away from the owner for the moment a token spends refreshing — with
+    // cash in their hand.
+    testWidgets('an identity still resolving takes nothing away', (tester) async {
+      await pump(tester, seed: everyControl(), tall: true, who: StaffIdentity.none);
+
+      for (final control in moneyControls) {
+        expect(find.byKey(control), findsOneWidget, reason: '$control');
+      }
+    });
+  });
 
   group('how this merchant pays', () {
     // Two, since 2026-09-19: a monthly amount is a plan, recorded from «الاشتراكات».

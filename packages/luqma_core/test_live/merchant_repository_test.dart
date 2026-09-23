@@ -58,6 +58,7 @@ void main() {
   Future<String> saveRaw(
     String name, {
     MerchantStatus status = MerchantStatus.approved,
+    Map<String, Object?> born = const {},
   }) async =>
       await live.client.from('merchants').insert({
         'city_id': cityId,
@@ -66,6 +67,7 @@ void main() {
         'zone_id': zoneId,
         'phone': '01000000000',
         'status': status.name,
+        ...born,
       }).select().single().then((row) => row['id'] as String);
 
   group('the customer list', () {
@@ -177,11 +179,15 @@ void main() {
     // the server moved the wallet during the day, the form saves a zero, and a prepaid
     // merchant keeps selling on air. Firestore's merged set had the same hazard.
     test('an edit cannot touch the wallet or the ratings', () async {
-      final id = await saveRaw('مطعم');
-      await adminDb
-          .from('merchants')
-          .update({'wallet_balance': 5000, 'rating_avg': 4.5, 'rating_count': 12})
-          .eq('id', id);
+      // A shop that already has money and stars, written as the row is born. Since
+      // 20261101010000 an admin's token may not move a shop's money directly — which is
+      // the point of that migration — and the column guard refuses an ordinary update of
+      // these columns to everybody else, so the fixture cannot "move" them afterwards.
+      final id = await saveRaw('مطعم', born: {
+        'wallet_balance': 5000,
+        'rating_avg': 4.5,
+        'rating_count': 12,
+      });
 
       final loaded = (await repository.getMerchant(id)).valueOrNull!;
       await adminRepository.saveMerchant(loaded.copyWith(name: 'مطعم جديد'));

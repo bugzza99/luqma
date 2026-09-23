@@ -36,6 +36,9 @@ void main() {
     Map<String, int> owed = const {'c1': 4500},
     Failure? failure,
     FakeCourierStatementRepository? repository,
+
+    /// Who is looking. The owner, unless a test is about somebody else.
+    StaffIdentity who = _platformAdmin,
   }) async {
     tester.view.physicalSize = const Size(1080, 2340);
     tester.view.devicePixelRatio = 3;
@@ -56,6 +59,7 @@ void main() {
       ProviderScope(
         overrides: [
           courierStatementRepositoryProvider.overrideWithValue(statement),
+          staffIdentityProvider.overrideWithValue(who),
         ],
         child: MaterialApp(
           theme: LuqmaTheme.light,
@@ -212,6 +216,43 @@ void main() {
 
       expect(find.byType(LuqmaErrorView), findsOneWidget);
       expect(find.byKey(CourierBillingScreen.emptyKey), findsNothing);
+    });
+  });
+
+  // The route is `adminOnly` in the navigation, but a route is reachable by its path —
+  // and the server refuses `record_courier_payment` to a moderator, so a button here would
+  // only ever end in «مقدرناش نسجّل التحصيل», which reads as a broken connection.
+  group('who may record the cash', () {
+    testWidgets('a moderator reads the balance and is offered no collection', (tester) async {
+      await pump(
+        tester,
+        balances: [owing()],
+        who: const StaffIdentity(
+          uid: 'mod1',
+          role: StaffRole.moderator,
+          scope: StaffScope.platform,
+          isAdmin: true,
+        ),
+      );
+
+      expect(find.text('عليه'), findsOneWidget);
+      expect(find.byKey(CourierBillingScreen.collectKey('c1')), findsNothing);
+      expect(find.byKey(CourierBillingScreen.moderatorNoteKey), findsOneWidget);
+    });
+
+    testWidgets('a platform admin is offered it', (tester) async {
+      await pump(tester, balances: [owing()]);
+
+      expect(find.byKey(CourierBillingScreen.collectKey('c1')), findsOneWidget);
+      expect(find.byKey(CourierBillingScreen.moderatorNoteKey), findsNothing);
+    });
+
+    // An identity still resolving is neither. Hiding on «not a platform admin» would take
+    // the till from the owner for the moment a token spends refreshing, cash in hand.
+    testWidgets('an identity still resolving takes nothing away', (tester) async {
+      await pump(tester, balances: [owing()], who: StaffIdentity.none);
+
+      expect(find.byKey(CourierBillingScreen.collectKey('c1')), findsOneWidget);
     });
   });
 
@@ -455,6 +496,13 @@ void main() {
     });
   });
 }
+
+const _platformAdmin = StaffIdentity(
+  uid: 'admin1',
+  role: StaffRole.admin,
+  scope: StaffScope.platform,
+  isAdmin: true,
+);
 
 class _BalanceChangedOnce extends FakeCourierStatementRepository {
   _BalanceChangedOnce({required super.balances, required super.owed});

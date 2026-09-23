@@ -87,6 +87,101 @@ void main() {
     });
   });
 
+  // «اليوم»'s «إلغي الأوردر». It went through the customer's cancel, which only matches
+  // `placed` — and the queue is drawn from `needsAttention`, so it never cancelled anything.
+  // `admin_cancel_order` in `20261101010000_a_moderator_cannot_move_money.sql` is the server;
+  // the fake holds the same four answers.
+  group('AdminRepository.cancelUnansweredOrder', () {
+    NeedsAttentionItem waiting(String id) =>
+        NeedsAttentionItem(id: id, number: 104, merchantId: 'm1', merchantName: 'مطعم');
+
+    FakeAdminRepository withQueue({Map<String, OrderStatus> statuses = const {}}) =>
+        FakeAdminRepository(
+          todayValue: AdminToday(
+            ordersToday: 1,
+            moneyToday: 0,
+            needsAttention: [waiting('o1')],
+            openIssues: 0,
+          ),
+          orderStatuses: statuses,
+        );
+
+    test('cancels an order in the queue, and it leaves the queue', () async {
+      final repo = withQueue();
+
+      final result = await repo.cancelUnansweredOrder('o1', reason: 'المحل مردّش');
+
+      expect(result.isOk, isTrue);
+      expect(repo.cancelledOrders, {'o1': 'المحل مردّش'});
+      expect((await repo.today()).valueOrNull!.needsAttention, isEmpty);
+    });
+
+    test('cancels one still placed as well', () async {
+      final repo = withQueue(statuses: {'o2': OrderStatus.placed});
+
+      expect((await repo.cancelUnansweredOrder('o2', reason: 'متأخر')).isOk, isTrue);
+    });
+
+    test('an order that moved is a conflict, not a failure', () async {
+      final repo = withQueue(statuses: {'o1': OrderStatus.preparing});
+
+      final result = await repo.cancelUnansweredOrder('o1', reason: 'متأخر');
+
+      expect(result.failureOrNull, isA<ConflictFailure>());
+      expect(repo.cancelledOrders, isEmpty);
+    });
+
+    test('an order that is not there is not found', () async {
+      final result = await withQueue().cancelUnansweredOrder('nope', reason: 'متأخر');
+
+      expect(result.failureOrNull, isA<NotFoundFailure>());
+    });
+
+    test('needs a reason', () async {
+      final repo = withQueue();
+
+      final result = await repo.cancelUnansweredOrder('o1', reason: '  ');
+
+      expect(result.failureOrNull, isA<ValidationFailure>());
+      expect(repo.cancelledOrders, isEmpty);
+    });
+
+    test('SupabaseAdminRepository calls admin_cancel_order, not the customer path', () async {
+      final client = SupabaseClient(
+        'https://example.supabase.co',
+        'anon-key',
+        httpClient: MockClient((request) async {
+          expect(request.url.path, '/rest/v1/rpc/admin_cancel_order');
+          expect(jsonDecode(request.body), {'p_order_id': 'o1', 'p_reason': 'متأخر'});
+          return http.Response('', 204, request: request);
+        }),
+      );
+      addTearDown(client.dispose);
+
+      final result =
+          await SupabaseAdminRepository(client).cancelUnansweredOrder('o1', reason: 'متأخر');
+      expect(result.isOk, isTrue);
+    });
+
+    test('SupabaseAdminRepository reads "already moved" as a conflict', () async {
+      final client = SupabaseClient(
+        'https://example.supabase.co',
+        'anon-key',
+        httpClient: MockClient((request) async => http.Response(
+              jsonEncode({'code': '23505', 'message': 'order o1 has already moved (preparing)'}),
+              409,
+              headers: {'content-type': 'application/json'},
+              request: request,
+            )),
+      );
+      addTearDown(client.dispose);
+
+      final result =
+          await SupabaseAdminRepository(client).cancelUnansweredOrder('o1', reason: 'متأخر');
+      expect(result.failureOrNull, isA<ConflictFailure>());
+    });
+  });
+
   group('ActiveUsers model & AdminRepository.activeUsers', () {
     test('ActiveUsers reads missing rows as 0', () {
       final empty = ActiveUsers.fromRows([]);

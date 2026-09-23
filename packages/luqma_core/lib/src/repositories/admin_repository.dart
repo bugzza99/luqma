@@ -1,6 +1,7 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../models/admin.dart';
+import '../models/order.dart' show OrderStatus;
 import '../result.dart';
 import 'customer_repository.dart';
 import 'staff_repository.dart';
@@ -30,6 +31,15 @@ abstract interface class AdminRepository {
 
   /// Reports active users today, past 7 days and past 30 days per app.
   Future<Result<ActiveUsers>> activeUsers();
+
+  /// Cancels an order nobody answered, from «اليوم»'s queue — as staff, with the reason
+  /// and the person written into the audit log.
+  ///
+  /// Not [OrderRepository.cancel]: that is the customer's own, which matches only `placed`
+  /// and signs the cancellation as the customer. The queue is `needsAttention` orders, so
+  /// it matched none of them. [ConflictFailure] when the order moved while the sheet was
+  /// open — a kitchen that has started is food somebody cooked.
+  Future<Result<void>> cancelUnansweredOrder(String orderId, {required String reason});
 }
 
 class SupabaseAdminRepository implements AdminRepository {
@@ -75,6 +85,16 @@ class SupabaseAdminRepository implements AdminRepository {
       return ActiveUsers.fromRows(rows as List? ?? const []);
     });
   }
+
+  @override
+  Future<Result<void>> cancelUnansweredOrder(String orderId, {required String reason}) {
+    return Result.guard(
+      () => _db.rpc('admin_cancel_order', params: {
+        'p_order_id': orderId,
+        'p_reason': reason,
+      }),
+    );
+  }
 }
 
 /// In-memory admin figures, for tests and for building the screens above them.
@@ -89,8 +109,16 @@ class FakeAdminRepository implements AdminRepository {
     Set<String>? platformStaffUids,
     this.customers,
     this.staff,
+    Map<String, OrderStatus> orderStatuses = const {},
   })  : currentAdminUid = currentAdminUid ?? 'admin-1',
-        platformStaffUids = platformStaffUids ?? {'admin-1'};
+        platformStaffUids = platformStaffUids ?? {'admin-1'},
+        // Every order in the queue is `needsAttention`, because that is what the queue is;
+        // [orderStatuses] adds orders elsewhere in their lives, or moves one on.
+        _orderStatuses = {
+          for (final item in todayValue?.needsAttention ?? const <NeedsAttentionItem>[])
+            item.id: OrderStatus.needsAttention,
+          ...orderStatuses,
+        };
 
   final AdminToday? todayValue;
   final AdminStatistics? statisticsValue;
@@ -104,6 +132,11 @@ class FakeAdminRepository implements AdminRepository {
 
   final List<String> deletedAccountCalls = [];
 
+  final Map<String, OrderStatus> _orderStatuses;
+
+  /// Every order cancelled from the queue, with the reason it was given.
+  final Map<String, String> cancelledOrders = {};
+
   @override
   Future<Result<AdminAttention>> attention() async {
     if (failure != null) return Result.err(failure!);
@@ -113,7 +146,33 @@ class FakeAdminRepository implements AdminRepository {
   @override
   Future<Result<AdminToday>> today() async {
     if (failure != null) return Result.err(failure!);
-    return Result.ok(todayValue ?? _emptyToday);
+    final today = todayValue ?? _emptyToday;
+    // An order cancelled from the queue leaves it, as it does on the server.
+    return Result.ok(AdminToday(
+      ordersToday: today.ordersToday,
+      moneyToday: today.moneyToday,
+      platformToday: today.platformToday,
+      needsAttention: [
+        for (final item in today.needsAttention)
+          if (_orderStatuses[item.id] == OrderStatus.needsAttention) item,
+      ],
+      openIssues: today.openIssues,
+    ));
+  }
+
+  /// The server's four answers: no reason, no order, an order that has moved on, or done.
+  @override
+  Future<Result<void>> cancelUnansweredOrder(String orderId, {required String reason}) async {
+    if (failure != null) return Result.err(failure!);
+    if (reason.trim().isEmpty) return const Result.err(ValidationFailure());
+    final status = _orderStatuses[orderId];
+    if (status == null) return const Result.err(NotFoundFailure());
+    if (status != OrderStatus.placed && status != OrderStatus.needsAttention) {
+      return const Result.err(ConflictFailure());
+    }
+    _orderStatuses[orderId] = OrderStatus.cancelled;
+    cancelledOrders[orderId] = reason.trim();
+    return const Result.ok(null);
   }
 
   @override

@@ -47,6 +47,7 @@ class MerchantBillingScreen extends ConsumerWidget {
   static const toppedUpKey = Key('billing.toppedUp');
   static const recordedKey = Key('billing.recorded');
   static const paymentSummaryKey = Key('billing.paymentSummary');
+  static const moderatorNoteKey = Key('billing.moderatorNote');
 
   static Key modelKey(RevenueModel model) => Key('billing.model.${model.name}');
   static Key currentModelKey(RevenueModel model) => Key('billing.current.${model.name}');
@@ -257,6 +258,39 @@ class _ModelState extends ConsumerState<_Model> {
     final theme = Theme.of(context);
     final colors = theme.luqma;
 
+    // Read, not chosen. Radios a moderator can move and no button to save them with would
+    // be a form that silently does nothing.
+    if (ref.watch(staffIdentityProvider).isModerator) {
+      final merchant = widget.merchant;
+      final rate = switch (merchant.revenueModel) {
+        RevenueModel.commission when merchant.commissionCustom =>
+          'نسبة خاصة ${_percent(merchant.revenueValue / 100)}%',
+        RevenueModel.commission =>
+          'النسبة الموحّدة ${_percent(ref.watch(appConfigProvider).defaultCommissionPercent)}%',
+        RevenueModel.prepaid => '${Money.format(merchant.revenueValue)} ج على كل أوردر',
+        RevenueModel.subscription => null,
+      };
+      return _Card(
+        title: 'طريقة الحساب',
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              MerchantBillingScreen._modelNames[merchant.revenueModel]!,
+              key: MerchantBillingScreen.currentModelKey(merchant.revenueModel),
+              style: theme.textTheme.titleMedium,
+            ),
+            if (rate != null) ...[
+              const SizedBox(height: Space.xs),
+              Text(rate, style: LuqmaType.bodySmall.copyWith(color: colors.textSecondary)),
+            ],
+            const SizedBox(height: Space.md),
+            const _ModeratorNote(),
+          ],
+        ),
+      );
+    }
+
     return _Card(
       title: 'طريقة الحساب',
       child: RadioGroup<RevenueModel>(
@@ -426,14 +460,17 @@ class _WalletState extends ConsumerState<_Wallet> {
             ),
           ],
           const SizedBox(height: Space.md),
-          OutlinedButton(
-            key: MerchantBillingScreen.topUpKey,
-            onPressed: _busy ? null : () => _topUp(ref),
-            style: OutlinedButton.styleFrom(
-              minimumSize: const Size.fromHeight(Sizes.minTarget),
+          if (ref.watch(staffIdentityProvider).isModerator)
+            const _ModeratorNote()
+          else
+            OutlinedButton(
+              key: MerchantBillingScreen.topUpKey,
+              onPressed: _busy ? null : () => _topUp(ref),
+              style: OutlinedButton.styleFrom(
+                minimumSize: const Size.fromHeight(Sizes.minTarget),
+              ),
+              child: const Text('اشحن الرصيد'),
             ),
-            child: const Text('اشحن الرصيد'),
-          ),
         ],
       ),
     );
@@ -664,14 +701,17 @@ class _TermState extends ConsumerState<_Term> {
               ),
           ],
           const SizedBox(height: Space.md),
-          FilledButton(
-            key: MerchantBillingScreen.recordKey,
-            onPressed: _busy ? null : () => _record(ref, plans),
-            style: FilledButton.styleFrom(
-              minimumSize: const Size.fromHeight(Sizes.minTarget),
+          if (ref.watch(staffIdentityProvider).isModerator)
+            const _ModeratorNote()
+          else
+            FilledButton(
+              key: MerchantBillingScreen.recordKey,
+              onPressed: _busy ? null : () => _record(ref, plans),
+              style: FilledButton.styleFrom(
+                minimumSize: const Size.fromHeight(Sizes.minTarget),
+              ),
+              child: const Text('سجّل دفعة'),
             ),
-            child: const Text('سجّل دفعة'),
-          ),
         ],
       ),
     );
@@ -1102,12 +1142,15 @@ class _Settlements extends ConsumerWidget {
             // be able to perform by accident.
             if (merchant.commissionOwed > 0) ...[
               const SizedBox(height: Space.md),
-              FilledButton.icon(
-                key: MerchantBillingScreen.collectKey,
-                onPressed: () => _collect(context, ref),
-                icon: const Icon(Icons.payments_outlined, size: Sizes.iconSm),
-                label: const Text('سجّل تحصيل'),
-              ),
+              if (ref.watch(staffIdentityProvider).isModerator)
+                const _ModeratorNote()
+              else
+                FilledButton.icon(
+                  key: MerchantBillingScreen.collectKey,
+                  onPressed: () => _collect(context, ref),
+                  icon: const Icon(Icons.payments_outlined, size: Sizes.iconSm),
+                  label: const Text('سجّل تحصيل'),
+                ),
             ],
           ],
         ),
@@ -1381,6 +1424,27 @@ class _Settlements extends ConsumerWidget {
       ),
     );
     amountCtrl.dispose();
+  }
+}
+
+/// Where a money control would be, for a moderator.
+///
+/// The database refuses every one of them to this role
+/// (`20261101010000_a_moderator_cannot_move_money.sql`), so a button would only end in
+/// «مااتحفظتش» — which reads as a broken connection rather than as a divided job. Hidden on
+/// `isModerator`, never on «not a platform admin»: an identity still resolving is neither,
+/// and the owner must not lose the till for the moment a token spends refreshing.
+class _ModeratorNote extends StatelessWidget {
+  const _ModeratorNote();
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Text(
+      'تسجيل الفلوس وتغيير طريقة الحساب للأدمن بس.',
+      key: MerchantBillingScreen.moderatorNoteKey,
+      style: theme.textTheme.bodySmall?.copyWith(color: theme.luqma.textSecondary),
+    );
   }
 }
 

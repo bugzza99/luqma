@@ -25,6 +25,7 @@ class CourierBillingScreen extends ConsumerWidget {
   static const amountKey = Key('courierBilling.amount');
   static const confirmKey = Key('courierBilling.confirm');
   static const frozenKey = Key('courierBilling.frozen');
+  static const moderatorNoteKey = Key('courierBilling.moderatorNote');
 
   static Key rowKey(String uid) => Key('courierBilling.row.$uid');
   static Key collectKey(String uid) => Key('courierBilling.collect.$uid');
@@ -300,11 +301,22 @@ class _CourierRowState extends ConsumerState<_CourierRow> {
           ),
           if (owes) ...[
             const SizedBox(height: Space.md),
-            FilledButton(
-              key: CourierBillingScreen.collectKey(balance.uid),
-              onPressed: _busy ? null : _collect,
-              child: Text(_busy ? 'لحظة…' : 'سجّل تحصيل'),
-            ),
+            // The route is `adminOnly` in the navigation and still reachable by its path,
+            // and the server refuses the collection to a moderator. Hidden on
+            // `isModerator`, never on «not a platform admin»: an identity still resolving
+            // is neither, and the owner must not lose the till while a token refreshes.
+            if (ref.watch(staffIdentityProvider).isModerator)
+              Text(
+                'تسجيل الفلوس وتغيير طريقة الحساب للأدمن بس.',
+                key: CourierBillingScreen.moderatorNoteKey,
+                style: theme.textTheme.bodySmall?.copyWith(color: colors.textSecondary),
+              )
+            else
+              FilledButton(
+                key: CourierBillingScreen.collectKey(balance.uid),
+                onPressed: _busy ? null : _collect,
+                child: Text(_busy ? 'لحظة…' : 'سجّل تحصيل'),
+              ),
           ],
         ],
       ),

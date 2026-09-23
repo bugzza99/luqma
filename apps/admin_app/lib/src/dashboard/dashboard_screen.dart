@@ -496,16 +496,22 @@ class _QueueRow extends ConsumerWidget {
                   ),
                 );
                 if (sure != true) return;
+                // Staff's own cancel, not the customer's: that one matches only `placed`,
+                // and every order in this queue is `needsAttention`.
                 final result = await ref
-                    .read(orderRepositoryProvider)
-                    .cancel(item.id, reason: 'المحل مردّش على الأوردر');
+                    .read(adminRepositoryProvider)
+                    .cancelUnansweredOrder(item.id, reason: 'المحل مردّش على الأوردر');
                 ref.invalidate(adminTodayProvider);
                 if (!context.mounted) return;
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
-                    content: Text(result is Ok
-                        ? 'اتلغى أوردر #${item.number}'
-                        : 'مقدرناش نلغيه. جرّب تاني.'),
+                    content: Text(switch (result) {
+                      Ok() => 'اتلغى أوردر #${item.number}',
+                      // A shop answered between the list and the tap. Trying again cannot
+                      // work, so saying «جرّب تاني» would send the owner round in a circle.
+                      Err(failure: ConflictFailure()) => 'الأوردر اتحرك قبل ما تلغيه',
+                      Err() => 'مقدرناش نلغيه. جرّب تاني.',
+                    }),
                   ),
                 );
               },
