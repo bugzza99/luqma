@@ -1,4 +1,5 @@
 import 'package:postgrest/postgrest.dart' show PostgrestException;
+import 'package:supabase_flutter/supabase_flutter.dart' show AuthException;
 
 import 'models/coupon.dart' show CouponRejection;
 
@@ -62,6 +63,21 @@ sealed class Failure {
 
     if (_offlineTypes.contains(error.runtimeType.toString())) {
       return const OfflineFailure();
+    }
+
+    // Sign-in's two answers a person can act on. Everything else about a failed sign-in
+    // read «رقم الموبايل أو كلمة السر غلط» — including GoTrue's own rate limit, so a
+    // customer with the right password was told it was wrong, tried again, extended the
+    // limit, and phoned for a reset they did not need (B10, E4).
+    if (error is AuthException) {
+      if (error.statusCode == '429' ||
+          (error.code?.startsWith('over_') ?? false)) {
+        return const RateLimitedFailure();
+      }
+      if (error.code == 'invalid_credentials' ||
+          error.message.toLowerCase().contains('invalid login credentials')) {
+        return const WrongCredentialsFailure();
+      }
     }
 
     if (error is PostgrestException) {
@@ -213,6 +229,13 @@ final class NotAnImageFailure extends Failure {
 
 final class RateLimitedFailure extends Failure {
   const RateLimitedFailure();
+}
+
+/// The number and the password do not match an account. Its own type because it is the
+/// one sign-in failure that is the person's to fix by typing, and the only one that may
+/// be said as «غلط».
+final class WrongCredentialsFailure extends Failure {
+  const WrongCredentialsFailure();
 }
 
 /// The coupon said no, and said why. Each reason is its own sentence on the checkout

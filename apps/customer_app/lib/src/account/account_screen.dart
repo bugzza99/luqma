@@ -55,6 +55,7 @@ class AccountScreen extends ConsumerWidget {
   static const passwordKey = Key('account.password');
   static const toggleModeKey = Key('account.toggleMode');
   static const errorKey = Key('account.error');
+  static const forgotPasswordKey = Key('account.forgotPassword');
   static const versionKey = Key('account.version');
   static const profileKey = Key('account.profile');
   static const addAddressKey = Key('account.addAddress');
@@ -1240,9 +1241,15 @@ class _SignInCardState extends ConsumerState<_SignInCard> {
                 switch (_failure!) {
                   OfflineFailure() => strings.errorOffline,
                   PhoneTakenFailure() => strings.errorPhoneTaken,
+                  // GoTrue's limit on attempts from one network. Said as what it is:
+                  // «غلط» sent somebody with the right password round again (B10).
+                  RateLimitedFailure() =>
+                    'محاولات كتير في وقت قليل. استنى خمس دقايق وجرّب تاني.',
+                  // The only failure that is the password, and the only one said so.
+                  WrongCredentialsFailure() => 'رقم الموبايل أو كلمة السر غلط',
                   _ => _signingUp
                       ? 'مقدرناش نعمل الحساب. جرّب تاني.'
-                      : 'رقم الموبايل أو كلمة السر غلط',
+                      : 'مقدرناش ندخلك دلوقتي. جرّب تاني.',
                 },
                 key: AccountScreen.errorKey,
                 style: theme.textTheme.bodySmall?.copyWith(color: colors.danger),
@@ -1259,6 +1266,34 @@ class _SignInCardState extends ConsumerState<_SignInCard> {
                 _busy ? 'لحظة…' : (_signingUp ? 'إنشاء الحساب' : 'دخول'),
               ),
             ),
+            // The one way back from a forgotten password is a person — no mailbox, no
+            // SMS, settled — and the card never said so, so somebody locked out tried
+            // passwords until the rate limit caught them (B10). The line opens WhatsApp
+            // when the owner has set a number, and says the way either way.
+            if (!_signingUp) ...[
+              const SizedBox(height: Space.sm),
+              Builder(builder: (context) {
+                final support = ref.watch(appConfigProvider).supportWhatsapp.trim();
+                return TextButton(
+                  key: AccountScreen.forgotPasswordKey,
+                  onPressed: support.isEmpty
+                      ? null
+                      : () => openExternalLink(
+                            context,
+                            ref,
+                            Uri.parse('https://wa.me/${Phone.toWhatsapp(support)}'),
+                            whenUnavailable:
+                                'مفيش واتساب على التليفون ده. الرقم $support',
+                          ),
+                  child: Text(
+                    support.isEmpty
+                        ? 'نسيت كلمة السر؟ كلّم لقمة وهنعملك واحدة جديدة.'
+                        : 'نسيت كلمة السر؟ ابعتلنا على واتساب وهنعملك واحدة جديدة.',
+                    textAlign: TextAlign.center,
+                  ),
+                );
+              }),
+            ],
             const SizedBox(height: Space.sm),
             TextButton(
               key: AccountScreen.toggleModeKey,

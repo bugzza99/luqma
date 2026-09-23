@@ -6,6 +6,8 @@ import 'package:merchant_app/src/auth/sign_in_screen.dart';
 
 /// Remembers which of the two ways in was used, because that is the whole question here.
 class _RecordingAuth extends FakeAuthService {
+  _RecordingAuth({super.failure});
+
   final calls = <String>[];
 
   @override
@@ -30,12 +32,12 @@ class _RecordingAuth extends FakeAuthService {
 void main() {
   late _RecordingAuth auth;
 
-  Future<void> pumpScreen(WidgetTester tester) async {
+  Future<void> pumpScreen(WidgetTester tester, {Failure? failure}) async {
     tester.view.physicalSize = const Size(1080, 2340);
     tester.view.devicePixelRatio = 3;
     addTearDown(tester.view.reset);
 
-    auth = _RecordingAuth();
+    auth = _RecordingAuth(failure: failure);
     addTearDown(auth.dispose);
 
     await tester.pumpWidget(
@@ -96,6 +98,29 @@ void main() {
 
       expect(auth.calls, isEmpty);
       expect(find.text('اكتب رقم موبايل صح أو الإيميل'), findsOneWidget);
+    });
+  });
+
+  // B10 on the merchant's side. Every failure but offline read «البيانات غلط» — GoTrue's
+  // rate limit included, which a shop's shared wi-fi reaches sooner than a home's.
+  group('a refused sign-in says which refusal', () {
+    testWidgets('wrong credentials', (tester) async {
+      await pumpScreen(tester, failure: const WrongCredentialsFailure());
+      await signIn(tester, '01012345678');
+      expect(find.text('البيانات غلط'), findsOneWidget);
+    });
+
+    testWidgets('a rate limit is not wrong credentials', (tester) async {
+      await pumpScreen(tester, failure: const RateLimitedFailure());
+      await signIn(tester, '01012345678');
+      expect(find.text('البيانات غلط'), findsNothing);
+      expect(find.textContaining('استنى'), findsOneWidget);
+    });
+
+    testWidgets('nor is anything else', (tester) async {
+      await pumpScreen(tester, failure: const PermissionFailure());
+      await signIn(tester, '01012345678');
+      expect(find.text('البيانات غلط'), findsNothing);
     });
   });
 }

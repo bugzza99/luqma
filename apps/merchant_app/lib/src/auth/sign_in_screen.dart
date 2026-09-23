@@ -69,9 +69,15 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
       _error = switch (result) {
         Ok() => null,
         Err(failure: OfflineFailure()) => 'مفيش اتصال بالإنترنت',
+        // GoTrue's limit on attempts from one network — a shop's shared wi-fi reaches it
+        // sooner than a home's. «البيانات غلط» sent somebody with the right password
+        // round again (B10).
+        Err(failure: RateLimitedFailure()) =>
+          'محاولات كتير في وقت قليل. استنى خمس دقايق وجرّب تاني.',
         // Never "invalid credential", and never the raw code: neither tells somebody
         // standing in a kitchen anything they can act on.
-        Err() => 'البيانات غلط',
+        Err(failure: WrongCredentialsFailure()) => 'البيانات غلط',
+        Err() => 'مقدرناش ندخلك دلوقتي. جرّب تاني.',
       };
     });
   }

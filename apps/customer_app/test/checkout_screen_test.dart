@@ -72,6 +72,7 @@ void main() {
     Merchant merchant = shore,
     List<Address> addresses = const [home],
     Failure? placementFails,
+    Failure? zonesFail,
     bool reduced = false,
     LuqmaIdentity? signedInAs =
         const LuqmaIdentity(uid: 'u1', name: 'أحمد', phone: '01012345678'),
@@ -90,7 +91,8 @@ void main() {
           merchantRepositoryProvider
               .overrideWithValue(FakeMerchantRepository(seed: [merchant])),
           geographyRepositoryProvider
-              .overrideWithValue(FakeGeographyRepository(zones: zones)),
+              .overrideWithValue(
+                  FakeGeographyRepository(zones: zones, failure: zonesFail)),
           addressRepositoryProvider.overrideWithValue(
             FakeAddressRepository(
               seed: signedInAs == null ? const {} : {signedInAs.uid: addresses},
@@ -199,6 +201,47 @@ void main() {
 
       expect(find.byKey(CheckoutScreen.cashKey), findsOneWidget);
     });
+  });
+
+  // B5. With the zone list not loaded — a cold start on a weak line — the delivery fee
+  // read 0 and the button offered the food alone, «اطلب دلوقتي · 120». The server then
+  // priced the delivery and the courier asked for more at the door than the screen had
+  // said: the cash dispute this checkout exists to prevent.
+  group('a delivery fee it cannot know yet', () {
+    testWidgets('is not shown as zero, and holds the order back', (tester) async {
+      await pump(tester, zonesFail: const OfflineFailure());
+
+      expect(find.text('0 ج'), findsNothing);
+      final place = tester.widget<FilledButton>(find.byKey(CheckoutScreen.placeKey));
+      expect(place.onPressed, isNull, reason: 'no total to promise yet');
+    });
+  });
+
+  // B5, the other half. The basket keeps the price a dish had when it went in, and the
+  // server prices it again from the menu. When the two differ the order is still right —
+  // the server's is the price — but the customer was shown one figure and will be asked
+  // for another, and nothing said so.
+  testWidgets('a total the server priced differently is said before the door',
+      (tester) async {
+    // The fake prices every delivery at 10 ج; this address's zone is 15 ج, so the
+    // screen shows 5 ج more than the server's total.
+    await pump(tester, addresses: const [beach]);
+
+    await tester.tap(find.byKey(CheckoutScreen.placeKey));
+    await tester.pumpAndSettle();
+
+    expect(placedOrderId, isNotNull);
+    expect(find.textContaining('الإجمالي النهائي'), findsOneWidget);
+  });
+
+  testWidgets('and nothing is said when it matches', (tester) async {
+    await pump(tester);
+
+    await tester.tap(find.byKey(CheckoutScreen.placeKey));
+    await tester.pumpAndSettle();
+
+    expect(placedOrderId, isNotNull);
+    expect(find.textContaining('الإجمالي النهائي'), findsNothing);
   });
 
   group('what has to be true before it can be sent', () {

@@ -159,6 +159,13 @@ class _LoadedState extends ConsumerState<_Loaded> {
       // Gone from the menu since the home last loaded it. The shop's page is still the
       // right place to have landed, so nothing is said and nothing opens.
       if (item == null) return;
+      // The same gate the menu applies to a tap (B7). A closed shop's dish, or one that
+      // has sold out, is shown on the page where the customer can see why, never opened
+      // into a sheet whose «أضف للسلة» would start a basket that cannot be sent — and,
+      // with another shop's food already in it, throw that basket away first.
+      final open = merchantOpenState(widget.merchant, ref.read(clockProvider)()) ==
+          MerchantOpenState.open;
+      if (!open || !item.isAvailable) return;
       _presented = true;
       _openItem(item);
     });

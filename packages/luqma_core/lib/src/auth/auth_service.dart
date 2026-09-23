@@ -448,7 +448,9 @@ class FakeAuthService implements AuthService {
     final key = Phone.normalize(phone);
     final known = _accounts[key];
     if (known != null && known != password) {
-      return Result.err(UnknownFailure(Exception('wrong password')));
+      // What GoTrue's `invalid_credentials` becomes through Failure.from, so a screen is
+      // tested against the sentence production shows.
+      return const Result.err(WrongCredentialsFailure());
     }
 
     _identity =

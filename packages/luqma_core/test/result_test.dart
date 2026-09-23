@@ -1,6 +1,7 @@
 ﻿import 'package:flutter_test/flutter_test.dart';
 import 'package:luqma_core/luqma_core.dart';
 import 'package:postgrest/postgrest.dart';
+import 'package:supabase_flutter/supabase_flutter.dart' show AuthApiException;
 
 class SocketException implements Exception {}
 
@@ -38,6 +39,33 @@ void main() {
         PostgrestException(code: 'P0001', message: 'sold out'),
       );
       expect(failure, isA<ConflictFailure>());
+    });
+
+    // B10 / E4. Every sign-in failure but offline read «رقم الموبايل أو كلمة السر غلط» —
+    // including GoTrue's rate limit (30 per five minutes per IP), which a busy launch
+    // evening on one café's wi-fi can reach. A customer with the right password was told it
+    // was wrong, tried again, extended the limit, and phoned the admin for a reset they did
+    // not need.
+    test('a rate-limited sign-in is a rate limit, not a wrong password', () {
+      final failure = Failure.from(
+        AuthApiException('Request rate limit reached', statusCode: '429',
+            code: 'over_request_rate_limit'),
+      );
+      expect(failure, isA<RateLimitedFailure>());
+    });
+
+    test('wrong credentials are their own failure', () {
+      final failure = Failure.from(
+        AuthApiException('Invalid login credentials', statusCode: '400',
+            code: 'invalid_credentials'),
+      );
+      expect(failure, isA<WrongCredentialsFailure>());
+    });
+
+    test('any other auth error is neither', () {
+      final failure = Failure.from(AuthApiException('boom', statusCode: '500'));
+      expect(failure, isNot(isA<WrongCredentialsFailure>()));
+      expect(failure, isNot(isA<RateLimitedFailure>()));
     });
 
     // A9: deleting an account whose order is still on its way is refused by name, so the

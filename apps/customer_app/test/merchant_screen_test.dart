@@ -1,6 +1,7 @@
 import 'package:customer_app/src/cart/cart.dart';
 import 'package:customer_app/src/cart/cart_controller.dart';
 import 'package:customer_app/src/merchant/merchant_screen.dart';
+import 'package:customer_app/src/merchant/item_sheet.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -65,6 +66,7 @@ void main() {
     Map<String, Object> config = const {},
     DateTime? now,
     bool reducedMotion = false,
+    String? openItemId,
   }) async {
     // A real phone, not the 800x600 test window: this screen stacks a 168 cover, an info
     // block and a chip row above the menu, and on the default window the first dish falls
@@ -102,9 +104,9 @@ void main() {
               return MediaQuery(
                 data: MediaQuery.of(context)
                     .copyWith(disableAnimations: reducedMotion),
-                child: const Directionality(
+                child: Directionality(
                   textDirection: TextDirection.rtl,
-                  child: MerchantScreen(merchantId: 'm1'),
+                  child: MerchantScreen(merchantId: 'm1', openItemId: openItemId),
                 ),
               );
             },
@@ -544,5 +546,30 @@ void main() {
     expect(find.byType(LuqmaErrorView), findsOneWidget,
         reason: 'the customer is told, and given the retry every other error carries');
     expect(find.text('نص فرخة على الفحم'), findsNothing);
+  });
+
+  // B7. A dish tapped on the home opens its shop with the dish's sheet already up — and
+  // that path skipped the gate the menu itself applies, so a closed shop's dish could be
+  // put in a basket. With a basket from another shop it went further: «تبدأ سلة جديدة؟»,
+  // the good basket thrown away for one that could not be sent.
+  group('a dish opened from the home', () {
+    testWidgets('opens its sheet when it can be ordered', (tester) async {
+      await pump(tester, openItemId: 'i1');
+      expect(find.byType(ItemSheet), findsOneWidget);
+    });
+
+    testWidgets('does not, when the shop is closed', (tester) async {
+      await pump(
+        tester,
+        openItemId: 'i1',
+        merchant: shore.copyWith(pausedUntil: noon.add(const Duration(hours: 1))),
+      );
+      expect(find.byType(ItemSheet), findsNothing);
+    });
+
+    testWidgets('nor when the dish has sold out', (tester) async {
+      await pump(tester, openItemId: 'i2');
+      expect(find.byType(ItemSheet), findsNothing);
+    });
   });
 }

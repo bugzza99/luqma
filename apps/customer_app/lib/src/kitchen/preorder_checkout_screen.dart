@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:luqma_core/luqma_core.dart';
 
+import '../checkout/checkout_key.dart';
 import '../address/address_list_screen.dart';
 import '../home/sections/home_kitchen_section.dart';
 
@@ -45,7 +46,6 @@ class PreorderCheckoutScreen extends ConsumerStatefulWidget {
 
 class _PreorderCheckoutScreenState extends ConsumerState<PreorderCheckoutScreen> {
   final _note = TextEditingController();
-  final String _clientOrderId = newClientOrderId();
 
   Failure? _failure;
   bool _sending = false;
@@ -76,9 +76,12 @@ class _PreorderCheckoutScreenState extends ConsumerState<PreorderCheckoutScreen>
     final result = await ref.read(orderRepositoryProvider).placeOrder(
           OrderDraft(
             merchantId: meal.merchantId,
-            // One reservation screen, one id. Retrying a lost response must not take a
-            // second portion from the cook's remaining quantity.
-            clientOrderId: _clientOrderId,
+            // One reservation, one id — kept past this screen (B6). Retrying a lost
+            // response, or opening the screen again to retry it, must not take a second
+            // portion from the cook's remaining quantity.
+            clientOrderId: ref
+                .read(checkoutKeyProvider.notifier)
+                .keyForReservation(meal.id, widget.quantity),
             dailyMealId: meal.id,
             // An address is also a request for paid delivery on the server. The one
             // remembered elsewhere in the app must not charge somebody collecting
@@ -106,6 +109,7 @@ class _PreorderCheckoutScreenState extends ConsumerState<PreorderCheckoutScreen>
           _failure = failure;
         });
       case Ok(:final value):
+        ref.read(checkoutKeyProvider.notifier).reservationPlaced();
         setState(() => _sending = false);
         widget.onPlaced(value);
     }

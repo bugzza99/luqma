@@ -500,7 +500,7 @@ void main() {
     // somebody the number exists but the password did not is a way to enumerate numbers.
     testWidgets('a refused sign-in says so without saying which half',
         (tester) async {
-      await pump(tester, signedInAs: null, failure: const PermissionFailure());
+      await pump(tester, signedInAs: null, failure: const WrongCredentialsFailure());
 
       await fillIn(tester);
       await tester.tap(find.byKey(AccountScreen.signInKey));
@@ -508,6 +508,30 @@ void main() {
 
       expect(find.byKey(AccountScreen.errorKey), findsOneWidget);
       expect(find.text('رقم الموبايل أو كلمة السر غلط'), findsOneWidget);
+    });
+
+    // B10. GoTrue's rate limit read «كلمة السر غلط» to somebody with the right password,
+    // who then tried again and extended it.
+    testWidgets('a rate limit is not called a wrong password', (tester) async {
+      await pump(tester, signedInAs: null, failure: const RateLimitedFailure());
+
+      await fillIn(tester);
+      await tester.tap(find.byKey(AccountScreen.signInKey));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('غلط'), findsNothing);
+      expect(find.textContaining('استنى'), findsOneWidget);
+    });
+
+    // And a failure nobody can name is not the customer's password either.
+    testWidgets('an unknown failure is not called a wrong password', (tester) async {
+      await pump(tester, signedInAs: null, failure: const PermissionFailure());
+
+      await fillIn(tester);
+      await tester.tap(find.byKey(AccountScreen.signInKey));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('غلط'), findsNothing);
     });
   });
 
@@ -601,6 +625,36 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(auth.identity, isNotNull);
+    });
+  });
+
+  // B10. A forgotten password has exactly one way back — a person — and the sign-in card
+  // never said so. Somebody locked out tried passwords until the rate limit caught them.
+  group('a forgotten password', () {
+    testWidgets('the sign-in card says who to ask, and opens the line', (tester) async {
+      await pump(tester, signedInAs: null, supportWhatsapp: '01012345678');
+
+      expect(find.byKey(AccountScreen.forgotPasswordKey), findsOneWidget);
+      await tester.tap(find.byKey(AccountScreen.forgotPasswordKey));
+      await tester.pumpAndSettle();
+
+      expect(links.opened.single, Uri.parse('https://wa.me/201012345678'));
+    });
+
+    testWidgets('with no number set it still says the way back, and opens nothing',
+        (tester) async {
+      await pump(tester, signedInAs: null);
+
+      expect(find.byKey(AccountScreen.forgotPasswordKey), findsOneWidget);
+      expect(find.textContaining('نسيت كلمة السر'), findsOneWidget);
+    });
+
+    testWidgets('and is not offered to somebody making an account', (tester) async {
+      await pump(tester, signedInAs: null);
+      await tester.tap(find.byKey(AccountScreen.toggleModeKey));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(AccountScreen.forgotPasswordKey), findsNothing);
     });
   });
 

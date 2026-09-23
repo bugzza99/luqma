@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:luqma_core/luqma_core.dart';
 
+import 'checkout_key.dart';
 import '../address/address_editor_screen.dart';
 import '../address/address_list_screen.dart';
 import '../cart/cart.dart';
@@ -58,7 +59,6 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
   /// the coupon or the note saw the button come back and nothing else, and read it as the
   /// tap not having registered.
   final _scroll = ScrollController();
-  final String _clientOrderId = newClientOrderId();
 
   Failure? _failure;
   bool _sending = false;
@@ -146,7 +146,12 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
     });
   }
 
-  Future<void> _place(Cart cart, Address address, LuqmaIdentity identity) async {
+  Future<void> _place(
+    Cart cart,
+    Address address,
+    LuqmaIdentity identity, {
+    required int shownTotal,
+  }) async {
     setState(() {
       _sending = true;
       _failure = null;
@@ -188,7 +193,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
             // Made with this screen, not this tap. A failed response enables the same
             // button again, and the retry must still name the order the server may have
             // already made.
-            clientOrderId: _clientOrderId,
+            clientOrderId: ref.read(checkoutKeyProvider.notifier).keyFor(cart),
             addressId: address.id,
             items: cart.toOrderLines(),
             type: OrderType.instant,
@@ -237,6 +242,21 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
         // above a basket offering to send the same order again.
         ref.read(cartProvider.notifier).clear();
         setState(() => _sending = false);
+        // The basket keeps the price a dish had when it went in, and the server priced it
+        // again from the menu. When they differ the server's figure is the one the courier
+        // collects — and the customer, who was shown the other, is told now rather than
+        // at the door (B5). On the app's own messenger, so it outlives this screen.
+        if (value.pricing.total != shownTotal) {
+          ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+            SnackBar(
+              duration: const Duration(seconds: 8),
+              content: Text(
+                'الإجمالي النهائي ${LuqmaStrings.of(context).price(value.pricing.total)} '
+                '— اتغيّر عن اللي كان ظاهر لأن الأسعار اتحدّثت.',
+              ),
+            ),
+          );
+        }
         widget.onPlaced(value);
     }
   }
@@ -278,9 +298,14 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
       coupon: acceptedCoupon,
     );
 
+    // The fee is the zone's, and without the zone list there is no fee to show — only a
+    // zero that reads as free delivery, on a button promising a total the courier would
+    // then contradict at the door (B5). No zone, no total, no order yet.
+    final feeKnown = zone != null;
     final ready = identity != null &&
         merchant != null &&
         address != null &&
+        feeKnown &&
         inRange &&
         cart.isNotEmpty &&
         !_sending;
@@ -349,7 +374,10 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
               total: pricing.total,
               sending: _sending,
               onPlace:
-                  ready ? () => _place(cart, address, identity) : null,
+                  ready
+                      ? () => _place(cart, address, identity,
+                          shownTotal: pricing.total)
+                      : null,
             ),
     );
   }
@@ -456,7 +484,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
       _Lines(cart: cart),
       _Bill(
         pricing: pricing,
-        hasAddress: address != null,
+        hasAddress: address != null && zone != null,
         zoneName: zone?.name,
       ),
       const _CashNote(),
