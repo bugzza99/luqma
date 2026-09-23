@@ -117,7 +117,7 @@ describe('the functions that move money', () => {
     it('an admin can, and the balance moves', async () => {
       await as(ADMIN(), async () => {
         await q('select top_up_wallet($1,$2,$3)', [merchant, 2500, admin]);
-        const r = await q('select wallet_balance from merchants where id=$1', [merchant]);
+        const r = await q('select wallet_balance from merchant_money(array[$1]::uuid[])', [merchant]);
         assert.equal(r.rows[0].wallet_balance, 3500);
       });
     });
@@ -172,7 +172,7 @@ describe('the functions that move money', () => {
       await as(ADMIN(), async () => {
         await q('select record_subscription_payment($1,$2,$3,$4,$5)',
                 [merchant, 'money-basic', 25000, 1, admin]);
-        const r = await q('select plan_id from merchants where id=$1', [merchant]);
+        const r = await q('select plan_id from merchant_money(array[$1]::uuid[])', [merchant]);
         assert.equal(r.rows[0].plan_id, 'money-basic');
       });
     });

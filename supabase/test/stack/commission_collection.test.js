@@ -127,7 +127,7 @@ describe('collecting a commission', () => {
     it('an admin collects, and the debt falls by exactly that much', async () => {
       await as(ADMIN(), async () => {
         await q('select record_commission_payment($1,$2)', [merchant, 20000]);
-        const r = await q('select commission_owed from merchants where id=$1', [merchant]);
+        const r = await q('select commission_owed from merchant_money(array[$1]::uuid[])', [merchant]);
         assert.equal(r.rows[0].commission_owed, 27500);
       });
       assert.equal(await owed(), 47500, 'and the transaction was rolled back');

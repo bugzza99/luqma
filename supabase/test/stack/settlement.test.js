@@ -487,7 +487,9 @@ describe('settling a delivered order', () => {
         assert.notEqual(mode, 'on',
           'the settlement left server mode standing in another transaction');
 
-        // And nothing the settlement itself did was rolled back by putting it away.
+        // And nothing the settlement itself did was rolled back by putting it away. Read
+        // as the owner of the database: a courier reads no shop's wallet since A6.
+        await q("select set_config('role','postgres',true)");
         assert.equal((await merchantRow(m)).wallet_balance, 4500);
       } finally { await q('rollback'); }
     });

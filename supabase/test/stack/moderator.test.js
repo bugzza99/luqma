@@ -196,7 +196,7 @@ describe('a moderator is an admin except', () => {
     it('and an admin is untouched', async () => {
       await as(ADMIN(), async () => {
         await q('select top_up_wallet($1,$2,$3)', [merchant, 500, admin]);
-        const r = await q('select wallet_balance from merchants where id = $1', [merchant]);
+        const r = await q('select wallet_balance from merchant_money(array[$1]::uuid[])', [merchant]);
         assert.equal(r.rows[0].wallet_balance, 500);
       });
     });
@@ -217,7 +217,7 @@ describe('a moderator is an admin except', () => {
     it('and an admin still sets it, with the row and the audit entry together', async () => {
       await as(ADMIN(), async () => {
         await q("select admin_set_revenue_model($1,'prepaid',700)", [merchant]);
-        const m = await q('select revenue_model, revenue_value from merchants where id = $1',
+        const m = await q('select revenue_model, revenue_value from merchant_money(array[$1]::uuid[])',
                           [merchant]);
         assert.deepEqual(m.rows[0], { revenue_model: 'prepaid', revenue_value: 700 });
         const a = await q(
@@ -233,7 +233,7 @@ describe('a moderator is an admin except', () => {
     // fixture's, so the write would change something. The row is read back inside the same
     // transaction, past a savepoint — `as()` rolls back, so a read after it proves nothing.
     const refusedAndUnmoved = (identity, column, value) => as(identity, async () => {
-      const read = async () => (await q(`select ${column} as v from merchants where id = $1`,
+      const read = async () => (await q(`select ${column} as v from merchant_money(array[$1]::uuid[])`,
                                         [merchant])).rows[0].v;
       const before = await read();
       await q('savepoint attempt');
@@ -344,7 +344,7 @@ describe('a moderator is an admin except', () => {
 
     it('refuses a moderator inserting an order, and nothing is held', async () => {
       await as(MOD(), async () => {
-        const held = async () => (await q('select wallet_held from merchants where id = $1',
+        const held = async () => (await q('select wallet_held from merchant_money(array[$1]::uuid[])',
                                           [merchant])).rows[0].wallet_held;
         const before = await held();
         await q('savepoint attempt');
@@ -382,11 +382,15 @@ describe('a moderator is an admin except', () => {
                                          import.meta.url), 'utf8')),
       id: randomUUID(), city_id: city, zone_id: zone, ...extra,
     });
-    const insertShop = (row) => {
+    // The terms come back through merchant_money: since A6 no phone reads a money column
+    // off the table, the row it just inserted included.
+    const insertShop = async (row) => {
       const columns = Object.keys(row).join(', ');
-      return q(`insert into merchants (${columns})
+      const made = await q(`insert into merchants (${columns})
                 select ${columns} from jsonb_populate_record(null::merchants, $1::jsonb)
-                returning revenue_model, commission_custom`, [JSON.stringify(row)]);
+                returning id`, [JSON.stringify(row)]);
+      return q(`select revenue_model, commission_custom
+                  from merchant_money(array[$1]::uuid[])`, [made.rows[0].id]);
     };
 
     it('lets a moderator add a shop exactly as AdminApp does', async () => {
