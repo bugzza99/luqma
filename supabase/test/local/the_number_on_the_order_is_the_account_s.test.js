@@ -87,4 +87,47 @@ describe("the number on the order is the account's", () => {
     assert.equal(
       (await rows('select count(*)::int n from users where id = $1', [id]))[0].n, 1);
   });
+
+  // A5. Deriving the number at signup closed one door; the column guard left another:
+  // `users.phone` was on the list a customer may write, so one PATCH put any number on
+  // every order they placed — a courier ringing a stranger — and made the admin's search
+  // find this account under somebody else's number.
+  describe('after signup', () => {
+    it("a phone account's number cannot be moved off the account", async () => {
+      const id = await signUp('01012345678@phone.luqma.app', { name: 'أميرة' });
+
+      await db.query(`update users set phone = '01099998888' where id = $1`, [id]);
+
+      assert.equal((await profile(id)).phone, '01012345678');
+    });
+
+    it('nor cleared', async () => {
+      const id = await signUp('01012345678@phone.luqma.app', { name: 'أميرة' });
+
+      await db.query('update users set phone = null where id = $1', [id]);
+
+      assert.equal((await profile(id)).phone, '01012345678');
+    });
+
+    it('a staff account on a real address can still set the number it has none of',
+      async () => {
+        // The checkout asks an account with no number for one, and saves it here. Only a
+        // real address reaches that: a phone account always has its number.
+        const id = await signUp('team@luqma.app', { name: 'الفريق' });
+
+        await db.query(`update users set phone = '01055556666' where id = $1`, [id]);
+
+        assert.equal((await profile(id)).phone, '01055556666');
+      });
+
+    it('the name is bounded on every write, not only at signup', async () => {
+      const id = await signUp('01012345678@phone.luqma.app', { name: 'أميرة' });
+
+      await assert.rejects(
+        db.query('update users set name = $2 where id = $1', [id, 'ا'.repeat(81)]),
+        /users_name_is_a_name|check constraint/);
+      await db.query('update users set name = $2 where id = $1', [id, 'ا'.repeat(80)]);
+      assert.equal((await profile(id)).name.length, 80);
+    });
+  });
 });
