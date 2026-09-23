@@ -110,7 +110,10 @@ describe('delete_my_account', () => {
        values
          ($1, $2, 'محمد', '01012345678', $3, 'مطعم', $4, 'instant',
           '[]'::jsonb, '{"subtotal":0,"deliveryFee":0,"total":0}'::jsonb,
-          '{"model":"subscription","value":0,"amount":0}'::jsonb, 'placed')
+          -- Finished, not live: since A9 (20261101070000) an account with an order still
+          -- on its way cannot be deleted, so the retained order a status change is made
+          -- on below is one that had already ended.
+          '{"model":"subscription","value":0,"amount":0}'::jsonb, 'cancelled')
        returning id`,
       [city, customer, merchant, zone],
     )).rows[0].id;

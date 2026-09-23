@@ -136,11 +136,17 @@ describe('a platform order is carried by somebody', () => {
       const id = await orderAt('outForDelivery');
       await rider();
 
-      await assert.rejects(
-        () => asPhone(() => db.query(
-          `update orders set status = 'delivered', delivered_at = now() where id = $1`,
-          [id])),
-        refused('courier'));
+      // Since A11 (20261101110000) a platform order that is out with nobody on it is not
+      // in any rider's pool at all, so the update finds no row rather than being refused.
+      // Either answer is the right one; what matters is that the order is not delivered.
+      const changed = await asPhone(async () => (await db.query(
+        `update orders set status = 'delivered', delivered_at = now() where id = $1
+         returning id`, [id])).rows.length).catch(() => 0);
+
+      assert.equal(changed, 0);
+      const status = (await db.query('select status from orders where id = $1', [id]))
+        .rows[0].status;
+      assert.equal(status, 'outForDelivery');
     });
 
     it('refuses a courier taking their own name off in the same breath', async () => {

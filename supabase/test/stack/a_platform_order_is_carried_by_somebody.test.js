@@ -153,12 +153,22 @@ describe('a platform order is carried by somebody', () => {
       // platform rider could then deliver it anonymously.
       const id = await makeOrder({ status: 'outForDelivery' });
 
-      const error = await refused(rider, () => q(
-        "update orders set status = 'delivered', delivered_at = now() where id = $1", [id]));
+      // Since A11 (20261101110000) an unclaimed platform order that is already out is in
+      // no rider's pool, so the update reaches no row rather than being refused. Either
+      // way the order is not delivered, which is what this test is for.
+      const error = await refused(rider, async () => {
+        const r = await q(
+          "update orders set status = 'delivered', delivered_at = now() where id = $1 "
+          + 'returning id', [id]);
+        if (r.rowCount > 0) throw Object.assign(new Error('delivered'), { code: 'none' });
+      });
 
-      assert.ok(error, 'delivered with no courier on the order');
-      assert.equal(error.code, '23514', error.message);
-      assert.match(error.message, /courier/);
+      if (error) {
+        assert.equal(error.code, '23514', error.message);
+        assert.match(error.message, /courier/);
+      }
+      const status = (await q('select status from orders where id = $1', [id])).rows[0];
+      assert.equal(status?.status ?? 'outForDelivery', 'outForDelivery');
     });
 
     // Not excepted: nothing in AdminApp moves an order to `delivered`, and an admin who

@@ -307,13 +307,14 @@ describe('a moderator cannot move money', () => {
     // A prepaid order whose frozen terms say a fortune an order: the hold trigger reads
     // `revenue` off the row and raises `wallet_held` by it, which is a shop that stops
     // taking orders the moment it lands.
-    const insertOrder = (status = 'placed') => db.query(
+    const insertOrder = (status = 'placed',
+        revenue = '{"model":"prepaid","value":999999}') => db.query(
       `insert into orders (city_id, customer_uid, customer_name, customer_phone,
                            merchant_id, merchant_name, zone_id, type, items, pricing,
                            revenue, status, delivery_by)
        values ('edku', null, 'عميل', '01000000000', $1, 'مطعم الفلوس', $2, 'instant',
-               '[]', '{"subtotal":1,"total":1}', '{"model":"prepaid","value":999999}',
-               $3, 'merchant') returning id`, [shop, zone, status]);
+               '[]', '{"subtotal":1,"total":1}', $4::jsonb,
+               $3, 'merchant') returning id`, [shop, zone, status, revenue]);
 
     it('refuses a moderator inserting an order, and nothing is held', async () => {
       await moderator();
@@ -342,9 +343,21 @@ describe('a moderator cannot move money', () => {
     it('leaves a platform admin as it was', async () => {
       await admin();
 
-      const n = await asPhone(async () => (await insertOrder()).rows.length);
+      const n = await asPhone(async () =>
+        (await insertOrder('placed', '{"model":"commission","value":500}')).rows.length);
 
       assert.equal(n, 1);
+    });
+
+    // A7 reaches here too, and rightly: the hold refuses what the free credit cannot
+    // cover whoever writes the order, so not even a platform admin can hold a fortune
+    // against a shop's wallet and stop it trading.
+    it('and not even a platform admin holds more than the wallet has', async () => {
+      await admin();
+
+      await assert.rejects(
+        () => asPhone(() => insertOrder()),
+        /not accepting orders/);
     });
 
     // The one real way in, through the role a phone speaks as.

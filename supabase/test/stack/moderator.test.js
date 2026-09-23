@@ -326,13 +326,13 @@ describe('a moderator is an admin except', () => {
 
     // Prepaid terms that say a fortune an order: `hold_prepaid_credit` holds that against
     // the wallet on insert, and the shop stops taking orders.
-    const forgedOrder = (status) => q(
+    const forgedOrder = (status, revenue = '{"model":"prepaid","value":999999}') => q(
       `insert into orders (city_id, customer_uid, customer_name, customer_phone,
                            merchant_id, merchant_name, zone_id, type, items, pricing,
                            revenue, status, delivery_by)
        values ($1, null, 'عميل', '01000000000', $2, 'مطعم', $3, 'instant', '[]',
-               '{"subtotal":1,"total":1}', '{"model":"prepaid","value":999999}', $4,
-               'merchant') returning id`, [city, merchant, zone, status]);
+               '{"subtotal":1,"total":1}', $5::jsonb, $4,
+               'merchant') returning id`, [city, merchant, zone, status, revenue]);
 
     // By message as well as by code: a refusal from the order-number sequence is also
     // 42501, and would pass this test without the guard ever being asked.
@@ -364,9 +364,15 @@ describe('a moderator is an admin except', () => {
     // sits beside was never reachable on this stack either — say so rather than fix it here.
     it('leaves a platform admin as they were', async () => {
       await as(ADMIN(), async () => {
-        const r = await forgedOrder('placed');
+        const r = await forgedOrder('placed', '{"model":"commission","value":500}');
         assert.equal(r.rowCount, 1);
       });
+    });
+
+    // A7: the hold refuses what the free credit cannot cover, whoever writes the order.
+    it('and not even a platform admin holds more than the wallet has', async () => {
+      await assert.rejects(as(ADMIN(), () => forgedOrder('placed')),
+        /not accepting orders/);
     });
 
     // The exact row AdminApp sends — `rowFor`, pinned by

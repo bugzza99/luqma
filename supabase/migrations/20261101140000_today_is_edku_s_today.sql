@@ -13,7 +13,8 @@
 -- stream read once with nobody listening. The queue is built by joining the shop anyway,
 -- so it carries the shop's phone and the sheet reads it from the item it was opened on.
 --
--- Both functions are patched in place from their current bodies.
+-- Both functions are patched in place from their current bodies, carriage returns stripped
+-- first: a function created from a Windows checkout keeps CRLF in its source.
 
 create or replace function public.cairo_start_of(p_unit text)
 returns timestamptz
@@ -34,6 +35,7 @@ declare
   v_def text;
 begin
   select pg_catalog.pg_get_functiondef('public.admin_today()'::regprocedure) into v_def;
+  v_def := replace(v_def, chr(13), '');
   if (length(v_def) - length(replace(v_def, 'date_trunc(''day'', now())', '')))
      / length('date_trunc(''day'', now())') <> 3
      or position('''merchantName'', m.name)' in v_def) = 0 then
@@ -45,6 +47,7 @@ begin
   execute v_def;
 
   select pg_catalog.pg_get_functiondef('public.admin_statistics()'::regprocedure) into v_def;
+  v_def := replace(v_def, chr(13), '');
   if (length(v_def) - length(replace(v_def, 'date_trunc(''week'', now())', '')))
      / length('date_trunc(''week'', now())') <> 2
      or (length(v_def) - length(replace(v_def, 'date_trunc(''month'', now())', '')))

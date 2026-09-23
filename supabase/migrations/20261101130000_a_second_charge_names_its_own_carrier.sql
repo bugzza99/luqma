@@ -13,7 +13,9 @@
 -- those are the figures read back off the row itself, so writing them again changes
 -- nothing there; on a charge they are the fresh ones.
 --
--- Patched in place from the current bodies, each anchor matched exactly once.
+-- Patched in place from the current bodies, each anchor matched exactly once. Carriage
+-- returns are stripped first: a function created from a migration checked out on Windows
+-- keeps CRLF in its source, and an anchor written with LF would never match it.
 
 do $migrate$
 declare
@@ -22,8 +24,10 @@ declare
 begin
   select pg_catalog.pg_get_functiondef('public.apply_courier_settlement(uuid, boolean)'::regprocedure)
     into v_def;
+  v_def := replace(v_def, chr(13), '');
   v_anchor := 'on conflict (order_id) do update
          set reversed_at = case when p_charged then null else pg_catalog.now() end,';
+  v_anchor := replace(v_anchor, chr(13), '');
   if (length(v_def) - length(replace(v_def, v_anchor, ''))) / length(v_anchor) <> 1 then
     raise exception 'apply_courier_settlement has drifted; re-read its upsert';
   end if;
@@ -38,8 +42,10 @@ begin
 
   select pg_catalog.pg_get_functiondef('public.apply_order_settlement(uuid, boolean)'::regprocedure)
     into v_def;
+  v_def := replace(v_def, chr(13), '');
   v_anchor := 'on conflict (order_id) do update
          set reversed_at = case when p_charged then null else now() end,';
+  v_anchor := replace(v_anchor, chr(13), '');
   if (length(v_def) - length(replace(v_def, v_anchor, ''))) / length(v_anchor) <> 1 then
     raise exception 'apply_order_settlement has drifted; re-read its upsert';
   end if;
