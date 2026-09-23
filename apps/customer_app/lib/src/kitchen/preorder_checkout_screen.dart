@@ -180,8 +180,24 @@ class _PreorderCheckoutScreenState extends ConsumerState<PreorderCheckoutScreen>
                       OfflineFailure() => 'مفيش نت دلوقتي. جرّب تاني.',
                       // The race this whole collection exists for. Said as what it is,
                       // not as a generic failure: somebody got the last portion first.
+                      //
+                      // Only that race, though. Every conflict used to read «خلصت», so a
+                      // meal the cook took down or a kitchen that paused was reported as
+                      // sold out beside a counter still showing portions left.
+                      OrderRefusedFailure(reason: OrderRefusal.soldOut) =>
+                        'للأسف الأكلة خلصت قبل ما تأكد. جرّب حاجة تانية.',
+                      OrderRefusedFailure(reason: OrderRefusal.mealClosed) =>
+                        'الأكلة دي مبقتش متاحة للحجز. جرّب حاجة تانية.',
+                      OrderRefusedFailure(reason: OrderRefusal.shopClosed) =>
+                        'المطبخ مش بياخد حجوزات دلوقتي. جرّب بعدين.',
+                      OrderRefusedFailure(reason: OrderRefusal.zoneNotServed) =>
+                        'المطبخ مبيوصلش العنوان ده. غيّر العنوان.',
+                      OrderRefusedFailure() =>
+                        'الحجز متأكدش. راجع الطلب وجرّب تاني.',
                       ConflictFailure() =>
                         'للأسف الأكلة خلصت قبل ما تأكد. جرّب حاجة تانية.',
+                      AccountBlockedFailure() =>
+                        'الحساب ده موقوف عن الطلب. لو شايف إن فيه غلط كلّم لقمة.',
                       PermissionFailure() => 'لازم تسجّل دخول عشان تحجز.',
                       _ => 'مقدرناش نأكد الحجز. جرّب تاني.',
                     },

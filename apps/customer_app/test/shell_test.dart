@@ -309,6 +309,40 @@ void main() {
   });
 
   group('being asked to sign in', () {
+    // The path every first-time customer who browses first takes: a shop, a dish, the
+    // bar at the bottom, the basket, checkout. The merchant screen opened the basket with
+    // no `onSignIn`, so the checkout's only button — «سجّل دخول» — was drawn disabled, at
+    // the one moment somebody had decided to order.
+    testWidgets('from a checkout reached through a merchant screen lands on the account '
+        'tab', (tester) async {
+      await pump(
+        tester,
+        signedInAs: null,
+        startingCart: cart,
+        sections: const [
+          HomeSection(key: 'list', type: 'merchantList', sortOrder: 0, cityId: 'edku'),
+        ],
+      );
+
+      await tester.tap(find.text('مطعم الشاطئ'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(MerchantScreen.cartBarKey));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(CartScreen.checkoutKey));
+      await tester.pumpAndSettle();
+
+      final signIn = tester.widget<ButtonStyleButton>(
+        find.byKey(CheckoutScreen.signInKey),
+      );
+      expect(signIn.onPressed, isNotNull, reason: 'the only button on the screen works');
+
+      await tester.tap(find.byKey(CheckoutScreen.signInKey));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(AccountScreen.signInKey), findsOneWidget);
+      expect(find.byType(CheckoutScreen), findsNothing);
+    });
+
     testWidgets('from طلباتي lands on the account tab', (tester) async {
       await pump(tester, signedInAs: null);
 

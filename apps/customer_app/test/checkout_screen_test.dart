@@ -668,6 +668,79 @@ void main() {
     });
   });
 
+  // The server refuses an order for about a dozen named reasons. Each is its own
+  // sentence here, because «جرّب تاني» is only true of one of them — the dead
+  // connection — and was said for all of them.
+  group('a refusal from the server', () {
+    // Previewed as accepted, then taken by somebody else's last use before this order
+    // went. Every retry re-sent the dead code and failed with a sentence about the
+    // network, until the customer happened to tap «شيل».
+    testWidgets('a coupon refused at placement is taken off, with its reason',
+        (tester) async {
+      await pump(tester);
+      orders.couponEvaluation = const CouponAccepted(
+        subtotalDiscount: 2000,
+        deliveryDiscount: 0,
+        platformOwesMerchant: 0,
+      );
+      await tester.ensureVisible(find.byKey(CheckoutScreen.couponApplyKey));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(CheckoutScreen.couponInputKey), 'SAVE20');
+      await tester.tap(find.byKey(CheckoutScreen.couponApplyKey));
+      await tester.pumpAndSettle();
+
+      orders.failure = const CouponFailure(CouponRejection.exhausted);
+      await tester.tap(find.byKey(CheckoutScreen.placeKey));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('الكود ده مبقاش ينفع'), findsOneWidget);
+      expect(find.textContaining('مفيش نت'), findsNothing);
+
+      // And the next tap sends the order without it, and goes through.
+      orders.failure = null;
+      await tester.tap(find.byKey(CheckoutScreen.placeKey));
+      await tester.pumpAndSettle();
+      expect(orders.drafts.last.couponCode, isNull);
+      expect(placedOrderId, isNotNull);
+    });
+
+    testWidgets('a dish switched off says so rather than «جرّب تاني»', (tester) async {
+      await pump(
+        tester,
+        placementFails: const OrderRefusedFailure(OrderRefusal.dishUnavailable),
+      );
+
+      await tester.tap(find.byKey(CheckoutScreen.placeKey));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('مبقاش متاح'), findsOneWidget);
+      expect(find.textContaining('جرّب تاني'), findsNothing);
+    });
+
+    testWidgets('a shut shop says it is shut', (tester) async {
+      await pump(
+        tester,
+        placementFails: const OrderRefusedFailure(OrderRefusal.shopClosed),
+      );
+
+      await tester.tap(find.byKey(CheckoutScreen.placeKey));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('مش بيستقبل طلبات'), findsOneWidget);
+    });
+
+    // A blocked customer is signed in. «لازم تسجّل دخول» sent them round a loop.
+    testWidgets('a blocked account is not asked to sign in', (tester) async {
+      await pump(tester, placementFails: const AccountBlockedFailure());
+
+      await tester.tap(find.byKey(CheckoutScreen.placeKey));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('تسجّل دخول'), findsNothing);
+      expect(find.textContaining('موقوف'), findsOneWidget);
+    });
+  });
+
   group('the phone', () {
     // A Google account usually carries no phone, and a courier with nobody to call
     // cannot deliver. The field appears only when the identity has none, and the order

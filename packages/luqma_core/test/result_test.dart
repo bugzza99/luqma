@@ -40,6 +40,52 @@ void main() {
       expect(failure, isA<ConflictFailure>());
     });
 
+    // Every reason the order function refuses by name reaches the checkout as its own
+    // sentence. Five of them used to fall through to UnknownFailure — «جرّب تاني» for a
+    // dish that was switched off or a basket under the minimum, which no retry can fix —
+    // and a blocked customer was told to sign in. Each stays a ConflictFailure (or a
+    // PermissionFailure) underneath, so a screen that only asks the broad question still
+    // gets the broad answer.
+    group('a refused order says which refusal', () {
+      const cases = {
+        'merchant not accepting orders': OrderRefusal.shopClosed,
+        'meal not accepting reservations': OrderRefusal.mealClosed,
+        'sold out': OrderRefusal.soldOut,
+        'that dish is not available right now': OrderRefusal.dishUnavailable,
+        'below the shop minimum': OrderRefusal.belowMinimum,
+        'too many different items in one order': OrderRefusal.tooManyItems,
+        'the note is too long': OrderRefusal.noteTooLong,
+        'an empty basket is not an order': OrderRefusal.emptyBasket,
+        'merchant does not deliver to this zone': OrderRefusal.zoneNotServed,
+      };
+      for (final MapEntry(key: message, value: reason) in cases.entries) {
+        test(message, () {
+          final failure = Failure.from(
+            PostgrestException(code: 'P0001', message: message),
+          );
+          expect(failure, isA<OrderRefusedFailure>());
+          expect(failure, isA<ConflictFailure>());
+          expect((failure as OrderRefusedFailure).reason, reason);
+        });
+      }
+
+      test('a blocked account is told it is blocked, not asked to sign in', () {
+        final failure = Failure.from(
+          PostgrestException(code: '42501', message: 'this account cannot place orders'),
+        );
+        expect(failure, isA<AccountBlockedFailure>());
+        expect(failure, isA<PermissionFailure>());
+      });
+
+      test('an ordinary permission denial is still only that', () {
+        final failure = Failure.from(
+          PostgrestException(code: '42501', message: 'sign in to place an order'),
+        );
+        expect(failure, isNot(isA<AccountBlockedFailure>()));
+        expect(failure, isA<PermissionFailure>());
+      });
+    });
+
     // A refused coupon now carries its own reason rather than collapsing into a
     // conflict - the checkout screen says which sentence to show.
     test('a refused coupon carries its reason as a coupon failure', () {

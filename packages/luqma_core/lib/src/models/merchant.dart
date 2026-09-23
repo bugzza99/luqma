@@ -124,6 +124,11 @@ abstract class Merchant with _$Merchant {
     /// Remaining prepaid credit, in piastres. Only ever moved by the server.
     @Default(0) int walletBalance,
 
+    /// Of [walletBalance], what is already promised to orders not yet delivered —
+    /// `hold_prepaid_credit` sets it aside at placement and releases it at the end. Only
+    /// ever moved by the server, and never written back, like the balance itself.
+    @Default(0) int walletHeld,
+
     /// The owner agreed this shop its own commission rate. False: it follows the one rate
     /// in «الإعدادات», and moves when that moves.
     @Default(false) bool commissionCustom,

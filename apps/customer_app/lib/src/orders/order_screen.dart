@@ -162,12 +162,36 @@ class _Loaded extends ConsumerWidget {
       ),
     );
 
-    if (confirmed ?? false) {
-      await ref
-          .read(orderRepositoryProvider)
-          .cancel(order.id, reason: 'ألغاه العميل');
+    if (!(confirmed ?? false)) return;
+
+    final result = await ref
+        .read(orderRepositoryProvider)
+        .cancel(order.id, reason: 'ألغاه العميل');
+    if (!context.mounted) return;
+
+    // The answer used to be thrown away. Offline, nothing was said: the customer left
+    // believing the order was cancelled, and the kitchen cooked it. And a shop that
+    // accepted while the dialog was open turned the screen to «المطعم قبل الطلب» with no
+    // word about the cancel that had just been refused.
+    final failure = switch (result) {
+      Err(:final failure) => failure,
+      _ => null,
+    };
+    if (failure == null || failure is ConflictFailure) {
       ref.invalidate(orderProvider(order.id));
     }
+    if (failure == null) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(switch (failure) {
+          ConflictFailure() =>
+            'المطعم قبل الطلب خلاص، فمبقاش ينفع يتلغي من هنا. لو محتاج حاجة كلّم المطعم.',
+          OfflineFailure() => 'الإلغاء موصلش — مفيش نت. الطلب لسه قائم، جرّب تاني.',
+          _ => 'الإلغاء موصلش. الطلب لسه قائم، جرّب تاني.',
+        }),
+      ),
+    );
   }
 
   Future<void> _reportIssue(BuildContext context, WidgetRef ref) async {
@@ -778,6 +802,9 @@ class _RatingCardState extends ConsumerState<_RatingCard> {
   int _stars = 0;
   bool _sent = false;
 
+  /// A second tap while the first is on its way would send the same rating twice.
+  bool _sending = false;
+
   /// Stars per dish, by `menu_items.id`. Absent means not rated.
   ///
   /// A dish left out is silence rather than a zero: writing a zero for food somebody
@@ -796,7 +823,9 @@ class _RatingCardState extends ConsumerState<_RatingCard> {
     // readable to the financial and fulfilment sides without making this action crash.
     if (customerUid == null) return;
 
-    await ref.read(orderRepositoryProvider).rate(
+    if (_sending) return;
+    setState(() => _sending = true);
+    final result = await ref.read(orderRepositoryProvider).rate(
           orderId: widget.order.id,
           customerUid: customerUid,
           merchantId: widget.order.merchantId,
@@ -804,7 +833,22 @@ class _RatingCardState extends ConsumerState<_RatingCard> {
           comment: _comment.text.trim(),
           items: _itemStars,
         );
-    if (mounted) setState(() => _sent = true);
+    if (!mounted) return;
+
+    // `_sent` used to be set whatever came back, so a rating lost to a dead connection
+    // was thanked for — «وصلنا تقييمك» — and the form came back empty the next time. A
+    // failure keeps what the customer chose and says it did not arrive.
+    if (result.isOk) {
+      setState(() {
+        _sending = false;
+        _sent = true;
+      });
+      return;
+    }
+    setState(() => _sending = false);
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('التقييم موصلش — اتأكد من النت وجرّب تاني.')),
+    );
   }
 
   @override
@@ -933,7 +977,7 @@ class _RatingCardState extends ConsumerState<_RatingCard> {
                 FilledButton(
                   key: OrderScreen.sendRatingKey,
                   // A rating with no stars is not a rating.
-                  onPressed: _stars == 0 ? null : _send,
+                  onPressed: _stars == 0 || _sending ? null : _send,
                   style: FilledButton.styleFrom(
                     minimumSize: const Size.fromHeight(Sizes.minTarget),
                   ),

@@ -630,6 +630,47 @@ void main() {
       final updated = await orders.watchOrder('o1').first;
       expect(updated.status, OrderStatus.cancelled);
     });
+
+    // It awaited the cancel and threw the answer away. Offline, nothing was said: the
+    // customer left believing the order was cancelled, and the kitchen cooked it.
+    testWidgets('a cancel that does not reach the server says so', (tester) async {
+      await pump(
+        tester,
+        const OrderScreen(orderId: 'o1'),
+        seed: [order()],
+      );
+      orders.failure = const OfflineFailure();
+
+      await reveal(tester, find.byKey(OrderScreen.cancelKey));
+      await tester.tap(find.byKey(OrderScreen.cancelKey));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(OrderScreen.confirmCancelKey));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('الإلغاء موصلش'), findsOneWidget);
+      // And the order is still on screen, still cancellable, rather than an error.
+      expect(find.byKey(OrderScreen.cancelKey), findsOneWidget);
+    });
+
+    // The shop accepted while the dialog was open. The order is no longer the customer's
+    // to cancel, and a silent refresh to «المطعم قبل الطلب» explained nothing.
+    testWidgets('a cancel the shop overtook says why', (tester) async {
+      final repo = _AcceptsBeforeCancel(seed: [order()]);
+      await pump(
+        tester,
+        const OrderScreen(orderId: 'o1'),
+        seed: [order()],
+        orderRepo: repo,
+      );
+
+      await reveal(tester, find.byKey(OrderScreen.cancelKey));
+      await tester.tap(find.byKey(OrderScreen.cancelKey));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(OrderScreen.confirmCancelKey));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('المطعم قبل الطلب خلاص'), findsOneWidget);
+    });
   });
 
   group('reporting a problem', () {
@@ -1101,6 +1142,29 @@ void main() {
   });
 
   group('rating', () {
+    // It awaited the write and set `_sent` whatever came back, so a rating lost to a dead
+    // connection was thanked for — and the form came back empty next time.
+    testWidgets('a rating that fails to send keeps the form and says so',
+        (tester) async {
+      await pump(
+        tester,
+        const OrderScreen(orderId: 'o1'),
+        seed: [order(status: OrderStatus.delivered)],
+      );
+      orders.failure = const OfflineFailure();
+
+      await reveal(tester, find.byKey(OrderScreen.starKey(4)));
+      await tester.tap(find.byKey(OrderScreen.starKey(4)));
+      await tester.pumpAndSettle();
+      await reveal(tester, find.byKey(OrderScreen.sendRatingKey));
+      await tester.tap(find.byKey(OrderScreen.sendRatingKey));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('وصلنا تقييمك'), findsNothing);
+      expect(find.textContaining('التقييم موصلش'), findsOneWidget);
+      expect(find.byKey(OrderScreen.sendRatingKey), findsOneWidget);
+    });
+
     testWidgets('is asked for only once the order arrived', (tester) async {
       await pump(
         tester,
@@ -1557,3 +1621,12 @@ class _LiveOrders extends FakeOrderRepository {
   }
 }
 
+/// Accepts the order at the moment the customer confirms their cancel — the race the
+/// cancel dialog cannot see.
+class _AcceptsBeforeCancel extends FakeOrderRepository {
+  _AcceptsBeforeCancel({super.seed});
+
+  @override
+  Future<Result<void>> cancel(String orderId, {required String reason}) async =>
+      const Result.err(ConflictFailure());
+}

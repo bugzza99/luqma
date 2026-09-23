@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:luqma_core/luqma_core.dart';
 
 import '../checkout/checkout_screen.dart';
 import '../orders/order_screen.dart';
+import '../shell/customer_tab.dart';
 import 'cart_screen.dart';
 
 /// The basket, and everything downstream of it.
@@ -20,17 +22,27 @@ Future<void> openCart(BuildContext context, {VoidCallback? onSignIn}) {
   );
 }
 
+/// [onSignIn] defaults to the account tab, and that default is the point.
+///
+/// It was a parameter every caller had to remember, and the merchant screen's basket bar
+/// did not: a signed-out customer who had browsed a shop reached a checkout whose only
+/// button, «سجّل دخول», was drawn disabled — at the one moment they had decided to
+/// order. `openMeal` had made the same mistake before it. Where "you need an account"
+/// lands is not the caller's decision; it is always the account tab.
 Future<void> openCheckout(BuildContext context, {VoidCallback? onSignIn}) {
+  final signIn = onSignIn ??
+      () => ProviderScope.containerOf(context, listen: false)
+          .read(customerTabProvider.notifier)
+          .goToAccount();
+
   return Navigator.of(context).push(
     MaterialPageRoute<void>(
       builder: (_) => CheckoutScreen(
         onPlaced: (order) => openPlacedOrder(context, order),
-        onSignIn: onSignIn == null
-            ? null
-            : () {
-                Navigator.of(context).popUntil((route) => route.isFirst);
-                onSignIn();
-              },
+        onSignIn: () {
+          Navigator.of(context).popUntil((route) => route.isFirst);
+          signIn();
+        },
       ),
     ),
   );

@@ -60,8 +60,12 @@ abstract final class Revenue {
   /// a merchant who has run out, rather than accruing a debt nobody will settle. The
   /// check is made *before* the order rather than after, because stopping once the
   /// balance is already negative means one order went out unpaid for.
+  ///
+  /// Against the credit that is actually free: `place_order` asks
+  /// `wallet_balance - wallet_held >= fee`, and a phone asking the balance alone showed a
+  /// prepaid shop with money on hold as open while every order to it was refused.
   static bool canAffordAnOrder(Merchant merchant) {
     if (merchant.revenueModel != RevenueModel.prepaid) return true;
-    return merchant.walletBalance >= merchant.revenueValue;
+    return merchant.walletBalance - merchant.walletHeld >= merchant.revenueValue;
   }
 }

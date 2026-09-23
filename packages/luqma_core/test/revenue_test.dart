@@ -18,6 +18,7 @@ void main() {
     RevenueModel model = RevenueModel.subscription,
     int value = 0,
     int wallet = 0,
+    int held = 0,
   }) =>
       Merchant(
         id: 'm1',
@@ -30,6 +31,7 @@ void main() {
         revenueModel: model,
         revenueValue: value,
         walletBalance: wallet,
+        walletHeld: held,
       );
 
   group('the snapshot', () {
@@ -209,6 +211,25 @@ void main() {
           merchant(model: RevenueModel.prepaid, value: 500, wallet: 300),
         ),
         isFalse,
+      );
+    });
+
+    // The server asks `wallet_balance - wallet_held >= fee`: credit already promised to
+    // orders still on the road is not credit. The phone asked the balance alone, so a
+    // prepaid shop with money on hold looked open on every screen and refused every
+    // order at checkout, with a sentence about something having changed.
+    test('credit already held for orders on the road is not credit', () {
+      expect(
+        Revenue.canAffordAnOrder(
+          merchant(model: RevenueModel.prepaid, value: 500, wallet: 800, held: 500),
+        ),
+        isFalse,
+      );
+      expect(
+        Revenue.canAffordAnOrder(
+          merchant(model: RevenueModel.prepaid, value: 500, wallet: 1000, held: 500),
+        ),
+        isTrue,
       );
     });
 

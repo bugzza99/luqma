@@ -180,6 +180,42 @@ void main() {
         reason: 'and the customer is told which kitchen and which zone');
   });
 
+  // Every ConflictFailure used to read «للأسف الأكلة خلصت». A kitchen that paused or a
+  // meal the cook unpublished is not a sold-out meal, and a counter still showing
+  // portions next to «خلصت» reads as the app lying.
+  group('a refusal from the server', () {
+    Future<void> reserve(WidgetTester tester, Failure failure) async {
+      await pump(tester, dish: meal(deliveryOption: DeliveryOption.pickup));
+      orders.failure = failure;
+      await tester.tap(find.byKey(PreorderCheckoutScreen.reserveKey));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('sold out says sold out', (tester) async {
+      await reserve(tester, const OrderRefusedFailure(OrderRefusal.soldOut));
+      expect(find.textContaining('خلصت'), findsOneWidget);
+    });
+
+    testWidgets('a meal no longer taking reservations does not say sold out',
+        (tester) async {
+      await reserve(tester, const OrderRefusedFailure(OrderRefusal.mealClosed));
+      expect(find.textContaining('خلصت'), findsNothing);
+      expect(find.textContaining('مبقتش متاحة للحجز'), findsOneWidget);
+    });
+
+    testWidgets('a kitchen not taking orders does not say sold out', (tester) async {
+      await reserve(tester, const OrderRefusedFailure(OrderRefusal.shopClosed));
+      expect(find.textContaining('خلصت'), findsNothing);
+      expect(find.textContaining('مش بياخد حجوزات'), findsOneWidget);
+    });
+
+    testWidgets('a blocked account is not asked to sign in', (tester) async {
+      await reserve(tester, const AccountBlockedFailure());
+      expect(find.textContaining('تسجّل دخول'), findsNothing);
+      expect(find.textContaining('موقوف'), findsOneWidget);
+    });
+  });
+
   testWidgets('with no address at all it still asks for one', (tester) async {
     await pump(tester, dish: meal(), chosen: null);
 

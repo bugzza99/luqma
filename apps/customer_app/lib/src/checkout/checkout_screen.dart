@@ -52,6 +52,12 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
   final _note = TextEditingController();
   final _coupon = TextEditingController();
   final _phone = TextEditingController();
+
+  /// The list, so a refusal can bring its sentence into view. The sentence sits at the
+  /// top and the button that failed is in the footer: somebody who had scrolled down to
+  /// the coupon or the note saw the button come back and nothing else, and read it as the
+  /// tap not having registered.
+  final _scroll = ScrollController();
   final String _clientOrderId = newClientOrderId();
 
   Failure? _failure;
@@ -80,6 +86,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
     _note.dispose();
     _coupon.dispose();
     _phone.dispose();
+    _scroll.dispose();
     super.dispose();
   }
 
@@ -203,7 +210,24 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
         setState(() {
           _sending = false;
           _failure = failure;
+          // A code the server refused at placement comes off the order, with its
+          // reason in the coupon slot. Left on, every retry re-sent the dead code and
+          // failed again — with a sentence about the network — until the customer
+          // happened to tap «شيل».
+          if (failure is CouponFailure) {
+            _couponEvaluation = CouponRejected(failure.reason);
+            _appliedCouponCode = null;
+          }
         });
+        if (_scroll.hasClients && _scroll.offset > 0) {
+          await _scroll.animateTo(
+            0,
+            duration: MediaQuery.of(context).disableAnimations
+                ? Duration.zero
+                : const Duration(milliseconds: 300),
+            curve: Curves.easeOutCubic,
+          );
+        }
       case Ok(:final value):
         LuqmaTelemetry.event('order.placed', data: {
           'type': value.type.name,
@@ -285,6 +309,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
             ),
           )
           : ListView(
+              controller: _scroll,
               padding: const EdgeInsets.fromLTRB(
                 Space.gutter,
                 Space.md,
@@ -332,6 +357,38 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
   /// The screen's sections, in order, so the entrance stagger indexes them without each
   /// one having to know its own position — and so a section that is not shown does not
   /// leave a gap in the sequence.
+  /// What the customer is told when the order did not go.
+  ///
+  /// «جرّب تاني» is only true of a dead connection, and it used to be said for nearly
+  /// every refusal the server names: a switched-off dish, a basket under the minimum, a
+  /// shop that had just shut. The narrow types come before the broad ones they extend.
+  String _failureSentence(Failure failure) => switch (failure) {
+        OfflineFailure() => 'مفيش نت دلوقتي. سلتك زي ما هي — جرّب تاني.',
+        CouponFailure() =>
+          'الكود ده مبقاش ينفع واتشال من الطلب. راجع الإجمالي واطلب تاني.',
+        OrderRefusedFailure(:final reason) => switch (reason) {
+            OrderRefusal.shopClosed =>
+              'المطعم مش بيستقبل طلبات دلوقتي. جرّب بعدين أو اختار مطعم تاني.',
+            OrderRefusal.dishUnavailable =>
+              'فيه صنف في السلة مبقاش متاح دلوقتي. شيله من السلة وكمّل.',
+            OrderRefusal.belowMinimum =>
+              'الطلب أقل من الحد الأدنى للمطعم. زوّد حاجة وكمّل.',
+            OrderRefusal.zoneNotServed =>
+              'المطعم مبيوصلش العنوان ده. غيّر العنوان أو اختار مطعم تاني.',
+            OrderRefusal.tooManyItems =>
+              'السلة فيها أصناف كتير أوي لطلب واحد. قسّمها على طلبين.',
+            OrderRefusal.noteTooLong => 'الملاحظة طويلة. قصّرها وابعت تاني.',
+            OrderRefusal.emptyBasket => 'السلة فاضية.',
+            OrderRefusal.soldOut || OrderRefusal.mealClosed =>
+              'حاجة في الطلب خلصت. راجع السلة وكمّل.',
+          },
+        ConflictFailure() => 'حصل تغيير في الطلب. راجع السلة وجرّب تاني.',
+        AccountBlockedFailure() =>
+          'الحساب ده موقوف عن الطلب. لو شايف إن فيه غلط كلّم لقمة.',
+        PermissionFailure() => 'لازم تسجّل دخول عشان تبعت الطلب.',
+        _ => 'مقدرناش نبعت الطلب. سلتك زي ما هي — جرّب تاني.',
+      };
+
   List<Widget> _sections({
     required Cart cart,
     required Address? address,
@@ -348,12 +405,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
           key: CheckoutScreen.errorKey,
           icon: Icons.error_outline_rounded,
           tone: NoticeTone.problem,
-          text: switch (_failure!) {
-            OfflineFailure() => 'مفيش نت دلوقتي. سلتك زي ما هي — جرّب تاني.',
-            ConflictFailure() => 'حصل تغيير في الطلب. راجع السلة وجرّب تاني.',
-            PermissionFailure() => 'لازم تسجّل دخول عشان تبعت الطلب.',
-            _ => 'مقدرناش نبعت الطلب. سلتك زي ما هي — جرّب تاني.',
-          },
+          text: _failureSentence(_failure!),
         ),
       _AddressCard(
         address: address,

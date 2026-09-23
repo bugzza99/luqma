@@ -38,6 +38,25 @@ sealed class Failure {
     'AuthRetryableFetchException',
   };
 
+  /// Every refusal `place_order` raises by name, as the message it raises it with.
+  ///
+  /// Exact strings, read back from the function's current body, not fragments: four of
+  /// these were matched with `contains` and five were not matched at all, so a dish that
+  /// was switched off or a basket under the minimum reached the customer as
+  /// UnknownFailure — «جرّب تاني» for something no retry can fix. Change a message in SQL
+  /// and `result_test.dart` names the one that stopped matching.
+  static const _orderRefusals = {
+    'merchant not accepting orders': OrderRefusal.shopClosed,
+    'meal not accepting reservations': OrderRefusal.mealClosed,
+    'sold out': OrderRefusal.soldOut,
+    'that dish is not available right now': OrderRefusal.dishUnavailable,
+    'below the shop minimum': OrderRefusal.belowMinimum,
+    'too many different items in one order': OrderRefusal.tooManyItems,
+    'the note is too long': OrderRefusal.noteTooLong,
+    'an empty basket is not an order': OrderRefusal.emptyBasket,
+    'merchant does not deliver to this zone': OrderRefusal.zoneNotServed,
+  };
+
   static Failure from(Object error, [StackTrace? stackTrace]) {
     if (error is Failure) return error;
 
@@ -50,6 +69,11 @@ sealed class Failure {
       // is shown, so they are classified rather than collapsed.
       switch (error.code) {
         case '42501':
+          // `place_order` refuses a blocked customer with the same code it uses for a
+          // signed-out one, and the checkout said «لازم تسجّل دخول» to somebody signed in.
+          if (error.message == 'this account cannot place orders') {
+            return const AccountBlockedFailure();
+          }
           return const PermissionFailure();
         case '23514':
           return const ValidationFailure();
@@ -79,12 +103,8 @@ sealed class Failure {
           ),
         );
       }
-      if (message == 'sold out' ||
-          message.contains('not accepting orders') ||
-          message.contains('not accepting reservations') ||
-          message.contains('does not deliver')) {
-        return const ConflictFailure();
-      }
+      final refusal = _orderRefusals[message];
+      if (refusal != null) return OrderRefusedFailure(refusal);
     }
 
     return UnknownFailure(error, stackTrace);
@@ -114,6 +134,39 @@ final class NotFoundFailure extends Failure {
 /// merchant closed, the order was already accepted.
 final class ConflictFailure extends Failure {
   const ConflictFailure();
+}
+
+/// Why the order function would not take an order, one value per sentence the
+/// checkout says about it.
+enum OrderRefusal {
+  shopClosed,
+  mealClosed,
+  soldOut,
+  dishUnavailable,
+  belowMinimum,
+  tooManyItems,
+  noteTooLong,
+  emptyBasket,
+  zoneNotServed,
+}
+
+/// The server looked at the basket and said no, and said which no.
+///
+/// A [ConflictFailure] underneath — the world the basket was built in has moved: the
+/// shop shut, the dish was switched off, the minimum changed — so a screen that only
+/// asks the broad question still gets the right broad answer, and one that asks the
+/// narrow one can tell the customer what to change.
+final class OrderRefusedFailure extends ConflictFailure {
+  const OrderRefusedFailure(this.reason);
+
+  final OrderRefusal reason;
+}
+
+/// The account has been blocked from ordering. A [PermissionFailure] underneath, but
+/// never to be spoken as "sign in": the person is signed in, and asking them to do it
+/// again sends them round a loop with no way out but a phone call.
+final class AccountBlockedFailure extends PermissionFailure {
+  const AccountBlockedFailure();
 }
 
 /// The e-mail already belongs to an account. Its own type rather than a conflict,
