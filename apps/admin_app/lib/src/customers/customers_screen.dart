@@ -38,14 +38,20 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
     super.dispose();
   }
 
+  /// Which search is the latest. A slow reply to an earlier query could land after a
+  /// newer one and overwrite its results — the admin typed a number, then a name, and
+  /// was shown the people matching the number (D12).
+  int _searchGeneration = 0;
+
   Future<void> _search(String query) async {
+    final generation = ++_searchGeneration;
     setState(() {
       _loading = true;
       _failure = null;
     });
 
     final result = await ref.read(customerRepositoryProvider).search(query);
-    if (!mounted) return;
+    if (!mounted || generation != _searchGeneration) return;
 
     setState(() {
       _loading = false;

@@ -65,6 +65,24 @@ void main() {
         reason: 'the only way back from a forgotten password is this search');
   });
 
+  // D12. A number read down the phone as «+20 10…» is how a customer says it, and it
+  // found nobody: the row holds `010…`.
+  test('and so does the same number with the country code', () async {
+    final uid = await customer(name: 'هالة', phone: '01099887705');
+    expect(await found('+20 10 9988 7705'), contains(uid));
+    expect(await found('0020 1099887705'), contains(uid));
+  });
+
+  // D12. The query went into a PostgREST `or(...)` as raw text, where a comma or a
+  // parenthesis is syntax: a name with one in it made the whole filter invalid, and the
+  // screen showed an error instead of the person.
+  test('a name with a comma or brackets in it is searched, not parsed', () async {
+    final uid = await customer(name: 'علي (أبو محمد), الكبير', phone: '01099887706');
+    final result = await repository.search('(أبو محمد), ');
+    expect(result.failureOrNull, isNull);
+    expect(result.valueOrNull!.map((c) => c.id), contains(uid));
+  });
+
   test('a name finds its person too', () async {
     final uid = await customer(name: 'خديجة الشناوي', phone: '01099887704');
     expect(await found('الشناوي'), contains(uid));

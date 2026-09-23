@@ -13,8 +13,23 @@ abstract final class Phone {
 
   /// One number, one spelling. Arabic-Indic digits folded, spaces and hyphens dropped —
   /// the latter being how a number is read back down a phone line.
-  static String normalize(String raw) =>
-      ArabicDigits.fold(raw.trim()).replaceAll(RegExp(r'[\s-]'), '');
+  ///
+  /// Also dropped: the invisible direction marks a number carries when it is copied out
+  /// of right-to-left text (the person sees a correct number the app refused), and the
+  /// country code, in either spelling — `+20` and `0020` — so the number an admin is read
+  /// down the phone as «+20 10…» finds the account stored as `010…` (E11, D12).
+  static String normalize(String raw) {
+    final bare = ArabicDigits.fold(raw)
+        .replaceAll(_invisible, '')
+        .trim()
+        .replaceAll(RegExp(r'[\s-]'), '');
+    if (bare.startsWith('+20')) return '0${bare.substring(3)}';
+    if (bare.startsWith('0020')) return '0${bare.substring(4)}';
+    return bare;
+  }
+
+  /// LRM, RLM, the embedding and override controls, and the isolates.
+  static final _invisible = RegExp('[\u200E\u200F\u202A-\u202E\u2066-\u2069]');
 
   static bool isValidEgyptianMobile(String raw) =>
       _egyptianMobile.hasMatch(normalize(raw));

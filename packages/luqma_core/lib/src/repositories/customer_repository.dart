@@ -40,6 +40,11 @@ class SupabaseCustomerRepository implements CustomerRepository {
 
   final SupabaseClient _db;
 
+  /// A value PostgREST reads as one value inside `or(...)`: double-quoted, with the two
+  /// characters that mean something inside the quotes escaped.
+  static String _quoted(String value) =>
+      '"${value.replaceAll(r'\', r'\\').replaceAll('"', r'\"')}"';
+
   @override
   Future<Result<List<CustomerSummary>>> search(String query) {
     return Result.guard(() async {
@@ -57,8 +62,12 @@ class SupabaseCustomerRepository implements CustomerRepository {
         // screen is the *only* way back from a forgotten password, because there is no
         // mailbox and no SMS.
         final digits = Phone.normalize(trimmed);
+        // Quoted, because the text goes into a PostgREST `or(...)` where a comma or a
+        // bracket is syntax: a name with one in it made the whole filter invalid, and the
+        // screen showed an error instead of the person (D12).
         request = request.or(
-          'name.ilike.%$trimmed%,phone.ilike.%${digits.isNotEmpty ? digits : trimmed}%',
+          'name.ilike.${_quoted('%$trimmed%')},'
+          'phone.ilike.${_quoted('%${digits.isNotEmpty ? digits : trimmed}%')}',
         );
       }
       final rows =

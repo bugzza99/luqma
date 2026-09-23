@@ -48,4 +48,30 @@ void main() {
       expect(Phone.toAccountEmail('  01012345678  '), canonical);
     });
   });
+
+  // E11 / D12. The spellings a real number arrives in that were not folded.
+  group('what a pasted or dictated number carries', () {
+    test('the invisible direction marks a copied number brings with it', () {
+      // U+200E / U+200F / U+202A..U+202E / U+2066..U+2069: Android and WhatsApp wrap a
+      // number in these when it is copied out of right-to-left text. Invisible, so the
+      // person sees a correct number the app refuses.
+      expect(Phone.normalize('\u202A01012345678\u202C'), '01012345678');
+      expect(Phone.normalize('\u200E010\u200F12345678\u2066'), '01012345678');
+      expect(Phone.isValidEgyptianMobile('\u202A٠١٠١٢٣٤٥٦٧٨\u202C'), isTrue);
+    });
+
+    test('Persian digits, which some keyboards produce', () {
+      expect(Phone.normalize('۰۱۰۱۲۳۴۵۶۷۸'), '01012345678');
+    });
+
+    test('the country code, in either of the ways people say it', () {
+      expect(Phone.normalize('+20 10 1234 5678'), '01012345678');
+      expect(Phone.normalize('0020 10 1234 5678'), '01012345678');
+      expect(Phone.normalize('+201012345678'), '01012345678');
+    });
+
+    test('and one number is still one account address whichever of these it came as', () {
+      expect(Phone.toAccountEmail('+20 10 1234 5678'), '01012345678@phone.luqma.app');
+    });
+  });
 }

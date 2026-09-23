@@ -9,6 +9,11 @@ abstract final class ArabicDigits {
 
   static const _digits = '٠١٢٣٤٥٦٧٨٩';
 
+  /// The Extended Arabic-Indic digits, which Persian and Urdu keyboards — and some
+  /// Android keyboards set to Arabic — produce. They look like the ones above in most
+  /// fonts, and the database's `normalise_phone` has always folded them; this did not.
+  static const _persianDigits = '۰۱۲۳۴۵۶۷۸۹';
+
   /// Arabic decimal and thousands separators, which the same keyboard also produces.
   static const decimalSeparator = '٫';
   static const thousandsSeparator = '٬';
@@ -17,7 +22,8 @@ abstract final class ArabicDigits {
     final buffer = StringBuffer();
     for (final rune in raw.runes) {
       final char = String.fromCharCode(rune);
-      final digit = _digits.indexOf(char);
+      var digit = _digits.indexOf(char);
+      if (digit < 0) digit = _persianDigits.indexOf(char);
       buffer.write(digit >= 0 ? '$digit' : char);
     }
     return buffer.toString();
