@@ -127,6 +127,9 @@ class FakeAdminRepository implements AdminRepository {
   final Failure? failure;
   final String currentAdminUid;
   final Set<String> platformStaffUids;
+
+  /// Customers with an order still on its way, whom the server refuses to delete (A9).
+  final Set<String> customersWithAnOrderOnItsWay = {};
   final FakeCustomerRepository? customers;
   final FakeStaffRepository? staff;
 
@@ -190,6 +193,9 @@ class FakeAdminRepository implements AdminRepository {
         (staff?.all.any((m) => m.uid == uid && m.scope == 'platform') ?? false);
     if (uid == currentAdminUid || isPlatformStaff) {
       return const Result.err(PermissionFailure());
+    }
+    if (customersWithAnOrderOnItsWay.contains(uid)) {
+      return const Result.err(OrderInFlightFailure());
     }
     customers?.removeCustomer(uid);
     staff?.removeStaff(uid);

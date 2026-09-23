@@ -102,6 +102,7 @@ class FakeProfileRepository implements ProfileRepository {
     this.failure,
     this.writeFailure,
     this.isStaffAccount = false,
+    this.hasOrderOnItsWay = false,
     this.accountId,
   });
 
@@ -112,6 +113,10 @@ class FakeProfileRepository implements ProfileRepository {
   /// the one where the switch has already been drawn.
   final Failure? writeFailure;
   final bool isStaffAccount;
+
+  /// The account has an order that has not finished, which the server refuses to delete
+  /// under (A9) — so the fake refuses it too.
+  final bool hasOrderOnItsWay;
 
   /// A fake has no auth client to name its account, so the first write claims it unless
   /// a test supplies one. Once claimed, another uid is as absent as it is under RLS.
@@ -161,6 +166,7 @@ class FakeProfileRepository implements ProfileRepository {
     // The fake closes the same boundary as Postgres: a permissive fake would let the
     // customer screen promise an operation the real account is forbidden to perform.
     if (isStaffAccount) return const Result.err(PermissionFailure());
+    if (hasOrderOnItsWay) return const Result.err(OrderInFlightFailure());
 
     phones.clear();
     accountDeleted = true;

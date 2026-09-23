@@ -686,6 +686,16 @@
     "description": "Snackbar message shown after account is deleted."
   },
 
+  "customerDeleteLiveOrder": "العميل عنده طلب لسه ماوصلش. الحساب مايتحذفش غير لما الطلب يوصل أو يتلغي.",
+  "@customerDeleteLiveOrder": {
+    "description": "Shown when deleting a customer is refused because an order of theirs is still on its way."
+  },
+
+  "customerDeleteNotAllowed": "مش مسموح لك تحذف الحساب ده.",
+  "@customerDeleteNotAllowed": {
+    "description": "Shown when deleting an account is refused for permission reasons (a moderator, platform staff, or yourself)."
+  },
+
   "customerNothingSelected": "اختر عميلاً لعرض التفاصيل",
   "@customerNothingSelected": {
     "description": "Placeholder on wide screens when no customer is selected."

@@ -325,8 +325,12 @@ class _CustomerDetailScreenState extends ConsumerState<CustomerDetailScreen> {
         Navigator.of(context).maybePop();
       }
     } else if (result case Err(:final failure)) {
+      // The deletion's own sentences. It borrowed the password reset's, so a refusal
+      // read «مش مسموح لك تغيّر كلمة السر» on a screen about deleting an account — and
+      // an order still on its way (A9) read «حاول تاني», which no retry can change.
       final message = switch (failure) {
-        PermissionFailure() => strings.customerPasswordPermissionDenied,
+        OrderInFlightFailure() => strings.customerDeleteLiveOrder,
+        PermissionFailure() => strings.customerDeleteNotAllowed,
         NotFoundFailure() => strings.customerPasswordNotFound,
         OfflineFailure() => strings.customerPasswordOffline,
         _ => strings.customerResetGenericError,

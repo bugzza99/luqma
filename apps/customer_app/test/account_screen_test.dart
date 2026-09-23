@@ -356,6 +356,28 @@ void main() {
       expect(find.byKey(AccountScreen.signInKey), findsOneWidget);
     });
 
+    // A9: the server will not delete an account whose order is still on its way. That
+    // is not an error to retry; it is a sentence about what to do first.
+    testWidgets('an order still on its way is said in words, with no retry',
+        (tester) async {
+      final profiles = FakeProfileRepository(hasOrderOnItsWay: true);
+      await pump(tester, profiles: profiles);
+      await tester.scrollUntilVisible(
+        find.byKey(AccountScreen.deleteAccountKey),
+        200,
+      );
+
+      await tester.tap(find.byKey(AccountScreen.deleteAccountKey));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(AccountScreen.confirmDeleteAccountKey));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('طلب لسه ماوصلش'), findsOneWidget);
+      expect(find.byKey(AccountScreen.deleteAccountErrorKey), findsNothing);
+      expect(profiles.accountDeleted, false);
+      expect(auth.identity, isNotNull);
+    });
+
     testWidgets('a refused deletion uses the shared error view and keeps the session',
         (tester) async {
       final profiles = FakeProfileRepository(isStaffAccount: true);

@@ -1073,12 +1073,19 @@ class _DeleteAccountDialogState extends ConsumerState<_DeleteAccountDialog> {
                 ],
               ),
             )
-          : LuqmaErrorView(
-              key: AccountScreen.deleteAccountErrorKey,
-              failure: failure,
-              onRetry: _delete,
-              compact: true,
-            ),
+          : failure is OrderInFlightFailure
+              // Not an error to retry: the server will not take the street and the phone
+              // off an order a courier may be carrying (A9). What to do is the sentence.
+              ? const Text(
+                  'عندك طلب لسه ماوصلش. استنى لما يوصلك أو الغيه الأول، '
+                  'وبعدها تقدر تحذف حسابك.',
+                )
+              : LuqmaErrorView(
+                  key: AccountScreen.deleteAccountErrorKey,
+                  failure: failure,
+                  onRetry: _delete,
+                  compact: true,
+                ),
       actions: [
         TextButton(
           onPressed: _deleting ? null : () => Navigator.of(context).pop(false),

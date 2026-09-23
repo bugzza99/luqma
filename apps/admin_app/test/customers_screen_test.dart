@@ -417,6 +417,43 @@ void main() {
     });
   });
 
+  // A9: the server refuses to delete a customer whose order is still on its way, and
+  // the snackbar said «حاول تاني» — or, for a permission refusal, a sentence about
+  // passwords on a screen about deleting an account.
+  group('a refused deletion says why', () {
+    Future<void> deleteU1(WidgetTester tester) async {
+      await search(tester, 'أحمد');
+      await tester.tap(find.text('أحمد محمود'));
+      await tester.pumpAndSettle();
+      await tester.drag(find.byKey(CustomerDetailScreen.detailKey), const Offset(0, -500));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(CustomerDetailScreen.deleteAccountKey));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(CustomerDetailScreen.confirmDeleteAccountKey));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('an order on its way', (tester) async {
+      await pump(tester);
+      adminRepo.customersWithAnOrderOnItsWay.add('u1');
+
+      await deleteU1(tester);
+
+      expect(find.textContaining('طلب لسه ماوصلش'), findsOneWidget);
+      expect(adminRepo.deletedAccountCalls, isEmpty);
+    });
+
+    testWidgets('a permission refusal is not about passwords', (tester) async {
+      await pump(tester);
+      adminRepo.platformStaffUids.add('u1');
+
+      await deleteU1(tester);
+
+      expect(find.text('مش مسموح لك تغيّر كلمة السر.'), findsNothing);
+      expect(find.textContaining('مش مسموح لك تحذف'), findsOneWidget);
+    });
+  });
+
   group('customer detail actions and layout', () {
     testWidgets('block action toggles blocked status', (tester) async {
       await pump(tester);

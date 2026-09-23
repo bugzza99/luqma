@@ -40,6 +40,16 @@ void main() {
       expect(failure, isA<ConflictFailure>());
     });
 
+    // A9: deleting an account whose order is still on its way is refused by name, so the
+    // screen can say "finish the order first" rather than a retry that cannot work.
+    test('an account with an order on its way is its own conflict', () {
+      final failure = Failure.from(
+        PostgrestException(code: 'P0001', message: 'an order is still on its way'),
+      );
+      expect(failure, isA<OrderInFlightFailure>());
+      expect(failure, isA<ConflictFailure>());
+    });
+
     // `invalid_parameter_value`: the server read the request and said a value in it is
     // wrong — «a shop needs a zone», «all three documents are required». It fell through
     // to UnknownFailure, while the fakes answer those same refusals with

@@ -111,6 +111,7 @@ sealed class Failure {
       }
       final refusal = _orderRefusals[message];
       if (refusal != null) return OrderRefusedFailure(refusal);
+      if (message == 'an order is still on its way') return const OrderInFlightFailure();
     }
 
     return UnknownFailure(error, stackTrace);
@@ -166,6 +167,14 @@ final class OrderRefusedFailure extends ConflictFailure {
   const OrderRefusedFailure(this.reason);
 
   final OrderRefusal reason;
+}
+
+/// The account cannot be deleted yet: an order of theirs is still on its way, and
+/// scrubbing it would take the street and the phone off an order a courier is carrying.
+/// A [ConflictFailure] underneath; the sentence it earns is "finish it first", which no
+/// retry can replace.
+final class OrderInFlightFailure extends ConflictFailure {
+  const OrderInFlightFailure();
 }
 
 /// The account has been blocked from ordering. A [PermissionFailure] underneath, but
