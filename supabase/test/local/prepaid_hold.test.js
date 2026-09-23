@@ -152,4 +152,23 @@ describe('prepaid credit is held, not hoped for', () => {
     strictEqual(w.wallet_balance, 0);
     strictEqual(w.wallet_held, 0);
   });
+  // An admin can reopen a delivered or cancelled order. The hold was released on the way
+  // out and nothing took it again on the way back in, so delivering it a second time
+  // released a hold that no longer existed — out of another live order's share, with
+  // `greatest(…, 0)` hiding the drift. A reopened order holds its fee again.
+  it('a reopened order holds its fee again, so another order keeps its own', async () => {
+    await setup(FEE * 3);
+    const a = await place();
+    await place();
+    strictEqual((await wallet()).wallet_held, FEE * 2);
+
+    await deliver(a);
+    strictEqual((await wallet()).wallet_held, FEE, 'A released, B still held');
+
+    await step(a, 'outForDelivery');
+    strictEqual((await wallet()).wallet_held, FEE * 2, 'A holds again while it is live');
+
+    await step(a, 'delivered');
+    strictEqual((await wallet()).wallet_held, FEE, 'B keeps its hold');
+  });
 });
