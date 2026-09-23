@@ -133,7 +133,7 @@ class SupabaseMerchantRepository implements MerchantRepository {
   /// standing in its place would be saved back as zeroes by the next edit.
   final bool readsMoney;
 
-  /// Every column `anon` and `authenticated` may select (20261101220000). Named rather
+  /// Every column `anon` and `authenticated` may select (20261101270000). Named rather
   /// than `*`: a `*` expands to the hidden columns too, and Postgres refuses the whole
   /// query rather than the columns it cannot give.
   static const publicColumns =

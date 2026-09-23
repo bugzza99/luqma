@@ -19,7 +19,10 @@
 --
 -- ORDER OF RELEASE: an APK built before this change selects `*` from merchants and is
 -- refused outright once it lands. Production takes this migration only after every
--- phone runs a build that names its columns.
+-- phone runs a build that names its columns. It is numbered last on purpose (it was
+-- written as 20261101220000 and applied to luqma-test under that number, then renamed
+-- and the history repaired) so everything before it can reach production first; push
+-- the rest with this file set aside, and this one alone once the phones are updated.
 --
 -- Functions that run as their owner (every money path) are untouched: they never read
 -- through these grants. Writes are untouched too; the column guards still decide them.

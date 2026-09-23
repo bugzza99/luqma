@@ -489,8 +489,9 @@ variable; it simply runs in the shell that already has the right one.
 `flutter test` runs files concurrently — so in parallel the suite fails somewhere
 different every run and none of it is about the code.
 
-**`npm --prefix supabase test` is capped at two files at a time**, and the cap is the
-point. Node's test runner defaults to one worker per core and each PGlite instance is a
+**`npm --prefix supabase test` runs one file at a time**, and the cap is the
+point. It was two until 2026-09-23, when the suite passed ninety files and two PGlite
+instances at once began dying with `Fatal process out of memory: Zone` on this machine. Node's test runner defaults to one worker per core and each PGlite instance is a
 whole Postgres compiled to WebAssembly; once the suite passed about forty files this
 machine ran out of memory and the run came back with a *different* set of a dozen failures
 each time, none of which reproduce when the file is run alone. That reads as flaky tests
