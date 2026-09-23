@@ -181,6 +181,15 @@ class LiveDatabase {
 
   /// Removes everything that hangs off [cityId], in dependency order — the suite has to
   /// be re-runnable, and a foreign key refuses a city that still has zones.
+  /// An address for [uid] in [zoneId]. Food to be delivered names where it goes
+  /// (20261101190000), so an instant order in a test needs one. [dropCity] removes it.
+  Future<String> makeAddress(String uid, String zoneId) => client
+      .from('addresses')
+      .insert({'user_id': uid, 'zone_id': zoneId, 'label': 'البيت', 'street': 'شارع البحر'})
+      .select()
+      .single()
+      .then((row) => row['id'] as String);
+
   Future<void> dropCity(String cityId) async {
     final merchants = await client.from('merchants').select('id').eq('city_id', cityId);
     final ids = merchants.map((m) => m['id'] as String).toList();
@@ -210,6 +219,14 @@ class LiveDatabase {
     final orderIds = orders.map((o) => o['id'] as String).toList();
     if (orderIds.isNotEmpty) {
       await client.from('courier_settlements').delete().inFilter('order_id', orderIds);
+    }
+    // Addresses carry no city column, so they are found through the city's zones, and
+    // removed before them: an address left behind blocks the zone delete on a foreign
+    // key. Every instant order names one since 20261101190000.
+    final zones = await client.from('zones').select('id').eq('city_id', cityId);
+    final zoneIds = zones.map((z) => z['id'] as String).toList();
+    if (zoneIds.isNotEmpty) {
+      await client.from('addresses').delete().inFilter('zone_id', zoneIds);
     }
     for (final table in ['orders', 'promotions', 'daily_meals', 'coupons', 'merchants',
                          'landmarks', 'home_sections', 'zones']) {

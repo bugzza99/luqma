@@ -1,3 +1,4 @@
+import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { deepStrictEqual, strictEqual, ok } from 'node:assert';
 import { freshDatabase } from './harness.mjs';
@@ -118,11 +119,14 @@ describe('what the extras cost', () => {
     }
   });
 
-  it('an option id outside a list freezes nothing, just as it costs nothing', async () => {
+  // It used to be tolerated — costing nothing and freezing nothing — and is refused now
+  // as a bad request (20261101200000): no phone sends one, and the lines of a draft are
+  // bounded where a hand-written request cannot talk its way past them.
+  it('an option id outside a list is refused as a bad request', async () => {
     await setup();
     try {
-      strictEqual((await place({ optionIds: 'o1' })).subtotal, 10000);
-      deepStrictEqual((await db.query('select items from orders')).rows[0].items[0].options, []);
+      await assert.rejects(place({ optionIds: 'o1' }), (e) => e.code === '22023');
+      strictEqual((await db.query('select count(*)::int as n from orders')).rows[0].n, 0);
     } finally {
       await db.close();
     }

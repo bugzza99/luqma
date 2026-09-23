@@ -36,7 +36,7 @@ async function asCustomer(customerUid, fn) {
 }
 
 describe('order placement idempotency', () => {
-  let city, zone, merchant, item, customer;
+  let city, zone, merchant, item, customer, addressId;
 
   before(async () => {
     db = new Client({ connectionString: DB });
@@ -65,6 +65,11 @@ describe('order placement idempotency', () => {
       [merchant],
     )).rows[0].id;
     customer = await uid();
+    // Food to be delivered names where it goes (20261101190000).
+    addressId = (await q(
+      `insert into addresses (user_id,zone_id,label) values ($1,$2,'البيت') returning id`,
+      [customer, zone],
+    )).rows[0].id;
   });
 
   after(async () => {
@@ -73,6 +78,7 @@ describe('order placement idempotency', () => {
     await q('delete from orders where city_id = $1', [city]).catch(() => {});
     await q('delete from menu_items where merchant_id = $1', [merchant]).catch(() => {});
     await q('delete from merchants where city_id = $1', [city]).catch(() => {});
+    await q('delete from addresses where zone_id = $1', [zone]).catch(() => {});
     await q('delete from zones where city_id = $1', [city]).catch(() => {});
     await q('delete from cities where id = $1', [city]).catch(() => {});
     await q('delete from auth.users where id = $1', [customer]).catch(() => {});
@@ -82,6 +88,7 @@ describe('order placement idempotency', () => {
   const draft = () => JSON.stringify({
     merchantId: merchant,
     type: 'instant',
+    addressId,
     items: [{ itemId: item, name: 'لا يصدق', unitPrice: 1, quantity: 1 }],
   });
 

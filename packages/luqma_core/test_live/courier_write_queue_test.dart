@@ -85,6 +85,8 @@ class _OfflineOnce implements CourierOrderRepository {
 void main() {
   late LiveDatabase live;
   late String cityId, zoneId, merchantId, menuItemId, courierUid;
+  // Food to be delivered names where it goes (20261101190000).
+  late String homeAddressId;
   late SupabaseClient customer;
   late SupabaseOrderRepository customerRepository;
   late SupabaseMerchantOrderRepository merchantRepository;
@@ -122,7 +124,9 @@ void main() {
       'price': 12000,
     }).select().single().then((row) => row['id'] as String);
 
-    (customer, _) = await live.openAsCustomer();
+    final String customerUid;
+    (customer, customerUid) = await live.openAsCustomer();
+    homeAddressId = await live.makeAddress(customerUid, zoneId);
     customerRepository = SupabaseOrderRepository(customer);
 
     final ownerDb =
@@ -143,6 +147,7 @@ void main() {
   OrderDraft draft() => OrderDraft(
         merchantId: merchantId,
         type: OrderType.instant,
+        addressId: homeAddressId,
         items: [
           OrderLine(
               itemId: menuItemId, name: 'سمك مشوي', unitPrice: 12000, quantity: 1),

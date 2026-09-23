@@ -21,11 +21,11 @@ import { freshDatabase } from './harness.mjs';
  */
 describe('ratings belong to the food delivered', () => {
   const CUSTOMER = '00000000-0000-0000-0000-0000000000c1';
-  let db, merchant, ordered, other, delivered, undelivered;
+  let db, merchant, ordered, other, delivered, undelivered, addressId;
 
   const place = async (itemId) => {
     const order = await db.query('select place_order($1::jsonb) as o', [JSON.stringify({
-      merchantId: merchant, type: 'instant',
+      merchantId: merchant, type: 'instant', addressId,
       items: [{ itemId, name: 'طبق', unitPrice: 1000, quantity: 1 }],
     })]).then((r) => r.rows[0].o);
     return order.id;
@@ -70,6 +70,10 @@ describe('ratings belong to the food delivered', () => {
        values ($1,$2,'طبق',1000,true),($1,$2,'طبق آخر',1000,true) returning id`,
       [merchant, cat])).rows;
     [ordered, other] = items.map((r) => r.id);
+    // Food to be delivered names where it goes (20261101190000).
+    addressId = (await db.query(
+      `insert into addresses (user_id,zone_id,label) values ($1,$2,'البيت') returning id`,
+      [CUSTOMER, zone])).rows[0].id;
 
     delivered = await place(ordered);
     for (const s of ['accepted', 'preparing', 'outForDelivery', 'delivered']) {

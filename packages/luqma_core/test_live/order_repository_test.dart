@@ -22,6 +22,8 @@ void main() {
   late String merchantId;
   late String menuItemId;
   late String customerUid;
+  // Food to be delivered names where it goes (20261101190000).
+  late String homeAddressId;
   late String courierUid;
   late SupabaseClient customer;
 
@@ -67,6 +69,7 @@ void main() {
 
     (customer, customerUid) = await live.openAsCustomer();
     customerRepository = SupabaseOrderRepository(customer);
+    homeAddressId = await live.makeAddress(customerUid, zoneId);
 
     // The kitchen and the platform courier, signed in exactly as their apps do. The
     // transition guards read these claims out of the token, and the courier writes
@@ -89,6 +92,7 @@ void main() {
   OrderDraft draft({String type = 'instant', int quantity = 1}) => OrderDraft(
         merchantId: merchantId,
         type: OrderType.values.byName(type),
+        addressId: type == 'instant' ? homeAddressId : null,
         items: [
           // The phone lies about the price; the server reads the menu.
           OrderLine(itemId: menuItemId, name: 'اسم مزوّر', unitPrice: 1, quantity: quantity),
@@ -263,6 +267,7 @@ void main() {
       final result = await customerRepository.placeOrder(OrderDraft(
         merchantId: merchantId,
         type: OrderType.instant,
+        addressId: homeAddressId,
         items: [
           // The menu says 12000; "extras" worth -11900 would leave one piastre on the
           // bill if the function priced it in.
@@ -296,6 +301,7 @@ void main() {
       final result = await customerRepository.placeOrder(OrderDraft(
         merchantId: closedId,
         type: OrderType.instant,
+        addressId: homeAddressId,
         items: [
           OrderLine(
             itemId: menuItemId,
@@ -349,6 +355,7 @@ void main() {
       final broke = await customerRepository.placeOrder(OrderDraft(
         merchantId: brokeId,
         type: OrderType.instant,
+        addressId: homeAddressId,
         items: [
           OrderLine(
             itemId: await dishOf(brokeId),
@@ -365,6 +372,7 @@ void main() {
       final funded = await customerRepository.placeOrder(OrderDraft(
         merchantId: fundedId,
         type: OrderType.instant,
+        addressId: homeAddressId,
         items: [
           OrderLine(
             itemId: await dishOf(fundedId),
@@ -493,6 +501,7 @@ void main() {
       OrderDraft couponDraft() => OrderDraft(
             merchantId: merchantId,
             type: OrderType.instant,
+            addressId: homeAddressId,
             items: [
               OrderLine(
                 itemId: menuItemId,

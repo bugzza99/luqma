@@ -22,6 +22,7 @@ const DB = process.env.DATABASE_URL
 const FEE = 500;
 let db, first, second;
 let city, zone, merchant, item, customerA, customerB;
+const addressOf = {};
 
 const newUser = async () => (await db.query(
   "insert into auth.users (id, instance_id, aud, role) values (gen_random_uuid(), "
@@ -35,7 +36,7 @@ const place = async (client, customer) => {
     sub: customer, role: 'authenticated', app_metadata: {},
   })]);
   await client.query('select place_order($1::jsonb)', [JSON.stringify({
-    merchantId: merchant, type: 'instant',
+    merchantId: merchant, type: 'instant', addressId: addressOf[customer],
     items: [{ itemId: item, name: 'سمك', unitPrice: 10000, quantity: 1 }],
   })]);
 };
@@ -68,6 +69,10 @@ describe('one fee of prepaid credit is one order', () => {
     customerB = await newUser();
     for (const c of [customerA, customerB]) {
       await db.query(`update users set name='عميل', phone='01000000000' where id=$1`, [c]);
+      // Food to be delivered names where it goes (20261101190000).
+      addressOf[c] = (await db.query(
+        `insert into addresses (user_id,zone_id,label) values ($1,$2,'البيت') returning id`,
+        [c, zone])).rows[0].id;
     }
   });
 
@@ -77,6 +82,7 @@ describe('one fee of prepaid credit is one order', () => {
     await db.query('delete from menu_items where merchant_id = $1', [merchant]).catch(() => {});
     await db.query('delete from menu_categories where merchant_id = $1', [merchant]).catch(() => {});
     await db.query('delete from merchants where city_id = $1', [city]).catch(() => {});
+    await db.query('delete from addresses where zone_id = $1', [zone]).catch(() => {});
     await db.query('delete from zones where city_id = $1', [city]).catch(() => {});
     await db.query('delete from cities where id = $1', [city]).catch(() => {});
     await db.query('delete from auth.users where id = any($1)', [[customerA, customerB]])
