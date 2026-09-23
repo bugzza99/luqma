@@ -25,11 +25,15 @@ declare
 begin
   select pg_catalog.pg_get_functiondef('public.hold_prepaid_credit()'::regprocedure)
     into v_def;
-  if (length(v_def) - length(replace(v_def, v_anchor, ''))) / length(v_anchor) <> 1 then
+  -- A function created from a Windows checkout keeps CRLF in its source, and this file
+  -- may be read with either ending: both sides of the match are normalised to LF.
+  v_def := replace(v_def, chr(13), '');
+  if (length(v_def) - length(replace(v_def, replace(v_anchor, chr(13), ''), '')))
+     / length(replace(v_anchor, chr(13), '')) <> 1 then
     raise exception 'hold_prepaid_credit has drifted; re-read it before making the hold conditional';
   end if;
 
-  execute replace(v_def, v_anchor,
+  execute replace(v_def, replace(v_anchor, chr(13), ''),
 '    if v_hold > 0 then
       -- Taken only if it is there, under the row lock this update holds: the second of
       -- two simultaneous orders waits here, re-reads the row, and is refused (A7).
