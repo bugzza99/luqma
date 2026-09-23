@@ -109,3 +109,32 @@ describe('a push claim lease', () => {
     assert.equal(afterCurrent.claim_token, null);
   });
 });
+
+describe('the order a push is claimed in', () => {
+  it('a critical row written after 500 marketing rows is in the first batch', async () => {
+    // A campaign writes one row per customer in the city, and the drain used to take the
+    // queue oldest first — so the merchant's alarm for an order placed two minutes later
+    // waited behind all of them, past its five-minute accept deadline. The dates are 1970
+    // rather than now so that every row here is older than anything else waiting in this
+    // shared queue, and the batch is decided by the channel rather than by residue.
+    await db.query(
+      `insert into push_outbox (uid, title, body, channel, created_at)
+       select $1, 'offer', 'offer', 'marketing',
+              '1970-01-01 00:00:00+00'::timestamptz + make_interval(secs => g)
+         from generate_series(1, 500) as g`,
+      [account],
+    );
+    const alarm = (await db.query(
+      `insert into push_outbox (uid, title, body, channel, created_at)
+       values ($1, 'أوردر جديد', 'أوردر جديد', 'orders_critical',
+               '1970-01-02 00:00:00+00'::timestamptz)
+       returning id`,
+      [account],
+    )).rows[0].id;
+
+    const batch = (await workerA.query('select * from claim_push_batch(20)')).rows;
+
+    assert.equal(batch.length, 20);
+    assert.ok(batch.some((row) => row.id === alarm), 'the alarm is in the first batch');
+  });
+});
