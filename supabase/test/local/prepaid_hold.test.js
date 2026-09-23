@@ -73,6 +73,30 @@ describe('prepaid credit is held, not hoped for', () => {
     await rejects(() => place(), /not accepting orders/);
   });
 
+  // A7. place_order read the balance without a lock and the hold added to wallet_held
+  // without re-checking it, so two customers pressing «اطلب» in the same instant both
+  // passed the check against one order's worth of credit, and delivering both left the
+  // wallet a fee below zero. Sequential placements cannot show the race; what can be
+  // shown here is the rule that closes it — the hold itself refuses what the free credit
+  // cannot cover, in the one statement that takes it, which a row lock serialises.
+  it('the hold refuses what the free credit cannot cover, at the moment it is taken',
+    async () => {
+      await setup(FEE);
+      await place();
+      await rejects(
+        () => db.query(`do $$ begin
+            perform set_config('app.server_mode','on',true);
+            insert into public.orders (
+              city_id, customer_uid, customer_name, customer_phone, merchant_id,
+              merchant_name, zone_id, address, delivery_by, type, items, pricing, revenue)
+            values ('p', '${CUSTOMER}', 'عميل', '01000000000', '${merchant}', 'مطعم',
+              '${zone}', '{}'::jsonb, 'merchant', 'instant', '[]'::jsonb,
+              '{"total":10000}'::jsonb, '{"model":"prepaid","value":${FEE}}'::jsonb);
+          end $$;`),
+        /not accepting orders/);
+      strictEqual((await wallet()).wallet_held, FEE, 'held once, not twice');
+    });
+
   it('and the balance itself does not move until the food arrives', async () => {
     await setup(FEE);
     const id = await place();
