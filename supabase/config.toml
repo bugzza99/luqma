@@ -143,6 +143,9 @@ enabled = true
 # Store analytical data in S3 for running ETL jobs over Iceberg Catalog
 # This feature is only available on the hosted platform.
 [storage.analytics]
+# False, matching production. It read true there until a `config push` on 2026-09-23 sent
+# this file's false; turning it back on is refused on the free tier (402, "upgrade the
+# project to a paid tier to enable iceberg catalog"), so it was never usable here.
 enabled = false
 max_namespaces = 5
 max_tables = 10
