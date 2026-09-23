@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:luqma_core/luqma_core.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../billing/merchant_billing_screen.dart';
 import '../merchants/merchants_controller.dart';
@@ -454,7 +453,11 @@ class _QueueRow extends ConsumerWidget {
   /// An order nobody answered: the owner's two moves are to ring the shop, or to cancel it
   /// so the customer is not left waiting. The row used to show both facts and offer neither.
   Future<void> _act(BuildContext context, WidgetRef ref) async {
-    final shop = ref.read(merchantProvider(item.merchantId)).value;
+    // From the item, not from `merchantProvider`: that is an auto-dispose stream, and a
+    // `read` with nobody listening returned nothing every time — so the owner's first
+    // move on this sheet, ringing the shop, was never offered (D6). An older server sends
+    // no phone and the tile is simply absent, as it always was.
+    final phone = item.merchantPhone?.trim() ?? '';
     await showModalBottomSheet<void>(
       context: context,
       builder: (sheetContext) => SafeArea(
@@ -465,11 +468,16 @@ class _QueueRow extends ConsumerWidget {
               title: Text('أوردر #${item.number} — ${item.merchantName}'),
               subtitle: const Text('محدش ردّ عليه في الوقت.'),
             ),
-            if (shop != null && shop.phone.isNotEmpty)
+            if (phone.isNotEmpty)
               ListTile(
                 leading: const Icon(Icons.call_outlined),
-                title: Text('كلّم المحل (${shop.phone})'),
-                onTap: () => launchUrl(Uri.parse('tel:${shop.phone}')),
+                title: Text('كلّم المحل ($phone)'),
+                onTap: () => openExternalLink(
+                  context,
+                  ref,
+                  Uri(scheme: 'tel', path: Phone.normalize(phone)),
+                  whenUnavailable: 'الرقم $phone — التليفون ده مش بيعرف يتصل.',
+                ),
               ),
             ListTile(
               key: const Key('dashboard.cancelOrder'),

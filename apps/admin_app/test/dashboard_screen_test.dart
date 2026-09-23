@@ -30,12 +30,14 @@ void main() {
     String id = 'o1',
     int number = 104,
     String merchantName = 'مطعم البحر',
+    String? merchantPhone,
   }) =>
       NeedsAttentionItem(
         id: id,
         number: number,
         merchantId: 'm1',
         merchantName: merchantName,
+        merchantPhone: merchantPhone,
       );
 
   Future<void> pump(
@@ -44,6 +46,7 @@ void main() {
     Failure? failure,
     List<Merchant> shops = const [],
     FakeAdminRepository? admin,
+    FakeExternalLinks? links,
   }) async {
     tester.view.physicalSize = const Size(1080, 2340);
     tester.view.devicePixelRatio = 3;
@@ -60,6 +63,7 @@ void main() {
           ),
           remoteConfigServiceProvider
               .overrideWithValue(RemoteConfigService(FakeConfigFetcher({}))),
+          if (links != null) externalLinksProvider.overrideWithValue(links),
         ],
         child: MaterialApp(
           theme: LuqmaTheme.light,
@@ -190,6 +194,27 @@ void main() {
   // «إلغي الأوردر» went through the customer's own cancel, which matches only `placed` —
   // and every order in this queue is `needsAttention`, so the tap never cancelled anything
   // and always said «مقدرناش نلغيه».
+  // D6. The owner's first move on an order nobody answered is to ring the shop, and the
+  // sheet never offered it: it read the shop from a stream nobody was listening to, which
+  // came back empty every time. The phone rides on the queue item now.
+  testWidgets('the sheet for an unanswered order offers to ring the shop', (tester) async {
+    final links = FakeExternalLinks();
+    await pump(
+      tester,
+      admin: FakeAdminRepository(
+        todayValue: today(needsAttention: [waiting(merchantPhone: '01033334444')]),
+      ),
+      links: links,
+    );
+
+    await tester.tap(find.byKey(DashboardScreen.attentionRowKey('o1')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.textContaining('كلّم المحل'));
+    await tester.pumpAndSettle();
+
+    expect(links.opened.single.toString(), 'tel:01033334444');
+  });
+
   group('cancelling an order nobody answered', () {
     Future<void> cancelFromTheSheet(WidgetTester tester) async {
       await tester.tap(find.byKey(DashboardScreen.attentionRowKey('o1')));

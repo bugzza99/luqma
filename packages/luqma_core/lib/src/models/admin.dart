@@ -260,6 +260,7 @@ class NeedsAttentionItem {
     required this.number,
     required this.merchantId,
     required this.merchantName,
+    this.merchantPhone,
   });
 
   final String id;
@@ -267,12 +268,17 @@ class NeedsAttentionItem {
   final String merchantId;
   final String merchantName;
 
+  /// The shop that did not answer, to ring — carried on the item because the sheet it
+  /// opens has nothing else to read it from. Null from a server older than 20261101140000.
+  final String? merchantPhone;
+
   factory NeedsAttentionItem.fromJson(Map<String, dynamic> json) =>
       NeedsAttentionItem(
     id: json['id'] as String,
     number: (json['number'] as num).toInt(),
     merchantId: json['merchantId'] as String,
     merchantName: json['merchantName'] as String? ?? '',
+    merchantPhone: json['merchantPhone'] as String?,
   );
 }
 
