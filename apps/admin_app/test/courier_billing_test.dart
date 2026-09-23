@@ -318,6 +318,60 @@ void main() {
       expect(statement.recorded.single.amount, 4500);
     });
 
+    // D3. A stored attempt froze the field and offered only «إلغاء» and «تأكيد», and
+    // nothing cleared the record except a success. When the rider had only 250 of the
+    // 300 typed — or handed over nothing — the only way on was to record money that never
+    // changed hands. The shop's dialog has had the way out since M-10.
+    testWidgets('a stored attempt that never happened can be discarded', (tester) async {
+      await pump(tester, balances: [owing()]);
+      statement.failure = const OfflineFailure();
+      await tester.tap(find.byKey(CourierBillingScreen.collectKey('c1')));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(CourierBillingScreen.amountKey), '45');
+      await tester.tap(find.byKey(CourierBillingScreen.confirmKey));
+      await tester.pumpAndSettle();
+      statement.failure = null;
+
+      await tester.tap(find.byKey(CourierBillingScreen.collectKey('c1')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(CourierBillingScreen.frozenKey), findsOneWidget);
+      await tester.tap(find.byKey(CourierBillingScreen.discardKey));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(CourierBillingScreen.frozenKey), findsNothing);
+      await tester.enterText(find.byKey(CourierBillingScreen.amountKey), '25');
+      await tester.tap(find.byKey(CourierBillingScreen.confirmKey));
+      await tester.pumpAndSettle();
+
+      expect(statement.recorded.single.amount, 2500, reason: 'what was actually handed over');
+      expect(statement.receiptIds.last, isNot(statement.receiptIds.first),
+          reason: 'a fresh receipt, or the server answers with the discarded one');
+    });
+
+    testWidgets('an amount that is not money says so instead of doing nothing',
+        (tester) async {
+      await pump(tester, balances: [owing()]);
+      await tester.tap(find.byKey(CourierBillingScreen.collectKey('c1')));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(CourierBillingScreen.amountKey), '1,5');
+      await tester.tap(find.byKey(CourierBillingScreen.confirmKey));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('اكتب مبلغ صحيح'), findsOneWidget);
+      expect(statement.recorded, isEmpty);
+    });
+
+    testWidgets('a collection above ten thousand pounds is an ordinary one', (tester) async {
+      await pump(tester, balances: [owing(owed: 2000000)], owed: const {'c1': 2000000});
+      await tester.tap(find.byKey(CourierBillingScreen.collectKey('c1')));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(CourierBillingScreen.amountKey), '15000');
+      await tester.tap(find.byKey(CourierBillingScreen.confirmKey));
+      await tester.pumpAndSettle();
+
+      expect(statement.recorded.single.amount, 1500000);
+    });
+
     testWidgets('keeps the attempt when the line drops, and freezes its amount', (
       tester,
     ) async {

@@ -14,8 +14,19 @@ abstract final class Money {
   /// Anything above this is a typo, not a meal. Ten thousand pounds.
   static const _maxPiastres = 1000000;
 
+  /// Cash handed over in one go — a prepaid top-up, a month's commission from a busy
+  /// shop — is not a meal, and ten thousand pounds is an ordinary figure for it. A
+  /// million pounds is still a typo.
+  static const _maxCashPiastres = 100000000;
+
   /// Reads a typed price into piastres, or null if it cannot be read exactly.
-  static int? parse(String raw) {
+  static int? parse(String raw) => _parse(raw, _maxPiastres);
+
+  /// Reads a typed amount of cash — a collection or a top-up — the same way as [parse],
+  /// with a ceiling that fits money changing hands rather than a menu (D10).
+  static int? parseCash(String raw) => _parse(raw, _maxCashPiastres);
+
+  static int? _parse(String raw, int ceiling) {
     var normalized = ArabicDigits.fold(raw)
         // The Arabic decimal separator becomes a dot; the Arabic thousands separator is
         // folded into the same comma as the Western one, so both keyboards get the same
@@ -43,6 +54,9 @@ abstract final class Money {
     if (!RegExp(r'^\d+(\.\d{1,2})?$').hasMatch(normalized)) return null;
 
     final parts = normalized.split('.');
+    // More digits than any ceiling here can hold. Eighteen of them fit in an int, and
+    // times a hundred they wrap round to a small number the ceiling would never catch.
+    if (parts[0].length > 12) return null;
     final pounds = int.tryParse(parts[0]);
     if (pounds == null) return null;
 
@@ -51,7 +65,7 @@ abstract final class Money {
         : int.parse(parts[1].padRight(2, '0')); // "5" means fifty piastres, not five
 
     final total = pounds * 100 + piastres;
-    return total > _maxPiastres ? null : total;
+    return total > ceiling ? null : total;
   }
 
   /// The inverse, for putting a stored price back into a text field. Whole pounds lose

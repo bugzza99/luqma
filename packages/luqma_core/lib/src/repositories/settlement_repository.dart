@@ -91,6 +91,12 @@ abstract interface class SettlementRepository {
     /// keeps it across retries; null is the old behaviour and still accepted, because an
     /// APK already on a phone cannot learn a new argument.
     String? clientPaymentId,
+
+    /// What the dialog showed as owed when it opened (D8). A collection against a
+    /// balance that has since moved — a second admin, a second device — is refused as a
+    /// [ConflictFailure] rather than turning the shop's debt into credit nobody meant.
+    /// Null is an older caller and is not checked.
+    int? expectedOwed,
   });
 }
 
@@ -170,20 +176,32 @@ class SupabaseSettlementRepository implements SettlementRepository {
     /// keeps it across retries; null is the old behaviour and still accepted, because an
     /// APK already on a phone cannot learn a new argument.
     String? clientPaymentId,
+    int? expectedOwed,
   }) {
     return Result.guard(() async {
       // An RPC rather than two writes: the receipt and the balance move together or
       // neither does, and a client that could do one without the other could produce a
       // receipt for money the account says was never paid.
-      final result = await _db.rpc<Map<String, dynamic>>(
-        'record_commission_payment',
-        params: {
-          'p_merchant_id': merchantId,
-          'p_amount': amount,
-          'p_note': note,
-          'p_client_payment_id': clientPaymentId,
-        },
-      );
+      late final Map<String, dynamic> result;
+      try {
+        result = await _db.rpc<Map<String, dynamic>>(
+          'record_commission_payment',
+          params: {
+            'p_merchant_id': merchantId,
+            'p_amount': amount,
+            'p_note': note,
+            'p_client_payment_id': clientPaymentId,
+            // Only when there is one: the five-argument overload is the checked one, and
+            // naming a null here would still choose it.
+            'p_expected_owed': ?expectedOwed,
+          },
+        );
+      } on PostgrestException catch (error) {
+        if (error.code == 'P0001' && error.message == 'shop balance changed') {
+          throw const ConflictFailure();
+        }
+        rethrow;
+      }
       // The receipt the server holds, which on a retry is the *first* attempt's — not
       // this one's. The amount asked for is deliberately not the fallback for a missing
       // figure either: a reply that does not say what was recorded is a reply this
@@ -296,6 +314,7 @@ class FakeSettlementRepository implements SettlementRepository {
     /// keeps it across retries; null is the old behaviour and still accepted, because an
     /// APK already on a phone cannot learn a new argument.
     String? clientPaymentId,
+    int? expectedOwed,
   }) async {
     if (failure != null) return Result.err(failure!);
     if (writeFailure != null) return Result.err(writeFailure!);
@@ -313,6 +332,10 @@ class FakeSettlementRepository implements SettlementRepository {
       return Result.ok(
         CommissionCollection(recorded: already.amount, remaining: _owed),
       );
+    }
+    // The server's balance check, after the receipt check as there (D8).
+    if (expectedOwed != null && expectedOwed != _owed) {
+      return const Result.err(ConflictFailure());
     }
 
     final payment = CommissionPayment(

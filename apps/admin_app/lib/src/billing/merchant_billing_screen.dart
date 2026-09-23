@@ -541,7 +541,13 @@ class _WalletState extends ConsumerState<_Wallet> {
       ref.invalidate(merchantProvider(merchant.id));
       if (!mounted) return;
 
-      if (result is Ok) await _journal.clear(merchant.id);
+      // A refusal the server gave for good — not this person's to do, not an amount it
+      // takes — means the attempt never landed and never will, so its record goes too;
+      // left, every later tap opened «في عملية اتبعتت وماتأكدتش» about nothing (D4).
+      final failure = result.failureOrNull;
+      final refusedForGood =
+          failure is PermissionFailure || failure is ValidationFailure;
+      if (result is Ok || refusedForGood) await _journal.clear(merchant.id);
       if (!mounted) return;
       ScaffoldMessenger.maybeOf(context)?.showSnackBar(
         result is Ok
@@ -549,8 +555,12 @@ class _WalletState extends ConsumerState<_Wallet> {
                 key: MerchantBillingScreen.toppedUpKey,
                 content: Text('اتسجّل شحن ${LuqmaStrings.of(context).price(amount)}'),
               )
-            : const SnackBar(
-                content: Text('الشحن مااتسجّلش. افتحه تاني وأكّد — مش هيتسجّل مرتين.'),
+            : SnackBar(
+                content: Text(switch (failure) {
+                  PermissionFailure() => 'مش مسموح لك تسجّل شحن.',
+                  ValidationFailure() => 'المبلغ ده مينفعش يتسجّل.',
+                  _ => 'الشحن مااتسجّلش. افتحه تاني وأكّد — مش هيتسجّل مرتين.',
+                }),
               ),
       );
     } catch (_) {
@@ -790,7 +800,11 @@ class _TermState extends ConsumerState<_Term> {
       ref.invalidate(merchantProvider(merchantId));
       if (!mounted) return;
 
-      if (result is Ok) await _journal.clear(merchantId);
+      // As for the wallet (D4): a refusal for good clears the attempt it was for.
+      final failure = result.failureOrNull;
+      final refusedForGood =
+          failure is PermissionFailure || failure is ValidationFailure;
+      if (result is Ok || refusedForGood) await _journal.clear(merchantId);
       if (!mounted) return;
       ScaffoldMessenger.maybeOf(context)?.showSnackBar(
         result is Ok<Subscription>
@@ -800,10 +814,12 @@ class _TermState extends ConsumerState<_Term> {
                   'اتسجّلت الدفعة — الاشتراك لحد ${_date(result.value.expiresAt)}',
                 ),
               )
-            : const SnackBar(
-                content: Text(
-                  'الدفعة مااتسجّلتش. افتحها تاني وأكّد — مش هتتسجّل مرتين.',
-                ),
+            : SnackBar(
+                content: Text(switch (failure) {
+                  PermissionFailure() => 'مش مسموح لك تسجّل دفعات.',
+                  ValidationFailure() => 'الدفعة دي مينفعش تتسجّل بالأرقام دي.',
+                  _ => 'الدفعة مااتسجّلتش. افتحها تاني وأكّد — مش هتتسجّل مرتين.',
+                }),
               ),
       );
     } catch (_) {
@@ -1042,7 +1058,7 @@ class _AmountDialogState extends State<_AmountDialog> {
         FilledButton(
           key: widget.confirmKey,
           onPressed: () {
-            final amount = Money.parse(_amount.text);
+            final amount = Money.parseCash(_amount.text);
             if (amount == null || amount <= 0) {
               setState(() => _error = 'اكتب مبلغ صحيح بالجنيه');
               return;
@@ -1375,7 +1391,10 @@ class _SettlementsState extends ConsumerState<_Settlements> {
                             // anyway; reading it here as well means no future edit to
                             // this screen can quietly reintroduce a changed amount under
                             // an already-sent receipt.
-                            final amount = frozenAmount ?? Money.parse(amountCtrl.text);
+                            // Cash, not a price: a month's commission from a busy shop
+                            // is an ordinary figure above what a meal may cost (D10).
+                            final amount =
+                                frozenAmount ?? Money.parseCash(amountCtrl.text);
                             if (amount == null || amount <= 0) {
                               setDialogState(() {
                                 errorText = 'اكتب مبلغ صحيح بالجنيه';
@@ -1389,16 +1408,32 @@ class _SettlementsState extends ConsumerState<_Settlements> {
                               frozenAmount = amount;
                             });
 
-                            // Best effort, and deliberately not fatal: the pair is held
-                            // in this dialog either way, and refusing to take the cash
-                            // because a preference would not write is the wrong failure.
-                            await pending.save(merchant.id,
-                                PendingCollection(
-                                  receiptId: receipt,
-                                  kind: PendingKind.merchant,
-                                  subjectId: merchant.id,
-                                  amount: amount,
-                                ));
+                            // On the phone before the request, or the money does not
+                            // move (C-01): a key that exists only in memory is a new key
+                            // after a kill, and the server refuses only a repeat of the
+                            // same one. This used to be called "best effort" and was not
+                            // guarded at all — a failed write threw with `saving` set and
+                            // left the dialog frozen, every button off, the cash in the
+                            // admin's hand (D9). Now it stops the send and says why.
+                            try {
+                              await pending.save(merchant.id,
+                                  PendingCollection(
+                                    receiptId: receipt,
+                                    kind: PendingKind.merchant,
+                                    subjectId: merchant.id,
+                                    amount: amount,
+                                  ));
+                            } catch (_) {
+                              if (!dialogContext.mounted) return;
+                              receiptId = null;
+                              setDialogState(() {
+                                saving = false;
+                                frozenAmount = null;
+                                errorText =
+                                    'مقدرناش نحفظ المحاولة على الموبايل، فماتبعتتش. جرّب تاني.';
+                              });
+                              return;
+                            }
                             if (!dialogContext.mounted) return;
 
                             final result = await ref
@@ -1407,6 +1442,10 @@ class _SettlementsState extends ConsumerState<_Settlements> {
                                   merchantId: merchant.id,
                                   amount: amount,
                                   clientPaymentId: receipt,
+                                  // The balance this dialog was opened against (D8): a
+                                  // collection recorded elsewhere since is a refusal,
+                                  // not credit nobody meant.
+                                  expectedOwed: merchant.commissionOwed,
                                 );
                             if (!dialogContext.mounted) return;
 
@@ -1429,10 +1468,37 @@ class _SettlementsState extends ConsumerState<_Settlements> {
                                 ref.invalidate(merchantProvider(merchant.id));
                                 ref.invalidate(commissionPaymentsProvider(merchant.id));
                                 ref.invalidate(settlementSummaryProvider(merchant.id));
-                              case Err():
+                              case Err(:final failure):
+                                // A refusal the server gave for good — the balance moved,
+                                // the amount or the role is not allowed — means this
+                                // attempt never landed and never will. Its record is
+                                // cleared, or it would sit on the phone as «في دفعة
+                                // اتبعتت وماتأكدتش» for ever (D4). Anything else may have
+                                // landed, and keeps the frozen pair for the retry.
+                                final settled = failure is ConflictFailure ||
+                                    failure is PermissionFailure ||
+                                    failure is ValidationFailure;
+                                if (settled) {
+                                  await pending.clear(merchant.id);
+                                  receiptId = null;
+                                  ref.invalidate(merchantProvider(merchant.id));
+                                }
+                                if (!dialogContext.mounted) return;
                                 setDialogState(() {
                                   saving = false;
-                                  errorText = 'التحصيل مااتسجّلش. جرّب تاني — مش هتتسجّل مرتين.';
+                                  if (settled) frozenAmount = null;
+                                  errorText = switch (failure) {
+                                    ConflictFailure() =>
+                                      'المستحق اتغيّر من ساعة ما فتحت الشاشة — '
+                                          'حد تاني سجّل تحصيل. اقفل وافتح تاني '
+                                          'وشوف الرقم الجديد.',
+                                    PermissionFailure() => 'مش مسموح لك تسجّل تحصيل.',
+                                    ValidationFailure() => 'المبلغ ده مينفعش يتسجّل.',
+                                    OfflineFailure() =>
+                                      'مفيش نت. جرّب تاني — مش هتتسجّل مرتين.',
+                                    _ =>
+                                      'التحصيل مااتسجّلش. جرّب تاني — مش هتتسجّل مرتين.',
+                                  };
                                 });
                             }
                           },

@@ -678,6 +678,57 @@ void main() {
       );
     });
 
+    // D8: another admin, or another device, collected since this screen loaded the
+    // balance. Recording anyway turned the shop's debt into credit nobody meant.
+    testWidgets('a balance that moved since the screen loaded is refused, and said',
+        (tester) async {
+      final elsewhere = FakeSettlementRepository(owedStart: 27500);
+      await pump(
+        tester,
+        seed: merchant(model: RevenueModel.commission, value: 1000, owed: 47500),
+        settlementRepoOverride: elsewhere,
+      );
+      await tester.drag(
+        find.byKey(MerchantBillingScreen.listKey), const Offset(0, -900));
+      await tester.pumpAndSettle();
+
+      await collect(tester, '200');
+
+      expect(elsewhere.owed, 27500, reason: 'nothing recorded');
+      expect(find.textContaining('المستحق اتغيّر'), findsOneWidget);
+      expect(
+        await SharedPreferencesAsync().getString('pending_payment_merchant_m1'),
+        isNull,
+        reason: 'a refusal the server gave for good leaves no attempt pending');
+    });
+
+    // D10: a month's commission from a busy shop is not a meal, and ten thousand pounds
+    // was refused as «اكتب مبلغ صحيح».
+    testWidgets('a collection above ten thousand pounds is an ordinary collection',
+        (tester) async {
+      await pumpOwing(tester, 2000000);
+
+      await collect(tester, '15000');
+
+      expect(settlementRepo.recorded.single.amount, 1500000);
+    });
+
+    // D9: the attempt is written to the phone before the request (C-01). When that write
+    // failed the dialog froze with every button disabled, cash in the admin's hand.
+    testWidgets('a pending record that cannot be written stops the send, and says so',
+        (tester) async {
+      SharedPreferencesAsyncPlatform.instance = _UnwritablePrefs();
+      await pumpOwing(tester, 47500);
+
+      await collect(tester, '200');
+
+      expect(settlementRepo.recorded, isEmpty, reason: 'no key on disk, no money moved');
+      expect(find.textContaining('مقدرناش نحفظ'), findsOneWidget);
+      final confirm = tester.widget<FilledButton>(
+          find.byKey(MerchantBillingScreen.confirmCollectKey));
+      expect(confirm.onPressed, isNotNull, reason: 'the dialog is not frozen');
+    });
+
     testWidgets('recording one sends the figure that was typed', (tester) async {
       await pumpOwing(tester, 47500);
 
@@ -722,7 +773,8 @@ void main() {
 
       await collect(tester, '300');
 
-      expect(find.textContaining('مااتسجّلش'), findsOneWidget);
+      // In its own words now (D4): a refusal the server gave for good is not «جرّب تاني».
+      expect(find.textContaining('مش مسموح لك تسجّل تحصيل'), findsOneWidget);
     });
 
     // Negative means the merchant handed over more than they owed. Shown in words, not
@@ -743,8 +795,8 @@ void main() {
     group('a retry after a lost reply', () {
       late _LostReply repo;
 
-      Future<void> pumpLosing(WidgetTester tester) async {
-        repo = _LostReply(owedStart: 47500);
+      Future<void> pumpLosing(WidgetTester tester, {bool landFirst = true}) async {
+        repo = _LostReply(owedStart: 47500, landFirst: landFirst);
         await pump(
           tester,
           seed: merchant(model: RevenueModel.commission, value: 1000, owed: 47500),
@@ -811,7 +863,10 @@ void main() {
       // merchant money they never paid, with no negative collection anywhere to undo it.
       testWidgets('a pending collection that never landed can be discarded',
           (tester) async {
-        await pumpLosing(tester);
+        // Really never landed: since D8 a second collection is checked against the
+        // balance the dialog opened on, and one that *had* landed would have moved it —
+        // which is exactly the refusal an admin discarding a real payment ought to meet.
+        await pumpLosing(tester, landFirst: false);
 
         await collect(tester, '100');
         expect(find.byKey(MerchantBillingScreen.pendingNoticeKey), findsOneWidget);
@@ -1074,6 +1129,36 @@ void main() {
           reason: 'a retry that mints a new receipt credits the same cash twice');
     });
 
+    // D4: a refusal the server gave for good left the attempt on the phone, so every
+    // later tap opened «في عملية اتبعتت وماتأكدتش» about a top-up that never could land.
+    testWidgets('a top-up refused for good says why and leaves nothing pending',
+        (tester) async {
+      await pump(
+        tester,
+        seed: merchant(model: RevenueModel.prepaid, value: 500, wallet: 2000),
+      );
+      billing.failure = const PermissionFailure();
+      await tester.scrollUntilVisible(
+        find.byKey(MerchantBillingScreen.topUpKey),
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(MerchantBillingScreen.topUpKey));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(MerchantBillingScreen.amountKey), '50');
+      await tester.tap(find.byKey(MerchantBillingScreen.confirmTopUpKey));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('مش مسموح لك تسجّل شحن'), findsOneWidget);
+
+      billing.failure = null;
+      await tester.tap(find.byKey(MerchantBillingScreen.topUpKey));
+      await tester.pumpAndSettle();
+      expect(find.byKey(MerchantBillingScreen.pendingNoticeKey), findsNothing);
+      expect(find.byKey(MerchantBillingScreen.amountKey), findsOneWidget);
+    });
+
     testWidgets('a discarded top-up starts clean rather than resending', (tester) async {
       await pump(
         tester,
@@ -1135,10 +1220,14 @@ void main() {
 /// write instead would test nothing: the whole question is what the *second* attempt is
 /// told about a collection that already happened.
 class _LostReply extends FakeSettlementRepository {
-  _LostReply({required super.owedStart});
+  _LostReply({required super.owedStart, this.landFirst = true});
 
   final List<({int amount, String? receipt})> calls = [];
   bool loseNextReply = true;
+
+  /// Whether the first attempt reached the server before its reply was lost. False is a
+  /// request that died on the way out.
+  final bool landFirst;
 
   @override
   Future<Result<CommissionCollection>> recordPayment({
@@ -1146,13 +1235,19 @@ class _LostReply extends FakeSettlementRepository {
     required int amount,
     String? note,
     String? clientPaymentId,
+    int? expectedOwed,
   }) async {
     calls.add((amount: amount, receipt: clientPaymentId));
+    if (loseNextReply && !landFirst) {
+      loseNextReply = false;
+      return const Result.err(UnknownFailure('the request never arrived'));
+    }
     final result = await super.recordPayment(
       merchantId: merchantId,
       amount: amount,
       note: note,
       clientPaymentId: clientPaymentId,
+      expectedOwed: expectedOwed,
     );
     if (loseNextReply) {
       loseNextReply = false;
@@ -1173,6 +1268,7 @@ class _StaleReceipt extends FakeSettlementRepository {
     required int amount,
     String? note,
     String? clientPaymentId,
+    int? expectedOwed,
   }) async =>
       const Result.ok(CommissionCollection(recorded: 10000, remaining: 37500));
 }
@@ -1189,6 +1285,7 @@ class _PendingCollection extends FakeSettlementRepository {
     required int amount,
     String? note,
     String? clientPaymentId,
+    int? expectedOwed,
   }) =>
       _completer.future;
 }
@@ -1210,4 +1307,17 @@ class _SlowReceipts extends FakeSettlementRepository {
     await _gate.future;
     return super.paymentsFor(merchantId, limit: limit);
   }
+}
+
+/// A phone whose preferences refuse to be written.
+final class _UnwritablePrefs extends InMemorySharedPreferencesAsync {
+  _UnwritablePrefs() : super.empty();
+
+  @override
+  Future<bool> setString(
+    String key,
+    String value,
+    SharedPreferencesOptions options,
+  ) async =>
+      throw StateError('disk full');
 }

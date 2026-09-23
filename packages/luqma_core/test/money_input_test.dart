@@ -52,6 +52,38 @@ void main() {
     });
 
     test('absurdly large', () => expect(Money.parse('99999999'), isNull));
+
+    // E11: eighteen digits fit in a Dart int, and times a hundred they do not — the
+    // product wrapped round to a small negative number and the ceiling never saw it.
+    test('too many digits to be money at all', () {
+      expect(Money.parse('184467440737095516'), isNull);
+      expect(Money.parse('92233720368547758'), isNull);
+    });
+  });
+
+  // D10: the ceiling is ten thousand pounds because that is not a meal. It is a
+  // perfectly ordinary prepaid top-up, or a month's commission collected from a big shop —
+  // and those were refused with «اكتب مبلغ صحيح», on the screens where somebody is holding
+  // the cash.
+  group('an amount of cash, not a price', () {
+    test('above what a meal costs is fine', () {
+      expect(Money.parseCash('15000'), 1500000);
+      expect(Money.parseCash('١٥٠٠٠'), 1500000);
+    });
+
+    test('still refuses what is not money', () {
+      expect(Money.parseCash('1,5'), isNull);
+      expect(Money.parseCash('184467440737095516'), isNull);
+      expect(Money.parseCash(''), isNull);
+    });
+
+    test('and still has a ceiling, far above any real collection', () {
+      expect(Money.parseCash('1000001'), isNull);
+    });
+
+    test('the price ceiling itself is unchanged', () {
+      expect(Money.parse('15000'), isNull);
+    });
   });
 
   group('round tripping', () {

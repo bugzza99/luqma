@@ -25,6 +25,7 @@ class CourierBillingScreen extends ConsumerWidget {
   static const amountKey = Key('courierBilling.amount');
   static const confirmKey = Key('courierBilling.confirm');
   static const frozenKey = Key('courierBilling.frozen');
+  static const discardKey = Key('courierBilling.discard');
   static const moderatorNoteKey = Key('courierBilling.moderatorNote');
 
   static Key rowKey(String uid) => Key('courierBilling.row.$uid');
@@ -128,19 +129,34 @@ class _CourierRowState extends ConsumerState<_CourierRow> {
       // if the first request landed, the server answers with the receipt it already holds
       // and moves nothing; if it did not, this is the first one to arrive. Either way the
       // cash is recorded exactly once.
-      final stored = await _pending.load(balance.uid);
+      var stored = await _pending.load(balance.uid);
       if (!mounted) return;
 
-      final amount = await showDialog<int>(
-        context: context,
-        builder: (_) => _CollectionDialog(
-          balance: balance,
-          stored: stored,
-          strings: strings,
-        ),
-      );
-
-      if (amount == null || !mounted) return;
+      // A stored attempt the operator says never happened is discarded here and the
+      // dialog opens again clean — a fresh receipt and an editable amount (D3). Before,
+      // nothing cleared the record but a success, so the only way on was to record money
+      // that had not changed hands.
+      int? amount;
+      while (true) {
+        final choice = await showDialog<Object>(
+          context: context,
+          builder: (_) => _CollectionDialog(
+            balance: balance,
+            stored: stored,
+            strings: strings,
+          ),
+        );
+        if (!mounted) return;
+        if (identical(choice, _CollectionDialog.discard)) {
+          await _pending.clear(balance.uid);
+          if (!mounted) return;
+          stored = null;
+          continue;
+        }
+        if (choice is! int) return;
+        amount = choice;
+        break;
+      }
 
       // Frozen together, and written down *before* the request. A record made afterwards
       // is a record that does not exist for the one failure it was built for.
@@ -148,16 +164,28 @@ class _CourierRowState extends ConsumerState<_CourierRow> {
       final expectedBalance = stored == null
           ? balance.owed
           : stored.expectedBalance;
-      await _pending.save(
-        balance.uid,
-        PendingCollection(
-          receiptId: receiptId,
-          kind: PendingKind.courier,
-          subjectId: balance.uid,
-          amount: amount,
-          expectedBalance: expectedBalance,
-        ),
-      );
+      try {
+        await _pending.save(
+          balance.uid,
+          PendingCollection(
+            receiptId: receiptId,
+            kind: PendingKind.courier,
+            subjectId: balance.uid,
+            amount: amount,
+            expectedBalance: expectedBalance,
+          ),
+        );
+      } catch (_) {
+        // No record on the phone, no request (C-01): a key held only in memory is a new
+        // key after a kill, and the server only refuses a repeat of the same one.
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('مقدرناش نحفظ المحاولة على الموبايل، فماتبعتتش. جرّب تاني.'),
+          ),
+        );
+        return;
+      }
       if (!mounted) return;
 
       final result = await ref
@@ -335,12 +363,19 @@ class _CollectionDialog extends StatefulWidget {
   final PendingCollection? stored;
   final LuqmaStrings strings;
 
+  /// What the dialog answers when the operator says a stored attempt never happened.
+  static const discard = Object();
+
   @override
   State<_CollectionDialog> createState() => _CollectionDialogState();
 }
 
 class _CollectionDialogState extends State<_CollectionDialog> {
   late final TextEditingController _controller;
+
+  /// A figure that could not be read is said, not silently ignored: the button used to
+  /// do nothing at all, which reads as a broken button.
+  String? _error;
 
   @override
   void initState() {
@@ -384,7 +419,13 @@ class _CollectionDialogState extends State<_CollectionDialog> {
             // gets sent under an old receipt id.
             readOnly: stored != null,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            decoration: const InputDecoration(labelText: 'المبلغ بالجنيه'),
+            decoration: InputDecoration(
+              labelText: 'المبلغ بالجنيه',
+              errorText: _error,
+            ),
+            onChanged: (_) {
+              if (_error != null) setState(() => _error = null);
+            },
           ),
         ],
       ),
@@ -393,11 +434,22 @@ class _CollectionDialogState extends State<_CollectionDialog> {
           onPressed: () => Navigator.of(context).pop(),
           child: const Text('إلغاء'),
         ),
+        if (stored != null)
+          TextButton(
+            key: CourierBillingScreen.discardKey,
+            onPressed: () => Navigator.of(context).pop(_CollectionDialog.discard),
+            child: const Text('دي مش دفعة · ابدأ تحصيل جديد'),
+          ),
         FilledButton(
           key: CourierBillingScreen.confirmKey,
           onPressed: () {
-            final parsed = stored?.amount ?? Money.parse(_controller.text);
-            if (parsed == null || parsed <= 0) return;
+            // Cash, not a price: a busy rider's week is an ordinary figure above what a
+            // meal may cost (D10).
+            final parsed = stored?.amount ?? Money.parseCash(_controller.text);
+            if (parsed == null || parsed <= 0) {
+              setState(() => _error = 'اكتب مبلغ صحيح بالجنيه');
+              return;
+            }
             Navigator.of(context).pop(parsed);
           },
           child: const Text('تأكيد'),
