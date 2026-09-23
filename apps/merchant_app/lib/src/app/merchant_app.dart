@@ -3,6 +3,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:luqma_core/luqma_core.dart';
 
+import '../auth/apply_screen.dart';
 import '../auth/sign_in_screen.dart';
 import '../courier/courier_screen.dart';
 import '../meals/meals_screen.dart';
@@ -40,6 +41,7 @@ class MerchantApp extends ConsumerWidget {
   static const shopTabKey = Key('app.tab.shop');
   static const noAccessKey = Key('app.noAccess');
   static const refreshAccessKey = Key('app.refreshAccess');
+  static const finishApplicationKey = Key('app.finishApplication');
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -317,9 +319,13 @@ class _NoAccessState extends ConsumerState<_NoAccess> {
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: Space.sm),
+              // Said conditionally, because the premise may be false (C7). The account is
+              // made before the papers and the application, so a failure between them —
+              // a dropped line during the upload, the app killed — leaves an account and
+              // no application, and «هتتصل بيك» promised a call nobody would ever make.
               Text(
                 'لو قدّمت طلب انضمام، إدارة لقمة هتتصل بيك وتفعّل الحساب. أول ما يوصلك إن '
-                'الحساب اتفعّل اضغط «حدّث الحساب».',
+                'الحساب اتفعّل اضغط «حدّث الحساب». ولو الطلب ماكملش، كمّله من تحت.',
                 style: theme.textTheme.bodyMedium
                     ?.copyWith(color: theme.luqma.textSecondary),
                 textAlign: TextAlign.center,
@@ -334,6 +340,17 @@ class _NoAccessState extends ConsumerState<_NoAccess> {
                 child: Text(_busy ? 'لحظة…' : 'حدّث الحساب'),
               ),
               const SizedBox(height: Space.md),
+              // The way on when the application never went in. The form finds the account
+              // already made (the password proves it) and files what is missing; one that
+              // had gone in is told so there, in its own words.
+              TextButton(
+                key: MerchantApp.finishApplicationKey,
+                onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(builder: (_) => const ApplyScreen()),
+                ),
+                child: const Text('طلب الانضمام ماكملش؟ كمّله'),
+              ),
+              const SizedBox(height: Space.sm),
               OutlinedButton(
                 onPressed: () => ref.read(authServiceProvider).signOut(),
                 child: const Text('تسجيل الخروج'),

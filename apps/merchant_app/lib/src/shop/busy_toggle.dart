@@ -4,6 +4,16 @@ import 'package:luqma_core/luqma_core.dart';
 
 import 'hours_screen.dart';
 
+/// A beat once a minute, so what depends on the time of day is asked again (C6).
+///
+/// The bar read the clock once per build, and nothing rebuilt it when a pause ran out:
+/// the merchant row does not change when time passes. An owner who paused for thirty
+/// minutes read «متوقف» an hour later while customers could order — and might never look
+/// at the inbox. A provider rather than a timer in the widget, so a test can tick it.
+final minuteTickProvider = StreamProvider.autoDispose<int>(
+  (ref) => Stream<int>.periodic(const Duration(minutes: 1), (i) => i),
+);
+
 /// Whether this kitchen is taking orders, and the one control that changes it.
 ///
 /// Pausing writes a **timestamp**, never a flag. A flag produces merchants stuck closed
@@ -37,6 +47,10 @@ class BusyToggle extends ConsumerWidget {
 
     final merchant = ref.watch(merchantProvider(merchantId)).value;
     if (merchant == null) return const SizedBox.shrink();
+
+    // Rebuilt every minute, so a pause that has run out, or an opening hour that has
+    // arrived, is shown without waiting for something else to change.
+    ref.watch(minuteTickProvider);
 
     // The shared clock: both questions below are about the hour, and a widget that
     // reads the wall clock cannot be tested without waiting for one.
@@ -238,7 +252,7 @@ class _Open extends ConsumerWidget {
 
     if (minutes == null) return;
 
-    await ref.read(merchantRepositoryProvider).setPausedUntil(
+    final result = await ref.read(merchantRepositoryProvider).setPausedUntil(
           merchantId,
           // The injected clock, so a test can pause the shop at a known moment and read
           // back a known `pausedUntil` — this value is written to the database and is
@@ -246,6 +260,13 @@ class _Open extends ConsumerWidget {
           ref.read(clockProvider)().add(Duration(minutes: minutes)),
         );
     ref.invalidate(merchantProvider(merchantId));
+    // The result used to be thrown away: offline, the sheet closed, the bar stayed
+    // green, and the owner believed the shop had stopped taking orders (C6).
+    if (result.failureOrNull != null && context.mounted) {
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+        const SnackBar(content: Text('مقدرناش نوقف الاستقبال — اتأكد من النت وجرّب تاني.')),
+      );
+    }
   }
 }
 
@@ -276,8 +297,16 @@ class _Paused extends ConsumerWidget {
         key: BusyToggle.resumeKey,
         onPressed: () async {
           // Somebody who cleared the rush should not have to wait out a timer they set.
-          await ref.read(merchantRepositoryProvider).setPausedUntil(merchant.id, null);
+          final result =
+              await ref.read(merchantRepositoryProvider).setPausedUntil(merchant.id, null);
           ref.invalidate(merchantProvider(merchant.id));
+          if (result.failureOrNull != null && context.mounted) {
+            ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+              const SnackBar(
+                content: Text('مقدرناش نرجّع الاستقبال — اتأكد من النت وجرّب تاني.'),
+              ),
+            );
+          }
         },
         style: OutlinedButton.styleFrom(
           foregroundColor: colors.onAccent,

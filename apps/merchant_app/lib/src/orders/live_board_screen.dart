@@ -297,12 +297,12 @@ class _Card extends ConsumerWidget {
           ),
           if (next != null) ...[
             const SizedBox(height: Space.md),
-            FilledButton(
-              key: LiveBoardScreen.advanceKey(order.id),
+            OnceButton(
+              // A fresh button for each status: one that moved its order stays off until
+              // the order itself arrives at its next step.
+              key: ValueKey('${order.id}/${order.status.name}'),
+              buttonKey: LiveBoardScreen.advanceKey(order.id),
               onPressed: () => _advance(context, ref, next.$1),
-              style: FilledButton.styleFrom(
-                minimumSize: const Size.fromHeight(Sizes.minTarget),
-              ),
               child: Text(next.$2),
             ),
           ],
@@ -328,14 +328,15 @@ class _Card extends ConsumerWidget {
     );
   }
 
-  Future<void> _advance(
+  /// True when the move landed.
+  Future<bool> _advance(
     BuildContext context,
     WidgetRef ref,
     OrderStatus to,
   ) async {
     final result =
         await ref.read(merchantOrderRepositoryProvider).advance(order.id, to: to);
-    if (!context.mounted) return;
+    if (!context.mounted) return result.isOk;
 
     // A refusal means somebody else moved it first. Silence would leave a merchant
     // tapping a button that appears to do nothing.
@@ -350,6 +351,7 @@ class _Card extends ConsumerWidget {
         ),
       );
     }
+    return result.isOk;
   }
 }
 
@@ -389,3 +391,52 @@ class _Stage extends StatelessWidget {
   }
 }
 
+/// A button that runs its action once (C9).
+///
+/// The board's buttons stayed live until realtime brought the moved order back, so a
+/// double tap sent the move twice: the second was refused and the owner read «الطلب ده
+/// اتغير» about their own action. Off from the first tap; back on only if the action
+/// failed. After a success it stays off, and the card that replaces it once the order
+/// arrives at its next step is a new button.
+class OnceButton extends StatefulWidget {
+  const OnceButton({
+    super.key,
+    required this.buttonKey,
+    required this.onPressed,
+    required this.child,
+  });
+
+  final Key buttonKey;
+
+  /// Answers whether it succeeded.
+  final Future<bool> Function() onPressed;
+  final Widget child;
+
+  @override
+  State<OnceButton> createState() => _OnceButtonState();
+}
+
+class _OnceButtonState extends State<OnceButton> {
+  bool _busy = false;
+
+  Future<void> _run() async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    var succeeded = false;
+    try {
+      succeeded = await widget.onPressed();
+    } finally {
+      if (mounted && !succeeded) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => FilledButton(
+        key: widget.buttonKey,
+        onPressed: _busy ? null : _run,
+        style: FilledButton.styleFrom(
+          minimumSize: const Size.fromHeight(Sizes.minTarget),
+        ),
+        child: widget.child,
+      );
+}

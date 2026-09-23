@@ -180,6 +180,22 @@ void main() {
   group('saying what happened', () {
     // A merchant who taps save and sees nothing has no idea whether their shop will take
     // orders tonight.
+    // C8. An opening equal to its closing reads, on the server as here, as a window that
+    // crosses midnight all the way round — the shop open twenty-four hours. One slip on
+    // the dial and the kitchen took orders through the night.
+    testWidgets('a day that opens and closes at the same minute is refused, not saved',
+        (tester) async {
+      await pump(tester, hours: const [
+        OpeningWindow(weekday: DateTime.monday, openMinute: 720, closeMinute: 720),
+      ]);
+
+      await save(tester);
+
+      expect(find.textContaining('نفس الساعة'), findsOneWidget);
+      expect(find.text('اتحفظت المواعيد.'), findsNothing,
+          reason: 'nothing was saved');
+    });
+
     testWidgets('a refused save is said out loud', (tester) async {
       tester.view.physicalSize = const Size(1080, 2340);
       tester.view.devicePixelRatio = 3;

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -44,10 +46,18 @@ void main() {
 
   late FakeMerchantRepository merchants;
   late DateTime currentTime;
+  late StreamController<int> minutes;
 
-  Future<void> pump(WidgetTester tester, {Merchant? seed, DateTime? now}) async {
+  Future<void> pump(
+    WidgetTester tester, {
+    Merchant? seed,
+    DateTime? now,
+    Failure? saveFailure,
+  }) async {
     currentTime = now ?? DateTime(2026, 9, 22, 14, 0);
-    merchants = FakeMerchantRepository(seed: [seed ?? shop()]);
+    merchants = FakeMerchantRepository(seed: [seed ?? shop()], saveFailure: saveFailure);
+    minutes = StreamController<int>();
+    addTearDown(minutes.close);
 
     await tester.pumpWidget(
       ProviderScope(
@@ -62,6 +72,7 @@ void main() {
           ),
           merchantRepositoryProvider.overrideWithValue(merchants),
           clockProvider.overrideWithValue(() => currentTime),
+          minuteTickProvider.overrideWith((ref) => minutes.stream),
           remoteConfigServiceProvider
               .overrideWithValue(RemoteConfigService(FakeConfigFetcher({}))),
         ],
@@ -79,6 +90,51 @@ void main() {
     );
     await tester.pumpAndSettle();
   }
+
+  // C6. The bar read the clock once per build, and nothing rebuilt it when a pause ran
+  // out — the merchant row does not change when time passes. An owner who paused for
+  // thirty minutes read «متوقف» an hour later while customers could order, and might
+  // never look at the inbox.
+  testWidgets('a pause that runs out turns the bar back to open by itself',
+      (tester) async {
+    await pump(
+      tester,
+      seed: shop().copyWith(pausedUntil: DateTime(2026, 9, 22, 14, 30)),
+    );
+    expect(find.byKey(BusyToggle.pausedKey), findsOneWidget);
+
+    currentTime = DateTime(2026, 9, 22, 14, 31);
+    minutes.add(1);
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(BusyToggle.openKey), findsOneWidget);
+  });
+
+  // C6. The pause and the resume threw their result away: offline, the sheet closed, the
+  // bar stayed as it was, and nothing was said.
+  testWidgets('a pause that did not land says so', (tester) async {
+    await pump(tester, saveFailure: const OfflineFailure());
+
+    await tester.tap(find.byKey(BusyToggle.pauseKey));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(BusyToggle.choiceKey(30)));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('مقدرناش نوقف'), findsOneWidget);
+  });
+
+  testWidgets('and so does a resume that did not', (tester) async {
+    await pump(
+      tester,
+      seed: shop().copyWith(pausedUntil: DateTime(2026, 9, 22, 14, 30)),
+      saveFailure: const OfflineFailure(),
+    );
+
+    await tester.tap(find.byKey(BusyToggle.resumeKey));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('مقدرناش نرجّع'), findsOneWidget);
+  });
 
   group('an open shop', () {
     testWidgets('says it is taking orders', (tester) async {

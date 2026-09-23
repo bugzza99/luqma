@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:luqma_core/luqma_core.dart';
 import 'package:merchant_app/src/app/merchant_app.dart';
+import 'package:merchant_app/src/auth/apply_screen.dart';
 import 'package:merchant_app/src/auth/sign_in_screen.dart';
 import 'package:merchant_app/src/courier/courier_screen.dart';
 import 'package:merchant_app/src/meals/meals_screen.dart';
@@ -197,6 +198,21 @@ void main() {
 
       expect(find.byType(SignInScreen), findsNothing);
       expect(find.byKey(MerchantApp.noAccessKey), findsOneWidget);
+    });
+
+    // C7. An applicant whose papers failed to upload, or whose app was killed mid-way, is
+    // signed in with an account and no application — and the screen promised a call.
+    testWidgets('and is offered the application, in case it never went in',
+        (tester) async {
+      await pump(
+        tester,
+        signedInAs: const LuqmaIdentity(uid: 'u1', email: 'x@y.z'),
+      );
+
+      await tester.tap(find.byKey(MerchantApp.finishApplicationKey));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(ApplyScreen), findsOneWidget);
     });
 
     // An approved partner is holding a token stamped before they were approved, and a

@@ -97,7 +97,10 @@ class MealsScreen extends ConsumerWidget {
       builder: (_) => _MealForm(
         merchantId: merchantId,
         cityId: ref.read(currentCityProvider),
-        day: ref.read(todayProvider),
+        // Asked of the clock now, not of the day the screen last computed: a kitchen's
+        // phone stays open overnight, and a meal published at nine was dated yesterday,
+        // where no customer's today-only query would ever find it (C5).
+        day: DailyMeal.dayKeyOf(ref.read(clockProvider)()),
       ),
     );
 

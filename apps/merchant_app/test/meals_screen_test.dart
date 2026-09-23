@@ -10,7 +10,9 @@ import 'package:merchant_app/src/meals/meals_screen.dart';
 /// say what it is, how many, and when it can be collected — and nothing else, because
 /// they are doing it with one hand.
 void main() {
-  final now = DateTime(2026, 8, 23, 9);
+  // A variable, so a test can carry the phone past midnight while the screen is open.
+  var now = DateTime(2026, 8, 23, 9);
+  setUp(() => now = DateTime(2026, 8, 23, 9));
   const today = '2026-08-23';
 
   DailyMeal meal({
@@ -132,6 +134,25 @@ void main() {
       await tester.enterText(find.byKey(MealsScreen.priceKey), '75');
       await tester.enterText(find.byKey(MealsScreen.quantityKey), '15');
     }
+
+    // C5. The day was read once, when the screen first built, and a kitchen's phone stays
+    // open overnight — the alarm lives there. A meal published the next morning was dated
+    // yesterday, and no customer's today-only query ever found it.
+    testWidgets('a screen opened yesterday publishes for today after midnight',
+        (tester) async {
+      now = DateTime(2026, 8, 22, 23, 50);
+      // Yesterday's meal on the list, so the screen is holding "today" when midnight passes.
+      await pump(tester, seed: [meal(date: '2026-08-22')]);
+
+      now = DateTime(2026, 8, 23, 9);
+      await tester.tap(find.byKey(MealsScreen.addKey));
+      await tester.pumpAndSettle();
+      await fillIn(tester);
+      await tester.tap(find.byKey(MealsScreen.saveKey));
+      await tester.pumpAndSettle();
+
+      expect(meals.all.where((m) => m.name == 'ورق عنب').single.date, '2026-08-23');
+    });
 
     testWidgets('a new meal is for today by default', (tester) async {
       await pump(tester);

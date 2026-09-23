@@ -525,6 +525,8 @@ class FakeMerchantRepository implements MerchantRepository {
   @override
   Future<Result<void>> setPausedUntil(String id, DateTime? until) async {
     if (failure != null) return Result.err(failure!);
+    // A write like any other, so a screen can be tested against a pause that did not land.
+    if (saveFailure != null) return Result.err(saveFailure!);
     final merchant = _merchants[id];
     if (merchant == null) return const Result.err(NotFoundFailure());
     _merchants[id] = merchant.copyWith(pausedUntil: until);

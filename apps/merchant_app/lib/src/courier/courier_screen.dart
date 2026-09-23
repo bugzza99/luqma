@@ -173,10 +173,17 @@ class _CourierScreenState extends ConsumerState<CourierScreen> {
 
     if (minutes == null || !mounted) return;
 
-    await ref.read(staffRepositoryProvider).setPausedUntil(
+    final result = await ref.read(staffRepositoryProvider).setPausedUntil(
           uid,
           ref.read(clockProvider)().add(Duration(minutes: minutes)),
         );
+    // Said when it did not land (C6): a rider who thinks they are off the queue and is
+    // not is sent orders they will not take.
+    if (result.failureOrNull != null && context.mounted) {
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+        const SnackBar(content: Text('مقدرناش نوقفك — اتأكد من النت وجرّب تاني.')),
+      );
+    }
   }
 
   /// The way off this account, which courier mode never had.
@@ -1081,9 +1088,18 @@ class _CourierPausedBanner extends ConsumerWidget {
           ),
           OutlinedButton(
             key: CourierScreen.resumeKey,
-            onPressed: () => ref
-                .read(staffRepositoryProvider)
-                .setPausedUntil(courierUid, null),
+            onPressed: () async {
+              final result = await ref
+                  .read(staffRepositoryProvider)
+                  .setPausedUntil(courierUid, null);
+              if (result.failureOrNull != null && context.mounted) {
+                ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+                  const SnackBar(
+                    content: Text('مقدرناش نرجّعك — اتأكد من النت وجرّب تاني.'),
+                  ),
+                );
+              }
+            },
             style: OutlinedButton.styleFrom(
               foregroundColor: colors.onAccent,
               side: BorderSide(color: colors.onAccent.withValues(alpha: 0.5)),

@@ -181,6 +181,20 @@ void main() {
       expect(orders['o1']!.status, OrderStatus.preparing);
     });
 
+    // C9. The button stayed live until realtime brought the order back, so a double tap
+    // sent the move twice — and the owner read a refusal about their own action.
+    testWidgets('a double tap moves the order once, and says nothing about it',
+        (tester) async {
+      await pump(tester, seed: [order()]);
+
+      await tester.tap(find.byKey(LiveBoardScreen.advanceKey('o1')));
+      await tester.tap(find.byKey(LiveBoardScreen.advanceKey('o1')), warnIfMissed: false);
+      await tester.pumpAndSettle();
+
+      expect(orders['o1']!.status, OrderStatus.preparing);
+      expect(find.byType(SnackBar), findsNothing);
+    });
+
     testWidgets('a cooking order goes out for delivery', (tester) async {
       await pump(tester, seed: [order(status: OrderStatus.preparing)]);
 

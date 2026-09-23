@@ -684,9 +684,20 @@ DateTime Function() clock(Ref ref) => DateTime.now;
 @Riverpod(keepAlive: true)
 String appVersion(Ref ref) => '';
 
-/// The day the app is showing, derived from [clock].
+/// The day the app is showing, derived from [clock] — and asked again at midnight.
+///
+/// It was computed once. A kitchen's phone left open overnight — the alarm lives there —
+/// went on believing it was yesterday: its list showed yesterday's meals and a meal
+/// published at nine the next morning was dated the day before, where no customer's
+/// today-only query would ever find it (C5). A timer to the next midnight invalidates it.
 @riverpod
-String today(Ref ref) => DailyMeal.dayKeyOf(ref.watch(clockProvider)());
+String today(Ref ref) {
+  final now = ref.watch(clockProvider)();
+  final midnight = DateTime(now.year, now.month, now.day + 1);
+  final timer = Timer(midnight.difference(now), ref.invalidateSelf);
+  ref.onDispose(timer.cancel);
+  return DailyMeal.dayKeyOf(now);
+}
 
 /// Today's home-cooked meals in this city. Live.
 @riverpod

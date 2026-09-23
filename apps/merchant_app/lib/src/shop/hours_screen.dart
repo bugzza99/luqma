@@ -76,6 +76,23 @@ class _HoursScreenState extends ConsumerState<HoursScreen> {
   }
 
   Future<void> _save(Merchant merchant) async {
+    // A day that opens and closes at the same minute is, to `merchant_open_at` and to
+    // `acceptsOrdersAt` alike, a window that crosses midnight all the way round: open
+    // twenty-four hours. One slip on the dial and the kitchen took orders through the
+    // night (C8). Refused here, with the day named, rather than saved.
+    final same = _days.entries.where((e) => e.value.$1 == e.value.$2).toList();
+    if (same.isNotEmpty) {
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+        SnackBar(
+          content: Text(
+            'يوم ${_dayNames[same.first.key]} بيفتح ويقفل في نفس الساعة. '
+            'غيّر واحدة منهم، أو اقفل اليوم ده.',
+          ),
+        ),
+      );
+      return;
+    }
+
     setState(() => _saving = true);
 
     final hours = [
