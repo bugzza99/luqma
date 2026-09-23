@@ -36,6 +36,9 @@ void main() {
     Routes.subscriptions,
     Routes.plans,
     Routes.settings,
+    // D5: «حول لقمة» saves through admin_set_config, which a moderator is refused; the
+    // tile opened a page every save on which failed with «مقدرناش نحفظ».
+    Routes.about,
   ];
 
   group('the gate', () {
@@ -106,7 +109,7 @@ void main() {
       expect(modulesFor(StaffIdentity.none).length, modulesFor(admin).length);
     });
 
-    test('the two lists differ by exactly those six', () {
+    test('the two lists differ by exactly those', () {
       expect(
         modulesFor(admin).length - modulesFor(moderator).length,
         closed.length,

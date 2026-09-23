@@ -670,6 +670,10 @@ class _Detail extends ConsumerWidget {
           // Delete only while the merchant never traded. Once it has an order the
           // control is disabled and the reason is said in the tooltip — history exists,
           // and history wins. The real count is queried, never a field that can drift.
+          //
+          // Not offered to a moderator at all: deletion is one of the three things the
+          // role does not do, and the database refuses it (D5).
+          if (!ref.watch(staffIdentityProvider).isModerator)
           IconButton(
             key: MerchantsScreen.deleteKey,
             // Enabled only once the count is known to be zero. Loading and failing both

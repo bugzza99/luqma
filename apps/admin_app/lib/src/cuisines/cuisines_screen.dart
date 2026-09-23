@@ -346,7 +346,9 @@ class _CuisineSheetState extends ConsumerState<_CuisineSheet> {
                 ),
                 child: Text(_busy ? 'جاري…' : 'احفظ'),
               ),
-              if (widget.existing != null) ...[
+              // A moderator does not delete (D5): the database refuses it.
+              if (widget.existing != null &&
+                  !ref.watch(staffIdentityProvider).isModerator) ...[
                 const SizedBox(height: Space.md),
                 OutlinedButton(
                   key: CuisinesScreen.deleteKey,

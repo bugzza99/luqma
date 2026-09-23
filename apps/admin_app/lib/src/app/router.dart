@@ -107,7 +107,14 @@ const _modules = [
     route: Routes.plans,
     adminOnly: true,
   ),
-  AdminModule(label: 'حول لقمة', icon: Icons.info_outline, route: Routes.about),
+  // Saved through `admin_set_config`, which a moderator is refused: the page opened and
+  // every save on it failed with «مقدرناش نحفظ» (D5).
+  AdminModule(
+    label: 'حول لقمة',
+    icon: Icons.info_outline,
+    route: Routes.about,
+    adminOnly: true,
+  ),
   AdminModule(
     label: 'الإعدادات',
     icon: Icons.settings,
@@ -120,7 +127,7 @@ const _modules = [
 ///
 /// A moderator holds the `admin` claim — without it they would sign in and land on
 /// «مالكش صلاحية», which is the whole defect H-08 closes — and the database then refuses
-/// them the money, the roster and the control plane. This drops the six modules that are
+/// them the money, the roster and the control plane. This drops the modules that are
 /// nothing *but* those, so the grid and the rail agree with what the server will do.
 ///
 /// It is not a permission. Everything here is still refused server-side to a token that

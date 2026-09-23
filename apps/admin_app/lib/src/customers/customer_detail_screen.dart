@@ -521,6 +521,9 @@ class _CustomerDetailScreenState extends ConsumerState<CustomerDetailScreen> {
         const SizedBox(height: Space.md),
 
         // ─── Reset Password Block ─────────────────────────────
+        // An admin's, not a moderator's: `reset-customer-password` refuses anybody whose
+        // role is not admin, so the block only ever ended in a refusal for them (D5).
+        if (!ref.watch(staffIdentityProvider).isModerator)
         Container(
           key: CustomerDetailScreen.resetBlockKey,
           padding: const EdgeInsets.all(Space.md),
@@ -828,6 +831,8 @@ class _CustomerDetailScreenState extends ConsumerState<CustomerDetailScreen> {
           ),
 
         const SizedBox(height: Space.xl),
+        // Deletion is not the moderator's (D5); the database refuses it to them.
+        if (!ref.watch(staffIdentityProvider).isModerator)
         Center(
           child: TextButton.icon(
             key: CustomerDetailScreen.deleteAccountKey,

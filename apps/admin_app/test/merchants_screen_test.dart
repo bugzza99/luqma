@@ -37,6 +37,7 @@ void main() {
     Failure? countsFail,
     List<Zone> zones = const [Zone(id: 'z1', cityId: 'edku', name: 'المعمورة')],
     Size size = const Size(1400, 1000),
+    StaffIdentity? who,
   }) async {
     tester.view.physicalSize = size;
     tester.view.devicePixelRatio = 1.0;
@@ -66,6 +67,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          if (who != null) staffIdentityProvider.overrideWithValue(who),
           merchantRepositoryProvider.overrideWithValue(merchants),
           menuRepositoryProvider.overrideWithValue(menus),
           geographyRepositoryProvider.overrideWithValue(
@@ -345,6 +347,19 @@ void main() {
           reason: 'a missing label is not a broken screen');
     });
 
+    // D5: deletion is one of the three things a moderator does not do, and the
+    // database refuses it; the control is not drawn for them at all.
+    testWidgets('a moderator is not offered the delete', (tester) async {
+      await pump(tester, who: _moderator);
+
+      await tester.tap(find.text('مطعم الشاطئ').first);
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(MerchantsScreen.deleteKey), findsNothing);
+      expect(find.byKey(MerchantsScreen.suspendKey), findsOneWidget,
+          reason: 'what a moderator does do is still there');
+    });
+
     testWidgets('a merchant with orders cannot be deleted', (tester) async {
       await pump(tester, orderCounts: {'a': 7});
 
@@ -505,3 +520,10 @@ void main() {
     });
   });
 }
+
+const _moderator = StaffIdentity(
+  uid: 'mod-1',
+  role: StaffRole.moderator,
+  scope: StaffScope.platform,
+  isAdmin: true,
+);

@@ -77,6 +77,7 @@ void main() {
     Size size = phoneSize,
     bool linkAnswer = true,
     List<CustomerSummary>? seed,
+    StaffIdentity? who,
   }) async {
     tester.view.physicalSize = size;
     tester.view.devicePixelRatio = 1.0;
@@ -114,6 +115,7 @@ void main() {
         overrides: [
           customerRepositoryProvider.overrideWithValue(customers),
           adminRepositoryProvider.overrideWithValue(adminRepo),
+          if (who != null) staffIdentityProvider.overrideWithValue(who),
           addressRepositoryProvider.overrideWithValue(addresses),
           geographyRepositoryProvider.overrideWithValue(geography),
           externalLinksProvider.overrideWithValue(externalLinks),
@@ -420,6 +422,24 @@ void main() {
   // A9: the server refuses to delete a customer whose order is still on its way, and
   // the snackbar said «حاول تاني» — or, for a permission refusal, a sentence about
   // passwords on a screen about deleting an account.
+  // D5: a moderator is refused the password reset (the Edge Function asks for role
+  // admin) and the deletion (the database), so neither is drawn for them.
+  testWidgets('a moderator is offered neither the password reset nor the delete',
+      (tester) async {
+    await pump(tester, who: _moderator);
+    await search(tester, 'أحمد');
+    await tester.tap(find.text('أحمد محمود'));
+    await tester.pumpAndSettle();
+    await tester.drag(find.byKey(CustomerDetailScreen.detailKey), const Offset(0, -800));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(CustomerDetailScreen.resetBlockKey, skipOffstage: false), findsNothing);
+    expect(find.byKey(CustomerDetailScreen.deleteAccountKey, skipOffstage: false),
+        findsNothing);
+    expect(find.byKey(CustomerDetailScreen.blockKey, skipOffstage: false), findsOneWidget,
+        reason: 'blocking stays theirs');
+  });
+
   group('a refused deletion says why', () {
     Future<void> deleteU1(WidgetTester tester) async {
       await search(tester, 'أحمد');
@@ -732,3 +752,10 @@ class _SlowCustomers implements CustomerRepository {
   Future<Result<void>> setPassword(String uid, String password) async =>
       const Result.ok(null);
 }
+
+const _moderator = StaffIdentity(
+  uid: 'mod-1',
+  role: StaffRole.moderator,
+  scope: StaffScope.platform,
+  isAdmin: true,
+);

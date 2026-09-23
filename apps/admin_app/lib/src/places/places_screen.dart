@@ -788,7 +788,8 @@ Future<void> _editLandmark(
           zones.any((z) => z.id == (existing?.zoneId ?? initialZoneId))
           ? (existing?.zoneId ?? initialZoneId)
           : zones.firstOrNull?.id,
-      onDelete: existing == null
+      // A moderator does not delete (D5): the database refuses it.
+      onDelete: existing == null || ref.read(staffIdentityProvider).isModerator
           ? null
           : () async {
               final confirmed = await showDialog<bool>(

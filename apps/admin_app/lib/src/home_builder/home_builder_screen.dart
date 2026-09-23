@@ -152,7 +152,10 @@ class _HomeBuilderScreenState extends ConsumerState<HomeBuilderScreen> {
                       index: i,
                       busy: _busy,
                       onToggleVisibility: () => _toggleVisibility(list[i]),
-                      onDelete: () => _delete(list[i]),
+                      // A moderator does not delete (D5): the database refuses it.
+                      onDelete: ref.watch(staffIdentityProvider).isModerator
+                          ? null
+                          : () => _delete(list[i]),
                       onMove: (to) => _move(order, i, to),
                     ),
                   );
@@ -469,7 +472,7 @@ class _Row extends StatelessWidget {
   final int index;
   final bool busy;
   final VoidCallback onToggleVisibility;
-  final VoidCallback onDelete;
+  final VoidCallback? onDelete;
   final ValueChanged<int> onMove;
 
   @override
@@ -571,6 +574,7 @@ class _Row extends StatelessWidget {
               ),
               onPressed: busy ? null : onToggleVisibility,
             ),
+            if (onDelete != null)
             IconButton(
               key: HomeBuilderScreen.deleteKey(section.key),
               tooltip: 'احذف البلوك',
