@@ -80,6 +80,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
   /// screen looking settled while the number under it has moved.
   int? _couponJudgedAgainstFee;
   bool _checkingCoupon = false;
+  bool _couponCheckFailed = false;
 
   @override
   void dispose() {
@@ -126,6 +127,9 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
     final evaluation = result.valueOrNull;
     setState(() {
       _checkingCoupon = false;
+      // No answer is an answer to say (B11): the spinner stopping with nothing else on
+      // the screen read as a code the server had silently ignored.
+      _couponCheckFailed = result.failureOrNull != null;
       _couponEvaluation = evaluation;
       _couponJudgedAgainstFee = deliveryFee;
       _appliedCouponCode =
@@ -475,7 +479,9 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
                 checking: _checkingCoupon,
                 rejection: _couponEvaluation is CouponRejected
                     ? _couponSentence((_couponEvaluation! as CouponRejected).reason)
-                    : null,
+                    : _couponCheckFailed
+                        ? 'مقدرناش نتأكد من الكود دلوقتي. جرّب تاني.'
+                        : null,
                 onApply: cart.isNotEmpty && !_checkingCoupon
                     ? () => _applyCoupon(cart, pricing.deliveryFee)
                     : null,
@@ -952,11 +958,15 @@ class _Bill extends StatelessWidget {
 }
 
 
-class _CashNote extends StatelessWidget {
+class _CashNote extends ConsumerWidget {
   const _CashNote();
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    // The owner sets how long a kitchen has to answer (`accept_timeout_minutes`); the
+    // sentence promising it was a compiled-in 5 that would have gone on saying five after
+    // the owner made it ten.
+    final minutes = ref.watch(appConfigProvider).acceptTimeoutMinutes;
     final theme = Theme.of(context);
     final colors = theme.luqma;
 
@@ -975,7 +985,7 @@ class _CashNote extends StatelessWidget {
           const SizedBox(width: Space.sm),
           Expanded(
             child: Text(
-              'جهّز المبلغ كاش للمندوب. المطعم بيأكد الطلب خلال 5 دقايق.',
+              'جهّز المبلغ كاش للمندوب. المطعم بيأكد الطلب خلال $minutes دقايق.',
               style: theme.textTheme.bodySmall
                   ?.copyWith(color: colors.textSecondary),
             ),

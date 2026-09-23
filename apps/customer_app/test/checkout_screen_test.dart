@@ -73,6 +73,7 @@ void main() {
     List<Address> addresses = const [home],
     Failure? placementFails,
     Failure? zonesFail,
+    Map<String, Object> config = const {},
     bool reduced = false,
     LuqmaIdentity? signedInAs =
         const LuqmaIdentity(uid: 'u1', name: 'أحمد', phone: '01012345678'),
@@ -102,6 +103,9 @@ void main() {
           profileRepositoryProvider.overrideWithValue(profiles),
           remoteConfigServiceProvider
               .overrideWithValue(RemoteConfigService(FakeConfigFetcher({}))),
+          if (config.isNotEmpty)
+            appConfigProvider
+                .overrideWithValue(LuqmaConfig.from(MapConfigSource(config))),
           cartProvider.overrideWith(() => CartController.seeded(cart)),
         ],
         child: MaterialApp(
@@ -196,6 +200,12 @@ void main() {
     });
 
     // Cash only at launch. Offering a choice that has one option is a step for nothing.
+    testWidgets('promises the answer time the owner set, not a compiled-in five',
+        (tester) async {
+      await pump(tester, config: const {'accept_timeout_minutes': 8});
+      expect(find.textContaining('خلال 8 دقايق'), findsOneWidget);
+    });
+
     testWidgets('says it is cash, with no payment method to choose', (tester) async {
       await pump(tester);
 
@@ -671,6 +681,21 @@ void main() {
         ),
         findsOneWidget,
       );
+    });
+
+    // B11. A check that failed — offline, a server error — left no card and no sentence:
+    // the spinner stopped and nothing else happened, which reads as a code with no answer.
+    testWidgets('a check that did not get an answer says so', (tester) async {
+      await pump(tester);
+      orders.couponCheckFailure = const OfflineFailure();
+
+      await tester.ensureVisible(find.byKey(CheckoutScreen.couponApplyKey));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(CheckoutScreen.couponInputKey), 'SAVE20');
+      await tester.tap(find.byKey(CheckoutScreen.couponApplyKey));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('مقدرناش نتأكد من الكود'), findsOneWidget);
     });
 
     testWidgets('an accepted code rides on the draft; a rejected one does not',

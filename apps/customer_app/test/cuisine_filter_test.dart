@@ -183,5 +183,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(MerchantTile), findsNothing);
+    // And says so: a heading with nothing under it reads as a page that failed to load.
+    expect(find.textContaining('لسه مفيش محلات'), findsOneWidget);
   });
 }

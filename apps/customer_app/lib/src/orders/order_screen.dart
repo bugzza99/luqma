@@ -944,11 +944,12 @@ class _RatingCardState extends ConsumerState<_RatingCard> {
                                   _itemStars[line.itemId] = i;
                                 }
                               }),
-                              visualDensity: VisualDensity.compact,
+                              // 48, as every target in the product is: at 36 five of
+                              // them in a row are where a thumb lands on the neighbour.
                               padding: EdgeInsets.zero,
                               constraints: const BoxConstraints(
-                                minWidth: Sizes.minTarget - 12,
-                                minHeight: Sizes.minTarget - 12,
+                                minWidth: Sizes.minTarget,
+                                minHeight: Sizes.minTarget,
                               ),
                               icon: Icon(
                                 i <= (_itemStars[line.itemId] ?? 0)

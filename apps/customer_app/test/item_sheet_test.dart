@@ -114,6 +114,20 @@ void main() {
 
     // Breaks if `_total` drops the `* _quantity`, or if the button reads
     // `widget.item.price` instead of `_total`.
+    // The basket clamps a line at 99 without saying so; the sheet let the count run past
+    // it, so the button could show the price of 150 portions for a basket that would hold
+    // 99. The sheet stops where the basket does.
+    testWidgets('stops where the basket does', (tester) async {
+      await open(tester);
+
+      for (var i = 0; i < 105; i++) {
+        await tester.tap(find.byKey(MerchantScreen.itemMoreKey));
+      }
+      await tester.pumpAndSettle();
+
+      expect(onButton('${60 * 99} ج'), findsOneWidget);
+    });
+
     testWidgets('multiplies by how many', (tester) async {
       await open(tester);
 

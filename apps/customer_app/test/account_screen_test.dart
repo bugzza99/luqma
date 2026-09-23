@@ -807,6 +807,17 @@ void main() {
     // followed the phone with no way to say otherwise from inside it.
     // The label was clipped to «حسب» when the three chips were forced into equal thirds
     // of a phone's width — the option that needs explaining most, cut to a preposition.
+    // It sat inside the offers row, which draws nothing until the marketing setting has
+    // been read — so a failed read took the theme control away with it.
+    testWidgets('is there even when the offers setting cannot be read', (tester) async {
+      await pump(tester,
+          profiles: FakeProfileRepository(failure: const OfflineFailure()));
+      await reveal(tester, find.byKey(AccountScreen.appearanceKey));
+
+      expect(find.byKey(AccountScreen.appearanceKey), findsOneWidget);
+      expect(find.byKey(AccountScreen.marketingKey), findsNothing);
+    });
+
     testWidgets('says what following the phone means, in full', (tester) async {
       await pump(tester);
       await reveal(tester, find.byKey(AccountScreen.appearanceKey));

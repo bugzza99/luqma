@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:luqma_core/luqma_core.dart';
 
 import 'merchant_screen.dart';
+import '../cart/cart.dart';
 
 /// What the customer settled on in the sheet.
 @immutable
@@ -209,7 +210,12 @@ class _ItemSheetState extends State<ItemSheet> {
               onLess: () => setState(() {
                 if (_quantity > 1) _quantity--;
               }),
-              onMore: () => setState(() => _quantity++),
+              // And a ceiling where the basket has one: it clamps a line at 99
+              // without a word, so a sheet that counted past it put the price of 150
+              // portions on a button for a basket that would hold 99.
+              onMore: () => setState(() {
+                if (_quantity < Cart.maxLineQuantity) _quantity++;
+              }),
               onAdd: () => Navigator.of(context).pop(_choice),
             ),
           ],

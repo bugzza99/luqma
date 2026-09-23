@@ -670,7 +670,16 @@ class _OffersRowState extends ConsumerState<_OffersRow> {
   @override
   Widget build(BuildContext context) {
     final on = _on;
-    if (on == null) return const SizedBox.shrink();
+    // Until the setting is read — or when it cannot be — there is no honest position to
+    // draw the switch in, so it is left out. The theme control below is not the offers'
+    // and stays: it was drawn inside this row, and a failed read took it away too.
+    if (on == null) {
+      return const Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [_HairlineDivider(), _Appearance()],
+      );
+    }
 
     final colors = Theme.of(context).luqma;
 

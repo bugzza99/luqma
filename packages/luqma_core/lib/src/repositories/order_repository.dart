@@ -349,6 +349,10 @@ class FakeOrderRepository implements OrderRepository {
   CouponEvaluation couponEvaluation =
       const CouponRejected(CouponRejection.notFound);
 
+  /// Fails only [evaluateCoupon] — the check a customer runs before ordering, which can
+  /// die with the connection like anything else.
+  Failure? couponCheckFailure;
+
   @override
   Stream<bool> watchHasRated(String orderId) {
     if (failure != null) return Stream.error(failure!);
@@ -362,7 +366,9 @@ class FakeOrderRepository implements OrderRepository {
     required int subtotal,
     required int deliveryFee,
   }) async =>
-      Result.ok(couponEvaluation);
+      couponCheckFailure != null
+          ? Result.err(couponCheckFailure!)
+          : Result.ok(couponEvaluation);
 
   @override
   Future<Result<Order>> placeOrder(OrderDraft draft) async {

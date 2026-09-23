@@ -78,8 +78,25 @@ class MerchantListSection extends ConsumerWidget {
               // every frame, which a `Column` of a dozen rows does not need.
               child: Column(
                 children: [
+                  // A pressed circle with nobody in it yet. The heading stays, so the
+                  // page does not jump, and a sentence under it says the list is empty on
+                  // purpose — a heading over nothing reads as a load that failed.
+                  if (inCuisine != null &&
+                      _filtered(value, inCuisine).isEmpty)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: Space.md),
+                      child: Text(
+                        'لسه مفيش محلات في النوع ده. جرّب نوع تاني أو دوس «الكل».',
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                              color: Theme.of(context).luqma.textSecondary,
+                            ),
+                      ),
+                    ),
                   for (final (i, merchant)
-                      in _shown(value, inCuisine, boosted).indexed) ...[
+                      in _shown(value, inCuisine, boosted,
+                              minRatings:
+                                  ref.watch(appConfigProvider).minRatingsToShow)
+                          .indexed) ...[
                     if (i > 0) const SizedBox(height: Space.sm + 1),
                     // Indexed so the rows arrive in order rather than all at once.
                     // `Motion.staggerMax` caps it, so a long list still lands as an
@@ -99,9 +116,30 @@ class MerchantListSection extends ConsumerWidget {
   List<Merchant> _shown(
     List<Merchant> all,
     Set<String>? inCuisine,
-    Set<String> boosted,
-  ) =>
-      _sorted(_filtered(all, inCuisine), boosted);
+    Set<String> boosted, {
+    required int minRatings,
+  }) =>
+      _sorted(_filtered(all, inCuisine), boosted, minRatings: minRatings);
+
+  /// «الأعلى تقييماً», ranked on what the shop page is willing to show (B12).
+  ///
+  /// It sorted on the average alone, so one five-star rating outranked two hundred that
+  /// averaged 4.8 — a ranking built on a number the shop's own page refuses to display
+  /// below [minRatings]. A shop with too few ratings to show goes after every shop with
+  /// enough, and among those the average decides; among the few-rated, the one rated by
+  /// more people comes first.
+  static List<Merchant> rankByRating(List<Merchant> merchants, {required int minRatings}) {
+    final list = [...merchants];
+    list.sort((a, b) {
+      final aShown = a.ratingCount >= minRatings;
+      final bShown = b.ratingCount >= minRatings;
+      if (aShown != bShown) return aShown ? -1 : 1;
+      if (!aShown) return b.ratingCount.compareTo(a.ratingCount);
+      final byAvg = b.ratingAvg.compareTo(a.ratingAvg);
+      return byAvg != 0 ? byAvg : b.ratingCount.compareTo(a.ratingCount);
+    });
+    return list;
+  }
 
   /// Narrowed to the pressed cuisine, if one is pressed.
   List<Merchant> _filtered(List<Merchant> merchants, Set<String>? inCuisine) =>
@@ -109,11 +147,14 @@ class MerchantListSection extends ConsumerWidget {
           ? merchants
           : merchants.where((m) => inCuisine.contains(m.id)).toList();
 
-  List<Merchant> _sorted(List<Merchant> merchants, Set<String> boosted) {
-    final list = [...merchants];
-    if (topRated) {
-      list.sort((a, b) => b.ratingAvg.compareTo(a.ratingAvg));
-    }
+  List<Merchant> _sorted(
+    List<Merchant> merchants,
+    Set<String> boosted, {
+    required int minRatings,
+  }) {
+    final list = topRated
+        ? rankByRating(merchants, minRatings: minRatings)
+        : [...merchants];
     // Applied last, on top of whatever order this section asked for. A boost lifts; it
     // does not reshuffle — a merchant who bought nothing finds the list as they expect.
     return Boost.apply(list, boosted: boosted);

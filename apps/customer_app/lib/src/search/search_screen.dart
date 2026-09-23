@@ -101,7 +101,10 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
           autofocus: true,
           textInputAction: TextInputAction.search,
           onChanged: _onChanged,
+          // The keyboard's search key goes through the same door typing does, so an
+          // empty box is cleared rather than sent as a query for everything.
           onSubmitted: (v) {
+            if (v.trim().isEmpty) return _onChanged(v);
             _timer?.cancel();
             _lastQuery = v;
             _run(v);

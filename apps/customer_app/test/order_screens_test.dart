@@ -1225,6 +1225,20 @@ void main() {
 
     // One number for a whole order cannot say the grill was good and the rice was cold —
     // and that second half is what another customer scrolling the menu needs.
+    testWidgets('each dish star is a full-size target', (tester) async {
+      await pump(
+        tester,
+        const OrderScreen(orderId: 'o1'),
+        seed: [order(status: OrderStatus.delivered)],
+      );
+      final star = find.byKey(OrderScreen.itemStarKey('i1', 3));
+      await reveal(tester, star);
+
+      final size = tester.getSize(star);
+      expect(size.width, greaterThanOrEqualTo(48));
+      expect(size.height, greaterThanOrEqualTo(48));
+    });
+
     testWidgets('a dish can be rated on its own', (tester) async {
       await pump(
         tester,

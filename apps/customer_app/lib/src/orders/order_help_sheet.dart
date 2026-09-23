@@ -392,7 +392,11 @@ class _OrderHelpSheetState extends ConsumerState<OrderHelpSheet> {
                         key: const Key('order.issueText'),
                         controller: _typed,
                         maxLines: 3,
-                        maxLength: 300,
+                        // The chat above takes 500, and «ابعت لفريق لقمة» carries the
+                        // last message down into this field: at 300 a long message
+                        // arrived already over the limit, the counter red, before the
+                        // customer had typed a word.
+                        maxLength: 500,
                         autofocus: true,
                         decoration: const InputDecoration(
                           hintText: 'الأكل وصل بارد، ناقص صنف، اتأخر…',

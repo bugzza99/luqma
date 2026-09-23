@@ -107,6 +107,18 @@ void main() {
     expect(find.byKey(SearchScreen.emptyKey), findsOneWidget);
   });
 
+  // The keyboard's search key on an empty box sent an empty query, and the results for
+  // "everything" replaced the prompt.
+  testWidgets('the search key on an empty box keeps the prompt', (tester) async {
+    await pump(tester);
+    await tester.enterText(find.byKey(SearchScreen.fieldKey), '   ');
+    await tester.testTextInput.receiveAction(TextInputAction.search);
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(SearchScreen.emptyKey), findsOneWidget);
+    expect(find.byType(MerchantCard), findsNothing);
+  });
+
   testWidgets('finds a shop by name', (tester) async {
     await pump(tester);
     await type(tester, 'البحر');
