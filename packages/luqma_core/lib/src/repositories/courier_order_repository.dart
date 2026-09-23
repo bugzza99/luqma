@@ -533,7 +533,12 @@ class FakeCourierOrderRepository implements CourierOrderRepository {
         if (order.status == OrderStatus.delivered) {
           delivered++;
           cash += order.pricing.total;
-          final cut = CourierCut.of(order, commissionPercent: commissionPercent);
+          // The fake asks the roster now; the server froze its answer at delivery.
+          final cut = CourierCut.of(
+            order,
+            onPlatformRoster: _carried.contains(null),
+            commissionPercent: commissionPercent,
+          );
           fees += cut.forCourier + cut.forPlatform;
           commission += cut.forPlatform;
         } else if (order.status == OrderStatus.cancelled &&

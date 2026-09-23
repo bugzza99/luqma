@@ -1287,6 +1287,20 @@ void main() {
       expect(find.textContaining('مش بتتخصم دلوقتي'), findsOneWidget);
     });
 
+    testWidgets("a shop's rider on a platform order is not shown a commission",
+        (tester) async {
+      // E5. The server charges a rider who is not on the platform roster nothing
+      // (`notPlatformCourier`); telling them at the door that 10% of the fee is the
+      // platform's and the rest theirs is money the statement will never show.
+      await pump(tester, seed: [platformOrder()], carriedMerchants: const {'m1'});
+      await tester.pumpAndSettle();
+
+      final split = find.byKey(CourierScreen.cutKey('o_split'));
+      expect(split, findsOneWidget);
+      expect(find.descendant(of: split, matching: find.text('عمولة لقمة')), findsNothing);
+      expect(find.textContaining('بينك وبين المحل'), findsOneWidget);
+    });
+
     testWidgets('claims to know nothing when the shop delivers with its own rider',
         (tester) async {
       final own = order(id: 'o_split', courierUid: 'c1', status: OrderStatus.outForDelivery)

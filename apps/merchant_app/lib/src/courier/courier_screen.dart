@@ -1482,8 +1482,13 @@ class _CutBreakdown extends ConsumerWidget {
     final theme = Theme.of(context);
     final colors = theme.luqma;
     final strings = LuqmaStrings.of(context);
+    // The roster row with no shop is what the server asks before charging anything. Not
+    // known yet reads as not on it: showing a shop's rider a commission for a moment is
+    // the wrong way to be wrong, and the card redraws once the roster arrives.
+    final carried = ref.watch(carriedMerchantsProvider).value ?? const [];
     final cut = CourierCut.of(
       order,
+      onPlatformRoster: carried.contains(null),
       commissionPercent: ref.watch(appConfigProvider).courierCommissionPercent,
     );
 

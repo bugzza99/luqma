@@ -51,7 +51,7 @@ void main() {
   group('a platform delivery', () {
     test('splits the cash three ways', () {
       // 100 ج food, 20 ج delivery, 10%: the same order `what_the_courier_keeps` settles.
-      final cut = CourierCut.of(order(), commissionPercent: 10);
+      final cut = CourierCut.of(order(), onPlatformRoster: true, commissionPercent: 10);
 
       expect(cut.forShop, 10000);
       expect(cut.forCourier, 1800);
@@ -63,7 +63,7 @@ void main() {
       // The three figures are a division of one bill, not three independent sums. If they
       // ever stop adding up, a rider hands over the wrong money.
       final placed = order();
-      final cut = CourierCut.of(placed, commissionPercent: 10);
+      final cut = CourierCut.of(placed, onPlatformRoster: true, commissionPercent: 10);
 
       expect(cut.forShop + cut.forCourier + cut.forPlatform, placed.pricing.total);
     });
@@ -71,7 +71,7 @@ void main() {
     test('charges nothing on a free delivery', () {
       final cut = CourierCut.of(
         order(deliveryFee: 2000, deliveryDiscount: 2000),
-        commissionPercent: 10,
+        onPlatformRoster: true, commissionPercent: 10,
       );
 
       expect(cut.forCourier, 0);
@@ -82,7 +82,7 @@ void main() {
     test('takes a coupon on the food out of the shop\'s share, not the rider\'s', () {
       final cut = CourierCut.of(
         order(subtotalDiscount: 1500),
-        commissionPercent: 10,
+        onPlatformRoster: true, commissionPercent: 10,
       );
 
       expect(cut.forShop, 8500);
@@ -93,20 +93,20 @@ void main() {
       // The server computes `(basis * bps) / 10000` on integers, which truncates. A
       // rounded answer here would put the phone a piastre above the server on half the
       // orders in the city, and the rider would be short at the end of every week.
-      final cut = CourierCut.of(order(deliveryFee: 1555), commissionPercent: 10);
+      final cut = CourierCut.of(order(deliveryFee: 1555), onPlatformRoster: true, commissionPercent: 10);
 
       expect(cut.forPlatform, 155); // 1555 * 1000 / 10000 = 155.5 -> 155
       expect(cut.forCourier, 1400);
     });
 
     test('a fractional rate still lands on a whole piastre', () {
-      final cut = CourierCut.of(order(deliveryFee: 2000), commissionPercent: 7.5);
+      final cut = CourierCut.of(order(deliveryFee: 2000), onPlatformRoster: true, commissionPercent: 7.5);
 
       expect(cut.forPlatform, 150);
     });
 
     test('charges nothing at a rate of zero, which is a real setting', () {
-      final cut = CourierCut.of(order(), commissionPercent: 0);
+      final cut = CourierCut.of(order(), onPlatformRoster: true, commissionPercent: 0);
 
       expect(cut.forPlatform, 0);
       expect(cut.forCourier, 2000);
@@ -119,6 +119,25 @@ void main() {
       // one. A number here would be a guess presented as a fact.
       final cut = CourierCut.of(
         order(deliveryBy: DeliveryBy.merchant),
+        onPlatformRoster: true, commissionPercent: 10,
+      );
+
+      expect(cut.forShop, 12000);
+      expect(cut.forCourier, 0);
+      expect(cut.forPlatform, 0);
+      expect(cut.shopSettles, isTrue);
+    });
+  });
+
+  group("a shop's rider carrying a platform order", () {
+    test('hands the shop everything, as the server records it', () {
+      // E5. `apply_courier_settlement` asks whether the rider is on the platform roster
+      // and, when they are not, records `notPlatformCourier` at zero. The screen used to
+      // ask only who owned the delivery, and told a shop's rider at the door that 10% of
+      // the fee was the platform's and the rest theirs — money the server never counts.
+      final cut = CourierCut.of(
+        order(),
+        onPlatformRoster: false,
         commissionPercent: 10,
       );
 

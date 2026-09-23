@@ -23,14 +23,25 @@ class CourierCut {
   });
 
   /// The split for [order] at [commissionPercent], the rate from the control plane.
-  factory CourierCut.of(Order order, {required double commissionPercent}) {
+  ///
+  /// [onPlatformRoster] is whether this rider carries for the platform itself — an
+  /// active `courier_merchants` row with no shop. It is the question
+  /// `apply_courier_settlement` asks before it charges anything (`notPlatformCourier`),
+  /// and it is required rather than defaulted because a caller who forgets it would show
+  /// a shop's rider a commission the server never records.
+  factory CourierCut.of(
+    Order order, {
+    required bool onPlatformRoster,
+    required double commissionPercent,
+  }) {
     final pricing = order.pricing;
     final total = pricing.total;
 
     // The shop's own rider hands over everything. The app has no column for what a shop
     // pays its own courier and does not invent one: saying «حسابك مع المحل» is the whole
-    // truth, and a number here would be a guess presented as a fact.
-    if (order.deliveryBy != DeliveryBy.platform) {
+    // truth, and a number here would be a guess presented as a fact. A shop's rider who
+    // picked up a platform order is the same case to the server, so it is here too.
+    if (order.deliveryBy != DeliveryBy.platform || !onPlatformRoster) {
       return CourierCut(
         forShop: total,
         forCourier: 0,
