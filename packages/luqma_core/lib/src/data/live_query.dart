@@ -86,7 +86,10 @@ Stream<List<T>> watchRows<T>({
   var dropped = false;
   RealtimeChannel? channel;
   Timer? rejoin;
-  late final Timer watchdog;
+  // Started when somebody listens, not when the stream is made: a stream nobody ever
+  // listened to never hears `onCancel`, so a clock started with it ran for the life of
+  // the app (E10).
+  Timer? watchdog;
   late final StreamController<List<T>> controller;
 
   Future<void> fetchAndEmit() async {
@@ -152,8 +155,15 @@ Stream<List<T>> watchRows<T>({
         callback: (_) => unawaited(fetchAndEmit()),
       );
     }
+    // Current before it is subscribed, so the first status can be recognised as its own.
+    channel = ch;
     ch.subscribe((status, _) {
-      if (cancelled) return;
+      // A channel that has been replaced still reports — typically the `closed` its own
+      // removal produces, arriving after its successor has already said `subscribed`.
+      // Acted on, that stale word started a rejoin that tore down the healthy channel,
+      // whose own removal then did the same to the next one (E10). Only the channel in
+      // use speaks for this watch.
+      if (cancelled || !identical(channel, ch)) return;
 
       if (status == RealtimeSubscribeStatus.subscribed) {
         rejoin?.cancel();
@@ -179,14 +189,13 @@ Stream<List<T>> watchRows<T>({
         openChannel();
       });
     });
-    channel = ch;
   }
 
   // An explicit disconnect delivers no status to the channels at all — verified against
   // the local stack, where a watch sat on a dead socket reporting nothing, for ever.
   // So the socket's state is watched directly: a drop is marked, and the socket coming
   // back rebuilds every channel it took with it.
-  watchdog = Timer.periodic(_rejoinInterval, (_) {
+  void watchSocket(Timer _) {
     if (cancelled) return;
     if (!db.realtime.isConnected) {
       if (everConnected) dropped = true;
@@ -198,18 +207,19 @@ Stream<List<T>> watchRows<T>({
     channel = null;
     if (dead != null) unawaited(db.removeChannel(dead));
     openChannel();
-  });
+  }
 
   controller = StreamController<List<T>>(
     onListen: () {
       unawaited(fetchAndEmit());
       openChannel();
+      watchdog = Timer.periodic(_rejoinInterval, watchSocket);
     },
     onCancel: () {
       cancelled = true;
       ++inFlight; // an answer arriving after cancellation belongs to nobody
       rejoin?.cancel();
-      watchdog.cancel();
+      watchdog?.cancel();
       final ch = channel;
       channel = null;
       if (ch != null) unawaited(db.removeChannel(ch));
