@@ -127,7 +127,11 @@ sealed class Failure {
       }
       final refusal = _orderRefusals[message];
       if (refusal != null) return OrderRefusedFailure(refusal);
-      if (message == 'an order is still on its way') return const OrderInFlightFailure();
+      if (message == 'an order is still on its way' ||
+          message ==
+              'a courier carrying an order cannot be deleted until it is finished') {
+        return const OrderInFlightFailure();
+      }
     }
 
     return UnknownFailure(error, stackTrace);

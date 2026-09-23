@@ -190,7 +190,9 @@ class FakeAdminRepository implements AdminRepository {
     // Platform staff from the shared staff fixture as well as the explicit set, so a
     // platform account seeded in [staff] cannot be deleted here when the server refuses it.
     final isPlatformStaff = platformStaffUids.contains(uid) ||
-        (staff?.all.any((m) => m.uid == uid && m.scope == 'platform') ?? false);
+        (staff?.all.any((m) =>
+                m.uid == uid && m.scope == 'platform' && m.role != 'courier') ??
+            false);
     if (uid == currentAdminUid || isPlatformStaff) {
       return const Result.err(PermissionFailure());
     }

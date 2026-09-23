@@ -677,6 +677,10 @@ class _CourierDetailViewState extends ConsumerState<_CourierDetailView> {
       widget.onDeleted?.call();
     } else if (result case Err(:final failure)) {
       final message = switch (failure) {
+        // Carrying an order right now: deleting them would take the courier off food
+        // in the street. Nothing to retry until the order is finished.
+        OrderInFlightFailure() =>
+          'المندوب ده شايل طلب دلوقتي. استنى لما الطلب يخلص وبعدين احذفه.',
         PermissionFailure() => 'مش مسموح لك تحذف الحساب.',
         NotFoundFailure() => 'الحساب مش موجود.',
         OfflineFailure() => 'مفيش نت — اتأكد من اتصالك وجرّب تاني.',
@@ -935,10 +939,15 @@ class _CourierDetailViewState extends ConsumerState<_CourierDetailView> {
           ),
         ],
 
-        // Typed-password block and delete action for merchant-scope staff (owner or courier)
+        // Typed-password block for merchant-scope staff (owner or courier): the reset
+        // refuses every platform-scope account.
         if (courier.scope == 'merchant') ...[
           const SizedBox(height: Space.lg),
           _buildPasswordBlock(context, colors, theme),
+        ],
+        // Delete for merchant-scope staff, and for a platform courier since the owner's
+        // decision of 2026-09-23. Platform admins and moderators are never deleted here.
+        if (courier.scope == 'merchant' || courier.role == 'courier') ...[
           const SizedBox(height: Space.xl),
           _buildDeleteAction(context, colors, theme),
           const SizedBox(height: Space.lg),

@@ -777,6 +777,65 @@ void main() {
       expect(find.text('الحساب اتحذف'), findsOneWidget);
     });
 
+    // The owner's decision, 2026-09-23: a platform courier can be deleted, as a shop's
+    // rider can. No password block: the reset refuses every platform-scope account.
+    testWidgets('a platform courier can be deleted, and has no password block',
+        (tester) async {
+      final staffRepo = FakeStaffRepository();
+      final res = await staffRepo.createAccount(
+        email: 'rider@luqma.test',
+        password: 'password123',
+        name: 'كابتن سعيد',
+        scope: 'platform',
+        role: 'courier',
+      );
+      final riderUid = (res as Ok<StaffMember>).value.uid;
+
+      await pump(tester, size: phoneSize, staffRepo: staffRepo);
+      await tester.tap(find.text('كابتن سعيد'));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(StaffScreen.newPasswordFieldKey), findsNothing);
+      final deleteBtn = find.byKey(StaffScreen.deleteAccountKey);
+      await tester.dragUntilVisible(
+          deleteBtn, find.byType(SingleChildScrollView).last, const Offset(0, -200));
+      await tester.tap(deleteBtn);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(StaffScreen.confirmDeleteAccountKey));
+      await tester.pumpAndSettle();
+
+      expect(admin.deletedAccountCalls, [riderUid]);
+    });
+
+    testWidgets('a courier carrying an order is told to wait, not to retry',
+        (tester) async {
+      final staffRepo = FakeStaffRepository();
+      final res = await staffRepo.createAccount(
+        email: 'busy@luqma.test',
+        password: 'password123',
+        name: 'كابتن مشغول',
+        scope: 'platform',
+        role: 'courier',
+      );
+      final busyUid = (res as Ok<StaffMember>).value.uid;
+
+      await pump(tester, size: phoneSize, staffRepo: staffRepo);
+      admin.customersWithAnOrderOnItsWay.add(busyUid);
+      await tester.tap(find.text('كابتن مشغول'));
+      await tester.pumpAndSettle();
+
+      final deleteBtn = find.byKey(StaffScreen.deleteAccountKey);
+      await tester.dragUntilVisible(
+          deleteBtn, find.byType(SingleChildScrollView).last, const Offset(0, -200));
+      await tester.tap(deleteBtn);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(StaffScreen.confirmDeleteAccountKey));
+      await tester.pumpAndSettle();
+
+      expect(admin.deletedAccountCalls, isEmpty);
+      expect(find.textContaining('شايل طلب'), findsOneWidget);
+    });
+
     testWidgets(
         'platform staff detail shows neither password block nor delete button',
         (tester) async {

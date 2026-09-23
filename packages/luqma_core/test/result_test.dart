@@ -78,6 +78,16 @@ void main() {
       expect(failure, isA<ConflictFailure>());
     });
 
+    // A courier carrying an order is not deleted from under it (20261101290000): the
+    // same kind of refusal, so the admin is told to wait rather than to try again.
+    test('a courier carrying an order is the same conflict', () {
+      final failure = Failure.from(PostgrestException(
+        code: 'P0001',
+        message: 'a courier carrying an order cannot be deleted until it is finished',
+      ));
+      expect(failure, isA<OrderInFlightFailure>());
+    });
+
     // `invalid_parameter_value`: the server read the request and said a value in it is
     // wrong — «a shop needs a zone», «all three documents are required». It fell through
     // to UnknownFailure, while the fakes answer those same refusals with
