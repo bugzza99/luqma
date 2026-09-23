@@ -422,11 +422,13 @@ follows is what breaks if it is not known.
   it stamps on the order, which is the number the courier calls. A trigger that only
   inserts the id, as it did before, means a courier at the right door with nobody to ring.
 - **A forgotten password has exactly one way back, and it is a person.** No mailbox, no
-  SMS: the customer calls, and an admin issues a new password from the customers screen
-  (`reset-customer-password`, deployed). It is generated server-side from an alphabet with
-  no `l`/`1`/`O`/`0`, because it is read down a phone line — and returned once, never
-  stored. That function refuses a uid that has a `staff` row: a support call must not
-  become a way to reset another admin.
+  SMS: the customer calls, and an admin sets a new password from the customers screen
+  (`reset-customer-password`). **The admin types it** — something the person can remember,
+  read down a phone line — 8 to 72 characters, never stored or logged. It reaches a
+  customer, a merchant owner or a courier, and **refuses any `scope = 'platform'` staff
+  row**: a support call must not become a way to reset another admin. Since A17 it also
+  **ends every session the old password opened** (`end_sessions_of`, service role only),
+  because the call is as often «somebody else has my phone» as «I forgot».
 - **A customer can delete their own account, and an order that outlives them has no
   customer.** Google Play requires in-app deletion from any app that makes accounts, and
   `orders.customer_uid` made it impossible: `not null` and `on delete restrict`, so

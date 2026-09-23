@@ -613,7 +613,23 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(auth.identity, isNull);
-      expect(find.textContaining('6 حروف على الأقل'), findsOneWidget);
+      expect(find.textContaining('8 حروف على الأقل'), findsOneWidget);
+    });
+
+    // A17. Seven characters went through here while every other door into the product —
+    // the merchant's application, the admin's reset, both Edge Functions — asks for
+    // eight, and the password is the only thing protecting an account with no OTP.
+    testWidgets('seven characters are not enough to sign up with', (tester) async {
+      await pump(tester, signedInAs: null);
+      await tester.tap(find.byKey(AccountScreen.toggleModeKey));
+      await tester.pumpAndSettle();
+
+      await fillIn(tester, name: 'سارة', password: '1234567');
+      await tester.tap(find.byKey(AccountScreen.signInKey));
+      await tester.pumpAndSettle();
+
+      expect(auth.identity, isNull);
+      expect(find.textContaining('8 حروف على الأقل'), findsOneWidget);
     });
 
     testWidgets('a short password is not refused when signing in',

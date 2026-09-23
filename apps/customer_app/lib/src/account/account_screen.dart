@@ -1237,8 +1237,10 @@ class _SignInCardState extends ConsumerState<_SignInCard> {
                 if ((v ?? '').isEmpty) return 'اكتب كلمة السر';
                 // Only enforced going in: an existing account's password was already
                 // accepted once, and a shorter minimum since then must not lock it out.
-                if (_signingUp && v!.length < 6) {
-                  return 'كلمة السر لازم تكون 6 حروف على الأقل';
+                // Eight, as every other door into the product asks (A17): with no OTP
+                // the password is the only thing protecting the account.
+                if (_signingUp && v!.length < 8) {
+                  return 'كلمة السر لازم تكون 8 حروف على الأقل';
                 }
                 return null;
               },

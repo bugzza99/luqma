@@ -122,19 +122,31 @@ Deno.serve(async (req: Request) => {
   const { error: updateError } = await service.auth.admin.updateUserById(uid, { password });
   if (updateError) return json({ error: 'resetFailed' }, 500);
 
+  // A17. Every device the old password opened is signed out: the call that reaches an
+  // admin is as often «somebody else has my phone» as «I forgot», and a reset that left
+  // the other device inside the account answered neither. GoTrue's admin sign-out needs
+  // the user's own JWT, so the sessions are ended in the database (`end_sessions_of`,
+  // service role only); the next refresh on any device fails and signs it out. The
+  // password has already changed, so a failure here is reported, not rolled back.
+  const { error: sessionsError } = await service.rpc('end_sessions_of', { p_uid: uid });
+  const sessionsEnded = !sessionsError;
+  if (sessionsError) {
+    console.error(`password set for ${uid} but its sessions were not ended: ${sessionsError.message}`);
+  }
+
   // The audit row: action: 'account.password_set', detail: { target: uid, kind: 'customer'|'owner'|'courier' }. Never the password.
   const { error: auditError } = await service.from('audit_log').insert({
     actor: userData.user.id,
     action: 'account.password_set',
-    detail: { target: uid, kind },
+    detail: { target: uid, kind, sessions_ended: sessionsEnded },
   });
 
   // The password has already changed, so this is not a failure to report as one — but a
   // change nobody can find in the log is worth saying out loud. Never the password.
   if (auditError) {
     console.error(`password set for ${kind} ${uid} but the audit row failed: ${auditError.message}`);
-    return json({ ok: true, audited: false });
+    return json({ ok: true, audited: false, sessionsEnded });
   }
 
-  return json({ ok: true });
+  return json({ ok: true, sessionsEnded });
 });
