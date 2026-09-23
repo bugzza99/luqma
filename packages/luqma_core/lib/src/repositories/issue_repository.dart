@@ -25,9 +25,18 @@ abstract interface class IssueRepository {
 }
 
 class SupabaseIssueRepository implements IssueRepository {
-  SupabaseIssueRepository(this._db);
+  SupabaseIssueRepository(this._db, {this.cap = 500});
 
   final SupabaseClient _db;
+
+  /// How many tickets the queue shows at most, open ones first.
+  ///
+  /// It watched the whole table, unordered. PostgREST answers at most 1000 rows, and past
+  /// that the page is arbitrary — typically the oldest — so a new open complaint could be
+  /// missing from «الشكاوى» while the grid's count, computed server-side, said it was
+  /// there (D7). Ordered open-first and newest-first, the cap only ever drops old closed
+  /// tickets, and a queue with this many *open* ones has a bigger problem than a page.
+  final int cap;
 
   @override
   Stream<List<OrderIssue>> watchIssues() {
@@ -35,6 +44,12 @@ class SupabaseIssueRepository implements IssueRepository {
       db: _db,
       table: 'order_issues',
       map: OrderIssue.fromRow,
+      // 'open' sorts after 'closed', so descending puts the open ones first.
+      orderBy: 'status',
+      ascending: false,
+      thenBy: 'created_at',
+      thenAscending: false,
+      limit: cap,
     ).map((issues) {
       final sorted = List.of(issues);
       sorted.sort((a, b) {

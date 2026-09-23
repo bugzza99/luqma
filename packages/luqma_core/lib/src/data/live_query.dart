@@ -63,6 +63,13 @@ Stream<List<T>> watchRows<T>({
   List<RowIn> ins = const [],
   String? orderBy,
   bool ascending = true,
+  // A second ordering, and a cap. A table that only grows — complaints, say — cannot be
+  // watched whole: PostgREST answers at most `db-max-rows` (1000) rows, and past that the
+  // page it returns is arbitrary, so the newest rows are the ones that vanish. Ordered so
+  // the rows that matter come first, and capped, the page is the one that was meant.
+  String? thenBy,
+  bool thenAscending = true,
+  int? limit,
   // What to select. `*` for almost everything; a repository whose rows carry embedded
   // relations passes its own list, because a bare `select()` fetches none of them — and
   // a *watched* list that quietly lacks the merchant's photograph is the same list the
@@ -95,10 +102,10 @@ Stream<List<T>> watchRows<T>({
         }
         // `ascending` spelled out, again: postgrest-dart defaults it to false, the
         // opposite of what `order by` means in SQL. Left implicit, ordering flips.
-        if (orderBy != null) {
-          return query.order(orderBy, ascending: ascending);
-        }
-        return query;
+        if (orderBy == null) return query;
+        var ordered = query.order(orderBy, ascending: ascending);
+        if (thenBy != null) ordered = ordered.order(thenBy, ascending: thenAscending);
+        return limit == null ? ordered : ordered.limit(limit);
       }
 
       final rows = await run();

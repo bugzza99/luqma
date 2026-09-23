@@ -161,4 +161,23 @@ void main() {
         reason: 'what still needs answering is what the screen is for');
     expect(listed.last.id, closed);
   });
+
+  // D7. The queue watched the whole table, and past PostgREST's 1000-row page the rows it
+  // returned were arbitrary — a new open complaint could simply not be there. Capped at
+  // two here so the page is exceeded without writing a thousand rows: the open ticket,
+  // though it is the oldest, is still on the page, and the closed ones are what give way.
+  test('an open complaint is on the page however many closed ones are newer', () async {
+    final (customer, uid) = await live.openAsCustomer();
+    addTearDown(customer.dispose);
+    final repository = SupabaseIssueRepository(admin, cap: 2);
+    final open = await issue(uid);
+    for (var i = 0; i < 3; i++) {
+      await repository.close(await issue(uid));
+    }
+
+    final listed = await repository.watchIssues().first;
+
+    expect(listed, hasLength(2));
+    expect(listed.map((i) => i.id), contains(open));
+  });
 }
