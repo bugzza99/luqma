@@ -16,6 +16,7 @@ void main() {
     int number = 101,
     OrderStatus status = OrderStatus.accepted,
     int? prepMinutes = 20,
+    DeliveryBy deliveryBy = DeliveryBy.merchant,
   }) =>
       Order(
         id: id,
@@ -36,6 +37,7 @@ void main() {
         ),
         status: status,
         prepMinutes: prepMinutes,
+        deliveryBy: deliveryBy,
       );
 
   late FakeMerchantOrderRepository orders;
@@ -186,6 +188,30 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(orders['o1']!.status, OrderStatus.outForDelivery);
+      expect(find.byKey(LiveBoardScreen.waitingKey('o1')), findsNothing);
+    });
+
+    // A platform order leaves when a Luqma courier takes it, which puts their name on it
+    // in the same write. The shop's tap wrote the status alone, stranded the order where
+    // no rider could take it, and the server refuses it now.
+    testWidgets('a cooking platform order waits for the courier, with no button',
+        (tester) async {
+      await pump(tester, seed: [
+        order(status: OrderStatus.preparing, deliveryBy: DeliveryBy.platform),
+      ]);
+
+      expect(find.byKey(LiveBoardScreen.advanceKey('o1')), findsNothing);
+      expect(find.byKey(LiveBoardScreen.waitingKey('o1')), findsOneWidget);
+      expect(find.text('مستني مندوب لقمة ياخده'), findsOneWidget);
+    });
+
+    testWidgets('an accepted platform order can still start cooking', (tester) async {
+      await pump(tester, seed: [order(deliveryBy: DeliveryBy.platform)]);
+
+      await tester.tap(find.byKey(LiveBoardScreen.advanceKey('o1')));
+      await tester.pumpAndSettle();
+
+      expect(orders['o1']!.status, OrderStatus.preparing);
     });
 
     // The courier marks delivery — they are the one at the door with the cash. A

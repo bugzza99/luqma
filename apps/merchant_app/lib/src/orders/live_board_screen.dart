@@ -18,6 +18,7 @@ class LiveBoardScreen extends ConsumerWidget {
 
   static Key cardKey(String id) => Key('live.card.$id');
   static Key advanceKey(String id) => Key('live.advance.$id');
+  static Key waitingKey(String id) => Key('live.waiting.$id');
   static Key stageKey(String id, OrderStatus status) =>
       Key('live.stage.$id.${status.name}');
   static Key columnKey(OrderStatus status) => Key('live.column.${status.name}');
@@ -26,12 +27,20 @@ class LiveBoardScreen extends ConsumerWidget {
 
   /// The step a merchant may take from each state, and what to call it.
   ///
-  /// `outForDelivery` is deliberately absent: delivery is marked by the courier, who is
+  /// There is no step out of `outForDelivery`: delivery is marked by the courier, who is
   /// the one standing at the door with the cash. From the kitchen it would be a guess.
+  ///
+  /// «خرج للتوصيل» is the shop's only for an order its own rider carries. A platform
+  /// order leaves when a Luqma courier takes it, which writes their name onto it in the
+  /// same update — the shop's tap wrote the status alone, left the order where no rider
+  /// could take it, and the server refuses it now. See [_waitsForCourier].
   static const _next = {
     OrderStatus.accepted: (OrderStatus.preparing, 'ابدأ التحضير'),
     OrderStatus.preparing: (OrderStatus.outForDelivery, 'خرج للتوصيل'),
   };
+
+  static bool _waitsForCourier(Order order) =>
+      order.status == OrderStatus.preparing && order.deliveryBy == DeliveryBy.platform;
 
   static const _columnTitles = {
     OrderStatus.accepted: 'مقبولة',
@@ -189,7 +198,10 @@ class _Card extends ConsumerWidget {
     final theme = Theme.of(context);
     final colors = theme.luqma;
     final strings = LuqmaStrings.of(context);
-    final next = LiveBoardScreen._next[order.status];
+    // Said rather than left blank: a cooked order with no button reads as a screen that
+    // forgot one, and the owner would telephone to ask why.
+    final waitingForCourier = LiveBoardScreen._waitsForCourier(order);
+    final next = waitingForCourier ? null : LiveBoardScreen._next[order.status];
 
     return Container(
       key: LiveBoardScreen.cardKey(order.id),
@@ -292,6 +304,23 @@ class _Card extends ConsumerWidget {
                 minimumSize: const Size.fromHeight(Sizes.minTarget),
               ),
               child: Text(next.$2),
+            ),
+          ],
+          if (waitingForCourier) ...[
+            const SizedBox(height: Space.md),
+            Row(
+              key: LiveBoardScreen.waitingKey(order.id),
+              children: [
+                Icon(Icons.delivery_dining_outlined,
+                    size: Sizes.iconSm, color: colors.textSecondary),
+                const SizedBox(width: Space.sm),
+                Expanded(
+                  child: Text(
+                    'مستني مندوب لقمة ياخده',
+                    style: LuqmaType.body.copyWith(color: colors.textSecondary),
+                  ),
+                ),
+              ],
             ),
           ],
         ],

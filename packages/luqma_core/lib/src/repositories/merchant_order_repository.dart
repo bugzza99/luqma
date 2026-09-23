@@ -319,6 +319,12 @@ class FakeMerchantOrderRepository implements MerchantOrderRepository {
     if (!order.status.canMoveTo(to, by: OrderActor.merchant)) {
       return const Result.err(ConflictFailure());
     }
+    // A platform order leaves the kitchen when a platform courier takes it, with their
+    // name on it. The server refuses the shop's tap with a check violation, which reaches
+    // the app as a validation failure.
+    if (to == OrderStatus.outForDelivery && order.deliveryBy == DeliveryBy.platform) {
+      return const Result.err(ValidationFailure());
+    }
 
     _orders[orderId] = order.copyWith(status: to);
     _notify();
