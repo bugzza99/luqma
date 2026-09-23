@@ -53,6 +53,8 @@ void main() => luqmaBootstrap(() async {
     overrides: [
       remoteConfigServiceProvider.overrideWithValue(config),
       authServiceProvider.overrideWithValue(auth),
+      // A shop's money is read here, through merchant_money (A6).
+      readsShopMoneyProvider.overrideWithValue(true),
       pushTokenRepositoryProvider.overrideWithValue(pushTokens),
       // The only place this app names the gallery; see src/app/gallery.dart.
       pickImageProvider.overrideWithValue(pickImageFromGallery),

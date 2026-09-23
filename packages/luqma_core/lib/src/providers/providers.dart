@@ -80,9 +80,17 @@ SupabaseClient supabase(Ref ref) => Supabase.instance.client;
 @Riverpod(keepAlive: true)
 String currentCity(Ref ref) => 'edku';
 
+/// Whether this app reads a shop's money (A6). False in CustomerApp, which may not;
+/// MerchantApp and AdminApp override it to true in `main`, and their repository then
+/// fills the money in from `merchant_money` on every read.
 @Riverpod(keepAlive: true)
-MerchantRepository merchantRepository(Ref ref) =>
-    SupabaseMerchantRepository(ref.watch(supabaseProvider));
+bool readsShopMoney(Ref ref) => false;
+
+@Riverpod(keepAlive: true)
+MerchantRepository merchantRepository(Ref ref) => SupabaseMerchantRepository(
+      ref.watch(supabaseProvider),
+      readsMoney: ref.watch(readsShopMoneyProvider),
+    );
 
 @Riverpod(keepAlive: true)
 GeographyRepository geographyRepository(Ref ref) =>

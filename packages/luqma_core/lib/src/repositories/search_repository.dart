@@ -6,6 +6,7 @@ import '../models/menu_item.dart';
 import '../models/merchant.dart';
 import '../data/column_names.dart';
 import '../result.dart';
+import 'merchant_repository.dart';
 
 /// What one search turned up.
 ///
@@ -76,7 +77,9 @@ class SupabaseSearchRepository implements SearchRepository {
       // slower query rather than the sum of two network round trips.
       final merchantRowsFuture = _db
           .from('merchants')
-          .select()
+          // Named, not `*`: a shop's money is not selectable since A6, and a `*` would
+          // take the whole search down with it.
+          .select(SupabaseMerchantRepository.publicColumns)
           .eq('city_id', cityId)
           .eq('status', 'approved')
           .ilike('name', pattern)
@@ -86,7 +89,8 @@ class SupabaseSearchRepository implements SearchRepository {
       // shop is suspended or in another city never reaches the screen.
       final dishRowsFuture = _db
           .from('menu_items')
-          .select('*, media(url,status), merchants!inner(*)')
+          .select('*, media(url,status), '
+              'merchants!inner(${SupabaseMerchantRepository.publicColumns})')
           .eq('merchants.city_id', cityId)
           .eq('merchants.status', 'approved')
           .eq('is_available', true)

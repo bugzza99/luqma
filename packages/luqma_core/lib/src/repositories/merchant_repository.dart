@@ -120,9 +120,69 @@ int _byAttentionThenName(Merchant a, Merchant b) {
 }
 
 class SupabaseMerchantRepository implements MerchantRepository {
-  SupabaseMerchantRepository(this._db);
+  SupabaseMerchantRepository(this._db, {this.readsMoney = false});
 
   final SupabaseClient _db;
+
+  /// Whether this app reads a shop's money: MerchantApp and AdminApp, never CustomerApp.
+  ///
+  /// Since A6 the money is not a column anybody outside the server can select. It comes
+  /// back from `merchant_money`, which answers the shop's owner and staff and returns no
+  /// row for anybody else — so a customer's repository does not ask, and a staff one
+  /// asks once per read and treats a failed answer as a failed read. Defaults left
+  /// standing in its place would be saved back as zeroes by the next edit.
+  final bool readsMoney;
+
+  /// Every column `anon` and `authenticated` may select (20261101220000). Named rather
+  /// than `*`: a `*` expands to the hidden columns too, and Postgres refuses the whole
+  /// query rather than the columns it cannot give.
+  static const publicColumns =
+      'id, city_id, type, name, zone_id, phone, status, opening_hours, paused_until, '
+      'logo_media_id, cover_media_id, delivers_self, delivery_fee_override, min_order, '
+      'rating_avg, rating_count, created_at, updated_at, prep_minutes, description, '
+      'landmark_id, landmark_name, street, lat, lng, takes_prepaid_orders';
+
+  /// The terms a save carries that a repository which did not read them must not send:
+  /// they would arrive as the model's defaults and overwrite the real ones.
+  static const _termsColumns = ['owner_uid', 'plan_id', 'revenue_model', 'revenue_value'];
+
+  /// Fills in the money of [merchants] from `merchant_money`, for an app that reads it.
+  Future<List<Merchant>> _withMoney(List<Merchant> merchants) async {
+    if (!readsMoney || merchants.isEmpty) return merchants;
+    final rows = await _db.rpc<List<dynamic>>(
+      'merchant_money',
+      params: {'p_ids': [for (final m in merchants) m.id]},
+    );
+    final byId = {
+      for (final raw in rows)
+        (raw as Map)['id'] as String: Map<String, dynamic>.from(raw),
+    };
+    return [
+      for (final m in merchants)
+        if (byId[m.id] case final money?)
+          m.copyWith(
+            ownerUid: money['owner_uid'] as String?,
+            planId: money['plan_id'] as String?,
+            revenueModel: RevenueModel.values.byName(money['revenue_model'] as String),
+            revenueValue: (money['revenue_value'] as num).toInt(),
+            walletBalance: (money['wallet_balance'] as num).toInt(),
+            walletHeld: (money['wallet_held'] as num).toInt(),
+            commissionOwed: (money['commission_owed'] as num).toInt(),
+            commissionCustom: money['commission_custom'] as bool,
+          )
+        else
+          m,
+    ];
+  }
+
+  Future<Merchant> _oneWithMoney(Merchant m) async => (await _withMoney([m])).single;
+
+  /// [rowFor], without the terms when this repository never read them.
+  Map<String, dynamic> _saveRow(Merchant m) {
+    final row = _row(m);
+    if (!readsMoney) row.removeWhere((key, _) => _termsColumns.contains(key));
+    return row;
+  }
 
   /// Categories and served zones hang off their own tables, so they ride along on reads
   /// as embedded rows rather than being queried per screen.
@@ -136,7 +196,7 @@ class SupabaseMerchantRepository implements MerchantRepository {
   /// a picture waiting for the moderation queue has a perfectly good URL, and the whole
   /// point of the queue is that it stays unseen until an admin says otherwise.
   static const _readColumns =
-      '*, menu_categories(*), merchant_served_zones(zone_id), '
+      '$publicColumns, menu_categories(*), merchant_served_zones(zone_id), '
       'logo:logo_media_id(url, status), cover:cover_media_id(url, status)';
 
   /// An empty id means "none" everywhere else in this codebase, and an empty string is
@@ -262,7 +322,7 @@ class SupabaseMerchantRepository implements MerchantRepository {
         RowFilter('status', MerchantStatus.approved.name),
       ],
       orderBy: 'created_at',
-    );
+    ).asyncMap(_withMoney);
   }
 
   @override
@@ -274,7 +334,7 @@ class SupabaseMerchantRepository implements MerchantRepository {
           .eq('id', id)
           .maybeSingle();
       if (row == null) throw const NotFoundFailure();
-      return _toMerchant(row);
+      return _oneWithMoney(_toMerchant(row));
     });
   }
 
@@ -289,7 +349,7 @@ class SupabaseMerchantRepository implements MerchantRepository {
     ).map((rows) {
       if (rows.isEmpty) throw const NotFoundFailure();
       return rows.first;
-    });
+    }).asyncMap(_oneWithMoney);
   }
 
   @override
@@ -315,7 +375,7 @@ class SupabaseMerchantRepository implements MerchantRepository {
       filters: [RowFilter('city_id', cityId)],
       orderBy: 'created_at',
       // Sorted in Dart: the attention order is a policy about people, not an index.
-    ).map((merchants) => merchants..sort(_byAttentionThenName));
+    ).asyncMap(_withMoney).map((merchants) => merchants..sort(_byAttentionThenName));
   }
 
   @override
@@ -326,10 +386,10 @@ class SupabaseMerchantRepository implements MerchantRepository {
       try {
         final saved = await _db
             .from('merchants')
-            .insert({..._row(merchant), 'id': merchant.id})
+            .insert({..._saveRow(merchant), 'id': merchant.id})
             .select(_readColumns)
             .single();
-        return _toMerchant(saved);
+        return _oneWithMoney(_toMerchant(saved));
       } on PostgrestException catch (error) {
         // 23505 on the primary key means this exact attempt already landed — the reply
         // was lost, not the write. Read back what it wrote rather than reporting a
@@ -340,7 +400,7 @@ class SupabaseMerchantRepository implements MerchantRepository {
             .select(_readColumns)
             .eq('id', merchant.id)
             .single();
-        return _toMerchant(existing);
+        return _oneWithMoney(_toMerchant(existing));
       }
     });
   }
@@ -351,20 +411,23 @@ class SupabaseMerchantRepository implements MerchantRepository {
       return Result.guard(() async {
         final saved = await _db
             .from('merchants')
-            .insert(_row(merchant))
+            .insert(_saveRow(merchant))
             .select(_readColumns)
             .single();
-        return _toMerchant(saved);
+        return _oneWithMoney(_toMerchant(saved));
       });
     }
-    return Result.guardWrite(
-      () => _db
+    // Written out rather than through `guardWrite`: the answer is read back with its
+    // money, which is a second request, and an empty write is still a failure.
+    return Result.guard(() async {
+      final rows = await _db
           .from('merchants')
-          .update(_row(merchant))
+          .update(_saveRow(merchant))
           .eq('id', merchant.id)
-          .select(_readColumns),
-      _toMerchant,
-    );
+          .select(_readColumns);
+      if (rows.isEmpty) throw const NotFoundFailure();
+      return _oneWithMoney(_toMerchant(rows.first));
+    });
   }
 
   @override

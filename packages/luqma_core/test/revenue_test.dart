@@ -204,6 +204,37 @@ void main() {
       );
     });
 
+    // A6. A customer's phone no longer reads the wallet at all: the server answers the
+    // one question the wallet was read for, from the same formula `place_order` uses,
+    // and that answer wins over the defaults a hidden column leaves behind.
+    test('the server saying no is no, with no wallet to read', () {
+      expect(
+        Revenue.canAffordAnOrder(
+          merchant(model: RevenueModel.subscription, value: 0, wallet: 0)
+              .copyWith(takesPrepaidOrders: false),
+        ),
+        isFalse,
+      );
+    });
+
+    test('the server saying yes is yes, whatever the defaults say', () {
+      expect(
+        Revenue.canAffordAnOrder(
+          merchant(model: RevenueModel.prepaid, value: 500, wallet: 0)
+              .copyWith(takesPrepaidOrders: true),
+        ),
+        isTrue,
+      );
+    });
+
+    test('a merchant row that carries its snake-case answer reads it', () {
+      final m = Merchant.fromJson({
+        ...merchant(model: RevenueModel.subscription, value: 0, wallet: 0).toJson(),
+        'takesPrepaidOrders': false,
+      });
+      expect(Revenue.canAffordAnOrder(m), isFalse);
+    });
+
     // Stopping only once it is negative means one order goes out unpaid for.
     test('a wallet too thin for one more order cannot', () {
       expect(

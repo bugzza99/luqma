@@ -143,6 +143,16 @@ abstract class Merchant with _$Merchant {
     /// is the answer; that is the working.
     @Default(0) int commissionOwed,
 
+    /// Whether a prepaid shop has the credit for one more order — the server's answer,
+    /// generated from the same formula `place_order` asks (A6).
+    ///
+    /// Since A6 a customer's phone reads none of the money columns above: they come back
+    /// through `merchant_money` to the shop's owner and to staff only, and are left at
+    /// their defaults for everybody else. This one boolean is what a customer needed the
+    /// wallet for. Null where nothing supplied it — a fake, a test — and then the figures
+    /// above are asked instead.
+    bool? takesPrepaidOrders,
+
     /// Overrides the zone's default delivery fee, in piastres. Clamped server-side to
     /// the admin's range — the client is not trusted with it.
     int? deliveryFeeOverride,

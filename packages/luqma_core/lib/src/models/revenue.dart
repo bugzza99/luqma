@@ -64,7 +64,12 @@ abstract final class Revenue {
   /// Against the credit that is actually free: `place_order` asks
   /// `wallet_balance - wallet_held >= fee`, and a phone asking the balance alone showed a
   /// prepaid shop with money on hold as open while every order to it was refused.
+  ///
+  /// The server's own answer comes first when the row carries it (A6): a customer's
+  /// phone cannot read the wallet, so the figures below are defaults there, not facts.
   static bool canAffordAnOrder(Merchant merchant) {
+    final answered = merchant.takesPrepaidOrders;
+    if (answered != null) return answered;
     if (merchant.revenueModel != RevenueModel.prepaid) return true;
     return merchant.walletBalance - merchant.walletHeld >= merchant.revenueValue;
   }

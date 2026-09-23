@@ -21,9 +21,11 @@ void main() {
 
   setUpAll(() async {
     live = await LiveDatabase.open();
-    repository = SupabaseMerchantRepository(live.client);
+    // Both read the money, as MerchantApp and AdminApp do (A6): the service key stands
+    // in for the server here, and merchant_money answers it as it answers an admin.
+    repository = SupabaseMerchantRepository(live.client, readsMoney: true);
     adminDb = await live.openAsAdmin();
-    adminRepository = SupabaseMerchantRepository(adminDb);
+    adminRepository = SupabaseMerchantRepository(adminDb, readsMoney: true);
   });
 
   setUp(() async {
@@ -479,6 +481,87 @@ void main() {
       final listed = await repository.watchMerchants(cityId: cityId).first;
 
       expect(listed.single.coverUrl, contains('merchantCover'));
+    });
+  });
+  // A6. The key inside every APK read every shop's wallet and debt off the table. A
+  // customer reads the shop and not its money; the owner reads their own through
+  // merchant_money; and the one question a customer needed the wallet for is answered.
+  group("a shop's money", () {
+    test('a customer reads the shop and none of its money', () async {
+      final id = await saveRaw('مطعم', born: {
+        'revenue_model': 'commission',
+        'revenue_value': 1000,
+        'commission_owed': 47500,
+      });
+      final (customerDb, _) = await live.openAsCustomer();
+      addTearDown(customerDb.dispose);
+
+      final seen = (await SupabaseMerchantRepository(customerDb).getMerchant(id)).valueOrNull;
+
+      expect(seen, isNotNull, reason: 'the shop itself is still public');
+      expect(seen!.name, 'مطعم');
+      expect(seen.commissionOwed, 0);
+      expect(seen.revenueValue, 0);
+      expect(seen.takesPrepaidOrders, isTrue);
+    });
+
+    test('the city list reaches a customer too', () async {
+      await saveRaw('مطعم');
+      final (customerDb, _) = await live.openAsCustomer();
+      addTearDown(customerDb.dispose);
+
+      final list = await SupabaseMerchantRepository(customerDb)
+          .watchMerchants(cityId: cityId)
+          .first;
+      expect(list.map((m) => m.name), ['مطعم']);
+    });
+
+    test('a prepaid shop out of credit reaches a customer as closed', () async {
+      final id = await saveRaw('مطعم مفلس', born: {
+        'revenue_model': 'prepaid',
+        'revenue_value': 500,
+        'wallet_balance': 300,
+      });
+      final (customerDb, _) = await live.openAsCustomer();
+      addTearDown(customerDb.dispose);
+
+      final seen = (await SupabaseMerchantRepository(customerDb).getMerchant(id)).valueOrNull!;
+      expect(seen.takesPrepaidOrders, isFalse);
+      expect(Revenue.canAffordAnOrder(seen), isFalse);
+    });
+
+    test('the owner reads what their own shop owes', () async {
+      final id = await saveRaw('مطعم', born: {
+        'revenue_model': 'commission',
+        'revenue_value': 1000,
+        'commission_owed': 47500,
+      });
+      final (ownerDb, _) =
+          await live.openAsStaff(scope: 'merchant', role: 'owner', merchantId: id);
+      addTearDown(ownerDb.dispose);
+      final owner = SupabaseMerchantRepository(ownerDb, readsMoney: true);
+
+      final read = (await owner.getMerchant(id)).valueOrNull!;
+      expect(read.commissionOwed, 47500);
+      expect(read.revenueValue, 1000);
+
+      final watched = await owner.watchMerchant(id).first;
+      expect(watched.commissionOwed, 47500);
+    });
+
+    test('an owner can still save their shop', () async {
+      final id = await saveRaw('مطعم', born: {'commission_owed': 47500});
+      final (ownerDb, _) =
+          await live.openAsStaff(scope: 'merchant', role: 'owner', merchantId: id);
+      addTearDown(ownerDb.dispose);
+      final owner = SupabaseMerchantRepository(ownerDb, readsMoney: true);
+
+      final loaded = (await owner.getMerchant(id)).valueOrNull!;
+      final saved = await owner.saveMerchant(loaded.copyWith(prepMinutes: 45));
+
+      expect(saved.failureOrNull, isNull);
+      expect(saved.valueOrNull!.prepMinutes, 45);
+      expect(saved.valueOrNull!.commissionOwed, 47500);
     });
   });
 }

@@ -99,7 +99,9 @@ describe('a moderator cannot move money', () => {
       const after = await asPhone(async () => {
         await db.query(`select admin_set_revenue_model($1::uuid, 'prepaid', 700)`, [shop]);
         return (await rows(
-          'select revenue_model, revenue_value from merchants where id = $1', [shop]))[0];
+          // Read as the shop's staff read it since A6: through merchant_money.
+          'select revenue_model, revenue_value from merchant_money(array[$1]::uuid[])',
+          [shop]))[0];
       });
 
       assert.deepEqual(after, { revenue_model: 'prepaid', revenue_value: 700 });
@@ -182,7 +184,8 @@ describe('a moderator cannot move money', () => {
         await db.query('select top_up_wallet($1::uuid, 500::integer)', [shop]);
         await db.query('select record_commission_payment($1::uuid, 2000::integer)', [shop]);
         return (await rows(
-          'select wallet_balance, commission_owed from merchants where id = $1', [shop]))[0];
+          'select wallet_balance, commission_owed from merchant_money(array[$1]::uuid[])',
+          [shop]))[0];
       });
 
       assert.deepEqual(owed, { wallet_balance: 3500, commission_owed: 10000 });
@@ -323,7 +326,8 @@ describe('a moderator cannot move money', () => {
         await db.exec('savepoint attempt');
         await assert.rejects(() => insertOrder(), refused('place_order'));
         await db.exec('rollback to savepoint attempt');
-        return (await rows('select wallet_held from merchants where id = $1', [shop]))[0]
+        return (await rows(
+          'select wallet_held from merchant_money(array[$1]::uuid[])', [shop]))[0]
           .wallet_held;
       });
 
@@ -405,13 +409,18 @@ describe('a moderator cannot move money', () => {
     });
 
     // As PostgREST does it: only the columns sent, so every other one takes its default.
-    const insertShop = (row) => {
+    // The terms come back through merchant_money: since A6 a phone reads no money
+    // column off the table, and that includes the one it just inserted.
+    const insertShop = async (row) => {
       const columns = Object.keys(row).join(', ');
-      return db.query(
+      const made = await db.query(
         `insert into merchants (${columns})
          select ${columns} from jsonb_populate_record(null::merchants, $1::jsonb)
-         returning id, revenue_model, revenue_value, commission_custom`,
+         returning id`,
         [JSON.stringify(row)]);
+      return db.query(
+        `select id, revenue_model, revenue_value, commission_custom
+           from merchant_money(array[$1]::uuid[])`, [made.rows[0].id]);
     };
 
     beforeEach(async () => {
