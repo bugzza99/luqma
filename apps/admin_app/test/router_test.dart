@@ -174,6 +174,43 @@ void main() {
     });
   });
 
+  // D11. On a tablet — or a phone turned sideways, 780 wide — the rail replaces the
+  // stack with `go`, so the one entry left was the module itself, and Android back closed
+  // the app. Back from a rail destination goes home first; only from home is it let out.
+  group('back on the rail', () {
+    testWidgets('from a rail destination returns home rather than exiting',
+        (tester) async {
+      await pumpWith(tester, AdminAccess.granted);
+      await tester.tap(find.text('الأماكن').first);
+      await tester.pumpAndSettle();
+      expect(find.byType(PlacesScreen), findsOneWidget);
+
+      final popped = await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+
+      expect(popped, isTrue, reason: 'the app must not be left to exit');
+      expect(find.byType(ModuleGridScreen), findsOneWidget);
+    });
+
+    testWidgets('and from home it is left to the system', (tester) async {
+      await pumpWith(tester, AdminAccess.granted);
+
+      final popped = await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+
+      expect(popped, isFalse);
+    });
+
+    // The rail highlighted «اليوم» on every route it had no entry for — the grid,
+    // settings, plans — which read as being somewhere one was not.
+    testWidgets('highlights nothing on a route it has no entry for', (tester) async {
+      await pumpWith(tester, AdminAccess.granted);
+
+      final rail = tester.widget<NavigationRail>(find.byType(NavigationRail));
+      expect(rail.selectedIndex, isNull);
+    });
+  });
+
   group('tapped notifications', () {
     testWidgets('a staffApplication tap lands on the applications screen',
         (tester) async {

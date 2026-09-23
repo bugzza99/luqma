@@ -42,8 +42,6 @@ enum AdminLayout {
       available < maxContentWidth ? available : maxContentWidth;
 }
 
-
-
 /// The chrome around every AdminApp screen.
 ///
 /// One widget tree at every size: the shell moves the navigation, the screens do not know
@@ -57,6 +55,8 @@ class AdminShell extends StatelessWidget {
     required this.onDestination,
     required this.child,
     this.detail,
+    this.isHome = true,
+    this.onBackToHome,
   });
 
   final List<AdminModule> modules;
@@ -70,11 +70,24 @@ class AdminShell extends StatelessWidget {
   /// instead, which is why it is optional rather than required.
   final Widget? detail;
 
-  int get _selectedIndex {
-    final index = modules.indexWhere((d) => currentRoute.startsWith(d.route));
-    // A route that belongs to no destination — the dashboard, a detail page — should
-    // leave the navigation showing the first entry rather than crashing on -1.
-    return index < 0 ? 0 : index;
+  /// Whether the grid is showing — the one place Android back may leave the app.
+  final bool isHome;
+
+  /// Where back goes from a rail destination (D11). The rail switches modules with `go`,
+  /// which replaces the stack, so the module is the only entry and back found nothing to
+  /// pop: on a tablet, or a phone turned sideways, it closed the app.
+  final VoidCallback? onBackToHome;
+
+  int? get _selectedIndex {
+    // The destination whose route this is, or a route beneath it — matched on a whole
+    // path segment, so one route can never claim another that merely starts the same.
+    final index = modules.indexWhere(
+      (d) => currentRoute == d.route || currentRoute.startsWith('${d.route}/'),
+    );
+    // A route that belongs to no destination — the grid, settings, plans — selects
+    // nothing. It used to fall back to the first entry, and the rail said «اليوم» on
+    // pages that were not today.
+    return index < 0 ? null : index;
   }
 
   @override
@@ -100,35 +113,41 @@ class AdminShell extends StatelessWidget {
       return Scaffold(body: SafeArea(child: body));
     }
 
-    return Scaffold(
-      body: SafeArea(
-        child: Row(
-          children: [
-            // The rail stays on a desktop, where fourteen labelled rows are readable
-            // and a grid would mean a trip home between every module. Scrollable,
-            // because fourteen of them is taller than a laptop screen.
-            SingleChildScrollView(
-              child: IntrinsicHeight(
-                child: NavigationRail(
-                  selectedIndex: _selectedIndex,
-                  onDestinationSelected: (i) => onDestination(modules[i]),
-                  // Labels always shown: this is a tool used occasionally, not an app
-                  // whose icons anyone will memorise.
-                  labelType: NavigationRailLabelType.all,
-                  backgroundColor: colors.card,
-                  destinations: [
-                    for (final d in modules)
-                      NavigationRailDestination(
-                        icon: Icon(d.icon),
-                        label: Text(d.label),
-                      ),
-                  ],
+    return PopScope(
+      canPop: isHome || onBackToHome == null,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) onBackToHome?.call();
+      },
+      child: Scaffold(
+        body: SafeArea(
+          child: Row(
+            children: [
+              // The rail stays on a desktop, where fourteen labelled rows are readable
+              // and a grid would mean a trip home between every module. Scrollable,
+              // because fourteen of them is taller than a laptop screen.
+              SingleChildScrollView(
+                child: IntrinsicHeight(
+                  child: NavigationRail(
+                    selectedIndex: _selectedIndex,
+                    onDestinationSelected: (i) => onDestination(modules[i]),
+                    // Labels always shown: this is a tool used occasionally, not an app
+                    // whose icons anyone will memorise.
+                    labelType: NavigationRailLabelType.all,
+                    backgroundColor: colors.card,
+                    destinations: [
+                      for (final d in modules)
+                        NavigationRailDestination(
+                          icon: Icon(d.icon),
+                          label: Text(d.label),
+                        ),
+                    ],
+                  ),
                 ),
               ),
-            ),
-            VerticalDivider(width: 1, color: colors.hairline),
-            Expanded(child: body),
-          ],
+              VerticalDivider(width: 1, color: colors.hairline),
+              Expanded(child: body),
+            ],
+          ),
         ),
       ),
     );
@@ -145,7 +164,9 @@ class AdminContent extends StatelessWidget {
   Widget build(BuildContext context) {
     return Center(
       child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: AdminLayout.maxContentWidth),
+        constraints: const BoxConstraints(
+          maxWidth: AdminLayout.maxContentWidth,
+        ),
         child: child,
       ),
     );

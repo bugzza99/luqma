@@ -201,6 +201,8 @@ GoRouter router(Ref ref) {
               modules: modulesFor(ref.watch(staffIdentityProvider)),
               currentRoute: state.matchedLocation,
               onDestination: (m) => context.go(m.route),
+              isHome: state.matchedLocation == Routes.dashboard,
+              onBackToHome: () => context.go(Routes.dashboard),
               child: child,
             ),
           ),
