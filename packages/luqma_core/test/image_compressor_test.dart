@@ -83,4 +83,23 @@ void main() {
       );
     });
   });
+  group('off the thread that draws the screen', () {
+    // E6. Decoding a twelve-megapixel photograph in Dart is seconds of work, and on the
+    // thread that draws the screen it is seconds of a frozen app with a spinner that does
+    // not spin. The same answer has to come back from the background.
+    test('gives the same picture as the foreground', () async {
+      final input = photo(2400, 1800);
+      final there = await ImageCompressor.shrinkInBackground(input);
+      final here = await ImageCompressor.shrink(input);
+
+      expect(there, here);
+    });
+
+    test('still says a non-picture is not a picture', () async {
+      await expectLater(
+        ImageCompressor.shrinkInBackground(Uint8List.fromList([1, 2, 3, 4])),
+        throwsA(isA<FormatException>()),
+      );
+    });
+  });
 }

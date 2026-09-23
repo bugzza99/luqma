@@ -1,3 +1,4 @@
+import 'dart:isolate';
 import 'dart:typed_data';
 
 import 'package:image/image.dart' as img;
@@ -69,6 +70,16 @@ abstract final class ImageCompressor {
 
     return Uint8List.fromList(img.encodeJpg(fitted, quality: quality));
   }
+
+  /// [shrink], on a thread of its own (E6).
+  ///
+  /// Decoding a twelve-megapixel photograph in pure Dart is seconds of work, and on the
+  /// thread that draws the screen that is seconds of a frozen app whose spinner does not
+  /// spin — long enough for somebody to tap again, or to decide the app has hung. The
+  /// screens call this, through `shrinkImageProvider`; [shrink] stays for a test that
+  /// cannot wait on a real isolate.
+  static Future<Uint8List> shrinkInBackground(Uint8List bytes) =>
+      Isolate.run(() => shrink(bytes), debugName: 'shrink a picture');
 
   /// Width and height of an encoded picture, read from its header rather than by decoding
   /// the pixels. `(0, 0)` when the header cannot be read — the column's own default.

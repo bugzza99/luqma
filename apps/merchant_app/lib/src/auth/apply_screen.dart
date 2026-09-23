@@ -514,7 +514,7 @@ class _DocumentSlotState extends ConsumerState<_DocumentSlot> {
     }
 
     try {
-      final shrunk = await ImageCompressor.shrink(picked);
+      final shrunk = await ref.read(shrinkImageProvider)(picked);
       if (!mounted) return;
       setState(() => _busy = false);
       widget.onPicked(shrunk);

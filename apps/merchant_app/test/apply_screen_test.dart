@@ -47,6 +47,7 @@ void main() {
           authServiceProvider.overrideWithValue(auth),
           staffDocumentsRepositoryProvider.overrideWithValue(papers),
           pickImageProvider.overrideWithValue(() async => photograph()),
+          shrinkImageProvider.overrideWithValue(ImageCompressor.shrink),
         ],
         child: MaterialApp(
           theme: LuqmaTheme.light,

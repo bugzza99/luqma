@@ -43,6 +43,7 @@ import '../repositories/geography_repository.dart';
 import '../repositories/home_section_repository.dart';
 import '../repositories/issue_repository.dart';
 import '../media/image_source.dart';
+import '../media/image_compressor.dart';
 import '../repositories/media_repository.dart';
 import '../repositories/menu_repository.dart';
 import '../repositories/merchant_order_repository.dart';
@@ -345,6 +346,12 @@ PickImage pickImage(Ref ref) => throw UnimplementedError(
       'Override pickImageProvider in main(). The picker is a platform plugin, so '
       'luqma_core cannot build one.',
     );
+
+/// How a picture is shrunk before it is sent — off the thread that draws the screen
+/// (E6). A default, unlike [pickImage]: the compressor is pure Dart and every app that
+/// picks a picture wants the same one.
+@Riverpod(keepAlive: true)
+ShrinkImage shrinkImage(Ref ref) => ImageCompressor.shrinkInBackground;
 
 // ------------------------------------------------------------------ identity
 

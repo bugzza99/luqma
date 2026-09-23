@@ -15,3 +15,8 @@ import 'dart:typed_data';
 /// The concrete implementation lives in MerchantApp and AdminApp, which is why those two
 /// override [pickImageProvider] in `main` and CustomerApp does not.
 typedef PickImage = Future<Uint8List?> Function();
+
+/// What is done to a picture before it is sent: `ImageCompressor.shrinkInBackground` in
+/// the apps, and the foreground `ImageCompressor.shrink` in a widget test, which cannot
+/// wait on a real isolate.
+typedef ShrinkImage = Future<Uint8List> Function(Uint8List bytes);

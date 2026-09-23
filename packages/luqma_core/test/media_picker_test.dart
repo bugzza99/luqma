@@ -33,6 +33,7 @@ void main() {
     Failure? uploadFails,
     void Function(Media)? onUploaded,
     bool asAdmin = false,
+    ShrinkImage? shrink,
   }) async {
     tester.view.physicalSize = const Size(390, 844);
     tester.view.devicePixelRatio = 1.0;
@@ -48,6 +49,8 @@ void main() {
             FakeAuthService(restoring: const LuqmaIdentity(uid: 'u1')),
           ),
           pickImageProvider.overrideWithValue(picker),
+          // A widget test cannot wait on a real isolate, so it shrinks in the foreground.
+          shrinkImageProvider.overrideWithValue(shrink ?? ImageCompressor.shrink),
           if (asAdmin) uploadsArriveApprovedProvider.overrideWithValue(true),
         ],
         child: MaterialApp(
@@ -105,6 +108,29 @@ void main() {
     expect(media.uploads.single.bytes,
         lessThan(ImageCompressor.bucketLimitBytes),
         reason: 'the bucket would refuse anything larger');
+  });
+
+  // E6. The screen shrinks through the provider, whose real value runs off the thread
+  // that draws the screen; calling the compressor directly froze the app for seconds on
+  // every twelve-megapixel photograph.
+  testWidgets('shrinks through the seam that runs in the background', (tester) async {
+    var asked = 0;
+    await pump(tester, picker: () async => bigPhoto(), shrink: (bytes) {
+      asked++;
+      return ImageCompressor.shrink(bytes);
+    });
+
+    await tester.tap(find.byKey(MediaPicker.pickKey));
+    await tester.pumpAndSettle();
+
+    expect(asked, 1);
+    expect(media.uploads, hasLength(1));
+  });
+
+  test('the real seam is the background one', () {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    expect(container.read(shrinkImageProvider), ImageCompressor.shrinkInBackground);
   });
 
   // Backing out of the gallery is a decision. Answering it with an error is the app

@@ -95,7 +95,7 @@ class _MediaPickerState extends ConsumerState<MediaPicker> {
     // data never uploads eight megabytes of a plate of fish.
     final Result<Media> result;
     try {
-      final bytes = await ImageCompressor.shrink(picked);
+      final bytes = await ref.read(shrinkImageProvider)(picked);
       final (width, height) = ImageCompressor.dimensionsOf(bytes);
       // Whoever is signed in, read here rather than passed in: the policy on `media`
       // requires `uploaded_by = auth.uid()`, so there has only ever been one correct
