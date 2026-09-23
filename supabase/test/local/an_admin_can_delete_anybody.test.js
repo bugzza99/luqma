@@ -134,7 +134,9 @@ describe('an admin can delete anybody', () => {
     assert.equal(order.customer_uid, null);
     assert.equal(order.customer_name, 'حساب محذوف');
     assert.equal(order.customer_phone, 'حساب محذوف');
-    assert.deepEqual(order.address, { zoneId });
+    // An empty id beside the zone: nothing personal, and a shape every installed app can
+    // read — a copy it cannot parse took the whole order list down (20261101310000).
+    assert.deepEqual(order.address, { id: '', zoneId });
     assert.equal(order.zone_id, zoneId);
     assert.deepEqual(order.items, itemsBefore);
     assert.deepEqual(order.pricing, pricingBefore);

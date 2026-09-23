@@ -170,4 +170,166 @@ void main() {
       ),
     )).failureOrNull,
   );
+  // E8. The contracts above run through an admin's token, and the fakes answer the same
+  // questions for a shop and a courier. Here the shop's owner and a platform courier ask
+  // them of the real policies, and the "missing" target is the one the fakes cannot
+  // have: an order that exists, belonging to another shop or carried by another rider,
+  // which this token's policy hides. That must come back NotFoundFailure, never `ok`.
+  group('through the people who run the orders', () {
+    late String otherMerchantId;
+
+    /// An order at [status], written as the server writes one.
+    Future<String> anOrder(String merchant, OrderStatus status,
+            {String deliveryBy = 'merchant', String? courier}) =>
+        live.client.from('orders').insert({
+          'city_id': cityId,
+          'customer_name': 'عميل',
+          'customer_phone': '01000000000',
+          'merchant_id': merchant,
+          'merchant_name': 'مطعم',
+          'zone_id': zoneId,
+          'address': {'id': 'a1', 'zoneId': zoneId, 'label': 'البيت'},
+          'delivery_by': deliveryBy,
+          'type': 'instant',
+          'items': [],
+          'pricing': {'subtotal': 1000, 'deliveryFee': 0, 'total': 1000},
+          'revenue': {'model': 'commission', 'value': 0},
+          'status': status.name,
+          'accept_deadline_at':
+              DateTime.now().add(const Duration(minutes: 30)).toUtc().toIso8601String(),
+          'courier_uid': ?courier,
+        }).select('id').single().then((row) => row['id'] as String);
+
+    Future<OrderStatus> statusOf(String id) => live.client
+        .from('orders')
+        .select('status')
+        .eq('id', id)
+        .single()
+        .then((row) => OrderStatus.values.byName(row['status'] as String));
+
+    // The outer teardown deletes the shop before the city, and these tests leave orders
+    // — delivered ones with settlements that are `on delete restrict` — behind it.
+    tearDown(() async {
+      final orders = await live.client.from('orders').select('id').eq('city_id', cityId);
+      final ids = [for (final o in orders) o['id'] as String];
+      if (ids.isEmpty) return;
+      await live.client.from('courier_settlements').delete().inFilter('order_id', ids);
+      await live.client.from('order_settlements').delete().inFilter('order_id', ids);
+      await live.client.from('orders').delete().inFilter('id', ids);
+    });
+
+    setUp(() async {
+      otherMerchantId = await live.client.from('merchants').insert({
+        'city_id': cityId,
+        'type': 'restaurant',
+        'name': 'مطعم تاني',
+        'zone_id': zoneId,
+        'phone': '01000000001',
+        'status': 'approved',
+      }).select().single().then((row) => row['id'] as String);
+    });
+
+    Future<SupabaseMerchantOrderRepository> asOwner() async {
+      final (db, _) =
+          await live.openAsStaff(scope: 'merchant', role: 'owner', merchantId: merchantId);
+      addTearDown(db.dispose);
+      return SupabaseMerchantOrderRepository(db);
+    }
+
+    late String mine;
+    repositoryContract<SupabaseMerchantOrderRepository>(
+      name: "live owner accept, and another shop's order is not theirs",
+      repository: asOwner,
+      writeExisting: (repository) async {
+        mine = await anOrder(merchantId, OrderStatus.placed);
+        return (await repository.accept(mine, prepMinutes: 20)).failureOrNull;
+      },
+      changed: (_) async => await statusOf(mine) == OrderStatus.accepted,
+      writeMissing: (repository) async {
+        final theirs = await anOrder(otherMerchantId, OrderStatus.placed);
+        final failure = (await repository.accept(theirs, prepMinutes: 20)).failureOrNull;
+        expect(await statusOf(theirs), OrderStatus.placed, reason: 'nothing moved');
+        return failure;
+      },
+    );
+
+    repositoryContract<SupabaseMerchantOrderRepository>(
+      name: "live owner reject, and another shop's order is not theirs",
+      repository: asOwner,
+      writeExisting: (repository) async {
+        mine = await anOrder(merchantId, OrderStatus.placed);
+        return (await repository.reject(mine, reason: 'مقفولين')).failureOrNull;
+      },
+      changed: (_) async => await statusOf(mine) == OrderStatus.cancelled,
+      writeMissing: (repository) async {
+        final theirs = await anOrder(otherMerchantId, OrderStatus.placed);
+        return (await repository.reject(theirs, reason: 'مقفولين')).failureOrNull;
+      },
+    );
+
+    repositoryContract<SupabaseMerchantOrderRepository>(
+      name: "live owner advance, and another shop's order is not theirs",
+      repository: asOwner,
+      writeExisting: (repository) async {
+        mine = await anOrder(merchantId, OrderStatus.accepted);
+        return (await repository.advance(mine, to: OrderStatus.preparing)).failureOrNull;
+      },
+      changed: (_) async => await statusOf(mine) == OrderStatus.preparing,
+      writeMissing: (repository) async {
+        final theirs = await anOrder(otherMerchantId, OrderStatus.accepted);
+        return (await repository.advance(theirs, to: OrderStatus.preparing))
+            .failureOrNull;
+      },
+    );
+
+    late String courierUid;
+    Future<SupabaseCourierOrderRepository> asCourier() async {
+      final (db, uid) = await live.openAsStaff(scope: 'platform', role: 'courier');
+      addTearDown(db.dispose);
+      courierUid = uid;
+      return SupabaseCourierOrderRepository(db);
+    }
+
+    /// A second platform rider, who carries the order the first one must not reach.
+    Future<String> anotherRider() async {
+      final (db, uid) = await live.openAsStaff(scope: 'platform', role: 'courier');
+      await db.dispose();
+      return uid;
+    }
+
+    repositoryContract<SupabaseCourierOrderRepository>(
+      name: "live courier markDelivered, and another rider's order is not theirs",
+      repository: asCourier,
+      writeExisting: (repository) async {
+        mine = await anOrder(merchantId, OrderStatus.outForDelivery,
+            deliveryBy: 'platform', courier: courierUid);
+        return (await repository.markDelivered(mine)).failureOrNull;
+      },
+      changed: (_) async => await statusOf(mine) == OrderStatus.delivered,
+      writeMissing: (repository) async {
+        final theirs = await anOrder(merchantId, OrderStatus.outForDelivery,
+            deliveryBy: 'platform', courier: await anotherRider());
+        final failure = (await repository.markDelivered(theirs)).failureOrNull;
+        expect(await statusOf(theirs), OrderStatus.outForDelivery,
+            reason: 'nobody else is paid for a delivery they did not make');
+        return failure;
+      },
+    );
+
+    repositoryContract<SupabaseCourierOrderRepository>(
+      name: "live courier markFailed, and another rider's order is not theirs",
+      repository: asCourier,
+      writeExisting: (repository) async {
+        mine = await anOrder(merchantId, OrderStatus.outForDelivery,
+            deliveryBy: 'platform', courier: courierUid);
+        return (await repository.markFailed(mine, reason: 'محدش فتح')).failureOrNull;
+      },
+      changed: (_) async => await statusOf(mine) == OrderStatus.cancelled,
+      writeMissing: (repository) async {
+        final theirs = await anOrder(merchantId, OrderStatus.outForDelivery,
+            deliveryBy: 'platform', courier: await anotherRider());
+        return (await repository.markFailed(theirs, reason: 'محدش فتح')).failureOrNull;
+      },
+    );
+  });
 }

@@ -58,7 +58,10 @@ abstract class Landmark with _$Landmark {
 @freezed
 abstract class Address with _$Address {
   const factory Address({
-    required String id,
+    // Defaulted rather than required when read: a deleted customer's orders keep only
+    // `{"zoneId": …}` (H-02), and a copy that cannot be read took the whole order list
+    // down with it on every screen that showed one.
+    @Default('') String id,
     required String zoneId,
 
     /// Chosen from the admin's landmark list.
