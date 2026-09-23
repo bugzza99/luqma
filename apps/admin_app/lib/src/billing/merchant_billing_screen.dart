@@ -1061,13 +1061,29 @@ class _AmountDialogState extends State<_AmountDialog> {
 /// The admin's half of the same rows the merchant reads in MerchantApp, and the reason it
 /// is here at all: collecting `commission_owed` is a person with a receipt, and the
 /// person needs a number to ask for. Before this it was a column nothing displayed.
-class _Settlements extends ConsumerWidget {
+class _Settlements extends ConsumerStatefulWidget {
   const _Settlements({required this.merchant});
 
   final Merchant merchant;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_Settlements> createState() => _SettlementsState();
+}
+
+class _SettlementsState extends ConsumerState<_Settlements> {
+  Merchant get merchant => widget.merchant;
+
+  /// Shut before the first await and opened only once the dialog has closed.
+  ///
+  /// The wallet, the subscription and the courier screen all had this; this one did not.
+  /// On a slow connection two taps stacked two dialogs, the admin recorded the cash in
+  /// the top one, and the one left underneath — empty — read as "it did not take".
+  /// Typed again, it minted a second receipt, and the shop was credited money it never
+  /// paid. A second tap that reaches a second dialog has already made a second key.
+  bool _opening = false;
+
+  @override
+  Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colors = theme.luqma;
     final strings = LuqmaStrings.of(context);
@@ -1147,7 +1163,7 @@ class _Settlements extends ConsumerWidget {
               else
                 FilledButton.icon(
                   key: MerchantBillingScreen.collectKey,
-                  onPressed: () => _collect(context, ref),
+                  onPressed: _opening ? null : () => _collectOnce(context, ref),
                   icon: const Icon(Icons.payments_outlined, size: Sizes.iconSm),
                   label: const Text('سجّل تحصيل'),
                 ),
@@ -1156,6 +1172,16 @@ class _Settlements extends ConsumerWidget {
         ),
       ),
     );
+  }
+
+  Future<void> _collectOnce(BuildContext context, WidgetRef ref) async {
+    if (_opening) return;
+    setState(() => _opening = true);
+    try {
+      await _collect(context, ref);
+    } finally {
+      if (mounted) setState(() => _opening = false);
+    }
   }
 
   Future<void> _collect(BuildContext context, WidgetRef ref) async {

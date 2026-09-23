@@ -637,6 +637,47 @@ void main() {
           findsNothing);
     });
 
+    // The wallet, the subscription and the courier screen all shut the door before the
+    // dialog opens; this one did not. On a slow connection two taps stacked two dialogs,
+    // the admin recorded the cash in the top one, and the one left underneath — empty —
+    // read as "it did not take". Typed again, it minted a second receipt and the shop was
+    // credited money it never paid.
+    testWidgets('a repeated tap opens only one collection', (tester) async {
+      // A pending record, so the dialog waits on the receipts before it opens — the
+      // round trip a real phone spends on the network, and the window a second tap
+      // lands in. With every fake answering at once there is no window, and the test
+      // passed without the guard.
+      await SharedPreferencesAsync().setString(
+        'pending_payment_merchant_m1',
+        jsonEncode({'receiptId': 'r-1', 'amount': 10000}),
+      );
+      final slow = _SlowReceipts(owedStart: 47500);
+      await pump(
+        tester,
+        seed: merchant(model: RevenueModel.commission, value: 1000, owed: 47500),
+        settlementRepoOverride: slow,
+      );
+      await tester.drag(
+        find.byKey(MerchantBillingScreen.listKey),
+        const Offset(0, -900),
+      );
+      await tester.pumpAndSettle();
+
+      final button =
+          find.byKey(MerchantBillingScreen.collectKey, skipOffstage: offstage);
+      await tester.tap(button);
+      await tester.pump();
+      await tester.tap(button, warnIfMissed: false);
+      await tester.pump();
+      slow.answer();
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(MerchantBillingScreen.collectAmountKey, skipOffstage: false),
+        findsOneWidget,
+      );
+    });
+
     testWidgets('recording one sends the figure that was typed', (tester) async {
       await pumpOwing(tester, 47500);
 
@@ -1150,4 +1191,23 @@ class _PendingCollection extends FakeSettlementRepository {
     String? clientPaymentId,
   }) =>
       _completer.future;
+}
+
+/// Receipts that arrive only when the test says so — the network round trip a real phone
+/// spends before the collection dialog opens.
+class _SlowReceipts extends FakeSettlementRepository {
+  _SlowReceipts({super.owedStart});
+
+  final _gate = Completer<void>();
+
+  void answer() {
+    if (!_gate.isCompleted) _gate.complete();
+  }
+
+  @override
+  Future<Result<List<CommissionPayment>>> paymentsFor(String merchantId,
+      {int limit = 100}) async {
+    await _gate.future;
+    return super.paymentsFor(merchantId, limit: limit);
+  }
 }
