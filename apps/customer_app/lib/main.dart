@@ -24,8 +24,15 @@ void main() => luqmaBootstrap(() async {
 
   // Pull the owner's settings before the first frame, but never wait on them: the app
   // ships with a full set of defaults, so a cold start with no network renders a correct
-  // app rather than a blank one.
-  final config = RemoteConfigService(SupabaseConfigFetcher(supabase));
+  // app rather than a blank one. What the last successful fetch said is kept on the
+  // phone and loaded first — a local read, not a wait on the network — so an offline
+  // cold start runs on the owner's settings rather than the binary's, and a raised
+  // minimum version stays raised.
+  final config = RemoteConfigService(
+    SupabaseConfigFetcher(supabase),
+    store: SharedPreferencesConfigStore(),
+  );
+  await config.restore();
   unawaited(config.refresh());
 
   final pushTokens = SupabasePushTokenRepository(supabase);
