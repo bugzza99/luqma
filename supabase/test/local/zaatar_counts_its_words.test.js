@@ -11,7 +11,7 @@ import {
   SUFFIXES,
   TOPICS,
   classifyLocally,
-  reduceToExcerpt,
+  redactForModel,
 } from '../../functions/zaatar/excerpt.js';
 
 /** The one classification specification, as data. The Dart side reads this same file. */
@@ -340,37 +340,52 @@ describe('zaatar the handler', () => {
     assert.equal(supabase.seen.rpcCalls, 0, 'no turn taken');
   });
 
-  it('sends a name and an address to nobody', async () => {
+  // The owner's decision, 2026-09-24: «زعتر» should understand the whole message, so
+  // the model reads it — words, names and places included — with every number, link and
+  // address of email taken out first. What the order says about the customer (their name,
+  // number, address, the items and prices) still never goes.
+  it('sends the words, but never a number, a link or an email', async () => {
     const { handler, gemini } = build();
     const res = await ask(handler, {
       body: {
         orderId: ORDER_ID,
-        message: `${AMBIGUOUS}، أنا محمد حسن من شارع البحر جنب مسجد النور`,
+        message: `${AMBIGUOUS}، أنا محمد من شارع البحر، كلمني على 01012345678 `
+          + 'أو mo@example.com أو https://x.test/y',
       },
     });
 
     assert.equal(res.status, 200);
-    assert.equal(gemini.bodies.length, 1, 'this one is ambiguous, so it does go out');
-
+    assert.equal(gemini.bodies.length, 1);
     const sent = gemini.bodies[0];
-    for (const personal of ['محمد', 'حسن', 'شارع', 'البحر', 'مسجد', 'النور']) {
-      assert.ok(!sent.includes(personal), `«${personal}» must not leave the function`);
-    }
-    // And what did go is the allowlisted words and the three facts, nothing else.
-    assert.ok(sent.includes('اتاخر'));
-    assert.ok(sent.includes('outForDelivery'));
-    assert.ok(!sent.includes('كشري'), 'item names are not sent either');
+    assert.ok(sent.includes('محمد'), 'the words go, as the owner chose');
+    assert.ok(!/\d{3,}/.test(sent.replace(/"itemCount":\d+/, '')), 'no number');
+    assert.ok(!sent.includes('example.com'), 'no email');
+    assert.ok(!sent.includes('x.test'), 'no link');
+    assert.ok(sent.includes('outForDelivery'), 'the three facts go');
+    assert.ok(!sent.includes('كشري'), 'the items on the order do not');
   });
 
-  it('answers a message that is only a name and an address locally', async () => {
+  it('asks the model about a message its words cannot place', async () => {
+    const { handler, gemini, supabase } = build({ gemini: fakeGemini(geminiReplying('quality')) });
+    const res = await ask(handler, {
+      body: { orderId: ORDER_ID, message: 'الفراخ كانت ريحتها مش طبيعية خالص' },
+    });
+
+    assert.equal(res.status, 200);
+    assert.deepEqual(await res.json(), { intent: 'quality', source: 'model' });
+    assert.equal(gemini.bodies.length, 1, 'no vocabulary word was needed to ask');
+    assert.equal(supabase.seen.rpcCalls, 1, 'and it costs one turn');
+  });
+
+  it('sends nothing when nothing but numbers and links was typed', async () => {
     const { handler, gemini, supabase } = build();
     const res = await ask(handler, {
-      body: { orderId: ORDER_ID, message: 'deliver to ahmed ali, 12 el bahr, edku' },
+      body: { orderId: ORDER_ID, message: '01012345678 https://x.test/y' },
     });
 
     assert.equal(res.status, 200);
     assert.deepEqual(await res.json(), { intent: 'other', source: 'local' });
-    assert.equal(gemini.bodies.length, 0, 'nothing in it can be reduced safely');
+    assert.equal(gemini.bodies.length, 0);
     assert.equal(supabase.seen.rpcCalls, 0);
   });
 
@@ -483,23 +498,26 @@ describe('zaatar the handler', () => {
   });
 });
 
-describe('zaatar the excerpt is an allowlist', () => {
-  it('lets no unknown word through, whatever it is', () => {
-    assert.equal(reduceToExcerpt('وصل الطلب لمحمد حسن عند مسجد النور'), 'وصل الطلب');
-    assert.equal(reduceToExcerpt('deliver to ahmed ali, 12 el bahr, edku'), '');
-    assert.equal(reduceToExcerpt('01012345678'), '');
-    assert.equal(reduceToExcerpt('ahmed@example.com https://x.test/y'), '');
+// What the model is given since 2026-09-24: the words, never a number, link or email.
+describe('zaatar what the model is given', () => {
+  it('removes every number, in every script', () => {
+    assert.equal(redactForModel('رقمي 01012345678 و٠١٠١٢٣٤٥٦٧٨ و۰۱۲'), 'رقمي و و');
   });
 
+  it('removes links and email addresses', () => {
+    assert.equal(redactForModel('شوف https://x.test/y او www.x.test او mo@x.test'), 'شوف او او');
+  });
+
+  it('keeps the words, and caps how many', () => {
+    assert.equal(redactForModel('الأكل وصل بارد'), 'الأكل وصل بارد');
+    assert.ok(redactForModel('ا '.repeat(600)).length <= 500);
+  });
+});
+
+describe('zaatar reads the words', () => {
   it('folds the spellings of one word onto one entry', () => {
-    assert.equal(reduceToExcerpt('إلغاء'), reduceToExcerpt('الغاء'));
     assert.equal(classifyLocally('عايز إلغاء').topic, 'cancel');
     assert.equal(classifyLocally('عايز الغاء').topic, 'cancel');
-  });
-
-  it('caps what can leave however long the message is', () => {
-    const long = Array(80).fill('الطلب المطعم المندوب الاكل بارد وحش مشكله شكوي اسف ساعه دقيقه يوم كمان').join(' ');
-    assert.ok(reduceToExcerpt(long).split(' ').length <= 12);
   });
 
   it('calls one family decisive and two families a question for the model', () => {
@@ -509,15 +527,6 @@ describe('zaatar the excerpt is an allowlist', () => {
       decisive: false,
     });
     assert.deepEqual(classifyLocally('السلام عليكم'), { topic: 'hello', decisive: true });
-  });
-
-  // `token in INTENT_WORDS` walks the prototype chain, so every object in JavaScript
-  // already "has" these three. They were vocabulary nobody wrote, and the second of the
-  // two boundaries this file exists to hold.
-  it('does not treat an inherited property as a word', () => {
-    assert.equal(reduceToExcerpt('constructor الغي ناقص'), 'الغي ناقص');
-    assert.equal(reduceToExcerpt('constructor'), '');
-    assert.equal(reduceToExcerpt('toString hasOwnProperty valueOf'), '');
   });
 
   it('nor as a topic', () => {
@@ -573,10 +582,8 @@ describe('zaatar one classification specification', () => {
     assert.deepEqual([...PRECEDENCE], CORPUS.precedence);
   });
 
-  // A stem found inside a word is sent as the vocabulary's own spelling, never as what
-  // the customer typed: the excerpt stays an allowlist.
-  it('sends the vocabulary word a stem found, not the word typed', () => {
-    assert.equal(reduceToExcerpt('الأكل لسه موصلش'), 'الاكل لسه وصل');
+  it('reads a word under its tense and its negation', () => {
+    assert.deepEqual(classifyLocally('الأكل لسه موصلش'), { topic: 'late', decisive: true });
   });
 
   it('carries exactly the vocabulary in the shared corpus', () => {

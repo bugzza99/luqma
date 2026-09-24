@@ -1,29 +1,15 @@
 /**
- * What «زعتر» is allowed to learn from what a customer typed.
+ * How «زعتر» reads a message, and what the model is given of it.
  *
- * The old file here was called `redactor.js` and worked the other way round: it looked
- * for patterns that *are* personal — phone numbers, street words, «اسمي» — removed those,
- * and treated the absence of a match as permission to forward the rest. A denylist cannot
- * make that promise. The structural review of 2026-09-20 sent two ordinary sentences
- * through it and both came out unchanged with `hasPersonalDetails: false`:
+ * This file is the port of `ZaatarClassifier` in Dart: the phone has to read a message
+ * with no connection at all, so the reading is written on both sides and both are run
+ * against `data/zaatar_corpus.json` — a word added to one and not the other fails both
+ * suites. [classifyLocally] answers most messages without the model.
  *
- *   «وصل الطلب لمحمد حسن عند مسجد النور»
- *   «deliver to ahmed ali, 12 el bahr, edku»
- *
- * Neither contains the word «شارع» and neither is `Firstname Lastname` in Latin capitals,
- * so both were cleared to leave the country inside a Gemini request. Every new pattern
- * added to a list like that covers the example that prompted it and nothing else.
- *
- * So this file inverts it. Nothing is removed from the customer's words; instead a new
- * string is **built** out of an allowlist. A token survives only if it is one of the
- * roughly ninety words in [INTENT_WORDS] and [CONTEXT_WORDS] below — words about food,
- * time, money and orders. A name, a landmark, a house number, a telephone number and a
- * street are not in that vocabulary and therefore cannot appear in the result, whatever
- * shape they were written in and whether or not anybody anticipated them.
- *
- * The same vocabulary does double duty: [classifyLocally] reads the decisive words
- * straight off it and answers without the model at all, which is what happens for most
- * messages. See `handler.js` for what is actually sent when it does not.
+ * Until 2026-09-24 the model was given only an allowlist of vocabulary words, which kept
+ * every name and address out and let so little through that it was almost never asked.
+ * The owner chose understanding over that: [redactForModel] gives it the words, with every
+ * number, link and email address removed. See `handler.js` for exactly what leaves.
  */
 
 const TASHKEEL = /[ً-ْـ]/g;
@@ -217,7 +203,8 @@ export const SUFFIXES = Object.freeze(["", "ش", "ت", "و", "ي", "ه", "ها",
 export const PRECEDENCE = Object.freeze(["cancel", "change", "wrongItems", "quality", "money", "howTo", "late", "thanks", "hello"]);
 
 function known(word) {
-  // Own properties only: `in` walks the prototype chain (see [reduceToExcerpt]).
+  // Own properties only: `in` walks the prototype chain, so «constructor» and
+  // «toString» would be "in" any object literal and read as words about food.
   return Object.hasOwn(INTENT_WORDS, word) || CONTEXT_WORDS.has(word);
 }
 
@@ -243,40 +230,33 @@ export function vocabularyWord(token) {
   return null;
 }
 
-/** How many allowlisted words may leave. Enough to tell «مش وصل» from «وصل بارد». */
-export const MAX_EXCERPT_WORDS = 12;
-
 /**
- * What a customer typed, reduced to the allowlisted words in it, in order, deduplicated.
+ * What the model is given of a customer's message: the words, with every number, link and
+ * email address taken out, capped at the field's own length.
  *
- * Returns `''` when nothing in the message is in the vocabulary — which is the answer for
- * a message that is only a name and an address. The caller must not call the model then.
+ * The owner's decision, 2026-09-24: «زعتر» should understand the whole message rather than
+ * the handful of vocabulary words an allowlist let through, which almost never reached the
+ * model at all. So the words go — names and places included, which the owner accepted —
+ * and the things that identify somebody directly never do: a telephone number, a flat or
+ * house number, an email address, a link. Digits of every script are removed rather than
+ * normalised, so `٠١٠١٢٣٤٥٦٧٨` is not turned into a number Google can read either.
  */
-export function reduceToExcerpt(text) {
+export function redactForModel(text) {
   if (typeof text !== 'string') return '';
-  const kept = [];
-  const seen = new Set();
-  for (const token of normalizeArabic(text).split(/[^\p{L}\p{N}]+/u)) {
-    if (!token) continue;
-    // `Object.hasOwn`, never `in`: `in` walks the prototype chain, so «constructor»,
-    // «toString» and «hasOwnProperty» are all "in" any object literal and were being
-    // forwarded to Google as though they were words about food. [vocabularyWord] asks
-    // the same way, and hands back the vocabulary's own spelling — never the token.
-    const word = vocabularyWord(token);
-    if (word === null) continue;
-    if (seen.has(word)) continue;
-    seen.add(word);
-    kept.push(word);
-    if (kept.length === MAX_EXCERPT_WORDS) break;
-  }
-  return kept.join(' ');
+  return text
+    .replace(/https?:\/\/\S+|www\.\S+/gi, ' ')
+    .replace(/\S+@\S+/g, ' ')
+    .replace(/[0-9\u0660-\u0669\u06f0-\u06f9]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 500);
 }
 
 /**
  * The topic a message decides on its own, and whether it decided one.
  *
  * `decisive` false means «other» is a guess rather than a reading — that is the only case
- * worth spending a model turn on, and [reduceToExcerpt] is what the model is given.
+ * worth spending a model turn on, and [redactForModel] is what the model is given.
  */
 export function classifyLocally(text) {
   const found = new Set();

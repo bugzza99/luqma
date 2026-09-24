@@ -889,6 +889,19 @@ void main() {
       expect(zaatar.calls.single.message, 'الأكل فين؟');
     });
 
+    // The privacy policy promises to say so inside the app before a new party reads
+    // anything. Since 2026-09-24 Gemini reads what is typed here.
+    testWidgets('says, before anything is typed, who reads it', (tester) async {
+      await pump(tester, const OrderScreen(orderId: 'o1'), seed: [order()]);
+      await reveal(tester, find.byKey(OrderScreen.issueKey));
+      await tester.tap(find.byKey(OrderScreen.issueKey));
+      await tester.pumpAndSettle();
+
+      final notice = tester.widget<Text>(find.byKey(OrderHelpSheet.privacyNoticeKey)).data!;
+      expect(notice, contains('جوجل'));
+      expect(notice, contains('رقمك'));
+    });
+
     // The owner, 2026-09-24: «زعتر غبي ومش بيفهم وديماً عاوز المستخدم يتواصل مع الفريق».
     testWidgets('offers the short menu of topics, not every topic there is',
         (tester) async {

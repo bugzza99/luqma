@@ -171,9 +171,9 @@ abstract final class ZaatarClassifier {
 
   /// Words that carry no topic by themselves but say what kind of message this is.
   ///
-  /// Nothing on the phone reads them — they decide nothing here. They are part of the
-  /// specification because the server's excerpt is built out of them, and a vocabulary
-  /// kept in one file is a vocabulary that can be checked against the other side.
+  /// They decide nothing. What they do is keep a whole word whole: a word the vocabulary
+  /// knows is never cut down to a shorter one, so «مطعم» stays a shop rather than losing
+  /// its «م» to become «طعم».
   static const contextWords = <String>{
     'مش', 'عايز', 'عاوز', 'محتاج', 'ممكن', 'لسه', 'خلاص', 'دلوقتي', 'بقالي', 'من',
     'ليه', 'ازاي', 'ايه', 'هو', 'انا', 'حد', 'حاجه', 'تاني', 'كمان', 'برضه',

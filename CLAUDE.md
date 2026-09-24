@@ -609,6 +609,17 @@ DATABASE_URL=<luqma-test session pooler> npm --prefix supabase run test:stack
   from the order itself (`OrderHelper`: status, deadline, bill) and anything it cannot
   settle becomes an ordinary `order_issues` ticket with the topic first. Free and unable to
   invent anything — the owner's choice over a paid AI (2026-09-19).
+- **«زعتر» reads the whole message with Gemini, and still writes nothing itself.**
+  Decided by the owner 2026-09-24, amending the allowlist of 2026-09-20. The model used
+  to be given at most twelve vocabulary words and only for a message with two topics in
+  it, so it was almost never asked and the owner found زعتر «غبي». Now any message the
+  words cannot place goes to Gemini — its words, with every number, link and email address
+  removed (`redactForModel`), plus three order facts; a name or a place typed in it goes
+  too, and the owner accepted that. **The model still only chooses a topic**: every
+  sentence is `OrderHelper.answer`, read off the order, so it cannot promise a refund or a
+  time. The privacy policy and the notice in the sheet say Gemini reads these messages —
+  the policy promised to say so in the app before a new party read anything — and that
+  the free Gemini tier may use them to improve Google's services.
 - **A payment is recorded once.** `top_up_wallet` and `record_subscription_payment` take a
   `p_receipt_id` the screen generates once per payment; a retry after a lost reply returns
   the stored result instead of charging twice (`payment_receipts`).

@@ -427,7 +427,9 @@ class _OrderHelpSheetState extends ConsumerState<OrderHelpSheet> {
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       Text(
-                        'ماتكتبش بياناتك الشخصية هنا (رقمك أو عنوانك)',
+                        // Said before anything is typed: since 2026-09-24 Gemini reads
+                        // these messages, and the privacy policy promises it is said here.
+                        'Gemini من جوجل بيقرا رسالتك. ماتكتبش رقمك أو عنوانك هنا.',
                         key: OrderHelpSheet.privacyNoticeKey,
                         style: theme.textTheme.bodySmall?.copyWith(color: colors.textSecondary),
                       ),
