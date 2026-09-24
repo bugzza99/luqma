@@ -51,8 +51,8 @@ class DeveloperScreen extends ConsumerWidget {
                         size: 64, color: colors.textSecondary),
                   )
                 : ClipOval(
-                    child: Image.network(
-                      photo.url,
+                    child: Image(
+                      image: LuqmaImage.providerFor(photo.url),
                       width: 140,
                       height: 140,
                       fit: BoxFit.cover,

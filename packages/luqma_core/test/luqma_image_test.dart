@@ -148,4 +148,34 @@ void main() {
     expect(thumbnail, greaterThanOrEqualTo(20));
     expect(cover, lessThanOrEqualTo(96));
   });
+  // Lists and thumbnails draw the small copy; a big frame and the admin's review draw the
+  // photograph (20261101340000).
+  group('which copy it draws', () {
+    const photo = 'https://x.test/media/u1/menuItem/abc.jpg';
+    String drawn(WidgetTester tester) =>
+        (tester.widget<Image>(find.byType(Image).first).image as NetworkImage).url;
+
+    Future<void> sized(WidgetTester tester, double side, Widget child) async {
+      await tester.pumpWidget(MaterialApp(
+        theme: LuqmaTheme.light,
+        home: Center(child: SizedBox(width: side, height: side, child: child)),
+      ));
+    }
+
+    testWidgets('a thumbnail draws the small copy', (tester) async {
+      await sized(tester, 60, const LuqmaImage(url: photo, name: 'كشري'));
+      expect(drawn(tester), MediaCopy.small(photo));
+    });
+
+    testWidgets('a wide frame draws the photograph', (tester) async {
+      await sized(tester, 400, const LuqmaImage(url: photo, name: 'كشري'));
+      expect(drawn(tester), photo);
+    });
+
+    testWidgets('asked for the whole picture, it draws the photograph however small',
+        (tester) async {
+      await sized(tester, 60, const LuqmaImage(url: photo, name: 'كشري', whole: true));
+      expect(drawn(tester), photo);
+    });
+  });
 }

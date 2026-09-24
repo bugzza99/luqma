@@ -6,6 +6,7 @@ import '../data/column_names.dart';
 import '../data/live_query.dart';
 import '../models/media.dart';
 import '../ids.dart';
+import '../media/media_copy.dart';
 import '../result.dart';
 
 /// Getting an image in, and the moderation queue that decides whether it is ever seen.
@@ -23,6 +24,9 @@ abstract interface class MediaRepository {
   Future<Result<Media>> upload({
     required MediaKind kind,
     required Uint8List bytes,
+    // The small copy, written beside the photograph at `MediaCopy.smallPath`. Lists and
+    // thumbnails draw it; a phone without it draws the photograph.
+    Uint8List? small,
     required String uploadedBy,
     String? ownerId,
     int width,
@@ -93,6 +97,9 @@ class SupabaseMediaRepository implements MediaRepository {
   Future<Result<Media>> upload({
     required MediaKind kind,
     required Uint8List bytes,
+    // The small copy, written beside the photograph at `MediaCopy.smallPath`. Lists and
+    // thumbnails draw it; a phone without it draws the photograph.
+    Uint8List? small,
     required String uploadedBy,
     String? ownerId,
     int width = 0,
@@ -117,8 +124,16 @@ class SupabaseMediaRepository implements MediaRepository {
         bytes,
         fileOptions: const FileOptions(contentType: 'image/jpeg'),
       );
+      final smallPath = MediaCopy.smallPath(path);
 
       try {
+        if (small != null) {
+          await storage.uploadBinary(
+            smallPath,
+            small,
+            fileOptions: const FileOptions(contentType: 'image/jpeg'),
+          );
+        }
         final row = await _db
             .from('media')
             .insert({
@@ -138,7 +153,7 @@ class SupabaseMediaRepository implements MediaRepository {
         // The row is what everything reads. Bytes with no row are invisible to the
         // product and to the admin, and only the nightly sweep would ever find them —
         // so the upload undoes itself rather than leaving that behind.
-        await storage.remove([path]);
+        await storage.remove([path, if (small != null) smallPath]);
         rethrow;
       }
     });
@@ -225,12 +240,18 @@ class FakeMediaRepository implements MediaRepository {
   /// What was uploaded, in order, for assertions.
   final List<Media> uploads = [];
 
+  /// The small copy that went up with each upload, by media id.
+  final Map<String, Uint8List> smallCopies = {};
+
   var _counter = 0;
 
   @override
   Future<Result<Media>> upload({
     required MediaKind kind,
     required Uint8List bytes,
+    // The small copy, written beside the photograph at `MediaCopy.smallPath`. Lists and
+    // thumbnails draw it; a phone without it draws the photograph.
+    Uint8List? small,
     required String uploadedBy,
     String? ownerId,
     int width = 0,
@@ -255,6 +276,7 @@ class FakeMediaRepository implements MediaRepository {
     );
     _media[media.id] = media;
     uploads.add(media);
+    if (small != null) smallCopies[media.id] = small;
     return Result.ok(media);
   }
 

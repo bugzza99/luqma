@@ -63,9 +63,14 @@ describe('an upload is counted where it lands', () => {
 
   it('a picture within the hour is taken', () => as(person, () => put('media', 1)));
 
+  // Two objects a picture since 20261101340000 — the photograph and its small copy — so
+  // the bucket allows twice the pictures-per-hour setting in objects.
   it('the one past the hour\'s allowance is refused', () => assert.rejects(
-    as(person, async () => { await put('media', perHour); await put('media', 1); }),
+    as(person, async () => { await put('media', perHour * 2); await put('media', 1); }),
     refused));
+
+  it('a picture and its small copy both fit inside the allowance', () =>
+    as(person, () => put('media', perHour * 2)));
 
   it('papers have an allowance of their own', () => assert.rejects(
     as(person, async () => { await put('staff-docs', 12); await put('staff-docs', 1); }),

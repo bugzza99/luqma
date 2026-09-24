@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
 import 'package:luqma_core/luqma_core.dart';
 
 import 'harness.dart';
@@ -196,6 +197,23 @@ void main() {
         kind: MediaKind.menuItem, bytes: bytes, uploadedBy: uploaderUid);
 
       expect(await mine(), hasLength(1));
+    });
+
+    // The small copy lists and thumbnails draw (20261101340000). It is fetched by the
+    // name `MediaCopy.small` gives, so this asks for exactly that address.
+    test('a small copy lands beside the photograph, where the phone looks for it', () async {
+      final result = await repository.upload(
+        kind: MediaKind.menuItem,
+        bytes: bytes,
+        small: bytes,
+        uploadedBy: uploaderUid,
+      );
+      final url = result.valueOrNull!.url;
+
+      final photograph = await http.get(Uri.parse(url));
+      final small = await http.get(Uri.parse(MediaCopy.small(url)));
+      expect(photograph.statusCode, 200);
+      expect(small.statusCode, 200, reason: MediaCopy.small(url));
     });
 
     // Two uploads of one picture are two images. Sharing a path would mean approving

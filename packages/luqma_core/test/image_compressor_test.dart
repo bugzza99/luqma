@@ -31,6 +31,21 @@ void main() {
       expect(decoded.height, 1200, reason: 'the shape is kept, not stretched');
     });
 
+    // The small copy lists and thumbnails draw (20261101340000).
+    test('a smaller long edge can be asked for', () async {
+      final result = await ImageCompressor.shrink(photo(4000, 3000),
+          maxEdge: ImageCompressor.smallEdge, quality: ImageCompressor.smallQuality);
+
+      final decoded = img.decodeImage(result)!;
+      expect(decoded.width, ImageCompressor.smallEdge);
+      // Measured against the photograph made from the same picture: this test image is
+      // noise, which barely compresses, so an absolute figure would say more about the
+      // fixture than about the copy.
+      final photograph = await ImageCompressor.shrink(photo(4000, 3000));
+      expect(result.length, lessThan(photograph.length ~/ 4),
+          reason: 'a thumbnail, not a photograph');
+    });
+
     test('a tall photo is measured on its own long edge', () async {
       final result = await ImageCompressor.shrink(photo(1200, 3000));
 

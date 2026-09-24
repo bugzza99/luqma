@@ -95,7 +95,16 @@ class _MediaPickerState extends ConsumerState<MediaPicker> {
     // data never uploads eight megabytes of a plate of fish.
     final Result<Media> result;
     try {
-      final bytes = await ref.read(shrinkImageProvider)(picked);
+      final shrink = ref.read(shrinkImageProvider);
+      final bytes = await shrink(picked);
+      // The small copy lists and thumbnails draw, cut from the photograph just made
+      // rather than from the camera's original: a 1600px decode, not a twelve-megapixel
+      // one, for the second pass.
+      final small = await shrink(
+        bytes,
+        maxEdge: ImageCompressor.smallEdge,
+        quality: ImageCompressor.smallQuality,
+      );
       final (width, height) = ImageCompressor.dimensionsOf(bytes);
       // Whoever is signed in, read here rather than passed in: the policy on `media`
       // requires `uploaded_by = auth.uid()`, so there has only ever been one correct
@@ -103,6 +112,7 @@ class _MediaPickerState extends ConsumerState<MediaPicker> {
       result = await ref.read(mediaRepositoryProvider).upload(
             kind: widget.kind,
             bytes: bytes,
+            small: small,
             uploadedBy: ref.read(currentIdentityProvider).value?.uid ?? '',
             ownerId: widget.ownerId,
             width: width,

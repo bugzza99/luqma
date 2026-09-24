@@ -88,6 +88,7 @@ export 'src/theme/theme_mode_store.dart';
 export 'src/theme/page_transitions.dart';
 export 'src/theme/typography.dart';
 export 'src/media/image_compressor.dart';
+export 'src/media/media_copy.dart';
 export 'src/models/cuisine.dart';
 export 'src/repositories/cuisine_repository.dart';
 export 'src/repositories/push_token_repository.dart';

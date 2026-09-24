@@ -52,6 +52,7 @@ dependencies:
   # file if 600 menu photos ever make that matter.
   image: ^4.5.0
   maplibre_gl: ^0.27.0
+  cached_network_image: ^4.0.2
 
 dev_dependencies:
   flutter_test:

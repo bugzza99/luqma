@@ -28,6 +28,12 @@ abstract final class ImageCompressor {
   /// difference nobody can point at.
   static const quality = 85;
 
+  /// The small copy lists and thumbnails draw (`MediaCopy`). A menu thumbnail is 78
+  /// points and a logo smaller: 400px is sharp on a three-times phone at that size, and
+  /// at 80 it is a tenth of the photograph.
+  static const smallEdge = 400;
+  static const smallQuality = 80;
+
   /// What `storage.buckets` refuses, mirrored here so a test can assert against the same
   /// number the database enforces.
   static const bucketLimitBytes = 2 * 1024 * 1024;
@@ -40,7 +46,11 @@ abstract final class ImageCompressor {
   ///
   /// Never enlarges: upscaling a small picture makes the file bigger and the picture no
   /// better, and a home cook's old phone is exactly where that would happen.
-  static Future<Uint8List> shrink(Uint8List bytes) async {
+  static Future<Uint8List> shrink(
+    Uint8List bytes, {
+    int maxEdge = ImageCompressor.maxEdge,
+    int quality = ImageCompressor.quality,
+  }) async {
     // The decoder has two ways of saying "this is not an image": it returns null for
     // some inputs, and walks off the end of the buffer for others — four random bytes
     // give a RangeError, not a null. Both are the same fact to whoever is holding the
@@ -78,8 +88,15 @@ abstract final class ImageCompressor {
   /// spin — long enough for somebody to tap again, or to decide the app has hung. The
   /// screens call this, through `shrinkImageProvider`; [shrink] stays for a test that
   /// cannot wait on a real isolate.
-  static Future<Uint8List> shrinkInBackground(Uint8List bytes) =>
-      Isolate.run(() => shrink(bytes), debugName: 'shrink a picture');
+  static Future<Uint8List> shrinkInBackground(
+    Uint8List bytes, {
+    int maxEdge = ImageCompressor.maxEdge,
+    int quality = ImageCompressor.quality,
+  }) =>
+      Isolate.run(
+        () => shrink(bytes, maxEdge: maxEdge, quality: quality),
+        debugName: 'shrink a picture',
+      );
 
   /// Width and height of an encoded picture, read from its header rather than by decoding
   /// the pixels. `(0, 0)` when the header cannot be read — the column's own default.

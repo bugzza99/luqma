@@ -255,8 +255,9 @@ class _Banner extends StatelessWidget {
             // lets the ground show at the edges, which is a frame rather than a bug.
             if (promotion.renderMode == PromotionRender.image &&
                 promotion.imageUrl != null)
-              Image.network(
-                promotion.imageUrl!,
+              // Kept on the phone: the banner is on the home screen at every launch.
+              Image(
+                image: LuqmaImage.providerFor(promotion.imageUrl!),
                 fit: BoxFit.contain,
                 errorBuilder: (_, _, _) => const SizedBox.shrink(),
               ),

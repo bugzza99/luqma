@@ -19,4 +19,11 @@ typedef PickImage = Future<Uint8List?> Function();
 /// What is done to a picture before it is sent: `ImageCompressor.shrinkInBackground` in
 /// the apps, and the foreground `ImageCompressor.shrink` in a widget test, which cannot
 /// wait on a real isolate.
-typedef ShrinkImage = Future<Uint8List> Function(Uint8List bytes);
+///
+/// [maxEdge] and [quality] ask for the small copy (`ImageCompressor.smallEdge`) as well
+/// as the photograph.
+typedef ShrinkImage = Future<Uint8List> Function(
+  Uint8List bytes, {
+  int maxEdge,
+  int quality,
+});

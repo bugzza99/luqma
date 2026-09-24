@@ -115,9 +115,11 @@ void main() {
   // every twelve-megapixel photograph.
   testWidgets('shrinks through the seam that runs in the background', (tester) async {
     var asked = 0;
-    await pump(tester, picker: () async => bigPhoto(), shrink: (bytes) {
-      asked++;
-      return ImageCompressor.shrink(bytes);
+    await pump(tester, picker: () async => bigPhoto(),
+        shrink: (bytes, {maxEdge = ImageCompressor.maxEdge,
+            quality = ImageCompressor.quality}) {
+      if (maxEdge == ImageCompressor.maxEdge) asked++;
+      return ImageCompressor.shrink(bytes, maxEdge: maxEdge, quality: quality);
     });
 
     await tester.tap(find.byKey(MediaPicker.pickKey));
@@ -131,6 +133,19 @@ void main() {
     final container = ProviderContainer();
     addTearDown(container.dispose);
     expect(container.read(shrinkImageProvider), ImageCompressor.shrinkInBackground);
+  });
+
+  // A thumbnail used to download the whole 1600px photograph. The small copy goes up
+  // beside it and is what lists and thumbnails draw (20261101340000).
+  testWidgets('a small copy goes up with the photograph', (tester) async {
+    await pump(tester, picker: () async => bigPhoto());
+
+    await tester.tap(find.byKey(MediaPicker.pickKey));
+    await tester.pumpAndSettle();
+
+    final uploaded = media.uploads.single;
+    final small = img.decodeImage(media.smallCopies[uploaded.id]!)!;
+    expect(small.width, ImageCompressor.smallEdge);
   });
 
   // Backing out of the gallery is a decision. Answering it with an error is the app

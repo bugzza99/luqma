@@ -373,6 +373,44 @@ describe('sweeping orphan media', () => {
     deepStrictEqual(left.rows.map((r) => r.name), ['%']);
   });
 
+  // Every picture is uploaded twice since 2026-09-24: the photograph, and a small copy
+  // beside it (`<name>_s.jpg`) that lists and thumbnails draw. The copy has no row of its
+  // own, so the sweep has to know it belongs to the photograph — or it deletes every
+  // thumbnail in the product a week after it was uploaded.
+  it("takes an orphan's small copy with it", async () => {
+    const d = await db();
+    await orphan(d, 'u1/menuItem/abc1.jpg');
+    await d.query(
+      `insert into storage.objects (bucket_id, name)
+       values ('media','u1/menuItem/abc1.jpg'), ('media','u1/menuItem/abc1_s.jpg')`,
+    );
+
+    await d.query('select sweep_orphan_media()');
+
+    strictEqual((await d.query('select 1 from storage.objects')).rows.length, 0);
+  });
+
+  it('keeps the small copy of a picture still in use, however old', async () => {
+    const d = await db();
+    await d.query(
+      `insert into media (kind, url, status, created_at)
+       values ('menuItem',
+               'https://x.supabase.co/storage/v1/object/public/media/u1/menuItem/kept.jpg',
+               'approved', now() - interval '30 days')`,
+    );
+    await d.query(
+      `insert into storage.objects (bucket_id, name, created_at)
+       values ('media','u1/menuItem/kept.jpg', now() - interval '30 days'),
+              ('media','u1/menuItem/kept_s.jpg', now() - interval '30 days')`,
+    );
+
+    await d.query('select sweep_orphan_media()');
+
+    const left = await d.query('select name from storage.objects order by name');
+    deepStrictEqual(left.rows.map((r) => r.name),
+      ['u1/menuItem/kept.jpg', 'u1/menuItem/kept_s.jpg']);
+  });
+
   it('keeps a pending image something still points at', async () => {
     const d = await db();
     const { rows } = await orphan(d, 'cuisine/kept.jpg');

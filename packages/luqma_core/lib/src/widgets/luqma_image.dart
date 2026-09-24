@@ -1,5 +1,10 @@
+import 'dart:io' show Platform;
+
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 
+import '../media/media_copy.dart';
 import '../theme/colors.dart';
 
 /// Every picture in the product, and what stands in when there isn't one.
@@ -18,6 +23,7 @@ class LuqmaImage extends StatelessWidget {
     required this.url,
     required this.name,
     this.fit = BoxFit.contain,
+    this.whole = false,
   });
 
   /// The approved image, or null when there is none yet.
@@ -37,6 +43,28 @@ class LuqmaImage extends StatelessWidget {
   /// rather than a fault. A caller framing something deliberately — a face in a circle —
   /// passes `cover` and means it.
   final BoxFit fit;
+
+  /// Draws the photograph itself, however small the frame — for the admin reviewing a
+  /// picture, who must see every pixel that would reach the city, not a thumbnail of it.
+  final bool whole;
+
+  /// Frames up to this many device pixels wide draw the small copy (`MediaCopy`), which
+  /// is `ImageCompressor.smallEdge` on its long side — enough for a thumbnail or a logo
+  /// on a three-times phone. A wider frame, a shop's cover across the screen, draws the
+  /// photograph.
+  static const smallCopyUpTo = 480.0;
+
+  /// Where the bytes of a picture come from.
+  ///
+  /// `Image.network` kept a picture only in memory, so every launch downloaded every
+  /// picture again — the largest share of the free tier's egress, which ran out at about
+  /// thirty visits a day. A cached provider keeps them on the phone. Under `flutter test`
+  /// it is the plain network one: the cache needs a real file system and a database the
+  /// test binding does not provide, and a test only asks which address was drawn.
+  static ImageProvider providerFor(String url) {
+    final underTest = !kIsWeb && Platform.environment.containsKey('FLUTTER_TEST');
+    return underTest ? NetworkImage(url) : CachedNetworkImageProvider(url);
+  }
 
   /// The tints a name can land on, darkest-first, all of them carrying [LuqmaColors.background].
   ///
@@ -92,27 +120,47 @@ class LuqmaImage extends StatelessWidget {
                 // surface the eye reads as part of the card and not as empty space where
                 // the picture stopped.
                 color: colors.surface,
-                child: Image.network(
-                  address,
-                  fit: fit,
-                  width: double.infinity,
-                  height: double.infinity,
-                  // The monogram fills the space for the whole download, so the card is
-                  // its final height from the first frame. A spinner in a box that grows
-                  // when the picture lands moves everything under it while somebody is
-                  // reaching for it.
-                  loadingBuilder: (context, child, progress) => progress == null
-                      ? child
-                      : _Monogram(name: name, colors: colors),
-                  // A URL that 404s — an image deleted after rejection, a bucket that has
-                  // moved — lands here, and is the same thing as no picture at all.
-                  errorBuilder: (context, _, _) =>
-                      _Monogram(name: name, colors: colors),
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    final pixels = constraints.maxWidth *
+                        MediaQuery.devicePixelRatioOf(context);
+                    final small = !whole &&
+                        constraints.maxWidth.isFinite &&
+                        pixels <= smallCopyUpTo;
+                    final photograph = _picture(address, colors);
+                    if (!small) return photograph;
+                    // The small copy first. A picture uploaded before copies existed, or
+                    // from an older build, has none — its 404 draws the photograph.
+                    return _picture(
+                      MediaCopy.small(address),
+                      colors,
+                      orElse: photograph,
+                    );
+                  },
                 ),
               ),
       ),
     );
   }
+}
+
+extension on LuqmaImage {
+  Widget _picture(String address, LuqmaColors colors, {Widget? orElse}) => Image(
+        image: LuqmaImage.providerFor(address),
+        fit: fit,
+        width: double.infinity,
+        height: double.infinity,
+        // The monogram fills the space for the whole download, so the card is its final
+        // height from the first frame. A spinner in a box that grows when the picture
+        // lands moves everything under it while somebody is reaching for it.
+        loadingBuilder: (context, child, progress) =>
+            progress == null ? child : _Monogram(name: name, colors: colors),
+        // A URL that 404s — an image deleted after rejection, a bucket that has moved, a
+        // small copy never made — lands here: the photograph if there is one to fall back
+        // to, and otherwise the same thing as no picture at all.
+        errorBuilder: (context, _, _) =>
+            orElse ?? _Monogram(name: name, colors: colors),
+      );
 }
 
 class _Monogram extends StatelessWidget {
