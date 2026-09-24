@@ -64,7 +64,11 @@ abstract class Promotion with _$Promotion {
   const factory Promotion({
     required String id,
     required String cityId,
-    required String merchantId,
+
+    /// The shop it is for. Null only on a push the platform sends as itself — the owner
+    /// announcing «لقمة» rather than a restaurant (20261101330000). Every other channel
+    /// names a shop: a banner links to one and a boost ranks one.
+    String? merchantId,
     @JsonKey(unknownEnumValue: PromotionChannel.homeBanner)
     required PromotionChannel channel,
 

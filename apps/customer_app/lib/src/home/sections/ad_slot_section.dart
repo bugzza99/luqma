@@ -216,7 +216,11 @@ class _Banner extends StatelessWidget {
 
     return InkWell(
       key: AdSlotSection.bannerKey(promotion.id),
-      onTap: () => openMerchant(context, promotion.merchantId),
+      // A banner names its shop; only a push may be the platform's own, and a push is
+      // never drawn here. Guarded anyway, rather than opening a shop called nothing.
+      onTap: promotion.merchantId == null
+          ? null
+          : () => openMerchant(context, promotion.merchantId!),
       borderRadius: Radii.cardAll,
       child: ClipRRect(
         borderRadius: Radii.cardAll,

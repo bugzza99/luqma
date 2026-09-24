@@ -448,7 +448,8 @@ Set<String> boostedMerchants(Ref ref) {
   final perks = ref.watch(merchantPerksProvider).value ?? const <String, MerchantPerk>{};
   return {
     for (final promotion in live)
-      if (promotion.channel == PromotionChannel.boost) promotion.merchantId,
+      // A boost always names its shop; `?` keeps the platform's own pushes out.
+      if (promotion.channel == PromotionChannel.boost) ?promotion.merchantId,
     for (final perk in perks.values)
       if (perk.boost) perk.merchantId,
   };

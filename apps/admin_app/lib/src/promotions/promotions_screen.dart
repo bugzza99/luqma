@@ -35,6 +35,9 @@ class PromotionsScreen extends ConsumerWidget {
 
   static const createKey = Key('promotions.create');
   static const formMerchantKey = Key('promotions.form.merchant');
+
+  /// How the platform's own announcement is named, in the picker and on its card.
+  static const platformName = 'لقمة (المنصة)';
   static const formChannelKey = Key('promotions.form.channel');
   static const formTitleKey = Key('promotions.form.title');
   static const formBodyKey = Key('promotions.form.body');
@@ -165,9 +168,10 @@ class _RequestState extends ConsumerState<_Request> {
     final theme = Theme.of(context);
     final colors = theme.luqma;
     final strings = LuqmaStrings.of(context);
-    final merchant = ref
-        .watch(merchantProvider(widget.promotion.merchantId))
-        .value;
+    final merchantId = widget.promotion.merchantId;
+    // Null for the platform's own push, which names no shop.
+    final merchant =
+        merchantId == null ? null : ref.watch(merchantProvider(merchantId)).value;
 
     return Container(
       key: PromotionsScreen.cardKey(widget.promotion.id),
@@ -185,7 +189,7 @@ class _RequestState extends ConsumerState<_Request> {
             children: [
               Expanded(
                 child: Text(
-                  merchant?.name ?? widget.promotion.merchantId,
+                  merchant?.name ?? merchantId ?? PromotionsScreen.platformName,
                   style: theme.textTheme.titleMedium?.copyWith(
                     fontWeight: FontWeight.w700,
                   ),
@@ -473,9 +477,10 @@ class _PlacementState extends ConsumerState<_Placement> {
     final theme = Theme.of(context);
     final colors = theme.luqma;
     final now = ref.watch(clockProvider)();
-    final merchant = ref
-        .watch(merchantProvider(widget.promotion.merchantId))
-        .value;
+    final merchantId = widget.promotion.merchantId;
+    // Null for the platform's own push, which names no shop.
+    final merchant =
+        merchantId == null ? null : ref.watch(merchantProvider(merchantId)).value;
 
     // Approved is not live, and the board is the one screen where that distinction has
     // to be legible at a glance — it is the whole reason a scheduled banner looked to
@@ -506,7 +511,7 @@ class _PlacementState extends ConsumerState<_Placement> {
             children: [
               Expanded(
                 child: Text(
-                  merchant?.name ?? widget.promotion.merchantId,
+                  merchant?.name ?? merchantId ?? PromotionsScreen.platformName,
                   style: theme.textTheme.titleMedium?.copyWith(
                     fontWeight: FontWeight.w700,
                   ),
@@ -1127,7 +1132,8 @@ class _CreateFormState extends ConsumerState<_CreateForm> {
     final draft = Promotion(
       id: '',
       cityId: ref.read(currentCityProvider),
-      merchantId: merchantId,
+      // Empty is the platform's own push, which names no shop.
+      merchantId: merchantId.isEmpty ? null : merchantId,
       channel: _channel,
       // Text only. An admin putting up a quick announcement has no artwork to hand,
       // and `promotions_image_has_media` refuses a row whose mode promises a picture
@@ -1200,6 +1206,13 @@ class _CreateFormState extends ConsumerState<_CreateForm> {
                         isExpanded: true,
                         decoration: const InputDecoration(labelText: 'المطعم'),
                         items: [
+                          // Only a push may be the platform's own: a banner links to a
+                          // shop and a boost ranks one. The empty value stands for none.
+                          if (_channel == PromotionChannel.push)
+                            const DropdownMenuItem(
+                              value: '',
+                              child: Text(PromotionsScreen.platformName),
+                            ),
                           for (final merchant in value)
                             DropdownMenuItem(
                               value: merchant.id,
@@ -1210,8 +1223,10 @@ class _CreateFormState extends ConsumerState<_CreateForm> {
                             ),
                         ],
                         onChanged: (id) => setState(() => _merchantId = id),
-                        validator: (v) =>
-                            v != null && v.isNotEmpty ? null : 'اختار المطعم',
+                        validator: (v) => v != null &&
+                                (v.isNotEmpty || _channel == PromotionChannel.push)
+                            ? null
+                            : 'اختار المطعم',
                       ),
                     _ => const InputDecorator(
                       decoration: InputDecoration(labelText: 'المطعم'),
@@ -1232,7 +1247,14 @@ class _CreateFormState extends ConsumerState<_CreateForm> {
                             child: Text(entry.value),
                           ),
                     ],
-                    onChanged: (c) => setState(() => _channel = c ?? _channel),
+                    onChanged: (c) => setState(() {
+                      _channel = c ?? _channel;
+                      // The platform is a choice for a push only; leaving push takes it
+                      // away rather than keeping a selection the list no longer shows.
+                      if (_channel != PromotionChannel.push && _merchantId == '') {
+                        _merchantId = null;
+                      }
+                    }),
                   ),
                   const SizedBox(height: Space.md),
                   Row(

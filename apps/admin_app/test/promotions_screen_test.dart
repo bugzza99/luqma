@@ -403,6 +403,49 @@ void main() {
     });
   });
 
+  // The owner's request, 2026-09-24: a push needs no shop. Luqma announces as itself.
+  group('an announcement from the platform itself', () {
+    Future<void> choosePush(WidgetTester tester) async {
+      await tester.tap(find.byType(DropdownButtonFormField<PromotionChannel>));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('إشعار للعملاء').last);
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('a push can be sent as لقمة, naming no shop', (tester) async {
+      await pump(tester);
+      await tester.tap(find.byKey(PromotionsScreen.createKey));
+      await tester.pumpAndSettle();
+
+      await choosePush(tester);
+      await tester.tap(find.byKey(PromotionsScreen.formMerchantKey));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(PromotionsScreen.platformName).last);
+      await tester.pumpAndSettle();
+
+      await tester.enterText(find.byKey(PromotionsScreen.formTitleKey), 'أهلًا بيكم في لقمة');
+      await tester.tap(find.byKey(PromotionsScreen.formSubmitKey));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(PromotionsScreen.pushConfirmKey));
+      await tester.pumpAndSettle();
+
+      final made = promotions.all.single;
+      expect(made.merchantId, isNull);
+      expect(made.channel, PromotionChannel.push);
+    });
+
+    testWidgets('a banner still belongs to a shop', (tester) async {
+      await pump(tester);
+      await tester.tap(find.byKey(PromotionsScreen.createKey));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(PromotionsScreen.formMerchantKey));
+      await tester.pumpAndSettle();
+      expect(find.text(PromotionsScreen.platformName), findsNothing,
+          reason: 'a banner links to a shop; only a push may be the platform own');
+    });
+  });
+
   // The owner approved a banner and watched nothing happen. It was correct — the request
   // was dated tomorrow and `startAt` decides — but the code that set that date said "the
   // admin moves it when they approve", and the admin had no way to move anything.

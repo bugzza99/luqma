@@ -496,6 +496,11 @@ class FakePromotionRepository implements PromotionRepository {
       return Result.err(refusal);
     }
 
+    // The server's check (20261101330000): only a push may name no shop.
+    if (promotion.merchantId == null && promotion.channel != PromotionChannel.push) {
+      return const Result.err(ValidationFailure());
+    }
+
     final ready = promotion.copyWith(
       id: 'promo-${_promotions.length + 1}',
       status: PromotionStatus.approved,

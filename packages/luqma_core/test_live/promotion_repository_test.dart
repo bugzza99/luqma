@@ -260,6 +260,33 @@ void main() {
       expect(live_, isEmpty, reason: 'startAt decides, not the status');
     });
 
+    // The owner's request, 2026-09-24: Luqma announces as itself (20261101330000).
+    test('the platform can send a push of its own, naming no shop', () async {
+      final admin = await live.openAsAdmin();
+      addTearDown(admin.dispose);
+      final adminUid = admin.auth.currentUser!.id;
+
+      final made = await SupabasePromotionRepository(admin).createApproved(
+        promotion(channel: PromotionChannel.push).copyWith(merchantId: null),
+        approvedBy: adminUid,
+      );
+
+      expect(made.failureOrNull, isNull);
+      expect(made.valueOrNull?.merchantId, isNull);
+    });
+
+    test('but a banner still names its shop', () async {
+      final admin = await live.openAsAdmin();
+      addTearDown(admin.dispose);
+
+      final refused = await SupabasePromotionRepository(admin).createApproved(
+        promotion().copyWith(merchantId: null),
+        approvedBy: admin.auth.currentUser!.id,
+      );
+
+      expect(refused.failureOrNull, isA<ValidationFailure>());
+    });
+
     // The policy, asked directly. `merchant_requests_promotion` permits `requested` and
     // nothing else, so an owner writing `approved` is refused rather than downgraded.
     test('a merchant owner cannot put up an approved one', () async {

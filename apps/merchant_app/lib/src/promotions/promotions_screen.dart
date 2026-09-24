@@ -675,7 +675,8 @@ class _Card extends ConsumerWidget {
                 onPressed: () => _ask(
                   context,
                   ref,
-                  promotion.merchantId,
+                  // A shop's own list holds only its own, which always name it.
+                  promotion.merchantId ?? '',
                   existing: promotion,
                 ),
                 icon: const Icon(Icons.edit_outlined, size: Sizes.iconSm),
