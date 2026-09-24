@@ -82,6 +82,12 @@ export const INTENT_WORDS = Object.freeze({
   delay: 'late',
   delayed: 'late',
   where: 'late',
+  مستني: 'late',
+  استني: 'late',
+  منتظر: 'late',
+  جا: 'late',
+  جه: 'late',
+  جي: 'late',
   // wrongItems
   ناقص: 'wrongItems',
   ناقصه: 'wrongItems',
@@ -90,6 +96,8 @@ export const INTENT_WORDS = Object.freeze({
   مغلوط: 'wrongItems',
   wrong: 'wrongItems',
   missing: 'wrongItems',
+  نسي: 'wrongItems',
+  نسيتو: 'wrongItems',
   // cancel
   الغي: 'cancel',
   الغاء: 'cancel',
@@ -114,6 +122,71 @@ export const INTENT_WORDS = Object.freeze({
   refund: 'money',
   cash: 'money',
   bill: 'money',
+  // quality
+  بارد: 'quality',
+  ساقع: 'quality',
+  وحش: 'quality',
+  مقرف: 'quality',
+  محروق: 'quality',
+  ني: 'quality',
+  نيء: 'quality',
+  بايظ: 'quality',
+  بايت: 'quality',
+  معفن: 'quality',
+  ريحه: 'quality',
+  طعم: 'quality',
+  مالح: 'quality',
+  ملح: 'quality',
+  cold: 'quality',
+  bad: 'quality',
+  burnt: 'quality',
+  taste: 'quality',
+  // change
+  اغير: 'change',
+  نغير: 'change',
+  تغيير: 'change',
+  اعدل: 'change',
+  تعديل: 'change',
+  ازود: 'change',
+  زود: 'change',
+  اضيف: 'change',
+  اشيل: 'change',
+  عنوان: 'change',
+  العنوان: 'change',
+  change: 'change',
+  address: 'change',
+  // howTo
+  دفع: 'howTo',
+  الدفع: 'howTo',
+  ادفع: 'howTo',
+  فيزا: 'howTo',
+  كارت: 'howTo',
+  كوبون: 'howTo',
+  الكوبون: 'howTo',
+  كود: 'howTo',
+  خصم: 'howTo',
+  رسوم: 'howTo',
+  pay: 'howTo',
+  coupon: 'howTo',
+  visa: 'howTo',
+  card: 'howTo',
+  // thanks
+  شكرا: 'thanks',
+  متشكر: 'thanks',
+  متشكرين: 'thanks',
+  تسلم: 'thanks',
+  مرسي: 'thanks',
+  thanks: 'thanks',
+  thank: 'thanks',
+  // hello
+  السلام: 'hello',
+  اهلا: 'hello',
+  ازيك: 'hello',
+  هاي: 'hello',
+  صباح: 'hello',
+  مساء: 'hello',
+  hi: 'hello',
+  hello: 'hello',
 });
 
 /**
@@ -123,15 +196,52 @@ export const INTENT_WORDS = Object.freeze({
 export const CONTEXT_WORDS = Object.freeze(new Set([
   'مش', 'عايز', 'عاوز', 'محتاج', 'ممكن', 'لسه', 'خلاص', 'دلوقتي', 'بقالي', 'من',
   'ليه', 'ازاي', 'ايه', 'هو', 'انا', 'حد', 'حاجه', 'تاني', 'كمان', 'برضه',
-  'الطلب', 'طلب', 'طلبي', 'الاوردر', 'اوردر', 'الاكل', 'اكل', 'الوجبه', 'وجبه',
-  'صنف', 'اصناف', 'كميه', 'حته', 'ساندويتش', 'مشروب',
-  'المطعم', 'مطعم', 'المحل', 'الشيف', 'المطبخ',
-  'المندوب', 'مندوب', 'الدليفري', 'التوصيل', 'توصيل',
-  'بارد', 'ساقع', 'سخن', 'وحش', 'مقرف', 'حلو', 'كويس', 'نضيف', 'مقفول', 'مفتوح',
-  'مشكله', 'شكوي', 'زعلان', 'اسف', 'ساعه', 'ساعات', 'دقيقه', 'دقايق', 'يوم', 'النهارده',
-  'order', 'food', 'driver', 'delivery', 'restaurant', 'shop', 'cold', 'hot', 'bad',
-  'problem', 'help', 'please', 'still', 'not', 'why', 'when', 'how', 'item', 'items',
+  'الطلب', 'طلب', 'طلبي', 'الاوردر', 'اوردر', 'الاكل', 'اكل', 'الوجبه', 'وجبه', 'صنف',
+  'اصناف', 'كميه', 'حته', 'ساندويتش', 'مشروب', 'المطعم', 'مطعم', 'المحل', 'الشيف', 'المطبخ',
+  'المندوب', 'مندوب', 'الدليفري', 'التوصيل', 'توصيل', 'سخن', 'حلو', 'كويس', 'نضيف', 'مقفول',
+  'مفتوح', 'مشكله', 'شكوي', 'زعلان', 'اسف', 'ساعه', 'ساعات', 'دقيقه', 'دقايق', 'يوم',
+  'النهارده', 'order', 'food', 'driver', 'delivery', 'restaurant', 'shop', 'hot', 'problem', 'help',
+  'please', 'still', 'not', 'why', 'when', 'how', 'item', 'items',
 ]));
+
+/**
+ * What may come off the front and the back of a word the vocabulary does not know, once
+ * each — the port of `ZaatarClassifier.prefixes`/`suffixes`. «موصلش» is «وصل» under «م…ش»,
+ * «هيتأخر» is «تاخر» after «هي»; a vocabulary of whole words refused both. The whole word
+ * is always tried first, so «مطعم» stays a shop and never becomes «طعم».
+ */
+export const PREFIXES = Object.freeze(["", "و", "ف", "ب", "ل", "ال", "وال", "بال", "فال", "لل", "ه", "ح", "هي", "هت", "حي", "حت", "بي", "بت", "م", "ما", "ي", "ت", "ن", "ا"]);
+export const SUFFIXES = Object.freeze(["", "ش", "ت", "و", "ي", "ه", "ها", "هم", "ك", "كم", "نا", "لي", "لك", "ين", "وا", "تش", "وش", "يش", "ته", "تو", "وه"]);
+
+/** Which family answers a message that has more than one. */
+export const PRECEDENCE = Object.freeze(["cancel", "change", "wrongItems", "quality", "money", "howTo", "late", "thanks", "hello"]);
+
+function known(word) {
+  // Own properties only: `in` walks the prototype chain (see [reduceToExcerpt]).
+  return Object.hasOwn(INTENT_WORDS, word) || CONTEXT_WORDS.has(word);
+}
+
+/**
+ * The vocabulary word [token] is, whole or with one prefix and one suffix taken off —
+ * fewest letters first, prefixes and suffixes in their listed order — or null. A core
+ * under two letters never counts. What it returns is always a vocabulary word, so the
+ * excerpt built from it is still built out of the allowlist alone.
+ */
+export function vocabularyWord(token) {
+  if (!token) return null;
+  if (known(token)) return token;
+  for (let removed = 1; removed < token.length - 1; removed++) {
+    for (const p of PREFIXES) {
+      for (const s of SUFFIXES) {
+        if (p.length + s.length !== removed) continue;
+        if (!token.startsWith(p) || !token.endsWith(s)) continue;
+        const core = token.slice(p.length, token.length - s.length);
+        if (core.length >= 2 && known(core)) return core;
+      }
+    }
+  }
+  return null;
+}
 
 /** How many allowlisted words may leave. Enough to tell «مش وصل» from «وصل بارد». */
 export const MAX_EXCERPT_WORDS = 12;
@@ -150,11 +260,13 @@ export function reduceToExcerpt(text) {
     if (!token) continue;
     // `Object.hasOwn`, never `in`: `in` walks the prototype chain, so «constructor»,
     // «toString» and «hasOwnProperty» are all "in" any object literal and were being
-    // forwarded to Google as though they were words about food.
-    if (!Object.hasOwn(INTENT_WORDS, token) && !CONTEXT_WORDS.has(token)) continue;
-    if (seen.has(token)) continue;
-    seen.add(token);
-    kept.push(token);
+    // forwarded to Google as though they were words about food. [vocabularyWord] asks
+    // the same way, and hands back the vocabulary's own spelling — never the token.
+    const word = vocabularyWord(token);
+    if (word === null) continue;
+    if (seen.has(word)) continue;
+    seen.add(word);
+    kept.push(word);
     if (kept.length === MAX_EXCERPT_WORDS) break;
   }
   return kept.join(' ');
@@ -167,29 +279,35 @@ export function reduceToExcerpt(text) {
  * worth spending a model turn on, and [reduceToExcerpt] is what the model is given.
  */
 export function classifyLocally(text) {
-  const counts = new Map();
+  const found = new Set();
   for (const token of normalizeArabic(text).split(/[^\p{L}\p{N}]+/u)) {
+    const word = vocabularyWord(token);
     // Own properties only. A bare «constructor» used to read `Object` off the prototype
     // chain and return it as the topic — truthy, so «decisive», and a function, so
     // `JSON.stringify` dropped the key entirely and the phone got a reply with no intent
     // in it at all.
-    if (!Object.hasOwn(INTENT_WORDS, token)) continue;
-    const topic = INTENT_WORDS[token];
-    counts.set(topic, (counts.get(topic) ?? 0) + 1);
+    if (word === null || !Object.hasOwn(INTENT_WORDS, word)) continue;
+    found.add(INTENT_WORDS[word]);
   }
-  if (counts.size === 0) return { topic: 'other', decisive: false };
+  if (found.size === 0) return { topic: 'other', decisive: false };
 
-  // Two different families in one message — «الطلب اتأخر وعاوز ألغي» — is exactly the
-  // ambiguity a model is for. One family, however many times, is not a guess.
-  if (counts.size > 1) return { topic: 'other', decisive: false };
+  // Two different families in one message is the ambiguity a model is for, so it is not
+  // decisive — but it is not «حاجة تانية» either: without a model it reads as the family
+  // that comes first in [PRECEDENCE].
+  if (found.size > 1) {
+    return { topic: PRECEDENCE.find((t) => found.has(t)) ?? 'other', decisive: false };
+  }
 
-  const topic = [...counts.keys()][0];
-  // Belt and braces: whatever the vocabulary comes to hold, nothing but one of the five
-  // leaves this function under the name of a topic.
+  const topic = [...found][0];
+  // Belt and braces: whatever the vocabulary comes to hold, nothing but a topic leaves
+  // this function under the name of one.
   return TOPICS.includes(topic)
     ? { topic, decisive: true }
     : { topic: 'other', decisive: false };
 }
 
-/** The five topics, and the only values the handler will ever return as an intent. */
-export const TOPICS = Object.freeze(['late', 'wrongItems', 'cancel', 'money', 'other']);
+/** The topics — exactly `HelpTopic` — and the only values the handler returns as one. */
+export const TOPICS = Object.freeze([
+  'late', 'wrongItems', 'cancel', 'money', 'other',
+  'quality', 'change', 'howTo', 'thanks', 'hello',
+]);

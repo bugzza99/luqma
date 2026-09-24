@@ -13,6 +13,8 @@ void main() {
     DateTime? acceptDeadlineAt,
     DateTime? deliveredAt,
     String? cancelReason,
+    int? prepMinutes,
+    List<Map<String, dynamic>> history = const [],
     OrderPricing pricing = const OrderPricing(
       subtotal: 15000,
       deliveryFee: 1500,
@@ -37,7 +39,17 @@ void main() {
         acceptDeadlineAt: acceptDeadlineAt,
         deliveredAt: deliveredAt,
         cancelReason: cancelReason,
+        prepMinutes: prepMinutes,
+        statusHistory: history,
       );
+
+  /// A history entry moving the order to [to], [ago] before [now].
+  Map<String, dynamic> moved(String to, Duration ago) => {
+        'from': 'placed',
+        'to': to,
+        'by': 'merchant',
+        'at': now.subtract(ago).toIso8601String(),
+      };
 
   group('late', () {
     test('a shop that has not answered yet, with time left, says how long is left', () {
@@ -61,15 +73,61 @@ void main() {
       expect(reply.actions, contains(HelpAction.cancelOrder));
     });
 
-    test('an order on the road offers the shop phone and a complaint, not cancelling', () {
+    // The owner, 2026-09-24: زعتر sent everybody to the team. An order that left twenty
+    // minutes ago is on time, and the answer is the time — not a complaint form.
+    test('an order just on the road says when it left, and asks nobody to complain', () {
       final reply = OrderHelper.answer(
         HelpTopic.late,
-        order(status: OrderStatus.outForDelivery),
+        order(
+          status: OrderStatus.outForDelivery,
+          history: [moved('outForDelivery', const Duration(minutes: 20))],
+        ),
         now,
       );
       expect(reply.text, contains('في الطريق'));
-      expect(reply.actions, containsAll([HelpAction.callShop, HelpAction.complain]));
+      expect(reply.text, contains('1:40'), reason: 'when it left');
+      expect(reply.actions, contains(HelpAction.callShop));
+      expect(reply.actions, isNot(contains(HelpAction.complain)));
       expect(reply.actions, isNot(contains(HelpAction.cancelOrder)));
+    });
+
+    test('an order on the road for a long time is worth the team', () {
+      final reply = OrderHelper.answer(
+        HelpTopic.late,
+        order(
+          status: OrderStatus.outForDelivery,
+          history: [moved('outForDelivery', const Duration(minutes: 50))],
+        ),
+        now,
+      );
+      expect(reply.actions, contains(HelpAction.complain));
+    });
+
+    test('an order being cooked says when it should be ready', () {
+      final reply = OrderHelper.answer(
+        HelpTopic.late,
+        order(
+          status: OrderStatus.preparing,
+          prepMinutes: 30,
+          history: [moved('accepted', const Duration(minutes: 10))],
+        ),
+        now,
+      );
+      expect(reply.text, contains('2:20'), reason: 'accepted 1:50 plus thirty minutes');
+      expect(reply.actions, isNot(contains(HelpAction.complain)));
+    });
+
+    test('an order well past the time the shop gave is worth the team', () {
+      final reply = OrderHelper.answer(
+        HelpTopic.late,
+        order(
+          status: OrderStatus.preparing,
+          prepMinutes: 20,
+          history: [moved('accepted', const Duration(minutes: 45))],
+        ),
+        now,
+      );
+      expect(reply.actions, contains(HelpAction.complain));
     });
 
     test('an order marked delivered that never came is a complaint straight away', () {
@@ -128,7 +186,82 @@ void main() {
     expect(reply.text, contains('20 ج'));
     expect(reply.text, contains('145 ج'));
     expect(reply.text, isNot(contains('14500')));
+    // The bill is the answer; before the food arrives there is nothing to dispute yet.
+    expect(reply.actions, isNot(contains(HelpAction.complain)));
+  });
+
+  test('money after delivery can still go to the team — the change may not have come back', () {
+    final reply = OrderHelper.answer(
+      HelpTopic.money,
+      order(status: OrderStatus.delivered),
+      now,
+    );
     expect(reply.actions, contains(HelpAction.complain));
+  });
+
+  // What زعتر answers by itself since 2026-09-24, without sending anybody to a person.
+  group('answered without the team', () {
+    test('thanks is thanked', () {
+      final reply = OrderHelper.answer(HelpTopic.thanks, order(), now);
+      expect(reply.text, contains('العفو'));
+      expect(reply.actions, [HelpAction.done]);
+    });
+
+    test('a greeting is greeted, with the order it is about', () {
+      final reply = OrderHelper.answer(HelpTopic.hello, order(), now);
+      expect(reply.text, contains('#42'));
+      expect(reply.actions, [HelpAction.done]);
+    });
+
+    test('how to pay, the coupon and the fee are explained', () {
+      final reply = OrderHelper.answer(HelpTopic.howTo, order(), now);
+      expect(reply.text, contains('كاش'));
+      expect(reply.text, contains('كوبون'));
+      expect(reply.actions, [HelpAction.done]);
+    });
+
+    test('a change before the shop answers is: cancel and order again', () {
+      final reply = OrderHelper.answer(HelpTopic.change, order(), now);
+      expect(reply.actions, contains(HelpAction.cancelOrder));
+      expect(reply.actions, isNot(contains(HelpAction.complain)));
+    });
+
+    test('a change once the kitchen has it is the shop to call', () {
+      final reply = OrderHelper.answer(
+        HelpTopic.change,
+        order(status: OrderStatus.preparing),
+        now,
+      );
+      expect(reply.actions, contains(HelpAction.callShop));
+      expect(reply.actions, isNot(contains(HelpAction.complain)));
+    });
+
+    test('food not right before it has arrived waits for it', () {
+      final reply = OrderHelper.answer(
+        HelpTopic.quality,
+        order(status: OrderStatus.preparing),
+        now,
+      );
+      expect(reply.actions, isNot(contains(HelpAction.complain)));
+    });
+  });
+
+  // The one that is a person's to settle: food that arrived wrong.
+  test('food that arrived not right can go to the team', () {
+    final reply = OrderHelper.answer(
+      HelpTopic.quality,
+      order(status: OrderStatus.delivered),
+      now,
+    );
+    expect(reply.text, contains('آسفين'));
+    expect(reply.actions, contains(HelpAction.complain));
+  });
+
+  test('a message nobody understood asks again before it asks the team', () {
+    final reply = OrderHelper.answer(HelpTopic.other, order(), now);
+    expect(reply.text, contains('بكلام تاني'));
+    expect(reply.actions, contains(HelpAction.complain),
+        reason: 'the team stays a way out, just not the first answer');
   });
 
   test('a missing item before the food has arrived asks to wait and check', () {

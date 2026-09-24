@@ -27,6 +27,13 @@ void main() {
       }
     });
 
+    // Since 2026-09-24 the server may choose any of the ten topics the phone answers.
+    test('reads each topic the server may now choose', () {
+      for (final topic in HelpTopic.values) {
+        expect(ZaatarVerdict.topicOf(topic.name), topic, reason: topic.name);
+      }
+    });
+
     test('reads anything outside the five as «حاجة تانية»', () {
       // A person is what handles those, so an intent nobody implemented is not a crash.
       for (final odd in ['refundEverything', '', 'LATE', 42, null]) {

@@ -320,7 +320,9 @@ class _OrderHelpSheetState extends ConsumerState<OrderHelpSheet> {
                         spacing: Space.sm,
                         runSpacing: Space.sm,
                         children: [
-                          for (final topic in HelpTopic.values)
+                          // The short menu. The rest — thanks, a greeting, how to pay,
+                          // changing the order — are read from what the customer types.
+                          for (final topic in OrderHelper.menu)
                             ActionChip(
                               key: OrderHelpSheet.topicKey(topic),
                               label: Text(OrderHelper.label(topic)),

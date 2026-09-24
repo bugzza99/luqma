@@ -1,5 +1,5 @@
 {
-  "README": "The one classification specification for «زعتر», as data. packages/luqma_core/lib/src/support/zaatar_classifier.dart and supabase/functions/zaatar/excerpt.js are both run against this file by their own suites, so a word added to one and not the other fails both. Topics are HelpTopic.",
+  "README": "The one classification specification for «زعتر», as data. packages/luqma_core/lib/src/support/zaatar_classifier.dart and supabase/functions/zaatar/excerpt.js are both run against this file by their own suites, so a word added to one and not the other fails both. Topics are HelpTopic. A word not in the vocabulary is tried once more with one prefix and one suffix from `prefixes`/`suffixes` taken off (fewest letters first), so «موصلش» reads as «وصل»; the whole word is always tried first, and a core under two letters never counts. More than one family is not decisive, and reads as the first of them in `precedence`.",
   "intentWords": {
     "اتاخر": "late",
     "تاخر": "late",
@@ -43,7 +43,75 @@
     "price": "money",
     "refund": "money",
     "cash": "money",
-    "bill": "money"
+    "bill": "money",
+    "مستني": "late",
+    "استني": "late",
+    "منتظر": "late",
+    "جا": "late",
+    "جه": "late",
+    "جي": "late",
+    "نسي": "wrongItems",
+    "نسيتو": "wrongItems",
+    "بارد": "quality",
+    "ساقع": "quality",
+    "وحش": "quality",
+    "مقرف": "quality",
+    "محروق": "quality",
+    "ني": "quality",
+    "نيء": "quality",
+    "بايظ": "quality",
+    "بايت": "quality",
+    "معفن": "quality",
+    "ريحه": "quality",
+    "طعم": "quality",
+    "مالح": "quality",
+    "ملح": "quality",
+    "cold": "quality",
+    "bad": "quality",
+    "burnt": "quality",
+    "taste": "quality",
+    "اغير": "change",
+    "نغير": "change",
+    "تغيير": "change",
+    "اعدل": "change",
+    "تعديل": "change",
+    "ازود": "change",
+    "زود": "change",
+    "اضيف": "change",
+    "اشيل": "change",
+    "عنوان": "change",
+    "العنوان": "change",
+    "change": "change",
+    "address": "change",
+    "دفع": "howTo",
+    "الدفع": "howTo",
+    "ادفع": "howTo",
+    "فيزا": "howTo",
+    "كارت": "howTo",
+    "كوبون": "howTo",
+    "الكوبون": "howTo",
+    "كود": "howTo",
+    "خصم": "howTo",
+    "رسوم": "howTo",
+    "pay": "howTo",
+    "coupon": "howTo",
+    "visa": "howTo",
+    "card": "howTo",
+    "شكرا": "thanks",
+    "متشكر": "thanks",
+    "متشكرين": "thanks",
+    "تسلم": "thanks",
+    "مرسي": "thanks",
+    "thanks": "thanks",
+    "thank": "thanks",
+    "السلام": "hello",
+    "اهلا": "hello",
+    "ازيك": "hello",
+    "هاي": "hello",
+    "صباح": "hello",
+    "مساء": "hello",
+    "hi": "hello",
+    "hello": "hello"
   },
   "contextWords": [
     "مش",
@@ -91,11 +159,7 @@
     "الدليفري",
     "التوصيل",
     "توصيل",
-    "بارد",
-    "ساقع",
     "سخن",
-    "وحش",
-    "مقرف",
     "حلو",
     "كويس",
     "نضيف",
@@ -117,9 +181,7 @@
     "delivery",
     "restaurant",
     "shop",
-    "cold",
     "hot",
-    "bad",
     "problem",
     "help",
     "please",
@@ -206,21 +268,21 @@
     },
     {
       "message": "الطلب اتأخر وعاوز ألغي",
-      "topic": "other",
+      "topic": "cancel",
       "decisive": false,
-      "note": "two families: the case a model is for"
+      "note": "two families: not decisive, and cancel comes first — a customer asking both wants the way out"
     },
     {
       "message": "wrong items and I want a refund",
-      "topic": "other",
+      "topic": "wrongItems",
       "decisive": false,
-      "note": "two families in English"
+      "note": "two families in English; the missing item comes before the money"
     },
     {
       "message": "السلام عليكم",
-      "topic": "other",
-      "decisive": false,
-      "note": "nothing in the vocabulary at all"
+      "topic": "hello",
+      "decisive": true,
+      "note": "a greeting is answered as one, not sent to the team"
     },
     {
       "message": "deliver to ahmed ali, 12 el bahr, edku",
@@ -260,7 +322,7 @@
     },
     {
       "message": "constructor الغي ناقص",
-      "topic": "other",
+      "topic": "cancel",
       "decisive": false,
       "note": "two real families, and «constructor» is not a third"
     },
@@ -287,6 +349,204 @@
       "topic": "other",
       "decisive": false,
       "note": "whole words, never substrings: «محترفين» contains «فين» and is not about a late order"
+    },
+    {
+      "message": "الأكل لسه موصلش",
+      "topic": "late",
+      "decisive": true,
+      "note": "the negative «م…ش» around «وصل»"
+    },
+    {
+      "message": "ماوصلش لحد دلوقتي",
+      "topic": "late",
+      "decisive": true,
+      "note": "«ما…ش» around «وصل»"
+    },
+    {
+      "message": "الطلب مجاش",
+      "topic": "late",
+      "decisive": true,
+      "note": "«مجاش» is «جا» under the negative"
+    },
+    {
+      "message": "هيتأخر كتير؟",
+      "topic": "late",
+      "decisive": true,
+      "note": "the future «هي» before «تاخر»"
+    },
+    {
+      "message": "اتأخرت ليه",
+      "topic": "late",
+      "decisive": true,
+      "note": "a trailing «ت» on «اتاخر»"
+    },
+    {
+      "message": "أنا مستني بقالي ساعة",
+      "topic": "late",
+      "decisive": true,
+      "note": ""
+    },
+    {
+      "message": "عايز ألغيه",
+      "topic": "cancel",
+      "decisive": true,
+      "note": "a trailing «ه» on «الغي»"
+    },
+    {
+      "message": "المطعم نسي البيبسي",
+      "topic": "wrongItems",
+      "decisive": true,
+      "note": ""
+    },
+    {
+      "message": "نسيوا الصوص",
+      "topic": "wrongItems",
+      "decisive": true,
+      "note": "the plural «وا» on «نسي»"
+    },
+    {
+      "message": "الأكل بارد",
+      "topic": "quality",
+      "decisive": true,
+      "note": "was a context word; the food itself is a topic now"
+    },
+    {
+      "message": "الفراخ محروقة",
+      "topic": "quality",
+      "decisive": true,
+      "note": ""
+    },
+    {
+      "message": "طعمه وحش",
+      "topic": "quality",
+      "decisive": true,
+      "note": "«طعمه» is «طعم» with its «ه»"
+    },
+    {
+      "message": "الأكل وصل بارد",
+      "topic": "quality",
+      "decisive": false,
+      "note": "two families: the food comes before the time"
+    },
+    {
+      "message": "عايز أغير العنوان",
+      "topic": "change",
+      "decisive": true,
+      "note": ""
+    },
+    {
+      "message": "ممكن أزود صنف",
+      "topic": "change",
+      "decisive": true,
+      "note": ""
+    },
+    {
+      "message": "بدفع ازاي",
+      "topic": "howTo",
+      "decisive": true,
+      "note": "«بدفع» is «دفع» with the present «ب»"
+    },
+    {
+      "message": "في فيزا؟",
+      "topic": "howTo",
+      "decisive": true,
+      "note": ""
+    },
+    {
+      "message": "الكوبون مش شغال",
+      "topic": "howTo",
+      "decisive": true,
+      "note": ""
+    },
+    {
+      "message": "دفعت 200 والباقي مرجعش",
+      "topic": "money",
+      "decisive": false,
+      "note": "«دفعت» and «الباقي»: the money comes before how to pay"
+    },
+    {
+      "message": "شكرا",
+      "topic": "thanks",
+      "decisive": true,
+      "note": "thanks is answered, not escalated"
+    },
+    {
+      "message": "تسلم ايدك",
+      "topic": "thanks",
+      "decisive": true,
+      "note": ""
+    },
+    {
+      "message": "صباح الخير الطلب اتأخر",
+      "topic": "late",
+      "decisive": false,
+      "note": "a greeting and a question: the question comes first"
+    },
+    {
+      "message": "مطعم",
+      "topic": "other",
+      "decisive": false,
+      "note": "a whole word in the vocabulary is itself: «مطعم» must not lose its «م» and become «طعم»"
     }
+  ],
+  "prefixes": [
+    "",
+    "و",
+    "ف",
+    "ب",
+    "ل",
+    "ال",
+    "وال",
+    "بال",
+    "فال",
+    "لل",
+    "ه",
+    "ح",
+    "هي",
+    "هت",
+    "حي",
+    "حت",
+    "بي",
+    "بت",
+    "م",
+    "ما",
+    "ي",
+    "ت",
+    "ن",
+    "ا"
+  ],
+  "suffixes": [
+    "",
+    "ش",
+    "ت",
+    "و",
+    "ي",
+    "ه",
+    "ها",
+    "هم",
+    "ك",
+    "كم",
+    "نا",
+    "لي",
+    "لك",
+    "ين",
+    "وا",
+    "تش",
+    "وش",
+    "يش",
+    "ته",
+    "تو",
+    "وه"
+  ],
+  "precedence": [
+    "cancel",
+    "change",
+    "wrongItems",
+    "quality",
+    "money",
+    "howTo",
+    "late",
+    "thanks",
+    "hello"
   ]
 }

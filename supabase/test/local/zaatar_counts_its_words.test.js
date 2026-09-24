@@ -6,6 +6,10 @@ import { MAX_MESSAGE_CHARS, createHandler } from '../../functions/zaatar/handler
 import {
   CONTEXT_WORDS,
   INTENT_WORDS,
+  PRECEDENCE,
+  PREFIXES,
+  SUFFIXES,
+  TOPICS,
   classifyLocally,
   reduceToExcerpt,
 } from '../../functions/zaatar/excerpt.js';
@@ -268,6 +272,9 @@ function build({ supabase = fakeSupabase(), gemini = fakeGemini(geminiReplying('
 
 /** A message with two intent families in it: the only kind that reaches the model. */
 const AMBIGUOUS = 'الطلب اتأخر وعاوز ألغي';
+// Without a model it reads as the family first in PRECEDENCE (2026-09-24). It used to read
+// as «حاجة تانية», and «حاجة تانية» sent every such customer to a person.
+const AMBIGUOUS_LOCALLY = 'cancel';
 
 describe('zaatar the handler', () => {
   it('answers OPTIONS with the CORS headers instead of throwing', async () => {
@@ -391,7 +398,7 @@ describe('zaatar the handler', () => {
     });
 
     assert.equal(res.status, 200);
-    assert.deepEqual(await res.json(), { intent: 'other', source: 'local' });
+    assert.deepEqual(await res.json(), { intent: AMBIGUOUS_LOCALLY, source: 'local' });
   });
 
   it('keeps the local reading when the model answers with something else', async () => {
@@ -408,7 +415,7 @@ describe('zaatar the handler', () => {
     const res = await ask(handler, { body: { orderId: ORDER_ID, message: AMBIGUOUS } });
 
     assert.equal(res.status, 200);
-    assert.deepEqual(await res.json(), { intent: 'other', source: 'local' });
+    assert.deepEqual(await res.json(), { intent: AMBIGUOUS_LOCALLY, source: 'local' });
   });
 
   it('takes the chosen intent when the model answers properly', async () => {
@@ -427,7 +434,7 @@ describe('zaatar the handler', () => {
     const res = await ask(handler, { body: { orderId: ORDER_ID, message: AMBIGUOUS } });
 
     assert.equal(res.status, 200);
-    assert.deepEqual(await res.json(), { intent: 'other', source: 'local' });
+    assert.deepEqual(await res.json(), { intent: AMBIGUOUS_LOCALLY, source: 'local' });
     assert.equal(gemini.bodies.length, 0, 'the limit is refused before the model, not after');
   });
 
@@ -442,7 +449,7 @@ describe('zaatar the handler', () => {
       const res = await ask(handler, { body: { orderId: ORDER_ID, message: AMBIGUOUS } });
 
       assert.equal(res.status, 200);
-      assert.deepEqual(await res.json(), { intent: 'other', source: 'local' });
+      assert.deepEqual(await res.json(), { intent: AMBIGUOUS_LOCALLY, source: 'local' });
       assert.equal(
         gemini.bodies.length,
         0,
@@ -458,7 +465,7 @@ describe('zaatar the handler', () => {
     const res = await ask(handler, { body: { orderId: ORDER_ID, message: AMBIGUOUS } });
 
     assert.equal(res.status, 200);
-    assert.deepEqual(await res.json(), { intent: 'other', source: 'local' });
+    assert.deepEqual(await res.json(), { intent: AMBIGUOUS_LOCALLY, source: 'local' });
     assert.equal(gemini.bodies.length, 0);
   });
 
@@ -498,10 +505,10 @@ describe('zaatar the excerpt is an allowlist', () => {
   it('calls one family decisive and two families a question for the model', () => {
     assert.deepEqual(classifyLocally('الطلب اتأخر جداً'), { topic: 'late', decisive: true });
     assert.deepEqual(classifyLocally('الطلب اتأخر وعاوز ألغي'), {
-      topic: 'other',
+      topic: 'cancel',
       decisive: false,
     });
-    assert.deepEqual(classifyLocally('السلام عليكم'), { topic: 'other', decisive: false });
+    assert.deepEqual(classifyLocally('السلام عليكم'), { topic: 'hello', decisive: true });
   });
 
   // `token in INTENT_WORDS` walks the prototype chain, so every object in JavaScript
@@ -520,16 +527,16 @@ describe('zaatar the excerpt is an allowlist', () => {
     assert.deepEqual(classifyLocally('constructor'), { topic: 'other', decisive: false });
     assert.deepEqual(classifyLocally('constructor الغي'), { topic: 'cancel', decisive: true });
     assert.deepEqual(classifyLocally('constructor الغي ناقص'), {
-      topic: 'other',
+      topic: 'cancel',
       decisive: false,
     });
   });
 
-  it('never answers with a topic outside the five', () => {
+  it('never answers with a topic outside HelpTopic', () => {
     for (const message of CORPUS.cases.map((c) => c.message)) {
       const { topic } = classifyLocally(message);
       assert.ok(
-        ['late', 'wrongItems', 'cancel', 'money', 'other'].includes(topic),
+        TOPICS.includes(topic),
         `«${message}» produced ${String(topic)}`,
       );
     }
@@ -558,6 +565,18 @@ describe('zaatar one classification specification', () => {
         `«${message}»${note ? ` — ${note}` : ''}`,
       );
     }
+  });
+
+  it('carries exactly the affixes and the precedence in the shared corpus', () => {
+    assert.deepEqual([...PREFIXES], CORPUS.prefixes);
+    assert.deepEqual([...SUFFIXES], CORPUS.suffixes);
+    assert.deepEqual([...PRECEDENCE], CORPUS.precedence);
+  });
+
+  // A stem found inside a word is sent as the vocabulary's own spelling, never as what
+  // the customer typed: the excerpt stays an allowlist.
+  it('sends the vocabulary word a stem found, not the word typed', () => {
+    assert.equal(reduceToExcerpt('الأكل لسه موصلش'), 'الاكل لسه وصل');
   });
 
   it('carries exactly the vocabulary in the shared corpus', () => {

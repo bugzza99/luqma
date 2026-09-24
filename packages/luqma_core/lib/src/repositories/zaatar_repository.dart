@@ -31,13 +31,11 @@ class ZaatarVerdict {
         fromModel: json['source'] == 'model',
       );
 
-  static HelpTopic topicOf(Object? intent) => switch (intent) {
-        'late' => HelpTopic.late,
-        'wrongItems' => HelpTopic.wrongItems,
-        'cancel' => HelpTopic.cancel,
-        'money' => HelpTopic.money,
-        _ => HelpTopic.other,
-      };
+  /// Exact names only — «LATE» is not «late» — and anything else is «حاجة تانية».
+  static HelpTopic topicOf(Object? intent) => HelpTopic.values.firstWhere(
+        (topic) => topic.name == intent,
+        orElse: () => HelpTopic.other,
+      );
 
   @override
   bool operator ==(Object other) =>

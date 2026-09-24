@@ -49,6 +49,13 @@ void main() {
         (corpus['contextWords'] as List).cast<String>().toSet(),
       );
     });
+
+    test('the affixes and the precedence are exactly the corpus ones', () {
+      expect(ZaatarClassifier.prefixes, (corpus['prefixes'] as List).cast<String>());
+      expect(ZaatarClassifier.suffixes, (corpus['suffixes'] as List).cast<String>());
+      expect(ZaatarClassifier.precedence,
+          [for (final t in corpus['precedence'] as List) topicOf(t as String)]);
+    });
   });
 
   group('reading a message', () {
@@ -74,10 +81,12 @@ void main() {
       );
     });
 
-    test('two families are a question nobody on the phone can settle', () {
+    // Not decisive — the model may still settle it — but not «حاجة تانية» either, which
+    // sent every such message to a person. Without a model, the first in precedence.
+    test('two families are not decisive, and read as the one that comes first', () {
       expect(
         ZaatarClassifier.read('الطلب اتأخر وعاوز ألغي'),
-        const ZaatarReading(topic: HelpTopic.other, decisive: false),
+        const ZaatarReading(topic: HelpTopic.cancel, decisive: false),
       );
     });
 

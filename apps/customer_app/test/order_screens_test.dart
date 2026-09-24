@@ -889,6 +889,38 @@ void main() {
       expect(zaatar.calls.single.message, 'الأكل فين؟');
     });
 
+    // The owner, 2026-09-24: «زعتر غبي ومش بيفهم وديماً عاوز المستخدم يتواصل مع الفريق».
+    testWidgets('offers the short menu of topics, not every topic there is',
+        (tester) async {
+      await pump(tester, const OrderScreen(orderId: 'o1'), seed: [order()]);
+      await reveal(tester, find.byKey(OrderScreen.issueKey));
+      await tester.tap(find.byKey(OrderScreen.issueKey));
+      await tester.pumpAndSettle();
+
+      for (final topic in OrderHelper.menu) {
+        expect(find.byKey(OrderHelpSheet.topicKey(topic)), findsOneWidget,
+            reason: topic.name);
+      }
+      expect(find.byKey(OrderHelpSheet.topicKey(HelpTopic.thanks)), findsNothing);
+      expect(find.byKey(OrderHelpSheet.topicKey(HelpTopic.hello)), findsNothing);
+    });
+
+    testWidgets('thanks, even without a server, is thanked and not sent to the team',
+        (tester) async {
+      await pump(tester, const OrderScreen(orderId: 'o1'), seed: [order()]);
+      zaatar.failure = const OfflineFailure();
+      await reveal(tester, find.byKey(OrderScreen.issueKey));
+      await tester.tap(find.byKey(OrderScreen.issueKey));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(find.byKey(OrderHelpSheet.inputKey), 'شكرا يا زعتر');
+      await tester.tap(find.byKey(OrderHelpSheet.sendKey));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('العفو'), findsOneWidget);
+      expect(find.byKey(OrderHelpSheet.actionKey(HelpAction.complain)), findsNothing);
+    });
+
     testWidgets('the server topic and the offline topic draw the same sentence',
         (tester) async {
       // One answer specification. The Edge Function used to carry its own copy of these
