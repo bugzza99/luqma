@@ -204,7 +204,9 @@ Run from the repository root in PowerShell:
 ```powershell
 ./tool/run_smoke_tests.ps1
 ./tool/run_tests.ps1 -SkipCloud
-./tool/build-ci-apks.ps1
+./tool/build-ci-apks.ps1                 # all three CI-signed APK smokes
+./tool/build-ci-release.ps1 -App customer_app   # one app, as the CI matrix runs it
+./tool/build-aab.ps1                     # signed Play bundles -> build/aab
 ```
 
 With the dedicated test credentials installed under `supabase/.temp/`:

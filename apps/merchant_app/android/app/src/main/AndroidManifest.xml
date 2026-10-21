@@ -1,4 +1,5 @@
-﻿<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+﻿<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
     <!-- Declared here rather than relied on. The release build was getting INTERNET only
          because some dependency's own manifest happened to declare it and the merger
          unions them — `merchant_app` from `firebase_messaging`, the other two from a
@@ -10,6 +11,12 @@
          showed it. -->
     <uses-permission android:name="android.permission.INTERNET"/>
 
+    <!-- MapLibre's AAR declares both location permissions. This app never asks for the
+         device's location either: the map is a shop pin, not "where am I". The merger
+         removes them so the Play Data safety answer and the binary say the same thing. -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" tools:node="remove" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" tools:node="remove" />
+
 
     <!-- A new order has to reach a merchant who is not looking at the phone. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
@@ -17,9 +24,10 @@
          kitchen does not have to unlock anything to see what came in. -->
     <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
     <uses-permission android:name="android.permission.VIBRATE" />
-    <!-- Battery optimisation kills the connection this app exists for. The prompt is
-         part of onboarding a merchant, not something to ask for at random. -->
-    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <!-- Battery optimisation kills the connection this app exists for. The declaration
+         used to sit here, but no screen ever asked for it: a permission whose prompt was
+         never written. Play treats it as restricted, so it is gone until a screen really
+         requests it and the Console declaration exists. -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <application

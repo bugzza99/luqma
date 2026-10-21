@@ -23,7 +23,7 @@ concurrency:
 
 jobs:
   local:
-    name: Local checks and release APK smoke
+    name: Local checks (analysis, suites and smoke)
     runs-on: windows-latest
     timeout-minutes: 45
     steps:
@@ -63,9 +63,9 @@ jobs:
       # enum failing to compile in a file nobody touched.
       #
       # It runs here rather than inside a script because every step below compiles Dart:
-      # the smoke checks, the suites, and the release APKs. This was the release gate's
-      # own bug — it failed on every push, for the same reason, whatever the push
-      # contained, which is the state in which a gate stops being read.
+      # the smoke checks and the suites. This was the release gate's own bug — it failed
+      # on every push, for the same reason, whatever the push contained, which is the
+      # state in which a gate stops being read.
       - name: Generate code
         shell: pwsh
         run: |
@@ -89,9 +89,64 @@ jobs:
       - name: Analyze, unit, widget and PGlite suites
         shell: pwsh
         run: ./tool/run_tests.ps1 -SkipCloud
-      - name: Build all release-mode APKs and scan secrets
+
+  # The artifact smoke used to be the last step of `local`, and it is the step the
+  # scheduled gate died on: from 17 to 21 October every run was cancelled at 45:29, with
+  # the suites already green, because three clean release builds did not fit beside them.
+  # A gate that is always red is not a gate. One app per runner gives each artifact its
+  # own result and its own time ceiling, and the two Play apps produce their bundle in
+  # the same job that already paid for the Gradle cache.
+  artifacts:
+    name: Release artifact smoke (${{ matrix.app }})
+    runs-on: windows-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - app: customer_app
+            bundle: true
+          - app: merchant_app
+            bundle: true
+          - app: admin_app
+            bundle: false
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.44.4
+          channel: stable
+          cache: true
+      - name: Restore dependencies
         shell: pwsh
-        run: ./tool/build-ci-apks.ps1
+        run: flutter pub get
+      - name: Generate code for the app and its core
+        shell: pwsh
+        run: |
+          foreach ($package in @('packages/luqma_core', 'apps/${{ matrix.app }}')) {
+            Push-Location $package
+            try {
+              dart run build_runner build --delete-conflicting-outputs
+              if ($LASTEXITCODE -ne 0) { throw "$package failed to generate" }
+            } finally { Pop-Location }
+          }
+          Push-Location packages/luqma_core
+          try {
+            flutter gen-l10n
+            if ($LASTEXITCODE -ne 0) { throw 'gen-l10n failed' }
+          } finally { Pop-Location }
+      - name: Build release APK and read its manifest
+        shell: pwsh
+        run: ./tool/build-ci-release.ps1 -App ${{ matrix.app }}
+      - name: Build release app bundle
+        if: matrix.bundle
+        shell: pwsh
+        run: ./tool/build-ci-release.ps1 -App ${{ matrix.app }} -Bundle
 
   cloud:
     name: Dedicated Supabase cloud suites

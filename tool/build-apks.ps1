@@ -1,4 +1,4 @@
-param([string]$Only)
+param([string]$Only, [string]$PublishableKey)
 
 # Builds the three release APKs, with every dart-define they need.
 #
@@ -9,76 +9,20 @@ param([string]$Only)
 #
 #   powershell -ExecutionPolicy Bypass -File tool\build-apks.ps1
 #
-# The anon key is fetched from the linked project rather than pasted. It is public by
-# design — it is what every phone carries, and RLS is what actually protects the data —
-# but fetching it means it cannot go stale here and cannot be typed wrong.
+# The key is fetched from the linked project rather than pasted. It is public by design
+# — it is what every phone carries, and RLS is what actually protects the data — but
+# fetching it means it cannot go stale here and cannot be typed wrong.
+#
+# The parse and the release checks live in release-common.ps1, shared with the App Bundle
+# build. They are not copied here: the parse once shipped every key in the project inside
+# an APK, and the scan is the only thing that noticed.
 
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
-$ref  = 'vqcivwdoekyfqhfmnuos'
+. (Join-Path $PSScriptRoot 'release-common.ps1')
 
-# The Sentry DSN. Public by design too — it ships inside every APK and can only be used
-# to *send* events, never to read them. Compiled in rather than left to a flag so a
-# release build cannot quietly go un-instrumented.
-$dsn = 'https://2271d9cf126307f61a8f17bf4ceab890@o4511984137994240.ingest.de.sentry.io/4511984143695952'
-
-Write-Host "Fetching the publishable key from $ref…"
-
-# ErrorActionPreference is relaxed around this one call on purpose. The Supabase CLI
-# writes its "a new version is available" notice to stderr, and Windows PowerShell wraps
-# any native stderr line in an ErrorRecord — which under 'Stop' kills the script over a
-# version banner. The exit code is what actually says whether it worked.
-$keys = $null
-try {
-  $ErrorActionPreference = 'Continue'
-  $keys = (npx supabase projects api-keys --project-ref $ref --output json 2>$null) | Out-String
-} finally {
-  $ErrorActionPreference = 'Stop'
-}
-
-# The `sb_publishable_…` key, not the legacy `anon` JWT.
-#
-# Both are public and both work. The difference is what happens when one has to be
-# killed: the legacy `anon` and `service_role` keys share the project's single JWT
-# secret, so revoking either means rotating that secret and invalidating both — every
-# installed app stops at once. The new keys are revoked one at a time.
-#
-# Matched by prefix rather than by name: the API returns two keys called `default`, one
-# publishable and one secret, and picking by name would be a coin toss between the key
-# every phone carries and the key that bypasses every policy in the database.
-# `@(…)` around the parse, and it is the whole bug this script once shipped.
-#
-# Windows PowerShell 5.1 hands `ConvertFrom-Json`'s array to the pipeline as ONE object.
-# `Where-Object { $_.api_key -like '…' }` then tests the *array* of every api_key at
-# once — which passes, because one of them matches — and `.api_key` on what comes back
-# is every key in the project, joined.
-#
-# The earlier version selected by `$_.name -eq 'anon'` and had exactly the same shape, so
-# the value it handed to `--dart-define` was all four keys at once. Two things followed,
-# and it took a night to connect them: the apps carried a key nobody meant to ship — the
-# production `service_role` — and they could not talk to Supabase at all, because the key
-# they authenticated with was four keys in a trench coat.
-#
-# So the parse is forced to enumerate, and the result is checked for being one string of
-# the right shape. A guess about a pipeline is not something to ship a key on.
-$parsed = @($keys | ConvertFrom-Json | ForEach-Object { $_ })
-$publishable = @($parsed | Where-Object { $_.api_key -like 'sb_publishable_*' })[0].api_key
-
-if ($publishable -isnot [string]) {
-  throw ("Reading the publishable key from $ref gave a " +
-         "$($publishable.GetType().Name) instead of one string. Refusing to build: " +
-         "that is how every key in the project ends up inside an APK.")
-}
-if ($publishable -notlike 'sb_publishable_*') {
-  throw ("Could not read a publishable key from $ref. Is the CLI logged in " +
-         "(npx supabase login), and does the project have the new API keys enabled?")
-}
-
-$defines = @(
-  "--dart-define=LUQMA_SUPABASE_URL=https://$ref.supabase.co",
-  "--dart-define=LUQMA_SUPABASE_PUBLISHABLE_KEY=$publishable",
-  "--dart-define=LUQMA_SENTRY_DSN=$dsn"
-)
+$publishable = if ($PublishableKey) { $PublishableKey } else { Get-LuqmaPublishableKey }
+$defines = Get-LuqmaReleaseDefines -PublishableKey $publishable
 
 $outDir = Join-Path $root 'apks'
 New-Item -ItemType Directory -Force -Path $outDir | Out-Null
@@ -106,6 +50,35 @@ if ($Only) {
   if ($targets.Count -eq 0) {
     throw "No app called '$Only'. Use customer, merchant or admin."
   }
+}
+
+# The application ids are permanent once published, and every deep link, every Play
+# listing and every installed copy is keyed on them. Reading them back from the APK is
+# the check that the manifest merger did not rename anything on the way through.
+$applicationIds = @{
+  customer_app = 'com.luqma.customer'
+  merchant_app = 'com.luqma.merchant'
+  admin_app    = 'com.luqma.admin'
+}
+
+# MapLibre's AAR declares both location permissions even though neither app asks for the
+# device's location: the map centers on the chosen zone and the marker is placed by hand.
+# The app manifests remove them at the merger; this list makes the removal provable, and
+# fails the build if a dependency quietly puts them back.
+#
+# MerchantApp also drops `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`: it was declared but no
+# screen ever asked for it, and Play treats it as a restricted permission.
+$forbiddenPermissions = @{
+  customer_app = @(
+    'android.permission.ACCESS_FINE_LOCATION',
+    'android.permission.ACCESS_COARSE_LOCATION'
+  )
+  merchant_app = @(
+    'android.permission.ACCESS_FINE_LOCATION',
+    'android.permission.ACCESS_COARSE_LOCATION',
+    'android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS'
+  )
+  admin_app = @()
 }
 
 foreach ($app in $targets) {
@@ -136,19 +109,15 @@ foreach ($app in $targets) {
     # in the database — every address, every phone number, and the ability to delete all
     # of it. It happened here, and nothing in the build said a word.
     #
-    # So the build reads its own output. A key whose payload says `service_role` fails
-    # the build rather than reaching `apks/`.
-    $blob = [IO.File]::ReadAllText($built, [Text.Encoding]::ASCII)
-    foreach ($jwt in ([regex]'eyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{20,}').Matches($blob)) {
-      $payload = $jwt.Value.Split('.')[1].Replace('-', '+').Replace('_', '/')
-      switch ($payload.Length % 4) { 2 { $payload += '==' } 3 { $payload += '=' } }
-      try { $json = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($payload)) }
-      catch { continue }
-      if ($json -match '"role"\s*:\s*"service_role"') {
-        throw ("$app embeds a service_role key. It bypasses every policy in the database, " +
-               "and an APK is a file anybody can open. Rotate that key, then build again.")
-      }
-    }
+    # So the build reads its own output. `Assert-NoPrivilegedKeys` opens the archive and
+    # reads every entry — the first scan read the APK as one text blob and only worked
+    # while the interesting entry happened to be stored.
+    Assert-NoPrivilegedKeys $built
+
+    # The manifest is read back from the APK, not from the Gradle file: merged permissions
+    # are what Play sees, and MapLibre's location pair used to arrive without a line in
+    # any manifest this repository owns.
+    Test-ReleaseApk -Path $built -ApplicationId $applicationIds[$app] -ForbiddenPermissions $forbiddenPermissions[$app] -MinimumTargetSdk 36 | Out-Null
 
     $name  = $app -replace '_app$', ''
     Copy-Item $built (Join-Path $outDir "luqma-$name.apk") -Force

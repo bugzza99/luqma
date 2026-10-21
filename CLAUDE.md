@@ -22,13 +22,15 @@ three chances to drop one — and a dropped one is silent. A build with no
 `LUQMA_SENTRY_DSN` reports nothing and looks identical to one that has it:
 
 ```
-powershell -ExecutionPolicy Bypass -File tool\build-apks.ps1
+powershell -ExecutionPolicy Bypass -File tool\build-apks.ps1   # signed APKs -> apks\
+powershell -ExecutionPolicy Bypass -File tool\build-aab.ps1    # Play bundles -> build\aab\
 ```
 
-It fetches the anon key from the linked project rather than having it pasted, carries the
-Sentry DSN, builds arm64-only split APKs for all three apps, and drops them in `apks/`.
-Both values are public by design — the anon key is what every phone carries and RLS is
-what protects the data, and a Sentry DSN can only *send* events, never read them.
+Both fetch the publishable key from the linked project rather than having it pasted, carry
+the Sentry DSN, and build arm64-only. `build-aab.ps1` makes the two bundles Google Play
+accepts — customer and merchant. AdminApp is the direct-APK app and deliberately has no
+bundle. Both values are public by design — the publishable key is what every phone carries
+and RLS is what protects the data, and a Sentry DSN can only *send* events, never read them.
 flutter build apk --dart-define=LUQMA_SUPABASE_URL=https://vqcivwdoekyfqhfmnuos.supabase.co \
   --dart-define=LUQMA_SUPABASE_PUBLISHABLE_KEY=<sb_publishable_..., supabase projects api-keys>
 ```

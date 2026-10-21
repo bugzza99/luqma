@@ -38,6 +38,10 @@ graphify-out/.graphify_*
 .DS_Store
 Thumbs.db
 
+# Kotlin's build cache. Created by the Android Gradle plugin on the first build; it is
+# not source and was showing up as an untracked directory after every release build.
+**/.kotlin/
+
 # Built APKs handed to the owner for testing. Rebuilt on demand, never reviewed.
 apks/
 

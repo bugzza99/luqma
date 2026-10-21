@@ -1,4 +1,5 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
     <!-- Declared here rather than relied on. The release build was getting INTERNET only
          because some dependency's own manifest happened to declare it and the merger
          unions them — `merchant_app` from `firebase_messaging`, the other two from a
@@ -9,6 +10,13 @@
          this in the debug and profile manifests alone, which is why `flutter run` never
          showed it. -->
     <uses-permission android:name="android.permission.INTERNET"/>
+
+    <!-- MapLibre's AAR declares both location permissions. This app never asks for the
+         device's location: the address screen centers the map on the chosen zone and the
+         marker is placed by hand. A permission nobody uses becomes a Data safety answer
+         that disagrees with the binary, so the merger removes what the library added. -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" tools:node="remove" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" tools:node="remove" />
 
     <!-- Three messages reach a customer: their order was accepted, it left the shop, or
          it was cancelled. Without this, Android 13 and up shows none of them and there
