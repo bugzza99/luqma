@@ -65,6 +65,60 @@ void main() {
         expect(configFrom({}).supportWhatsapp, '');
       });
     });
+
+    group('privacy policies', () {
+      test('each app falls back to its own compiled page', () {
+        final config = configFrom({});
+
+        expect(
+          config.privacyUrlFor(LuqmaApp.customer),
+          Uri.parse('https://luqma-gules.vercel.app/privacy'),
+        );
+        expect(
+          config.privacyUrlFor(LuqmaApp.merchant),
+          Uri.parse('https://luqma-gules.vercel.app/privacy/partner'),
+        );
+        expect(config.privacyUrlFor(LuqmaApp.admin), isNull);
+      });
+
+      test(
+        'a configured URL replaces its own app and leaves the other alone',
+        () {
+          final config = configFrom({
+            'privacy_policy_url': 'https://example.test/customer-policy',
+            'partner_privacy_policy_url': 'https://example.test/partner-policy',
+          });
+
+          expect(
+            config.privacyUrlFor(LuqmaApp.customer),
+            Uri.parse('https://example.test/customer-policy'),
+          );
+          expect(
+            config.privacyUrlFor(LuqmaApp.merchant),
+            Uri.parse('https://example.test/partner-policy'),
+          );
+        },
+      );
+
+      test(
+        'a malformed remote URL falls back instead of making a dead row',
+        () {
+          final config = configFrom({
+            'privacy_policy_url': 'not a url',
+            'partner_privacy_policy_url': ' ',
+          });
+
+          expect(
+            config.privacyUrlFor(LuqmaApp.customer),
+            Uri.parse('https://luqma-gules.vercel.app/privacy'),
+          );
+          expect(
+            config.privacyUrlFor(LuqmaApp.merchant),
+            Uri.parse('https://luqma-gules.vercel.app/privacy/partner'),
+          );
+        },
+      );
+    });
   });
 
   group('bad values never reach the app', () {

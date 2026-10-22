@@ -26,6 +26,7 @@ void main() {
     ),
     Failure? failure,
     String? supportWhatsapp,
+    String? privacyPolicyUrl,
     bool phoneCanOpenLinks = true,
     // What `main()` reads off the package. Set here so the footer is exercised the way
     // it ships rather than against the empty default.
@@ -47,14 +48,18 @@ void main() {
     themes = FakeThemeModeStore();
     addressRepo = FakeAddressRepository(
       seed: {
-        if (signedInAs != null && addresses.isNotEmpty) signedInAs.uid: addresses,
+        if (signedInAs != null && addresses.isNotEmpty)
+          signedInAs.uid: addresses,
       },
     );
     // `AppConfig` starts on the compiled-in defaults; nothing reads the fetcher until
     // somebody refreshes, so a value handed to the fake alone would never be seen.
-    final config = RemoteConfigService(FakeConfigFetcher({
-      'support_whatsapp': ?supportWhatsapp,
-    }));
+    final config = RemoteConfigService(
+      FakeConfigFetcher({
+        'support_whatsapp': ?supportWhatsapp,
+        'privacy_policy_url': ?privacyPolicyUrl,
+      }),
+    );
     await config.refresh();
 
     await tester.pumpWidget(
@@ -62,10 +67,12 @@ void main() {
         overrides: [
           authServiceProvider.overrideWithValue(auth),
           addressRepositoryProvider.overrideWithValue(addressRepo),
-          profileRepositoryProvider
-              .overrideWithValue(profiles ?? FakeProfileRepository()),
-          geographyRepositoryProvider
-              .overrideWithValue(FakeGeographyRepository(zones: zones)),
+          profileRepositoryProvider.overrideWithValue(
+            profiles ?? FakeProfileRepository(),
+          ),
+          geographyRepositoryProvider.overrideWithValue(
+            FakeGeographyRepository(zones: zones),
+          ),
           externalLinksProvider.overrideWithValue(links),
           remoteConfigServiceProvider.overrideWithValue(config),
           appVersionProvider.overrideWithValue(appVersion),
@@ -78,8 +85,9 @@ void main() {
           supportedLocales: LuqmaStrings.supportedLocales,
           home: Builder(
             builder: (context) => MediaQuery(
-              data: MediaQuery.of(context)
-                  .copyWith(disableAnimations: reducedMotion),
+              data: MediaQuery.of(
+                context,
+              ).copyWith(disableAnimations: reducedMotion),
               child: const Directionality(
                 textDirection: TextDirection.rtl,
                 child: AccountScreen(),
@@ -130,8 +138,9 @@ void main() {
 
     // The avatar is drawn from the name rather than fetched — a network round-trip is
     // the one thing this screen would otherwise wait on.
-    testWidgets('the profile card carries an avatar built from the name',
-        (tester) async {
+    testWidgets('the profile card carries an avatar built from the name', (
+      tester,
+    ) async {
       await pump(tester);
 
       expect(
@@ -143,8 +152,9 @@ void main() {
       );
     });
 
-    testWidgets('the addresses are on the screen, not behind a tile',
-        (tester) async {
+    testWidgets('the addresses are on the screen, not behind a tile', (
+      tester,
+    ) async {
       await pump(
         tester,
         addresses: const [
@@ -170,8 +180,9 @@ void main() {
 
     // Production change that fails this: drawing every address card the same, or dropping
     // the pill — the default is the one an order actually goes to.
-    testWidgets('the default address is outlined and pilled, the rest plain',
-        (tester) async {
+    testWidgets('the default address is outlined and pilled, the rest plain', (
+      tester,
+    ) async {
       await pump(
         tester,
         addresses: const [
@@ -225,8 +236,9 @@ void main() {
     });
 
     // Production change that fails this: making the plain card display-only.
-    testWidgets('tapping a plain address card promotes it to the default',
-        (tester) async {
+    testWidgets('tapping a plain address card promotes it to the default', (
+      tester,
+    ) async {
       await pump(
         tester,
         addresses: const [
@@ -254,8 +266,9 @@ void main() {
 
     // Production change that fails this: `color: colors.hairline` on the dashed outline,
     // or a null handler on the button.
-    testWidgets('أضف عنوان uses the strong outline and opens the editor',
-        (tester) async {
+    testWidgets('أضف عنوان uses the strong outline and opens the editor', (
+      tester,
+    ) async {
       await pump(tester);
       await reveal(tester, find.byKey(AccountScreen.addAddressKey));
 
@@ -317,34 +330,33 @@ void main() {
       expect(find.byKey(AccountScreen.signInKey), findsOneWidget);
     });
 
-    testWidgets('account deletion explains the retained financial record',
-        (tester) async {
+    testWidgets('account deletion explains the retained financial record', (
+      tester,
+    ) async {
       final profiles = FakeProfileRepository();
       await pump(tester, profiles: profiles);
-      await tester.scrollUntilVisible(
-        find.byKey(AccountScreen.deleteAccountKey),
-        200,
-      );
+      await reveal(tester, find.byKey(AccountScreen.deleteAccountKey));
 
       await tester.tap(find.byKey(AccountScreen.deleteAccountKey));
       await tester.pumpAndSettle();
 
       expect(find.textContaining('سجل الطلبات هيفضل محفوظ'), findsOneWidget);
       expect(find.textContaining('اسمك ورقمك هيتشالوا منه'), findsOneWidget);
-      expect(find.textContaining('حساب جديد من غير أي تاريخ قديم'), findsOneWidget);
+      expect(
+        find.textContaining('حساب جديد من غير أي تاريخ قديم'),
+        findsOneWidget,
+      );
       expect(find.byKey(AccountScreen.confirmDeleteAccountKey), findsOneWidget);
       expect(auth.identity, isNotNull);
       expect(profiles.accountDeleted, false);
     });
 
-    testWidgets('confirming permanently deletes and returns to signed out',
-        (tester) async {
+    testWidgets('confirming permanently deletes and returns to signed out', (
+      tester,
+    ) async {
       final profiles = FakeProfileRepository();
       await pump(tester, profiles: profiles);
-      await tester.scrollUntilVisible(
-        find.byKey(AccountScreen.deleteAccountKey),
-        200,
-      );
+      await reveal(tester, find.byKey(AccountScreen.deleteAccountKey));
 
       await tester.tap(find.byKey(AccountScreen.deleteAccountKey));
       await tester.pumpAndSettle();
@@ -358,14 +370,12 @@ void main() {
 
     // A9: the server will not delete an account whose order is still on its way. That
     // is not an error to retry; it is a sentence about what to do first.
-    testWidgets('an order still on its way is said in words, with no retry',
-        (tester) async {
+    testWidgets('an order still on its way is said in words, with no retry', (
+      tester,
+    ) async {
       final profiles = FakeProfileRepository(hasOrderOnItsWay: true);
       await pump(tester, profiles: profiles);
-      await tester.scrollUntilVisible(
-        find.byKey(AccountScreen.deleteAccountKey),
-        200,
-      );
+      await reveal(tester, find.byKey(AccountScreen.deleteAccountKey));
 
       await tester.tap(find.byKey(AccountScreen.deleteAccountKey));
       await tester.pumpAndSettle();
@@ -378,41 +388,44 @@ void main() {
       expect(auth.identity, isNotNull);
     });
 
-    testWidgets('a refused deletion uses the shared error view and keeps the session',
-        (tester) async {
-      final profiles = FakeProfileRepository(isStaffAccount: true);
-      await pump(tester, profiles: profiles);
-      await tester.scrollUntilVisible(
-        find.byKey(AccountScreen.deleteAccountKey),
-        200,
-      );
+    testWidgets(
+      'a refused deletion uses the shared error view and keeps the session',
+      (tester) async {
+        final profiles = FakeProfileRepository(isStaffAccount: true);
+        await pump(tester, profiles: profiles);
+        await reveal(tester, find.byKey(AccountScreen.deleteAccountKey));
 
-      await tester.tap(find.byKey(AccountScreen.deleteAccountKey));
-      await tester.pumpAndSettle();
-      await tester.tap(find.byKey(AccountScreen.confirmDeleteAccountKey));
-      await tester.pumpAndSettle();
+        await tester.tap(find.byKey(AccountScreen.deleteAccountKey));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(AccountScreen.confirmDeleteAccountKey));
+        await tester.pumpAndSettle();
 
-      expect(find.byKey(AccountScreen.deleteAccountErrorKey), findsOneWidget);
-      expect(auth.identity, isNotNull);
-      expect(profiles.accountDeleted, false);
-    });
+        expect(find.byKey(AccountScreen.deleteAccountErrorKey), findsOneWidget);
+        expect(auth.identity, isNotNull);
+        expect(profiles.accountDeleted, false);
+      },
+    );
 
     // The artboard has no delete control at all. It has to stay — Google Play requires
     // in-app deletion from any app that makes accounts — and it sits below sign-out,
     // quieter, because it is rarer and more final. Production change that fails this:
     // inheriting the artboard's absence, or moving it above sign-out.
-    testWidgets('delete-account survives the artboard, and sits below sign-out',
-        (tester) async {
-      await pump(tester);
-      await reveal(tester, find.byKey(AccountScreen.deleteAccountKey));
+    testWidgets(
+      'delete-account survives the artboard, and sits below sign-out',
+      (tester) async {
+        await pump(tester);
+        await reveal(tester, find.byKey(AccountScreen.deleteAccountKey));
 
-      expect(find.byKey(AccountScreen.deleteAccountKey), findsOneWidget);
-      expect(find.byKey(AccountScreen.signOutKey), findsOneWidget);
+        expect(find.byKey(AccountScreen.deleteAccountKey), findsOneWidget);
+        expect(find.byKey(AccountScreen.signOutKey), findsOneWidget);
 
-      final signOut = tester.getRect(find.byKey(AccountScreen.signOutKey));
-      final delete = tester.getRect(find.byKey(AccountScreen.deleteAccountKey));
-      expect(delete.top, greaterThan(signOut.bottom));
-    });
+        final signOut = tester.getRect(find.byKey(AccountScreen.signOutKey));
+        final delete = tester.getRect(
+          find.byKey(AccountScreen.deleteAccountKey),
+        );
+        expect(delete.top, greaterThan(signOut.bottom));
+      },
+    );
 
     // The blocks stagger in — the whole reason the redesign exists is the screen "did
     // not move". Production change that fails this: dropping the entrance wrappers.
@@ -428,7 +441,9 @@ void main() {
     // order-status row is a statement — a switch there would be a control that does
     // nothing every time the screen opens. Production change that fails this: rendering
     // the order-status row as a switch too.
-    testWidgets('order status is a statement, not a second switch', (tester) async {
+    testWidgets('order status is a statement, not a second switch', (
+      tester,
+    ) async {
       await pump(tester);
       await reveal(tester, find.byKey(AccountScreen.orderStatusNoticeKey));
 
@@ -453,13 +468,17 @@ void main() {
       // The label stays, and the card says in the artboard's own words why the row
       // cannot be turned off.
       expect(find.text('حالة الطلب'), findsOneWidget);
-      expect(find.textContaining('إشعارات حالة الطلب مبتتقفلش'), findsOneWidget);
+      expect(
+        find.textContaining('إشعارات حالة الطلب مبتتقفلش'),
+        findsOneWidget,
+      );
     });
   });
 
   group('signed out', () {
-    testWidgets('offers the way in, and nothing that needs an account',
-        (tester) async {
+    testWidgets('offers the way in, and nothing that needs an account', (
+      tester,
+    ) async {
       await pump(tester, signedInAs: null);
 
       expect(find.byKey(AccountScreen.signInKey), findsOneWidget);
@@ -469,11 +488,13 @@ void main() {
       expect(find.byKey(AccountScreen.orderStatusNoticeKey), findsNothing);
     });
 
-    testWidgets('only the sign-in card and the support card arrive with an entrance',
-        (tester) async {
-      await pump(tester, signedInAs: null);
-      expect(find.byType(LuqmaEntrance), findsNWidgets(2));
-    });
+    testWidgets(
+      'only the sign-in card and the support card arrive with an entrance',
+      (tester) async {
+        await pump(tester, signedInAs: null);
+        expect(find.byType(LuqmaEntrance), findsNWidgets(2));
+      },
+    );
 
     // Signing in is the default face of the card: most people opening it already have
     // an account, and the one who does not is one tap away.
@@ -498,9 +519,14 @@ void main() {
 
     // Never "invalid credentials", and never which of the two was wrong: telling
     // somebody the number exists but the password did not is a way to enumerate numbers.
-    testWidgets('a refused sign-in says so without saying which half',
-        (tester) async {
-      await pump(tester, signedInAs: null, failure: const WrongCredentialsFailure());
+    testWidgets('a refused sign-in says so without saying which half', (
+      tester,
+    ) async {
+      await pump(
+        tester,
+        signedInAs: null,
+        failure: const WrongCredentialsFailure(),
+      );
 
       await fillIn(tester);
       await tester.tap(find.byKey(AccountScreen.signInKey));
@@ -524,7 +550,9 @@ void main() {
     });
 
     // And a failure nobody can name is not the customer's password either.
-    testWidgets('an unknown failure is not called a wrong password', (tester) async {
+    testWidgets('an unknown failure is not called a wrong password', (
+      tester,
+    ) async {
       await pump(tester, signedInAs: null, failure: const PermissionFailure());
 
       await fillIn(tester);
@@ -536,8 +564,9 @@ void main() {
   });
 
   group('making an account', () {
-    testWidgets('the card turns into a sign-up and asks for a name',
-        (tester) async {
+    testWidgets('the card turns into a sign-up and asks for a name', (
+      tester,
+    ) async {
       await pump(tester, signedInAs: null);
 
       await tester.tap(find.byKey(AccountScreen.toggleModeKey));
@@ -546,8 +575,9 @@ void main() {
       expect(find.byKey(AccountScreen.nameKey), findsOneWidget);
     });
 
-    testWidgets('signing up signs you in, carrying the number you typed',
-        (tester) async {
+    testWidgets('signing up signs you in, carrying the number you typed', (
+      tester,
+    ) async {
       await pump(tester, signedInAs: null);
       await tester.tap(find.byKey(AccountScreen.toggleModeKey));
       await tester.pumpAndSettle();
@@ -557,35 +587,40 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(auth.identity?.name, 'سارة');
-      expect(auth.identity?.phone, '01099887766',
-          reason: 'the courier calls this, so it has to be what they typed');
+      expect(
+        auth.identity?.phone,
+        '01099887766',
+        reason: 'the courier calls this, so it has to be what they typed',
+      );
     });
 
     // The number is the identity. A second account on it is somebody who already has
     // history under that number — and should be signing in, not signing up.
-    testWidgets('a number that already has an account says to sign in instead',
-        (tester) async {
-      await pump(tester, signedInAs: null);
-      await tester.tap(find.byKey(AccountScreen.toggleModeKey));
-      await tester.pumpAndSettle();
+    testWidgets(
+      'a number that already has an account says to sign in instead',
+      (tester) async {
+        await pump(tester, signedInAs: null);
+        await tester.tap(find.byKey(AccountScreen.toggleModeKey));
+        await tester.pumpAndSettle();
 
-      await fillIn(tester, name: 'سارة');
-      await tester.tap(find.byKey(AccountScreen.signInKey));
-      await tester.pumpAndSettle();
-      await reveal(tester, find.byKey(AccountScreen.signOutKey));
-      await tester.tap(find.byKey(AccountScreen.signOutKey));
-      await tester.pumpAndSettle();
-      await tester.tap(find.byKey(AccountScreen.confirmSignOutKey));
-      await tester.pumpAndSettle();
+        await fillIn(tester, name: 'سارة');
+        await tester.tap(find.byKey(AccountScreen.signInKey));
+        await tester.pumpAndSettle();
+        await reveal(tester, find.byKey(AccountScreen.signOutKey));
+        await tester.tap(find.byKey(AccountScreen.signOutKey));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(AccountScreen.confirmSignOutKey));
+        await tester.pumpAndSettle();
 
-      await tester.tap(find.byKey(AccountScreen.toggleModeKey));
-      await tester.pumpAndSettle();
-      await fillIn(tester, name: 'شخص تاني');
-      await tester.tap(find.byKey(AccountScreen.signInKey));
-      await tester.pumpAndSettle();
+        await tester.tap(find.byKey(AccountScreen.toggleModeKey));
+        await tester.pumpAndSettle();
+        await fillIn(tester, name: 'شخص تاني');
+        await tester.tap(find.byKey(AccountScreen.signInKey));
+        await tester.pumpAndSettle();
 
-      expect(find.byKey(AccountScreen.errorKey), findsOneWidget);
-    });
+        expect(find.byKey(AccountScreen.errorKey), findsOneWidget);
+      },
+    );
   });
 
   group('what the form refuses before it asks the server', () {
@@ -602,8 +637,9 @@ void main() {
 
     // Only on the way in: an existing account's password was accepted once already, and
     // a minimum introduced afterwards must not lock it out.
-    testWidgets('a password too short to be one, when signing up',
-        (tester) async {
+    testWidgets('a password too short to be one, when signing up', (
+      tester,
+    ) async {
       await pump(tester, signedInAs: null);
       await tester.tap(find.byKey(AccountScreen.toggleModeKey));
       await tester.pumpAndSettle();
@@ -619,7 +655,9 @@ void main() {
     // A17. Seven characters went through here while every other door into the product —
     // the merchant's application, the admin's reset, both Edge Functions — asks for
     // eight, and the password is the only thing protecting an account with no OTP.
-    testWidgets('seven characters are not enough to sign up with', (tester) async {
+    testWidgets('seven characters are not enough to sign up with', (
+      tester,
+    ) async {
       await pump(tester, signedInAs: null);
       await tester.tap(find.byKey(AccountScreen.toggleModeKey));
       await tester.pumpAndSettle();
@@ -632,8 +670,9 @@ void main() {
       expect(find.textContaining('8 حروف على الأقل'), findsOneWidget);
     });
 
-    testWidgets('a short password is not refused when signing in',
-        (tester) async {
+    testWidgets('a short password is not refused when signing in', (
+      tester,
+    ) async {
       await pump(tester, signedInAs: null);
 
       await fillIn(tester, password: '123');
@@ -647,7 +686,9 @@ void main() {
   // B10. A forgotten password has exactly one way back — a person — and the sign-in card
   // never said so. Somebody locked out tried passwords until the rate limit caught them.
   group('a forgotten password', () {
-    testWidgets('the sign-in card says who to ask, and opens the line', (tester) async {
+    testWidgets('the sign-in card says who to ask, and opens the line', (
+      tester,
+    ) async {
       await pump(tester, signedInAs: null, supportWhatsapp: '01012345678');
 
       expect(find.byKey(AccountScreen.forgotPasswordKey), findsOneWidget);
@@ -657,15 +698,19 @@ void main() {
       expect(links.opened.single, Uri.parse('https://wa.me/201012345678'));
     });
 
-    testWidgets('with no number set it still says the way back, and opens nothing',
-        (tester) async {
-      await pump(tester, signedInAs: null);
+    testWidgets(
+      'with no number set it still says the way back, and opens nothing',
+      (tester) async {
+        await pump(tester, signedInAs: null);
 
-      expect(find.byKey(AccountScreen.forgotPasswordKey), findsOneWidget);
-      expect(find.textContaining('نسيت كلمة السر'), findsOneWidget);
-    });
+        expect(find.byKey(AccountScreen.forgotPasswordKey), findsOneWidget);
+        expect(find.textContaining('نسيت كلمة السر'), findsOneWidget);
+      },
+    );
 
-    testWidgets('and is not offered to somebody making an account', (tester) async {
+    testWidgets('and is not offered to somebody making an account', (
+      tester,
+    ) async {
       await pump(tester, signedInAs: null);
       await tester.tap(find.byKey(AccountScreen.toggleModeKey));
       await tester.pumpAndSettle();
@@ -686,7 +731,9 @@ void main() {
 
     // The row used to be drawn unconditionally over an empty `onTap`, which is how a
     // support line can look staffed and answer nobody.
-    testWidgets('and it actually opens the number the owner set', (tester) async {
+    testWidgets('and it actually opens the number the owner set', (
+      tester,
+    ) async {
       await pump(tester, supportWhatsapp: '01012345678');
       await reveal(tester, find.byKey(AccountScreen.contactKey));
 
@@ -696,8 +743,9 @@ void main() {
       expect(links.opened.single, Uri.parse('https://wa.me/201012345678'));
     });
 
-    testWidgets('a phone with no WhatsApp is told the number instead',
-        (tester) async {
+    testWidgets('a phone with no WhatsApp is told the number instead', (
+      tester,
+    ) async {
       // Silence after a tap is indistinguishable from a broken button, and the person
       // tapping it is already having a problem — which is why they are on this row.
       await pump(
@@ -718,6 +766,33 @@ void main() {
       // applies to its own links.
       await pump(tester);
       expect(find.byKey(AccountScreen.contactKey), findsNothing);
+    });
+
+    // Play requires the policy to be reachable from inside the app, and a signed-out
+    // person may need it most: it is where deletion and what was kept are explained.
+    testWidgets('the privacy policy is reachable signed in and signed out', (
+      tester,
+    ) async {
+      await pump(tester, signedInAs: null);
+      await reveal(tester, find.byKey(AccountScreen.privacyKey));
+      expect(find.byKey(AccountScreen.privacyKey), findsOneWidget);
+
+      await pump(tester);
+      await reveal(tester, find.byKey(AccountScreen.privacyKey));
+      expect(find.byKey(AccountScreen.privacyKey), findsOneWidget);
+    });
+
+    testWidgets('the privacy row opens the compiled page', (tester) async {
+      await pump(tester);
+      await reveal(tester, find.byKey(AccountScreen.privacyKey));
+
+      await tester.tap(find.byKey(AccountScreen.privacyKey));
+      await tester.pumpAndSettle();
+
+      expect(
+        links.opened.single,
+        Uri.parse('https://luqma-gules.vercel.app/privacy'),
+      );
     });
   });
 
@@ -742,12 +817,14 @@ void main() {
       expect(find.textContaining('نسخة'), findsOneWidget);
     });
 
-    testWidgets('and is shown signed out too, because support calls come from anybody',
-        (tester) async {
-      await pump(tester, signedInAs: null);
+    testWidgets(
+      'and is shown signed out too, because support calls come from anybody',
+      (tester) async {
+        await pump(tester, signedInAs: null);
 
-      expect(find.byKey(AccountScreen.versionKey), findsOneWidget);
-    });
+        expect(find.byKey(AccountScreen.versionKey), findsOneWidget);
+      },
+    );
 
     // A build that cannot say what it is says nothing, rather than a wrong number —
     // which is what a hardcoded second copy eventually becomes.
@@ -764,10 +841,15 @@ void main() {
     // there was none.
     testWidgets('is on for an account that never touched it', (tester) async {
       await pump(tester);
-      await tester.scrollUntilVisible(find.byKey(AccountScreen.marketingKey), 200);
+      await tester.scrollUntilVisible(
+        find.byKey(AccountScreen.marketingKey),
+        200,
+      );
 
       expect(
-        tester.widget<SwitchListTile>(find.byKey(AccountScreen.marketingKey)).value,
+        tester
+            .widget<SwitchListTile>(find.byKey(AccountScreen.marketingKey))
+            .value,
         true,
       );
     });
@@ -775,7 +857,10 @@ void main() {
     testWidgets('turning it off reaches the repository', (tester) async {
       final profiles = FakeProfileRepository();
       await pump(tester, profiles: profiles);
-      await tester.scrollUntilVisible(find.byKey(AccountScreen.marketingKey), 200);
+      await tester.scrollUntilVisible(
+        find.byKey(AccountScreen.marketingKey),
+        200,
+      );
 
       await tester.tap(find.byKey(AccountScreen.marketingKey));
       await tester.pumpAndSettle();
@@ -790,13 +875,18 @@ void main() {
         tester,
         profiles: FakeProfileRepository(writeFailure: const OfflineFailure()),
       );
-      await tester.scrollUntilVisible(find.byKey(AccountScreen.marketingKey), 200);
+      await tester.scrollUntilVisible(
+        find.byKey(AccountScreen.marketingKey),
+        200,
+      );
 
       await tester.tap(find.byKey(AccountScreen.marketingKey));
       await tester.pumpAndSettle();
 
       expect(
-        tester.widget<SwitchListTile>(find.byKey(AccountScreen.marketingKey)).value,
+        tester
+            .widget<SwitchListTile>(find.byKey(AccountScreen.marketingKey))
+            .value,
         true,
       );
     });
@@ -825,9 +915,13 @@ void main() {
     // of a phone's width — the option that needs explaining most, cut to a preposition.
     // It sat inside the offers row, which draws nothing until the marketing setting has
     // been read — so a failed read took the theme control away with it.
-    testWidgets('is there even when the offers setting cannot be read', (tester) async {
-      await pump(tester,
-          profiles: FakeProfileRepository(failure: const OfflineFailure()));
+    testWidgets('is there even when the offers setting cannot be read', (
+      tester,
+    ) async {
+      await pump(
+        tester,
+        profiles: FakeProfileRepository(failure: const OfflineFailure()),
+      );
       await reveal(tester, find.byKey(AccountScreen.appearanceKey));
 
       expect(find.byKey(AccountScreen.appearanceKey), findsOneWidget);
@@ -852,8 +946,11 @@ void main() {
           matching: find.byType(Text),
         ),
       );
-      expect(text.size.width, lessThanOrEqualTo(painted.size.width),
-          reason: 'the words fit inside the chip drawn around them');
+      expect(
+        text.size.width,
+        lessThanOrEqualTo(painted.size.width),
+        reason: 'the words fit inside the chip drawn around them',
+      );
     });
 
     testWidgets('starts on the phone’s own setting', (tester) async {
@@ -866,11 +963,15 @@ void main() {
       expect(chip.selected, isTrue);
     });
 
-    testWidgets('choosing dark changes the app and is remembered', (tester) async {
+    testWidgets('choosing dark changes the app and is remembered', (
+      tester,
+    ) async {
       await pump(tester);
       await reveal(tester, find.byKey(AccountScreen.appearanceKey));
 
-      await tester.tap(find.byKey(AccountScreen.appearanceOptionKey(ThemeMode.dark)));
+      await tester.tap(
+        find.byKey(AccountScreen.appearanceOptionKey(ThemeMode.dark)),
+      );
       await tester.pumpAndSettle();
 
       // On screen…
@@ -884,16 +985,21 @@ void main() {
 
     // A switch could not express this: somebody who pinned the app to light and then
     // wants it to follow their handset again needs a way back.
-    testWidgets('and going back to the phone’s setting is reachable',
-        (tester) async {
+    testWidgets('and going back to the phone’s setting is reachable', (
+      tester,
+    ) async {
       await pump(tester);
       await reveal(tester, find.byKey(AccountScreen.appearanceKey));
 
-      await tester.tap(find.byKey(AccountScreen.appearanceOptionKey(ThemeMode.light)));
+      await tester.tap(
+        find.byKey(AccountScreen.appearanceOptionKey(ThemeMode.light)),
+      );
       await tester.pumpAndSettle();
       expect(themes.mode, ThemeMode.light);
 
-      await tester.tap(find.byKey(AccountScreen.appearanceOptionKey(ThemeMode.system)));
+      await tester.tap(
+        find.byKey(AccountScreen.appearanceOptionKey(ThemeMode.system)),
+      );
       await tester.pumpAndSettle();
       expect(themes.mode, ThemeMode.system);
     });

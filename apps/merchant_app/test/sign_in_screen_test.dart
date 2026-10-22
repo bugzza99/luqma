@@ -31,6 +31,7 @@ class _RecordingAuth extends FakeAuthService {
 
 void main() {
   late _RecordingAuth auth;
+  late FakeExternalLinks links;
 
   Future<void> pumpScreen(WidgetTester tester, {Failure? failure}) async {
     tester.view.physicalSize = const Size(1080, 2340);
@@ -39,13 +40,19 @@ void main() {
 
     auth = _RecordingAuth(failure: failure);
     addTearDown(auth.dispose);
+    links = FakeExternalLinks();
 
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
           authServiceProvider.overrideWithValue(auth),
-          staffApplicationRepositoryProvider
-              .overrideWithValue(FakeStaffApplicationRepository()),
+          staffApplicationRepositoryProvider.overrideWithValue(
+            FakeStaffApplicationRepository(),
+          ),
+          externalLinksProvider.overrideWithValue(links),
+          remoteConfigServiceProvider.overrideWithValue(
+            RemoteConfigService(FakeConfigFetcher({})),
+          ),
         ],
         child: MaterialApp(
           theme: LuqmaTheme.light,
@@ -71,33 +78,58 @@ void main() {
 
   group('SignInScreen', () {
     // 2026-09-18: it asked for an email, and the first real merchant had never had one.
-    testWidgets('a phone number signs in the way a partner made their account', (tester) async {
-      await pumpScreen(tester);
+    testWidgets(
+      'a phone number signs in the way a partner made their account',
+      (tester) async {
+        await pumpScreen(tester);
 
-      await signIn(tester, '01012345678');
+        await signIn(tester, '01012345678');
 
-      expect(auth.calls, ['phone:01012345678']);
-      expect(find.byKey(SignInScreen.errorKey), findsNothing);
-    });
+        expect(auth.calls, ['phone:01012345678']);
+        expect(find.byKey(SignInScreen.errorKey), findsNothing);
+      },
+    );
 
     // Every account «الفريق» has ever made has a real address and no phone identity.
-    testWidgets('an address still signs in, so nobody made from the staff screen is locked out',
-        (tester) async {
+    testWidgets(
+      'an address still signs in, so nobody made from the staff screen is locked out',
+      (tester) async {
+        await pumpScreen(tester);
+
+        await signIn(tester, ' Owner@Luqma.app ');
+
+        expect(auth.calls, ['email:Owner@Luqma.app']);
+        expect(find.byKey(SignInScreen.errorKey), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'something that is neither is refused before anything is sent',
+      (tester) async {
+        await pumpScreen(tester);
+
+        await signIn(tester, '0101234');
+
+        expect(auth.calls, isEmpty);
+        expect(find.text('اكتب رقم موبايل صح أو الإيميل'), findsOneWidget);
+      },
+    );
+
+    // An applicant hands over a name, a number, and perhaps identity papers before they
+    // have an account. The policy has to be readable at that point, not after approval.
+    testWidgets('the policy is readable before anybody signs in', (
+      tester,
+    ) async {
       await pumpScreen(tester);
 
-      await signIn(tester, ' Owner@Luqma.app ');
+      await tester.ensureVisible(find.byKey(SignInScreen.privacyKey));
+      await tester.tap(find.byKey(SignInScreen.privacyKey));
+      await tester.pumpAndSettle();
 
-      expect(auth.calls, ['email:Owner@Luqma.app']);
-      expect(find.byKey(SignInScreen.errorKey), findsNothing);
-    });
-
-    testWidgets('something that is neither is refused before anything is sent', (tester) async {
-      await pumpScreen(tester);
-
-      await signIn(tester, '0101234');
-
-      expect(auth.calls, isEmpty);
-      expect(find.text('اكتب رقم موبايل صح أو الإيميل'), findsOneWidget);
+      expect(
+        links.opened.single,
+        Uri.parse('https://luqma-gules.vercel.app/privacy/partner'),
+      );
     });
   });
 

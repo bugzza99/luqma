@@ -19,6 +19,8 @@ class ConfigScreen extends ConsumerWidget {
 
   static const saveKey = Key('config.save');
   static const whatsappKey = Key('config.whatsapp');
+  static const privacyUrlKey = Key('config.privacyUrl');
+  static const partnerPrivacyUrlKey = Key('config.partnerPrivacyUrl');
   static const pushKey = Key('config.push');
   static const commissionKey = Key('config.commission');
   static const commissionAlertKey = Key('config.commissionAlert');
@@ -98,6 +100,14 @@ class _ConfigFormState extends ConsumerState<_ConfigForm> {
   );
   late final _adminUpdateUrl = _appUrlField('admin_update_url', LuqmaApp.admin);
   late final _updateMessage = _textField('update_message');
+  late final _privacyUrl = _privacyUrlField(
+    'privacy_policy_url',
+    LuqmaApp.customer,
+  );
+  late final _partnerPrivacyUrl = _privacyUrlField(
+    'partner_privacy_policy_url',
+    LuqmaApp.merchant,
+  );
   late final _commission = TextEditingController(
     text: _percentText(widget.initial['default_commission_percent']),
   );
@@ -109,9 +119,12 @@ class _ConfigFormState extends ConsumerState<_ConfigForm> {
   bool _savingCommission = false;
 
   static String _percentText(Object? value) {
-    final p = value is num ? value.toDouble() : LuqmaConfig.defaults.defaultCommissionPercent;
+    final p = value is num
+        ? value.toDouble()
+        : LuqmaConfig.defaults.defaultCommissionPercent;
     return p == p.roundToDouble() ? p.toInt().toString() : p.toString();
   }
+
   late final _whatsapp = _textField('support_whatsapp');
 
   bool _busy = false;
@@ -155,6 +168,15 @@ class _ConfigFormState extends ConsumerState<_ConfigForm> {
     );
   }
 
+  TextEditingController _privacyUrlField(String key, LuqmaApp app) {
+    final value = widget.initial[key];
+    return TextEditingController(
+      text: value is String && value.trim().isNotEmpty
+          ? value
+          : LuqmaConfig.compiledPrivacyUrls[app] ?? '',
+    );
+  }
+
   @override
   void dispose() {
     for (final c in [
@@ -172,6 +194,8 @@ class _ConfigFormState extends ConsumerState<_ConfigForm> {
       _merchantUpdateUrl,
       _adminUpdateUrl,
       _updateMessage,
+      _privacyUrl,
+      _partnerPrivacyUrl,
       _whatsapp,
       _commission,
       _commissionAlert,
@@ -234,6 +258,8 @@ class _ConfigFormState extends ConsumerState<_ConfigForm> {
       'admin_update_url': _adminUpdateUrl.text.trim(),
       'update_message': _updateMessage.text.trim(),
       'support_whatsapp': _whatsapp.text.trim(),
+      'privacy_policy_url': _privacyUrl.text.trim(),
+      'partner_privacy_policy_url': _partnerPrivacyUrl.text.trim(),
     });
     if (!mounted) return;
     setState(() => _busy = false);
@@ -254,11 +280,16 @@ class _ConfigFormState extends ConsumerState<_ConfigForm> {
     final percent = double.tryParse(ArabicDigits.fold(_commission.text).trim());
     final alert = _int(_commissionAlert);
     setState(() {
-      _errors[_commission] =
-          percent == null || percent < 0 || percent > 50 ? 'اكتب نسبة من 0 لـ 50' : null;
-      _errors[_commissionAlert] = alert == null || alert < 0 ? 'اكتب مبلغ بالجنيه' : null;
+      _errors[_commission] = percent == null || percent < 0 || percent > 50
+          ? 'اكتب نسبة من 0 لـ 50'
+          : null;
+      _errors[_commissionAlert] = alert == null || alert < 0
+          ? 'اكتب مبلغ بالجنيه'
+          : null;
     });
-    if (_errors[_commission] != null || _errors[_commissionAlert] != null) return;
+    if (_errors[_commission] != null || _errors[_commissionAlert] != null) {
+      return;
+    }
 
     final sure = await showDialog<bool>(
       context: context,
@@ -332,7 +363,11 @@ class _ConfigFormState extends ConsumerState<_ConfigForm> {
     // `appVersionProvider` reads like `0.9.0 (10)`; the version is the part before the
     // space. A build that cannot say what it is refuses nothing on a guess.
     final existing = ref.read(appVersionProvider).split(' ').first;
-    for (final field in [_customerMinVersion, _merchantMinVersion, _adminMinVersion]) {
+    for (final field in [
+      _customerMinVersion,
+      _merchantMinVersion,
+      _adminMinVersion,
+    ]) {
       if (LuqmaConfig.versionExceeds(field.text.trim(), existing)) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -419,7 +454,9 @@ class _ConfigFormState extends ConsumerState<_ConfigForm> {
                     key: ConfigScreen.commissionKey,
                     controller: _commission,
                     textAlign: TextAlign.center,
-                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
                     inputFormatters: [
                       FilteringTextInputFormatter.allow(RegExp(r'[0-9٠-٩.,]')),
                     ],
@@ -458,7 +495,9 @@ class _ConfigFormState extends ConsumerState<_ConfigForm> {
             'لسه مش شغالة: رسائل التأكيد على الموبايل، إعلانات جوجل، التعليقات العامة، '
             'الدفع أونلاين.',
             key: ConfigScreen.unavailableKey,
-            style: theme.textTheme.bodySmall?.copyWith(color: colors.textSecondary),
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: colors.textSecondary,
+            ),
           ),
           const SizedBox(height: Space.lg),
           _Section(
@@ -484,7 +523,8 @@ class _ConfigFormState extends ConsumerState<_ConfigForm> {
               _IntTile(
                 controller: _minRatings,
                 label: 'أقل تقييمات لعرض النجوم',
-                subtitle: 'نجوم المحل مش بتظهر غير لما ياخد العدد ده من التقييمات.',
+                subtitle:
+                    'نجوم المحل مش بتظهر غير لما ياخد العدد ده من التقييمات.',
                 errorText: _errors[_minRatings],
               ),
               _IntTile(
@@ -512,6 +552,16 @@ class _ConfigFormState extends ConsumerState<_ConfigForm> {
                 controller: _whatsapp,
                 label: 'رقم واتساب الدعم',
                 fieldKey: ConfigScreen.whatsappKey,
+              ),
+              _TextTile(
+                controller: _privacyUrl,
+                label: 'رابط سياسة الخصوصية — العميل',
+                fieldKey: ConfigScreen.privacyUrlKey,
+              ),
+              _TextTile(
+                controller: _partnerPrivacyUrl,
+                label: 'رابط سياسة الخصوصية — الشريك',
+                fieldKey: ConfigScreen.partnerPrivacyUrlKey,
               ),
               _TextTile(
                 controller: _customerMinVersion,
@@ -638,7 +688,9 @@ class _IntTile extends StatelessWidget {
           ? null
           : Text(
               subtitle!,
-              style: theme.textTheme.bodySmall?.copyWith(color: colors.textSecondary),
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: colors.textSecondary,
+              ),
             ),
       trailing: SizedBox(
         width: 140,
@@ -681,12 +733,18 @@ class _TextTile extends StatelessWidget {
     // The label is the field's own, so a screen reader announces it on the field rather
     // than as loose text above it (QA review 2026-09-19).
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: Space.md, vertical: Space.xs),
+      padding: const EdgeInsets.symmetric(
+        horizontal: Space.md,
+        vertical: Space.xs,
+      ),
       child: TextField(
         key: fieldKey,
         controller: controller,
         maxLines: maxLines,
-        decoration: InputDecoration(labelText: label, alignLabelWithHint: maxLines > 1),
+        decoration: InputDecoration(
+          labelText: label,
+          alignLabelWithHint: maxLines > 1,
+        ),
       ),
     );
   }

@@ -60,7 +60,9 @@ void main() {
   // QA review 2026-09-19: the weekly marketing limit was greyed out as «غير متاح» long after
   // marketing pushes started working, and four switches that could not be switched each
   // showed a raw database key.
-  testWidgets('the marketing limit can be changed, and is saved', (tester) async {
+  testWidgets('the marketing limit can be changed, and is saved', (
+    tester,
+  ) async {
     await pump(tester, seed: {'marketing_push_per_week': 3});
 
     final push = tester.widget<TextField>(find.byKey(ConfigScreen.pushKey));
@@ -68,30 +70,41 @@ void main() {
     expect(find.textContaining('غير متاح في الإصدار الحالي'), findsNothing);
   });
 
-  testWidgets('what does not exist yet is one sentence, with no database keys', (tester) async {
-    await pump(tester);
+  testWidgets(
+    'what does not exist yet is one sentence, with no database keys',
+    (tester) async {
+      await pump(tester);
 
-    expect(
-      find.textContaining('أي تعديل هنا بيوصل للتطبيقات أول ما تتفتح'),
-      findsOneWidget,
-    );
-    expect(find.byKey(ConfigScreen.unavailableKey), findsOneWidget);
-    expect(find.text('otp_enabled'), findsNothing);
-    expect(find.text('min_ratings_to_show'), findsNothing);
-  });
+      expect(
+        find.textContaining('أي تعديل هنا بيوصل للتطبيقات أول ما تتفتح'),
+        findsOneWidget,
+      );
+      expect(find.byKey(ConfigScreen.unavailableKey), findsOneWidget);
+      expect(find.text('otp_enabled'), findsNothing);
+      expect(find.text('min_ratings_to_show'), findsNothing);
+    },
+  );
 
-  testWidgets('the one commission rate shows, and a wrong one is said under it', (tester) async {
-    await pump(tester, seed: {'default_commission_percent': 5, 'commission_alert_pounds': 500});
+  testWidgets(
+    'the one commission rate shows, and a wrong one is said under it',
+    (tester) async {
+      await pump(
+        tester,
+        seed: {'default_commission_percent': 5, 'commission_alert_pounds': 500},
+      );
 
-    final field = tester.widget<TextField>(find.byKey(ConfigScreen.commissionKey));
-    expect(field.controller!.text, '5');
+      final field = tester.widget<TextField>(
+        find.byKey(ConfigScreen.commissionKey),
+      );
+      expect(field.controller!.text, '5');
 
-    await tester.enterText(find.byKey(ConfigScreen.commissionKey), '80');
-    await tester.ensureVisible(find.byKey(ConfigScreen.saveCommissionKey));
-    await tester.tap(find.byKey(ConfigScreen.saveCommissionKey));
-    await tester.pumpAndSettle();
-    expect(find.text('اكتب نسبة من 0 لـ 50'), findsOneWidget);
-  });
+      await tester.enterText(find.byKey(ConfigScreen.commissionKey), '80');
+      await tester.ensureVisible(find.byKey(ConfigScreen.saveCommissionKey));
+      await tester.tap(find.byKey(ConfigScreen.saveCommissionKey));
+      await tester.pumpAndSettle();
+      expect(find.text('اكتب نسبة من 0 لـ 50'), findsOneWidget);
+    },
+  );
 
   testWidgets('shows all per-app version and update URL fields', (
     tester,
@@ -111,6 +124,8 @@ void main() {
     expect(find.textContaining('رابط تحديث تطبيق العميل'), findsOneWidget);
     expect(find.textContaining('رابط تحديث تطبيق التاجر'), findsOneWidget);
     expect(find.textContaining('رابط تحديث تطبيق الأدمن'), findsOneWidget);
+    expect(find.textContaining('رابط سياسة الخصوصية — العميل'), findsOneWidget);
+    expect(find.textContaining('رابط سياسة الخصوصية — الشريك'), findsOneWidget);
 
     TextField fieldFor(String labelPart) => tester.widget<TextField>(
       // The label is the field's own now, so the field is the label's ancestor.
@@ -134,6 +149,14 @@ void main() {
       fieldFor('رابط تحديث تطبيق الأدمن').controller!.text,
       'https://updates.example/admin.apk',
     );
+    expect(
+      fieldFor('رابط سياسة الخصوصية — العميل').controller!.text,
+      contains('/privacy'),
+    );
+    expect(
+      fieldFor('رابط سياسة الخصوصية — الشريك').controller!.text,
+      contains('/privacy/partner'),
+    );
   });
 
   testWidgets('saving writes all six per-app update contract keys', (
@@ -155,6 +178,8 @@ void main() {
         'customer_update_url',
         'merchant_update_url',
         'admin_update_url',
+        'privacy_policy_url',
+        'partner_privacy_policy_url',
       ]),
     );
     expect(
@@ -303,7 +328,11 @@ void main() {
   /// All three apps share one version, so the admin build's own version is the newest that
   /// exists, and that is the ceiling.
   group('a minimum version nobody can install', () {
-    Future<void> setField(WidgetTester tester, String labelPart, String value) async {
+    Future<void> setField(
+      WidgetTester tester,
+      String labelPart,
+      String value,
+    ) async {
       final field = find.ancestor(
         of: find.textContaining(labelPart),
         matching: find.byType(TextField),
@@ -319,26 +348,41 @@ void main() {
       await tester.pumpAndSettle();
     }
 
-    testWidgets('is refused for the admin app, which would lock out its own undo',
-        (tester) async {
-      await pump(tester, appVersion: '0.9.0 (10)');
-      await setField(tester, 'أقل نسخة مدعومة — الأدمن', '1.0.0');
-      await save(tester);
+    testWidgets(
+      'is refused for the admin app, which would lock out its own undo',
+      (tester) async {
+        await pump(tester, appVersion: '0.9.0 (10)');
+        await setField(tester, 'أقل نسخة مدعومة — الأدمن', '1.0.0');
+        await save(tester);
 
-      expect(config.setCalls, isEmpty, reason: 'nothing may reach the control plane');
-      expect(find.textContaining('0.9.0'), findsWidgets,
-          reason: 'the refusal names the newest version that exists');
-    });
+        expect(
+          config.setCalls,
+          isEmpty,
+          reason: 'nothing may reach the control plane',
+        );
+        expect(
+          find.textContaining('0.9.0'),
+          findsWidgets,
+          reason: 'the refusal names the newest version that exists',
+        );
+      },
+    );
 
     testWidgets('and for the customer app too', (tester) async {
       await pump(tester, appVersion: '0.9.0 (10)');
       await setField(tester, 'أقل نسخة مدعومة — العميل', '0.10.0');
       await save(tester);
 
-      expect(config.setCalls, isEmpty, reason: '0.10.0 is above 0.9.0 numerically');
+      expect(
+        config.setCalls,
+        isEmpty,
+        reason: '0.10.0 is above 0.9.0 numerically',
+      );
     });
 
-    testWidgets('but the version that exists, or an older one, saves', (tester) async {
+    testWidgets('but the version that exists, or an older one, saves', (
+      tester,
+    ) async {
       await pump(tester, appVersion: '0.9.0 (10)');
       await setField(tester, 'أقل نسخة مدعومة — العميل', '0.9.0');
       await setField(tester, 'أقل نسخة مدعومة — التاجر', '0.8.2');
@@ -348,7 +392,9 @@ void main() {
     });
 
     // A build that cannot say what it is must not start refusing things on a guess.
-    testWidgets('and a build with no version of its own does not guess', (tester) async {
+    testWidgets('and a build with no version of its own does not guess', (
+      tester,
+    ) async {
       await pump(tester);
       await setField(tester, 'أقل نسخة مدعومة — الأدمن', '9.9.9');
       await save(tester);

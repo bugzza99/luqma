@@ -12,7 +12,7 @@ import 'merchant_address_screen.dart';
 import 'statement_screen.dart';
 import 'subscription_screen.dart';
 
-
+import '../privacy/partner_privacy.dart';
 import '../promotions/promotions_screen.dart';
 import 'busy_toggle.dart';
 
@@ -41,6 +41,8 @@ class ShopScreen extends ConsumerWidget {
   static const couponsKey = Key('shop.coupons');
   static const subscriptionKey = Key('shop.subscription');
   static const noFeedbackKey = Key('shop.noFeedback');
+  static const privacyKey = Key('shop.privacy');
+  static const deleteAccountKey = Key('shop.deleteAccount');
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -102,7 +104,8 @@ class ShopScreen extends ConsumerWidget {
                     subtitle: 'إمتى المطعم بيستقبل طلبات',
                     onTap: () => Navigator.of(context).push(
                       MaterialPageRoute<void>(
-                        builder: (_) => HoursScreen(merchantId: staff.merchantId!),
+                        builder: (_) =>
+                            HoursScreen(merchantId: staff.merchantId!),
                       ),
                     ),
                   ),
@@ -111,12 +114,14 @@ class ShopScreen extends ConsumerWidget {
                     tileKey: ShopScreen.addressKey,
                     icon: Icons.storefront_rounded,
                     title: 'عنوان المطعم',
-                    subtitle: merchant?.formatAddress() ??
+                    subtitle:
+                        merchant?.formatAddress() ??
                         'مكان المحل عشان الطيارين يوصلوا له',
                     onTap: () => Navigator.of(context).push(
                       MaterialPageRoute<void>(
-                        builder: (_) =>
-                            MerchantAddressScreen(merchantId: staff.merchantId!),
+                        builder: (_) => MerchantAddressScreen(
+                          merchantId: staff.merchantId!,
+                        ),
                       ),
                     ),
                   ),
@@ -158,7 +163,8 @@ class ShopScreen extends ConsumerWidget {
                     subtitle: 'اعمل كود خصم لعملائك — الخصم على حساب المحل',
                     onTap: () => Navigator.of(context).push(
                       MaterialPageRoute<void>(
-                        builder: (_) => MerchantCouponsScreen(merchant: merchant),
+                        builder: (_) =>
+                            MerchantCouponsScreen(merchant: merchant),
                       ),
                     ),
                   ),
@@ -169,7 +175,33 @@ class ShopScreen extends ConsumerWidget {
                   _Feedback(merchantId: staff.merchantId!),
                   const SizedBox(height: Space.section),
                 ],
+                // Play requires both a policy people can read and a way to ask for the
+                // account to go. Both stay drawn even while the shop is still loading:
+                // the request can name the account without it, and a deletion path that
+                // disappears behind a failed fetch is the one that matters most.
+                const _SectionHeader(title: 'الخصوصية والحساب'),
+                _Tile(
+                  tileKey: ShopScreen.privacyKey,
+                  icon: Icons.privacy_tip_outlined,
+                  title: 'سياسة الخصوصية',
+                  subtitle: 'إيه البيانات اللي بنحتفظ بها، ومين بيشوفها',
+                  onTap: () => openPartnerPrivacy(context, ref),
+                ),
                 const SizedBox(height: Space.sm),
+                _Tile(
+                  tileKey: ShopScreen.deleteAccountKey,
+                  icon: Icons.person_off_outlined,
+                  title: 'طلب حذف الحساب',
+                  subtitle: 'بنراجع الطلب ونحذف بياناتك الشخصية خلال ٣٠ يوم',
+                  onTap: () => showPartnerAccountDeletionRequest(
+                    context,
+                    ref,
+                    accountLabel: 'صاحب مطعم',
+                    shopName: merchant?.name,
+                    phone: merchant?.phone,
+                  ),
+                ),
+                const SizedBox(height: Space.section),
                 Text(
                   staff.email ?? '',
                   textAlign: TextAlign.center,
@@ -249,8 +281,9 @@ class _IdentityState extends ConsumerState<_Identity> {
   String? _logoUrl;
   bool _saving = false;
 
-  late final _description =
-      TextEditingController(text: widget.merchant.description ?? '');
+  late final _description = TextEditingController(
+    text: widget.merchant.description ?? '',
+  );
 
   /// Whether the typed line differs from the saved one.
   ///
@@ -324,7 +357,9 @@ class _IdentityState extends ConsumerState<_Identity> {
 
     // The id goes on the merchant row; the picture stays invisible to customers until an
     // admin approves it, like every other image in the product.
-    final result = await ref.read(merchantRepositoryProvider).saveMerchant(
+    final result = await ref
+        .read(merchantRepositoryProvider)
+        .saveMerchant(
           isLogo
               ? merchant.copyWith(logoMediaId: media.id)
               : merchant.copyWith(coverMediaId: media.id),
@@ -353,7 +388,9 @@ class _IdentityState extends ConsumerState<_Identity> {
   Future<void> _saveDescription() async {
     setState(() => _saving = true);
     final typed = _description.text.trim();
-    final result = await ref.read(merchantRepositoryProvider).saveMerchant(
+    final result = await ref
+        .read(merchantRepositoryProvider)
+        .saveMerchant(
           merchant.copyWith(description: typed.isEmpty ? null : typed),
         );
     if (!mounted) return;
@@ -367,9 +404,9 @@ class _IdentityState extends ConsumerState<_Identity> {
         content: Text(switch (result) {
           Ok() => 'اتحفظ.',
           Err(:final failure) => switch (failure) {
-              OfflineFailure() => 'مفيش نت — جرّب تاني.',
-              _ => 'مقدرناش نحفظ. جرّب تاني.',
-            },
+            OfflineFailure() => 'مفيش نت — جرّب تاني.',
+            _ => 'مقدرناش نحفظ. جرّب تاني.',
+          },
         }),
       ),
     );
@@ -471,7 +508,9 @@ class _IdentityState extends ConsumerState<_Identity> {
             alignment: AlignmentDirectional.centerStart,
             child: FilledButton(
               key: _Identity.saveDescriptionKey,
-              onPressed: _descriptionChanged && !_saving ? _saveDescription : null,
+              onPressed: _descriptionChanged && !_saving
+                  ? _saveDescription
+                  : null,
               child: const Text('احفظ الوصف'),
             ),
           ),
@@ -546,7 +585,9 @@ class _Billing extends ConsumerWidget {
     // A plan that is running is what the shop pays, whatever the model underneath says:
     // the model only applies once the plan lapses.
     final planRunning =
-        merchant.planId != null && subscription != null && subscription.isActiveAt(now);
+        merchant.planId != null &&
+        subscription != null &&
+        subscription.isActiveAt(now);
     final alertAt = ref.watch(appConfigProvider).commissionAlertPounds * 100;
 
     return Container(
@@ -584,13 +625,13 @@ class _Billing extends ConsumerWidget {
             planRunning
                 ? 'مبلغ ثابت كل شهر، ومفيش عمولة على الطلبات لحد ما الاشتراك يخلص.'
                 : switch (merchant.revenueModel) {
-              RevenueModel.subscription =>
-                'مبلغ ثابت كل شهر، ومفيش عمولة على الطلبات.',
-              RevenueModel.commission =>
-                '${_percent(merchant.revenueValue)}% على الأكل بس. التوصيل مش بناخد منه حاجة.',
-              RevenueModel.prepaid =>
-                'بيتخصم ${strings.price(merchant.revenueValue)} من الرصيد مع كل طلب يتوصّل، ومش أكتر من تمن الأكل.',
-            },
+                    RevenueModel.subscription =>
+                      'مبلغ ثابت كل شهر، ومفيش عمولة على الطلبات.',
+                    RevenueModel.commission =>
+                      '${_percent(merchant.revenueValue)}% على الأكل بس. التوصيل مش بناخد منه حاجة.',
+                    RevenueModel.prepaid =>
+                      'بيتخصم ${strings.price(merchant.revenueValue)} من الرصيد مع كل طلب يتوصّل، ومش أكتر من تمن الأكل.',
+                  },
             style: LuqmaType.bodySmall.copyWith(color: colors.textSecondary),
           ),
           // What the shop owes the platform, said in words and in the shop's own card —
@@ -708,7 +749,10 @@ class _Billing extends ConsumerWidget {
                     builder: (_) => SubscriptionScreen(merchantId: merchant.id),
                   ),
                 ),
-                icon: const Icon(Icons.workspace_premium_outlined, size: Sizes.iconSm),
+                icon: const Icon(
+                  Icons.workspace_premium_outlined,
+                  size: Sizes.iconSm,
+                ),
                 label: const Text('الاشتراك'),
               ),
             ],

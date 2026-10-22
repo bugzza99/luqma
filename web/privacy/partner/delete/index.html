@@ -1,0 +1,221 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>حذف حساب الشريك — لقمة</title>
+<meta name="description" content="اطلب حذف حسابك في تطبيق لقمة للشريك — أصحاب المطاعم والمطابخ والمندوبين — وإيه اللي بيتشال وإيه اللي بيفضل.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&display=swap">
+<style>
+  :root {
+    --brand: #761812;
+    --brand-deep: #451410;
+    --accent: #D67F2B;
+    --ground: #F5EBE2;
+    --card: #FFFFFF;
+    --mat: #E5D3C1;
+    --hairline: #D6BFA9;
+    --ink: #130B07;
+    --ink-2: #5A452B;
+    --yes: #1B4332;
+    --yes-bg: #E2EDE7;
+    --no: #8A1B14;
+    --no-bg: #F6E0DD;
+    --flag: #995A1D;
+    --flag-bg: #F7E7D4;
+    --shadow: 0 1px 2px rgba(19,11,7,.06), 0 6px 20px rgba(19,11,7,.05);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --brand: #C9584E; --brand-deep: #E0857C; --accent: #E2954A;
+      --ground: #17100D; --card: #221814; --mat: #2E211B; --hairline: #40302A;
+      --ink: #F3E7DE; --ink-2: #B49B8B;
+      --yes: #7FCBA4; --yes-bg: #17322A;
+      --no: #EE8F86; --no-bg: #34201E;
+      --flag: #E0A264; --flag-bg: #33241A;
+      --shadow: 0 1px 2px rgba(0,0,0,.4), 0 6px 20px rgba(0,0,0,.3);
+    }
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: Cairo, "Segoe UI", system-ui, sans-serif;
+    font-size: 16px;
+    line-height: 1.85;
+  }
+  .wrap { max-width: 46rem; margin: 0 auto; padding: 3rem 1.25rem 5rem; }
+
+  header { display: flex; flex-direction: column; gap: .35rem; margin-bottom: 2.5rem; }
+  .mark {
+    font-size: 2rem; font-weight: 900; color: var(--brand); line-height: 1;
+    letter-spacing: -.01em;
+  }
+  h1 { margin: .5rem 0 0; font-size: 1.55rem; font-weight: 700; line-height: 1.35; }
+  .updated { font-size: .85rem; color: var(--ink-2); }
+  .lede {
+    margin: 1.25rem 0 0; font-size: 1.05rem; color: var(--ink-2); max-width: 42ch;
+  }
+
+  section { margin-top: 2.75rem; }
+  h2 {
+    margin: 0 0 .75rem; font-size: 1.15rem; font-weight: 700;
+    padding-bottom: .5rem; border-bottom: 2px solid var(--hairline);
+  }
+  h3 { margin: 1.5rem 0 .4rem; font-size: 1rem; font-weight: 700; color: var(--ink-2); }
+  p { margin: 0 0 1rem; }
+  p:last-child { margin-bottom: 0; }
+
+  ul { margin: 0 0 1rem; padding: 0; list-style: none; display: flex; flex-direction: column; gap: .55rem; }
+  li { display: grid; grid-template-columns: 1.35rem 1fr; gap: .55rem; align-items: baseline; }
+  li::before { content: "—"; color: var(--accent); font-weight: 700; }
+  li.yes::before { content: "✓"; color: var(--yes); }
+  li.no::before  { content: "✕"; color: var(--no); }
+
+  .panel {
+    background: var(--card); border: 1px solid var(--hairline);
+    border-radius: 14px; box-shadow: var(--shadow);
+    padding: 1.25rem 1.4rem; margin: 1.25rem 0;
+  }
+  .panel h3 { margin-top: 0; color: var(--brand); font-size: 1rem; }
+
+  .keep { background: var(--yes-bg); border-color: transparent; }
+  .keep h3 { color: var(--yes); }
+  .keep li::before { content: "✓"; color: var(--yes); }
+
+  .fill {
+    background: var(--flag-bg); border: 1px dashed var(--flag);
+    border-radius: 10px; padding: .85rem 1.1rem; margin: 1rem 0;
+    color: var(--flag); font-weight: 600; font-size: .95rem;
+  }
+
+  ol { margin: 0 0 1rem; padding-inline-start: 1.6rem; list-style: decimal; }
+  ol li { display: list-item; }
+  ol li::before { content: none; }
+  ol li + li { margin-top: .5rem; }
+
+  .actions { display: flex; flex-wrap: wrap; gap: .65rem; margin: 1.25rem 0; }
+  .button {
+    display: inline-block; padding: .75rem 1.2rem; border-radius: 10px;
+    background: var(--brand); color: #fff; text-decoration: none; font-weight: 700;
+    border: 1px solid var(--brand);
+  }
+  .button.secondary { background: transparent; color: var(--brand); }
+  .button:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+
+  footer {
+    margin-top: 3.5rem; padding-top: 1.5rem; border-top: 1px solid var(--hairline);
+    color: var(--ink-2); font-size: .9rem;
+  }
+  a { color: var(--brand); text-underline-offset: 3px; }
+  a:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="mark">لقمة</div>
+    <h1>حذف حساب الشريك</h1>
+    <div class="updated">آخر تحديث: ٢٣ أكتوبر ٢٠٢٦</div>
+    <p class="lede">
+      الصفحة دي لأصحاب المطاعم والمطابخ والمندوبين في تطبيق
+      <strong>لقمة للشريك</strong>. لو انت عميل، استخدم
+      <a href="/privacy#delete-account">صفحة حذف حساب العميل</a>.
+    </p>
+  </header>
+
+  <section>
+    <h2>اطلب الحذف من واتساب</h2>
+    <p>
+      ابعتلنا من <strong>نفس رقم الموبايل المسجّل في الحساب</strong>، واكتب في الرسالة:
+    </p>
+    <ul>
+      <li>نوع الحساب: صاحب محل / مندوب.</li>
+      <li>اسم المحل (لو صاحب محل).</li>
+      <li>رقم الموبايل أو الإيميل اللي بتدخل بيه.</li>
+    </ul>
+
+    <div class="actions">
+      <a class="button" href="https://wa.me/201032210681?text=%D8%B7%D9%84%D8%A8%20%D8%AD%D8%B0%D9%81%20%D8%AD%D8%B3%D8%A7%D8%A8%20%D8%B4%D8%B1%D9%8A%D9%83%0A%D9%86%D9%88%D8%B9%20%D8%A7%D9%84%D8%AD%D8%B3%D8%A7%D8%A8%3A%20%0A%D8%A7%D8%B3%D9%85%20%D8%A7%D9%84%D9%85%D8%AD%D9%84%3A%20%0A%D8%B1%D9%82%D9%85%20%D8%A7%D9%84%D8%AD%D8%B3%D8%A7%D8%A8%3A%20">افتح واتساب وابعت الطلب</a>
+      <a class="button secondary" href="tel:+201032210681">اتصل بالدعم</a>
+    </div>
+
+    <p>
+      أو من جوه التطبيق: <strong>المحل ← طلب حذف الحساب</strong> لصاحب المحل، أو
+      <strong>قائمة الحساب ← طلب حذف الحساب</strong> للمندوب.
+    </p>
+
+    <div class="fill">
+      بنرد على الطلب خلال ٣ أيام عمل، وبننفّذه خلال <strong>٣٠ يوم</strong> على الأكثر
+      بعد ما نتأكد إنك صاحب الحساب.
+    </div>
+  </section>
+
+  <section>
+    <h2>ليه الحذف بمراجعة؟</h2>
+    <p>
+      حساب الشريك مش زي حساب عميل عادي. المحل ممكن يكون عليه أوردرات لسه بتتوصّل، أو
+      مستحقات وعمولات، والمندوب ممكن يكون معاه تحصيل نقدي لسه مااتسلّمش. عشان كده
+      بنتأكد من صاحب الحساب ونسوّي اللي باقي قبل ما نقفل الحساب — مش عشان نمنعك.
+    </p>
+  </section>
+
+  <section>
+    <h2>اللي بيتشال</h2>
+    <div class="panel keep">
+      <ul>
+        <li class="yes">حساب الدخول نفسه — مش هتقدر تسجّل دخول تاني.</li>
+        <li class="yes">اسمك ورقمك أو إيميلك من حساب الشريك.</li>
+        <li class="yes">ربط الحساب بالمحل، ورموز أجهزتك — الإشعارات بتقف.</li>
+        <li class="yes">صور البطاقة بعد مدة الاحتفاظ (٣٠ يوم من وقف العمل).</li>
+        <li class="yes">طلب الانضمام اللي مااتقبلش.</li>
+      </ul>
+    </div>
+  </section>
+
+  <section>
+    <h2>اللي بيفضل، وليه</h2>
+    <div class="panel">
+      <p>
+        <strong>الأوردرات والكشوف والعمولات بتفضل كسجل مالي</strong> — لأنها فلوس
+        اتحصّلت وحسابات عملاء ومحلات تانية مبنية عليها. بنشيل منها ارتباطها بحسابك
+        الشخصي.
+      </p>
+      <p>
+        <strong>اسم المحل ورقمه وعنوانه</strong> ممكن يفضلوا جزء من سجل النشاط لو المحل
+        ليه أوردرات. لو ملوش أوردرات، بنشيله. لو ليه أوردرات، بنوقف النشاط ونسلّم
+        المحل أو نقفله بعد تسوية المستحقات.
+      </p>
+      <p>
+        ولو طلب انضمامك كان <strong>اتقبل</strong>، سجل التعيين بيفضل لأنه إثبات إنك
+        اشتغلت معانا. تقدر تطلب شيله كمان في رسالة الحذف.
+      </p>
+    </div>
+  </section>
+
+  <section>
+    <h2>محتاج مساعدة؟</h2>
+    <p>
+      لو عندك سؤال قبل ما تحذف، أو مش قادر تدخل على حسابك، كلّمنا على واتساب
+      <a href="https://wa.me/201032210681"><strong>٠١٠٣٢٢١٠٦٨١</strong></a>
+      — محمد رمضان.
+    </p>
+    <p>
+      تقدر تقرأ <a href="/privacy/partner">سياسة خصوصية الشريك</a> كاملة، أو
+      <a href="/privacy">سياسة العميل</a>.
+    </p>
+  </section>
+
+  <footer>
+    لقمة — إدكو، البحيرة، مصر · نسخة هذه الصفحة على
+    <a href="https://luqma-gules.vercel.app/privacy/partner/delete">luqma-gules.vercel.app/privacy/partner/delete</a>
+  </footer>
+
+</div>
+</body>
+</html>

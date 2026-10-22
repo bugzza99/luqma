@@ -331,7 +331,19 @@ Still open, none of it code:
 - **Edku's real zone and landmark names**, entered from AdminApp. A wrong zone name sends
   a courier to the wrong part of town.
 - The `support_whatsapp` config row exists and is **empty**, so حول لقمة has no number on
-  it until somebody types one into AdminApp.
+  it until somebody types one into AdminApp. The account-deletion path deliberately falls
+  back to the published number on the policy page, because Play requires that path to exist
+  even when the support row has not been filled in yet.
+- **Privacy links and the partner deletion path are built but the pages still need a
+  production deploy.** `LuqmaConfig.compiledPrivacyUrls` carries the two fallbacks
+  (`/privacy` and `/privacy/partner`); AdminApp exposes `privacy_policy_url` and
+  `partner_privacy_policy_url` as remote overrides. CustomerApp draws the link in حسابي
+  signed in or out. MerchantApp draws it on the sign-in screen, in the shop's
+  «الخصوصية والحساب» section, and in the rider's account menu. A merchant or rider asks
+  for deletion there; the request opens WhatsApp because staff deletion is an admin act,
+  and the partner policy explains what is removed and what financial record stays. The
+  public pages are `web/privacy/partner/index.html` and
+  `web/privacy/partner/delete/index.html`.
 
 ### Images, the customer's home, and the merchant's phone (2026-08-27)
 
@@ -922,10 +934,11 @@ DATABASE_URL=<luqma-test session pooler> npm --prefix supabase run test:stack
   `1.0.0` on حول لقمة, directly under the owner's photo and description — a technical
   detail presented as part of who they are, and a second source of truth that would
   eventually disagree with the store.
-- **The apps are `0.9.0` until they are on Play, and nothing builds `--split-per-abi`.**
+- **The first Play build is `1.0.0+30`, and nothing builds `--split-per-abi`.**
   Two decisions taken together on 2026-09-11, both about the number a customer reads out
-  on a support call. `1.0.0` is reserved for the first build anybody can download; before
-  that it would be claiming a release that has not happened. And `--split-per-abi` adds
+  on a support call. `1.0.0` is reserved for the first build anybody can download; every
+  build before it was `0.9.0`, and the Play upload is the one that crosses that line. And
+  `--split-per-abi` adds
   1000 × the architecture's index to the version code, so build 9 shipped as **2009** —
   which the owner read as a year, reasonably. That offset exists so several architectures
   of one release can coexist on Play and we ship exactly one, so it bought nothing. The
@@ -936,10 +949,10 @@ DATABASE_URL=<luqma-test session pooler> npm --prefix supabase run test:stack
   repo whose version sat at `+1` while a phone carried `2008` is how that was discovered.
 - **`min_supported_version` is compared against the version *name*, not the code.**
   `LuqmaConfig._requiresUpdate` parses three dotted integers, so setting it to `1.0.0`
-  from AdminApp while the apps are `0.9.0` walls every customer out of the product with
-  no back door — the gate is deliberately un-bypassable. It is unset in production today,
-  which is the only reason changing the version name was safe. Raise it to a version that
-  actually exists, and never above what is installed.
+  from AdminApp while the installed apps are older walls every customer out of the product
+  with no back door — the gate is deliberately un-bypassable. It is unset in production
+  today, which is the only reason changing the version name was safe. Raise it to a
+  version that actually exists, and never above what is installed.
 
 ## Rules that are easy to break by accident
 

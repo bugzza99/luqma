@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:luqma_core/luqma_core.dart';
 
+import '../privacy/partner_privacy.dart';
 import 'courier_statement_screen.dart';
 import 'navigation.dart';
 
@@ -23,6 +24,9 @@ class CourierScreen extends ConsumerStatefulWidget {
   static const dismissRejectedKey = Key('courier.dismissRejected');
   static const signOutKey = Key('courier.signOut');
   static const confirmSignOutKey = Key('courier.confirmSignOut');
+  static const accountMenuKey = Key('courier.accountMenu');
+  static const privacyKey = Key('courier.privacy');
+  static const deleteAccountKey = Key('courier.deleteAccount');
   static const unsentWarningKey = Key('courier.unsentWarning');
 
   static const pauseKey = Key('courier.pause');
@@ -90,7 +94,6 @@ class CourierScreen extends ConsumerStatefulWidget {
 class _CourierScreenState extends ConsumerState<CourierScreen> {
   String? _selectedFilter;
 
-
   Future<void> _pause(BuildContext context, String uid) async {
     final now = ref.read(clockProvider)();
     final minutes = await showModalBottomSheet<int>(
@@ -112,8 +115,8 @@ class _CourierScreenState extends ConsumerState<CourierScreen> {
               Text(
                 'مش هتوصلك طلبات لحد ما ترجع.',
                 style: Theme.of(sheetContext).textTheme.bodySmall?.copyWith(
-                      color: Theme.of(sheetContext).luqma.textSecondary,
-                    ),
+                  color: Theme.of(sheetContext).luqma.textSecondary,
+                ),
               ),
               const SizedBox(height: Space.md),
               Flexible(
@@ -123,7 +126,9 @@ class _CourierScreenState extends ConsumerState<CourierScreen> {
                     children: [
                       for (final choice in CourierScreen.pauseChoices)
                         Padding(
-                          padding: const EdgeInsets.only(bottom: Sizes.targetGap),
+                          padding: const EdgeInsets.only(
+                            bottom: Sizes.targetGap,
+                          ),
                           child: OutlinedButton(
                             key: CourierScreen.choiceKey(choice),
                             onPressed: () =>
@@ -147,13 +152,15 @@ class _CourierScreenState extends ConsumerState<CourierScreen> {
                                 const SizedBox(width: Space.sm),
                                 Flexible(
                                   child: Text(
-                                    LuqmaStrings.of(sheetContext).minutes(choice),
+                                    LuqmaStrings.of(
+                                      sheetContext,
+                                    ).minutes(choice),
                                     textAlign: TextAlign.end,
                                     overflow: TextOverflow.ellipsis,
                                     style: LuqmaType.bodySmall.copyWith(
-                                      color: Theme.of(sheetContext)
-                                          .luqma
-                                          .textSecondary,
+                                      color: Theme.of(
+                                        sheetContext,
+                                      ).luqma.textSecondary,
                                     ),
                                   ),
                                 ),
@@ -173,7 +180,9 @@ class _CourierScreenState extends ConsumerState<CourierScreen> {
 
     if (minutes == null || !mounted) return;
 
-    final result = await ref.read(staffRepositoryProvider).setPausedUntil(
+    final result = await ref
+        .read(staffRepositoryProvider)
+        .setPausedUntil(
           uid,
           ref.read(clockProvider)().add(Duration(minutes: minutes)),
         );
@@ -181,7 +190,9 @@ class _CourierScreenState extends ConsumerState<CourierScreen> {
     // not is sent orders they will not take.
     if (result.failureOrNull != null && context.mounted) {
       ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-        const SnackBar(content: Text('مقدرناش نوقفك — اتأكد من النت وجرّب تاني.')),
+        const SnackBar(
+          content: Text('مقدرناش نوقفك — اتأكد من النت وجرّب تاني.'),
+        ),
       );
     }
   }
@@ -277,6 +288,35 @@ class _CourierScreenState extends ConsumerState<CourierScreen> {
               icon: const Icon(Icons.pause_circle_outline_rounded),
               onPressed: () => _pause(context, staff.uid!),
             ),
+          PopupMenuButton<String>(
+            key: CourierScreen.accountMenuKey,
+            tooltip: 'الحساب',
+            icon: const Icon(Icons.manage_accounts_outlined),
+            onSelected: (value) {
+              if (value == 'privacy') {
+                openPartnerPrivacy(context, ref);
+              } else if (value == 'delete') {
+                showPartnerAccountDeletionRequest(
+                  context,
+                  ref,
+                  accountLabel: 'مندوب توصيل',
+                  phone: staffMember?.phone ?? staff.email,
+                );
+              }
+            },
+            itemBuilder: (_) => const [
+              PopupMenuItem(
+                key: CourierScreen.privacyKey,
+                value: 'privacy',
+                child: Text('سياسة الخصوصية'),
+              ),
+              PopupMenuItem(
+                key: CourierScreen.deleteAccountKey,
+                value: 'delete',
+                child: Text('طلب حذف الحساب'),
+              ),
+            ],
+          ),
           IconButton(
             key: CourierScreen.signOutKey,
             tooltip: 'تسجيل الخروج',
@@ -290,7 +330,8 @@ class _CourierScreenState extends ConsumerState<CourierScreen> {
           if (paused != null && staff.uid != null)
             _CourierPausedBanner(pausedUntil: paused, courierUid: staff.uid!),
           const LuqmaNotificationBanner(
-            reason: 'من غيرها مش هتعرف إن فيه أوردر اتظبط لك للتوصيل غير لما تفتح '
+            reason:
+                'من غيرها مش هتعرف إن فيه أوردر اتظبط لك للتوصيل غير لما تفتح '
                 'التطبيق بنفسك وتشوف.',
             margin: EdgeInsets.all(Space.gutter),
           ),
@@ -310,8 +351,9 @@ class _CourierScreenState extends ConsumerState<CourierScreen> {
               ),
               isEmpty: (value) => value.isEmpty,
               builder: (context, value) {
-                final hasPlatform =
-                    value.any((o) => o.deliveryBy == DeliveryBy.platform);
+                final hasPlatform = value.any(
+                  (o) => o.deliveryBy == DeliveryBy.platform,
+                );
                 final shops = <String, String>{};
                 for (final o in value) {
                   if (o.deliveryBy != DeliveryBy.platform) {
@@ -396,15 +438,18 @@ class _Card extends ConsumerWidget {
     // its own piece of work rather than something to fake on this card.
     final merchant = ref.watch(merchantProvider(order.merchantId)).value;
     final merchantPhone = merchant?.phone;
-    final shopZone =
-        zones.where((z) => z.id == merchant?.zoneId).firstOrNull?.name;
+    final shopZone = zones
+        .where((z) => z.id == merchant?.zoneId)
+        .firstOrNull
+        ?.name;
     final shopAddress = merchant?.formatAddress(zoneName: shopZone);
 
     // Where this order stands for the person holding it, which is the server's account
     // of it moved on by whatever this phone has queued and not yet sent. Reading the
     // status alone left a run that could be started with no signal and not finished
     // with none — and finishing it is the half that carries the cash.
-    final queued = ref.watch(courierPendingWritesProvider).value ??
+    final queued =
+        ref.watch(courierPendingWritesProvider).value ??
         const <PendingCourierWrite>[];
     final progress = CourierProgress.of(order.id, order.status, queued);
     final unsent = lastQueuedFor(order.id, queued);
@@ -431,7 +476,11 @@ class _Card extends ConsumerWidget {
             ),
             child: Row(
               children: [
-                Icon(Icons.payments_rounded, color: colors.price, size: Sizes.iconMd),
+                Icon(
+                  Icons.payments_rounded,
+                  color: colors.price,
+                  size: Sizes.iconMd,
+                ),
                 const SizedBox(width: Space.md),
                 Expanded(
                   child: Text(
@@ -484,8 +533,9 @@ class _Card extends ConsumerWidget {
                     const SizedBox(width: Space.sm),
                     Text(
                       'طلب رقم ${order.orderNumber}',
-                      style: theme.textTheme.bodySmall
-                          ?.copyWith(color: colors.textSecondary),
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: colors.textSecondary,
+                      ),
                     ),
                   ],
                 ),
@@ -532,7 +582,9 @@ class _Card extends ConsumerWidget {
                   Text(
                     'مفيش عنوان مكتوب — كلّم العميل',
                     key: CourierScreen.noAddressKey(order.id),
-                    style: theme.textTheme.titleMedium?.copyWith(color: colors.danger),
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      color: colors.danger,
+                    ),
                   ),
                 const SizedBox(height: Space.md),
                 Row(
@@ -548,9 +600,14 @@ class _Card extends ConsumerWidget {
                             whenUnavailable:
                                 'مقدرناش نفتح الاتصال. الرقم $merchantPhone',
                           ),
-                          icon: const Icon(Icons.storefront_rounded, size: Sizes.iconSm),
+                          icon: const Icon(
+                            Icons.storefront_rounded,
+                            size: Sizes.iconSm,
+                          ),
                           label: Text(
-                            merchant?.type == MerchantType.homeKitchen ? 'المطبخ' : 'المحل',
+                            merchant?.type == MerchantType.homeKitchen
+                                ? 'المطبخ'
+                                : 'المحل',
                             overflow: TextOverflow.ellipsis,
                           ),
                           style: OutlinedButton.styleFrom(
@@ -570,17 +627,24 @@ class _Card extends ConsumerWidget {
                         // under an order leaves «حساب محذوف» where the phone was, and
                         // the dialer was handed that text (A9 now refuses the deletion
                         // while an order is live; older rows can still carry it).
-                        onPressed: !Phone.isValidEgyptianMobile(order.customerPhone)
+                        onPressed:
+                            !Phone.isValidEgyptianMobile(order.customerPhone)
                             ? null
                             : () => openExternalLink(
-                          context,
-                          ref,
-                          Uri(scheme: 'tel', path: order.customerPhone),
-                          whenUnavailable:
-                              'مقدرناش نفتح الاتصال. الرقم ${order.customerPhone}',
+                                context,
+                                ref,
+                                Uri(scheme: 'tel', path: order.customerPhone),
+                                whenUnavailable:
+                                    'مقدرناش نفتح الاتصال. الرقم ${order.customerPhone}',
+                              ),
+                        icon: const Icon(
+                          Icons.person_rounded,
+                          size: Sizes.iconSm,
                         ),
-                        icon: const Icon(Icons.person_rounded, size: Sizes.iconSm),
-                        label: Text(order.customerName, overflow: TextOverflow.ellipsis),
+                        label: Text(
+                          order.customerName,
+                          overflow: TextOverflow.ellipsis,
+                        ),
                         style: OutlinedButton.styleFrom(
                           minimumSize: const Size.fromHeight(Sizes.minTarget),
                         ),
@@ -595,14 +659,22 @@ class _Card extends ConsumerWidget {
                       Expanded(
                         child: OutlinedButton.icon(
                           key: CourierScreen.navigateKey(order.id),
-                          onPressed: () => ref.read(mapNavigatorProvider).navigateTo(
+                          onPressed: () => ref
+                              .read(mapNavigatorProvider)
+                              .navigateTo(
                                 line,
                                 lat: order.address?.lat,
                                 lng: order.address?.lng,
                                 app: MapApp.googleMaps,
                               ),
-                          icon: const Icon(Icons.navigation_rounded, size: Sizes.iconSm),
-                          label: const Text('Google Maps', overflow: TextOverflow.ellipsis),
+                          icon: const Icon(
+                            Icons.navigation_rounded,
+                            size: Sizes.iconSm,
+                          ),
+                          label: const Text(
+                            'Google Maps',
+                            overflow: TextOverflow.ellipsis,
+                          ),
                           style: OutlinedButton.styleFrom(
                             minimumSize: const Size.fromHeight(Sizes.minTarget),
                           ),
@@ -612,14 +684,22 @@ class _Card extends ConsumerWidget {
                       Expanded(
                         child: OutlinedButton.icon(
                           key: CourierScreen.navigateWazeKey(order.id),
-                          onPressed: () => ref.read(mapNavigatorProvider).navigateTo(
+                          onPressed: () => ref
+                              .read(mapNavigatorProvider)
+                              .navigateTo(
                                 line,
                                 lat: order.address?.lat,
                                 lng: order.address?.lng,
                                 app: MapApp.waze,
                               ),
-                          icon: const Icon(Icons.explore_outlined, size: Sizes.iconSm),
-                          label: const Text('Waze', overflow: TextOverflow.ellipsis),
+                          icon: const Icon(
+                            Icons.explore_outlined,
+                            size: Sizes.iconSm,
+                          ),
+                          label: const Text(
+                            'Waze',
+                            overflow: TextOverflow.ellipsis,
+                          ),
                           style: OutlinedButton.styleFrom(
                             minimumSize: const Size.fromHeight(Sizes.minTarget),
                           ),
@@ -636,8 +716,11 @@ class _Card extends ConsumerWidget {
                   Row(
                     key: CourierScreen.unsentKey(order.id),
                     children: [
-                      Icon(Icons.cloud_off_outlined,
-                          size: Sizes.iconSm, color: colors.textSecondary),
+                      Icon(
+                        Icons.cloud_off_outlined,
+                        size: Sizes.iconSm,
+                        color: colors.textSecondary,
+                      ),
                       const SizedBox(width: Space.sm),
                       Expanded(
                         child: Text(
@@ -649,8 +732,9 @@ class _Card extends ConsumerWidget {
                             CourierWriteKind.failed =>
                               'اللي حصل اتسجّل — هيتبعت أول ما النت يرجع',
                           },
-                          style: theme.textTheme.bodySmall
-                              ?.copyWith(color: colors.textSecondary),
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: colors.textSecondary,
+                          ),
                         ),
                       ),
                     ],
@@ -663,12 +747,15 @@ class _Card extends ConsumerWidget {
                     onPressed: courierUid == null
                         ? null
                         : () => _submit(
-                              context,
-                              ref,
-                              ref
-                                  .read(courierWriteQueueProvider)
-                                  .markOnTheWay(order.id, courierUid: courierUid!),
-                            ),
+                            context,
+                            ref,
+                            ref
+                                .read(courierWriteQueueProvider)
+                                .markOnTheWay(
+                                  order.id,
+                                  courierUid: courierUid!,
+                                ),
+                          ),
                     style: FilledButton.styleFrom(
                       minimumSize: const Size.fromHeight(52),
                     ),
@@ -774,11 +861,16 @@ class _Card extends ConsumerWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        for (var i = 0; i < CourierScreen.failureReasons.length; i++)
+                        for (
+                          var i = 0;
+                          i < CourierScreen.failureReasons.length;
+                          i++
+                        )
                           if (i == 5)
                             Padding(
-                              padding:
-                                  const EdgeInsets.only(bottom: Sizes.targetGap),
+                              padding: const EdgeInsets.only(
+                                bottom: Sizes.targetGap,
+                              ),
                               child: _CustomReasonWidget(
                                 reason: CourierScreen.failureReasons[5],
                                 onSubmit: (text) =>
@@ -787,12 +879,14 @@ class _Card extends ConsumerWidget {
                             )
                           else
                             Padding(
-                              padding:
-                                  const EdgeInsets.only(bottom: Sizes.targetGap),
+                              padding: const EdgeInsets.only(
+                                bottom: Sizes.targetGap,
+                              ),
                               child: OutlinedButton(
                                 key: CourierScreen.reasonKey(i),
-                                onPressed: () => Navigator.of(sheetContext)
-                                    .pop(CourierScreen.failureReasons[i].title),
+                                onPressed: () => Navigator.of(
+                                  sheetContext,
+                                ).pop(CourierScreen.failureReasons[i].title),
                                 style: OutlinedButton.styleFrom(
                                   padding: const EdgeInsets.symmetric(
                                     horizontal: Space.md,
@@ -809,10 +903,13 @@ class _Card extends ConsumerWidget {
                                     ),
                                     const SizedBox(height: 2),
                                     Text(
-                                      CourierScreen.failureReasons[i].nextAction,
-                                      style: theme.textTheme.bodySmall?.copyWith(
-                                        color: colors.textSecondary,
-                                      ),
+                                      CourierScreen
+                                          .failureReasons[i]
+                                          .nextAction,
+                                      style: theme.textTheme.bodySmall
+                                          ?.copyWith(
+                                            color: colors.textSecondary,
+                                          ),
                                     ),
                                   ],
                                 ),
@@ -834,9 +931,7 @@ class _Card extends ConsumerWidget {
     _submit(
       context,
       ref,
-      ref
-          .read(courierWriteQueueProvider)
-          .markFailed(order.id, reason: reason),
+      ref.read(courierWriteQueueProvider).markFailed(order.id, reason: reason),
     );
   }
 
@@ -868,13 +963,12 @@ class _Card extends ConsumerWidget {
         ),
       );
     } else if (outcome case CourierQueued()) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('هيتبعت أول ما النت يرجع.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('هيتبعت أول ما النت يرجع.')));
     }
   }
 }
-
 
 /// The one banner that must never be missing: a courier whose tap was queued has to see
 /// that it is still waiting, and be given a way to try again. Nothing else on this
@@ -884,8 +978,7 @@ class _PendingBanner extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final pending =
-        ref.watch(courierPendingWritesProvider).value ?? const [];
+    final pending = ref.watch(courierPendingWritesProvider).value ?? const [];
     if (pending.isEmpty) return const SizedBox.shrink();
 
     final theme = Theme.of(context);
@@ -895,15 +988,24 @@ class _PendingBanner extends ConsumerWidget {
       key: CourierScreen.pendingKey,
       width: double.infinity,
       color: colors.accent,
-      padding: const EdgeInsets.symmetric(horizontal: Space.gutter, vertical: Space.sm),
+      padding: const EdgeInsets.symmetric(
+        horizontal: Space.gutter,
+        vertical: Space.sm,
+      ),
       child: Row(
         children: [
-          Icon(Icons.cloud_off_outlined, size: Sizes.iconMd, color: colors.onAccent),
+          Icon(
+            Icons.cloud_off_outlined,
+            size: Sizes.iconMd,
+            color: colors.onAccent,
+          ),
           const SizedBox(width: Space.sm),
           Expanded(
             child: Text(
               'فيه ${pending.length} تحديث هيتبعت أول ما النت يرجع',
-              style: theme.textTheme.bodyMedium?.copyWith(color: colors.onAccent),
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: colors.onAccent,
+              ),
             ),
           ),
           TextButton(
@@ -919,6 +1021,7 @@ class _PendingBanner extends ConsumerWidget {
     );
   }
 }
+
 /// The other half of the promise the banner above makes.
 ///
 /// `_PendingBanner` says "هيتبعت أول ما النت يرجع". When the replay is refused — the
@@ -950,11 +1053,17 @@ class _RejectedBanner extends ConsumerWidget {
         color: colors.card,
         border: Border(bottom: BorderSide(color: colors.hairline)),
       ),
-      padding: const EdgeInsets.symmetric(horizontal: Space.gutter, vertical: Space.sm),
+      padding: const EdgeInsets.symmetric(
+        horizontal: Space.gutter,
+        vertical: Space.sm,
+      ),
       child: Row(
         children: [
-          Icon(Icons.report_problem_outlined,
-              size: Sizes.iconMd, color: colors.danger),
+          Icon(
+            Icons.report_problem_outlined,
+            size: Sizes.iconMd,
+            color: colors.danger,
+          ),
           const SizedBox(width: Space.sm),
           Expanded(
             child: Text(
@@ -964,7 +1073,8 @@ class _RejectedBanner extends ConsumerWidget {
           ),
           TextButton(
             key: CourierScreen.dismissRejectedKey,
-            onPressed: () => ref.read(courierWriteQueueProvider).clearRejected(),
+            onPressed: () =>
+                ref.read(courierWriteQueueProvider).clearRejected(),
             style: TextButton.styleFrom(foregroundColor: colors.danger),
             child: const Text('تمام'),
           ),
@@ -1090,10 +1200,9 @@ class _CourierPausedBanner extends ConsumerWidget {
           Expanded(
             child: Text(
               'متوقف — هترجع بعد ${strings.minutes(left)} (${luqmaClockTime(pausedUntil, strings)})',
-              style: Theme.of(context)
-                  .textTheme
-                  .bodyMedium
-                  ?.copyWith(color: colors.onAccent),
+              style: Theme.of(
+                context,
+              ).textTheme.bodyMedium?.copyWith(color: colors.onAccent),
             ),
           ),
           OutlinedButton(
@@ -1219,10 +1328,12 @@ class _CourierDaySummaryView extends ConsumerStatefulWidget {
   const _CourierDaySummaryView();
 
   @override
-  ConsumerState<_CourierDaySummaryView> createState() => _CourierDaySummaryViewState();
+  ConsumerState<_CourierDaySummaryView> createState() =>
+      _CourierDaySummaryViewState();
 }
 
-class _CourierDaySummaryViewState extends ConsumerState<_CourierDaySummaryView> {
+class _CourierDaySummaryViewState
+    extends ConsumerState<_CourierDaySummaryView> {
   _Span _span = _Span.today;
 
   @override
@@ -1291,13 +1402,17 @@ class _CourierDaySummaryViewState extends ConsumerState<_CourierDaySummaryView> 
           LuqmaBillLine(
             key: CourierScreen.summaryDeliveredKey,
             label: 'اتسلّم',
-            value: strings.orderCount(chosen?.delivered ?? summary?.delivered ?? 0),
+            value: strings.orderCount(
+              chosen?.delivered ?? summary?.delivered ?? 0,
+            ),
           ),
           const SizedBox(height: Space.xs),
           LuqmaBillLine(
             key: CourierScreen.summaryReturnedKey,
             label: 'اترجع',
-            value: strings.orderCount(chosen?.returned ?? summary?.returned ?? 0),
+            value: strings.orderCount(
+              chosen?.returned ?? summary?.returned ?? 0,
+            ),
           ),
           const SizedBox(height: Space.xs),
           LuqmaBillLine(
@@ -1339,7 +1454,9 @@ class _CourierDaySummaryViewState extends ConsumerState<_CourierDaySummaryView> 
           ),
           // The per-shop split is what settles a shift, so it belongs to today and to
           // nothing else: a month of shops is a page, not a line somebody reads standing up.
-          if (_span == _Span.today && summary != null && summary.shops.isNotEmpty) ...[
+          if (_span == _Span.today &&
+              summary != null &&
+              summary.shops.isNotEmpty) ...[
             const SizedBox(height: Space.sm),
             Divider(color: colors.hairline, height: 1),
             const SizedBox(height: Space.xs),
@@ -1361,10 +1478,7 @@ class _CourierDaySummaryViewState extends ConsumerState<_CourierDaySummaryView> 
 }
 
 class _CustomReasonWidget extends StatefulWidget {
-  const _CustomReasonWidget({
-    required this.reason,
-    required this.onSubmit,
-  });
+  const _CustomReasonWidget({required this.reason, required this.onSubmit});
 
   final ({String title, String nextAction}) reason;
   final ValueChanged<String> onSubmit;
@@ -1501,7 +1615,9 @@ class _CutBreakdown extends ConsumerWidget {
         padding: const EdgeInsets.fromLTRB(Space.md, Space.sm, Space.md, 0),
         child: Text(
           'كل الفلوس دي للمحل. حسابك على التوصيلة بينك وبين المحل.',
-          style: theme.textTheme.bodySmall?.copyWith(color: colors.textSecondary),
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: colors.textSecondary,
+          ),
         ),
       );
     }
@@ -1526,7 +1642,9 @@ class _CutBreakdown extends ConsumerWidget {
             // their hand will hand over the wrong money at the door.
             Text(
               'العمولة مش بتتخصم دلوقتي — بتتحسب عليك وبتتحصّل كاش آخر الأسبوع.',
-              style: theme.textTheme.bodySmall?.copyWith(color: colors.textSecondary),
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: colors.textSecondary,
+              ),
             ),
           ],
         ],

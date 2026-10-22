@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:luqma_core/luqma_core.dart';
 
+import '../privacy/partner_privacy.dart';
 import 'apply_screen.dart';
 
 /// The way in.
@@ -26,6 +27,7 @@ class SignInScreen extends ConsumerStatefulWidget {
   static const passwordKey = Key('signIn.password');
   static const submitKey = Key('signIn.submit');
   static const applyKey = Key('signIn.apply');
+  static const privacyKey = Key('signIn.privacy');
   static const errorKey = Key('signIn.error');
 
   @override
@@ -99,7 +101,9 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  const Center(child: LuqmaLockup(logo: LuqmaLogo.mark, height: 72)),
+                  const Center(
+                    child: LuqmaLockup(logo: LuqmaLogo.mark, height: 72),
+                  ),
                   const SizedBox(height: Space.xl),
                   // Not «دخول التاجر». The courier signs in on this same screen, and a
                   // rider who opens the app and reads «التاجر» across the top is being told
@@ -115,8 +119,9 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                     // now — the application just below — and a sentence telling somebody
                     // there is not sends them to the telephone instead of the button.
                     'مطعم، أكل بيتي، أو مندوب توصيل. لو لسه ملكش حساب، قدّم طلب وإحنا هنكلمك.',
-                    style: theme.textTheme.bodySmall
-                        ?.copyWith(color: colors.textSecondary),
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: colors.textSecondary,
+                    ),
                     textAlign: TextAlign.center,
                   ),
                   const SizedBox(height: Space.xl),
@@ -153,7 +158,9 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                     Text(
                       _error!,
                       key: SignInScreen.errorKey,
-                      style: theme.textTheme.bodySmall?.copyWith(color: colors.danger),
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: colors.danger,
+                      ),
                       textAlign: TextAlign.center,
                     ),
                   ],
@@ -170,11 +177,16 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                   TextButton(
                     key: SignInScreen.applyKey,
                     onPressed: () => Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => const ApplyScreen(),
-                      ),
+                      MaterialPageRoute(builder: (_) => const ApplyScreen()),
                     ),
                     child: const Text('طلب انضمام جديد'),
+                  ),
+                  // Reachable before there is an account, because an applicant is already
+                  // handing us a name, a number and — for a rider — identity papers.
+                  TextButton(
+                    key: SignInScreen.privacyKey,
+                    onPressed: () => openPartnerPrivacy(context, ref),
+                    child: const Text('سياسة الخصوصية'),
                   ),
                 ],
               ),

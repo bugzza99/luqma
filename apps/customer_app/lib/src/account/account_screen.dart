@@ -50,6 +50,7 @@ class AccountScreen extends ConsumerWidget {
   static const contactKey = Key('account.contact');
   static const aboutKey = Key('account.about');
   static const developerKey = Key('account.developer');
+  static const privacyKey = Key('account.privacy');
   static const nameKey = Key('account.name');
   static const phoneKey = Key('account.phone');
   static const passwordKey = Key('account.password');
@@ -156,7 +157,10 @@ class AccountScreen extends ConsumerWidget {
     }
   }
 
-  Future<void> _confirmDeleteAccount(BuildContext context, WidgetRef ref) async {
+  Future<void> _confirmDeleteAccount(
+    BuildContext context,
+    WidgetRef ref,
+  ) async {
     final auth = ref.read(authServiceProvider);
     final deleted = await showDialog<bool>(
       context: context,
@@ -227,8 +231,9 @@ class _ProfileCard extends StatelessWidget {
                   Text(
                     identity.phone!,
                     textDirection: TextDirection.ltr,
-                    style: theme.textTheme.bodySmall
-                        ?.copyWith(color: colors.textSecondary),
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: colors.textSecondary,
+                    ),
                   ),
                 ],
               ],
@@ -271,23 +276,23 @@ class _AddressesBlock extends ConsumerWidget {
           // One failed read is not a dead end: the shared error view carries a retry,
           // and the "أضف عنوان" button below still works.
           AsyncValue(hasError: true, :final error?) => LuqmaErrorView(
-              failure: error,
-              onRetry: () => ref.invalidate(myAddressesProvider),
-              compact: true,
-            ),
+            failure: error,
+            onRetry: () => ref.invalidate(myAddressesProvider),
+            compact: true,
+          ),
           AsyncValue(hasValue: true, :final value?) => Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                for (final address in value) ...[
-                  _AddressCard(
-                    address: address,
-                    zoneName: zoneNameFor(address),
-                    isDefault: address.id == chosen?.id,
-                  ),
-                  const SizedBox(height: Space.sm),
-                ],
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              for (final address in value) ...[
+                _AddressCard(
+                  address: address,
+                  zoneName: zoneNameFor(address),
+                  isDefault: address.id == chosen?.id,
+                ),
+                const SizedBox(height: Space.sm),
               ],
-            ),
+            ],
+          ),
           // A brief flash while the list loads: the button alone, no skeleton.
           _ => const SizedBox.shrink(),
         },
@@ -352,8 +357,9 @@ class _AddressCard extends ConsumerWidget {
                     Flexible(
                       child: Text(
                         heading,
-                        style: LuqmaType.bodyStrong
-                            .copyWith(color: colors.textPrimary),
+                        style: LuqmaType.bodyStrong.copyWith(
+                          color: colors.textPrimary,
+                        ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
@@ -367,8 +373,9 @@ class _AddressCard extends ConsumerWidget {
                 const SizedBox(height: Space.xs / 2),
                 Text(
                   address.format(zoneName: zoneName),
-                  style: theme.textTheme.bodySmall
-                      ?.copyWith(color: colors.textSecondary),
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: colors.textSecondary,
+                  ),
                 ),
               ],
             ),
@@ -406,7 +413,10 @@ class _DefaultPill extends StatelessWidget {
         horizontal: Space.sm,
         vertical: Space.xs / 2,
       ),
-      decoration: BoxDecoration(color: colors.brand, borderRadius: Radii.pillAll),
+      decoration: BoxDecoration(
+        color: colors.brand,
+        borderRadius: Radii.pillAll,
+      ),
       child: Text(
         'الافتراضي',
         style: LuqmaType.caption.copyWith(
@@ -455,7 +465,11 @@ class _AddAddressButton extends StatelessWidget {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(Icons.add_rounded, size: Sizes.iconSm, color: colors.brand),
+                Icon(
+                  Icons.add_rounded,
+                  size: Sizes.iconSm,
+                  color: colors.brand,
+                ),
                 const SizedBox(width: Space.sm),
                 Text(
                   'أضف عنوان',
@@ -603,7 +617,9 @@ class _OrderStatusNoticeRow extends StatelessWidget {
                   // the screen telling somebody their order updates are guaranteed while
                   // they silently are not.
                   'مش بتتقفل من هنا',
-                  style: LuqmaType.caption.copyWith(color: colors.textSecondary),
+                  style: LuqmaType.caption.copyWith(
+                    color: colors.textSecondary,
+                  ),
                 ),
                 const SizedBox(width: Space.xs),
                 Icon(
@@ -746,10 +762,15 @@ class _Appearance extends ConsumerWidget {
         children: [
           Row(
             children: [
-              Icon(Icons.brightness_6_outlined,
-                  size: Sizes.iconSm, color: colors.brand),
+              Icon(
+                Icons.brightness_6_outlined,
+                size: Sizes.iconSm,
+                color: colors.brand,
+              ),
               const SizedBox(width: Space.md),
-              Expanded(child: Text('شكل التطبيق', style: theme.textTheme.bodyMedium)),
+              Expanded(
+                child: Text('شكل التطبيق', style: theme.textTheme.bodyMedium),
+              ),
             ],
           ),
           const SizedBox(height: Space.sm),
@@ -792,6 +813,27 @@ class _SupportGroup extends ConsumerWidget {
   final VoidCallback onSignOut;
   final VoidCallback onDeleteAccount;
 
+  Future<void> _openPrivacy(BuildContext context, WidgetRef ref) async {
+    final uri = ref.read(appConfigProvider).privacyUrlFor(LuqmaApp.customer);
+    if (uri == null) {
+      // The compiled URL means this is unreachable in a shipped build, but a row that
+      // silently does nothing is the failure this whole screen has been taught to avoid.
+      if (!context.mounted) return;
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+        const SnackBar(content: Text('مقدرناش نفتح سياسة الخصوصية دلوقتي.')),
+      );
+      return;
+    }
+
+    await openExternalLink(
+      context,
+      ref,
+      uri,
+      whenUnavailable:
+          'مفيش متصفح على التليفون ده. افتح الرابط من أي متصفح: $uri',
+    );
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final colors = Theme.of(context).luqma;
@@ -812,7 +854,8 @@ class _SupportGroup extends ConsumerWidget {
                   context,
                   ref,
                   Uri.parse('https://wa.me/${Phone.toWhatsapp(support)}'),
-                  whenUnavailable: 'مفيش واتساب على التليفون ده. الرقم $support',
+                  whenUnavailable:
+                      'مفيش واتساب على التليفون ده. الرقم $support',
                 ),
               ),
             _NavRow(
@@ -830,8 +873,19 @@ class _SupportGroup extends ConsumerWidget {
               icon: Icons.person_outline_rounded,
               label: 'عن المطور',
               onTap: () => Navigator.of(context).push(
-                MaterialPageRoute<void>(builder: (_) => const DeveloperScreen()),
+                MaterialPageRoute<void>(
+                  builder: (_) => const DeveloperScreen(),
+                ),
               ),
+            ),
+            // Always drawn, signed in or out. Play asks that the policy be reachable
+            // inside the app, and the person who cannot sign in is exactly the one who
+            // may need to read what was kept before asking us to delete it.
+            _NavRow(
+              rowKey: AccountScreen.privacyKey,
+              icon: Icons.privacy_tip_outlined,
+              label: 'سياسة الخصوصية',
+              onTap: () => _openPrivacy(context, ref),
             ),
             if (identity != null)
               _NavRow(
@@ -1084,18 +1138,18 @@ class _DeleteAccountDialogState extends ConsumerState<_DeleteAccountDialog> {
               ),
             )
           : failure is OrderInFlightFailure
-              // Not an error to retry: the server will not take the street and the phone
-              // off an order a courier may be carrying (A9). What to do is the sentence.
-              ? const Text(
-                  'عندك طلب لسه ماوصلش. استنى لما يوصلك أو الغيه الأول، '
-                  'وبعدها تقدر تحذف حسابك.',
-                )
-              : LuqmaErrorView(
-                  key: AccountScreen.deleteAccountErrorKey,
-                  failure: failure,
-                  onRetry: _delete,
-                  compact: true,
-                ),
+          // Not an error to retry: the server will not take the street and the phone
+          // off an order a courier may be carrying (A9). What to do is the sentence.
+          ? const Text(
+              'عندك طلب لسه ماوصلش. استنى لما يوصلك أو الغيه الأول، '
+              'وبعدها تقدر تحذف حسابك.',
+            )
+          : LuqmaErrorView(
+              key: AccountScreen.deleteAccountErrorKey,
+              failure: failure,
+              onRetry: _delete,
+              compact: true,
+            ),
       actions: [
         TextButton(
           onPressed: _deleting ? null : () => Navigator.of(context).pop(false),
@@ -1199,8 +1253,9 @@ class _SignInCardState extends ConsumerState<_SignInCard> {
             const SizedBox(height: Space.sm),
             Text(
               'عشان تحفظ عنوانك، وتتابع طلباتك، ونعرف نرجعلك لو في مشكلة.',
-              style: theme.textTheme.bodyMedium
-                  ?.copyWith(color: colors.textSecondary),
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: colors.textSecondary,
+              ),
             ),
             const SizedBox(height: Space.lg),
             if (_signingUp) ...[
@@ -1208,8 +1263,7 @@ class _SignInCardState extends ConsumerState<_SignInCard> {
                 key: AccountScreen.nameKey,
                 controller: _name,
                 decoration: const InputDecoration(labelText: 'الاسم'),
-                validator: (v) =>
-                    (v ?? '').trim().isEmpty ? 'اكتب اسمك' : null,
+                validator: (v) => (v ?? '').trim().isEmpty ? 'اكتب اسمك' : null,
               ),
               const SizedBox(height: Space.md),
             ],
@@ -1258,12 +1312,15 @@ class _SignInCardState extends ConsumerState<_SignInCard> {
                     'محاولات كتير في وقت قليل. استنى خمس دقايق وجرّب تاني.',
                   // The only failure that is the password, and the only one said so.
                   WrongCredentialsFailure() => 'رقم الموبايل أو كلمة السر غلط',
-                  _ => _signingUp
-                      ? 'مقدرناش نعمل الحساب. جرّب تاني.'
-                      : 'مقدرناش ندخلك دلوقتي. جرّب تاني.',
+                  _ =>
+                    _signingUp
+                        ? 'مقدرناش نعمل الحساب. جرّب تاني.'
+                        : 'مقدرناش ندخلك دلوقتي. جرّب تاني.',
                 },
                 key: AccountScreen.errorKey,
-                style: theme.textTheme.bodySmall?.copyWith(color: colors.danger),
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: colors.danger,
+                ),
               ),
             ],
             const SizedBox(height: Space.lg),
@@ -1283,27 +1340,34 @@ class _SignInCardState extends ConsumerState<_SignInCard> {
             // when the owner has set a number, and says the way either way.
             if (!_signingUp) ...[
               const SizedBox(height: Space.sm),
-              Builder(builder: (context) {
-                final support = ref.watch(appConfigProvider).supportWhatsapp.trim();
-                return TextButton(
-                  key: AccountScreen.forgotPasswordKey,
-                  onPressed: support.isEmpty
-                      ? null
-                      : () => openExternalLink(
+              Builder(
+                builder: (context) {
+                  final support = ref
+                      .watch(appConfigProvider)
+                      .supportWhatsapp
+                      .trim();
+                  return TextButton(
+                    key: AccountScreen.forgotPasswordKey,
+                    onPressed: support.isEmpty
+                        ? null
+                        : () => openExternalLink(
                             context,
                             ref,
-                            Uri.parse('https://wa.me/${Phone.toWhatsapp(support)}'),
+                            Uri.parse(
+                              'https://wa.me/${Phone.toWhatsapp(support)}',
+                            ),
                             whenUnavailable:
                                 'مفيش واتساب على التليفون ده. الرقم $support',
                           ),
-                  child: Text(
-                    support.isEmpty
-                        ? 'نسيت كلمة السر؟ كلّم لقمة وهنعملك واحدة جديدة.'
-                        : 'نسيت كلمة السر؟ ابعتلنا على واتساب وهنعملك واحدة جديدة.',
-                    textAlign: TextAlign.center,
-                  ),
-                );
-              }),
+                    child: Text(
+                      support.isEmpty
+                          ? 'نسيت كلمة السر؟ كلّم لقمة وهنعملك واحدة جديدة.'
+                          : 'نسيت كلمة السر؟ ابعتلنا على واتساب وهنعملك واحدة جديدة.',
+                      textAlign: TextAlign.center,
+                    ),
+                  );
+                },
+              ),
             ],
             const SizedBox(height: Space.sm),
             TextButton(

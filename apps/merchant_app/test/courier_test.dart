@@ -12,6 +12,7 @@ import 'package:luqma_core/luqma_core.dart';
 import 'package:merchant_app/src/courier/courier_screen.dart';
 import 'package:merchant_app/src/courier/courier_write_store.dart';
 import 'package:merchant_app/src/courier/navigation.dart';
+import 'package:merchant_app/src/privacy/partner_privacy.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:shared_preferences_platform_interface/in_memory_shared_preferences_async.dart';
 import 'package:shared_preferences_platform_interface/shared_preferences_async_platform_interface.dart';
@@ -40,30 +41,34 @@ void main() {
     OrderStatus status = OrderStatus.preparing,
     Address? at = address,
     String? courierUid,
-  }) =>
-      Order(
-        id: id,
-        cityId: 'edku',
-        orderNumber: number,
-        customerUid: 'u1',
-        customerName: 'أحمد محمود',
-        customerPhone: '01000000000',
-        merchantId: 'm1',
-        merchantName: 'مطعم الشاطئ',
-        zoneId: 'z1',
-        address: at,
-        type: OrderType.instant,
-        items: const [
-          OrderLine(itemId: 'i1', name: 'فراخ مشوية', unitPrice: 12000, quantity: 2),
-        ],
-        pricing: const OrderPricing(
-          subtotal: 24000,
-          deliveryFee: 1000,
-          total: 25000,
-        ),
-        status: status,
-        courierUid: courierUid,
-      );
+  }) => Order(
+    id: id,
+    cityId: 'edku',
+    orderNumber: number,
+    customerUid: 'u1',
+    customerName: 'أحمد محمود',
+    customerPhone: '01000000000',
+    merchantId: 'm1',
+    merchantName: 'مطعم الشاطئ',
+    zoneId: 'z1',
+    address: at,
+    type: OrderType.instant,
+    items: const [
+      OrderLine(
+        itemId: 'i1',
+        name: 'فراخ مشوية',
+        unitPrice: 12000,
+        quantity: 2,
+      ),
+    ],
+    pricing: const OrderPricing(
+      subtotal: 24000,
+      deliveryFee: 1000,
+      total: 25000,
+    ),
+    status: status,
+    courierUid: courierUid,
+  );
 
   Merchant merchant({
     String id = 'm1',
@@ -76,21 +81,20 @@ void main() {
     String? street,
     double? lat,
     double? lng,
-  }) =>
-      Merchant(
-        id: id,
-        cityId: 'edku',
-        type: type,
-        name: name,
-        zoneId: zoneId,
-        phone: phone,
-        status: MerchantStatus.approved,
-        landmarkId: landmarkId,
-        landmarkName: landmarkName,
-        street: street,
-        lat: lat,
-        lng: lng,
-      );
+  }) => Merchant(
+    id: id,
+    cityId: 'edku',
+    type: type,
+    name: name,
+    zoneId: zoneId,
+    phone: phone,
+    status: MerchantStatus.approved,
+    landmarkId: landmarkId,
+    landmarkName: landmarkName,
+    street: street,
+    lat: lat,
+    lng: lng,
+  );
 
   late FakeCourierOrderRepository deliveries;
   late FakeNavigator navigator;
@@ -134,13 +138,18 @@ void main() {
     );
     staffRepo = FakeStaffRepository(seed: [courierStaff]);
 
-    final carried = carriedMerchants ??
+    final carried =
+        carriedMerchants ??
         (claims['scope'] == 'platform'
             ? const {null}
             : {
                 for (final o in seed)
-                  if (o.deliveryBy == DeliveryBy.platform) null else o.merchantId,
-                if (claims['merchantId'] != null) claims['merchantId'] as String,
+                  if (o.deliveryBy == DeliveryBy.platform)
+                    null
+                  else
+                    o.merchantId,
+                if (claims['merchantId'] != null)
+                  claims['merchantId'] as String,
               });
     deliveries = FakeCourierOrderRepository(
       seed: seed,
@@ -152,15 +161,19 @@ void main() {
     navigator = FakeNavigator();
     links = FakeExternalLinks(answer: phoneCanDial);
     merchantRepo = FakeMerchantRepository(
-      seed: merchants ?? [
-        merchant(),
-        merchant(id: 'm2', name: 'بيتزا روما', phone: '01222222222'),
-        merchant(id: 'm3', name: 'حلويات الشرق', phone: '01333333333'),
-      ],
+      seed:
+          merchants ??
+          [
+            merchant(),
+            merchant(id: 'm2', name: 'بيتزا روما', phone: '01222222222'),
+            merchant(id: 'm3', name: 'حلويات الشرق', phone: '01333333333'),
+          ],
       failure: merchantFailure,
     );
 
-    auth = FakeAuthService(restoring: LuqmaIdentity(uid: 'c1', claims: claims));
+    auth = FakeAuthService(
+      restoring: LuqmaIdentity(uid: 'c1', claims: claims),
+    );
 
     await tester.pumpWidget(
       ProviderScope(
@@ -169,14 +182,16 @@ void main() {
           if (store != null) courierWriteStoreProvider.overrideWithValue(store),
           courierOrderRepositoryProvider.overrideWithValue(deliveries),
           merchantRepositoryProvider.overrideWithValue(merchantRepo),
-          geographyRepositoryProvider
-              .overrideWithValue(FakeGeographyRepository(zones: zones)),
+          geographyRepositoryProvider.overrideWithValue(
+            FakeGeographyRepository(zones: zones),
+          ),
           staffRepositoryProvider.overrideWithValue(staffRepo),
           clockProvider.overrideWithValue(() => clockTime),
           mapNavigatorProvider.overrideWithValue(navigator),
           externalLinksProvider.overrideWithValue(links),
-          remoteConfigServiceProvider
-              .overrideWithValue(RemoteConfigService(FakeConfigFetcher({}))),
+          remoteConfigServiceProvider.overrideWithValue(
+            RemoteConfigService(FakeConfigFetcher({})),
+          ),
         ],
         child: MaterialApp(
           theme: LuqmaTheme.light,
@@ -204,7 +219,9 @@ void main() {
       expect(find.byKey(CourierScreen.emptyKey), findsOneWidget);
     });
 
-    testWidgets('a failed read never looks like nothing to carry', (tester) async {
+    testWidgets('a failed read never looks like nothing to carry', (
+      tester,
+    ) async {
       await pump(tester, failure: const OfflineFailure());
 
       expect(find.byKey(CourierScreen.errorKey), findsOneWidget);
@@ -213,15 +230,19 @@ void main() {
   });
 
   group('what the card has to say', () {
-    testWidgets('the zone and the landmark, which is how anyone here navigates',
-        (tester) async {
-      await pump(tester, seed: [order()]);
+    testWidgets(
+      'the zone and the landmark, which is how anyone here navigates',
+      (tester) async {
+        await pump(tester, seed: [order()]);
 
-      expect(find.textContaining('المعمورة'), findsWidgets);
-      expect(find.textContaining('صيدلية النور'), findsWidgets);
-    });
+        expect(find.textContaining('المعمورة'), findsWidgets);
+        expect(find.textContaining('صيدلية النور'), findsWidgets);
+      },
+    );
 
-    testWidgets('shows the shop address when the merchant has one', (tester) async {
+    testWidgets('shows the shop address when the merchant has one', (
+      tester,
+    ) async {
       await pump(
         tester,
         seed: [order()],
@@ -240,22 +261,18 @@ void main() {
       expect(find.textContaining('شارع الجيش'), findsWidgets);
     });
 
-    testWidgets('draws nothing for the shop address when the merchant has none',
-        (tester) async {
-      await pump(
-        tester,
-        seed: [order()],
-        merchants: [
-          merchant(
-            id: 'm1',
-            landmarkName: null,
-            street: null,
-          ),
-        ],
-      );
+    testWidgets(
+      'draws nothing for the shop address when the merchant has none',
+      (tester) async {
+        await pump(
+          tester,
+          seed: [order()],
+          merchants: [merchant(id: 'm1', landmarkName: null, street: null)],
+        );
 
-      expect(find.byKey(CourierScreen.shopAddressKey('o1')), findsNothing);
-    });
+        expect(find.byKey(CourierScreen.shopAddressKey('o1')), findsNothing);
+      },
+    );
 
     // The single number that has to be right. Cash: this is what a person hands over.
     testWidgets('the cash to collect, loudly', (tester) async {
@@ -278,7 +295,9 @@ void main() {
     });
 
     // An order whose address was somehow lost still has to open — the courier can phone.
-    testWidgets('an order with no address still shows the phone', (tester) async {
+    testWidgets('an order with no address still shows the phone', (
+      tester,
+    ) async {
       await pump(tester, seed: [order(at: null)]);
 
       expect(find.byKey(CourierScreen.callKey('o1')), findsOneWidget);
@@ -300,8 +319,9 @@ void main() {
     // this button ignored both: the courier is at somebody's door holding their food,
     // taps to ring them, and the screen does not change. Reading the number out is a
     // worse answer than dialling and a far better one than nothing.
-    testWidgets('a handset that refuses tel: reads the number out',
-        (tester) async {
+    testWidgets('a handset that refuses tel: reads the number out', (
+      tester,
+    ) async {
       await pump(tester, seed: [order()], phoneCanDial: false);
 
       await tester.tap(find.byKey(CourierScreen.callKey('o1')));
@@ -360,8 +380,12 @@ void main() {
 
       expect(navigator.lastLat, 31.3084);
       expect(navigator.lastLng, 30.2939);
-      expect(navigator.lastQuery, contains('صيدلية النور'),
-          reason: 'the words still ride along, for a maps app that cannot use a pin');
+      expect(
+        navigator.lastQuery,
+        contains('صيدلية النور'),
+        reason:
+            'the words still ride along, for a maps app that cannot use a pin',
+      );
     });
 
     // Most of Edku's landmarks have no coordinate yet, and words are the primary address
@@ -379,8 +403,11 @@ void main() {
     // What the maps app is actually handed. A pin is `query=lat,lng`, which Google Maps
     // centres on exactly; the words are a search, which is a guess it makes for us.
     test('the url carries the pin rather than the name', () {
-      final pinned = ExternalMapNavigator.googleMapsUriFor('جنب صيدلية النور',
-          lat: 31.3084, lng: 30.2939);
+      final pinned = ExternalMapNavigator.googleMapsUriFor(
+        'جنب صيدلية النور',
+        lat: 31.3084,
+        lng: 30.2939,
+      );
       expect(pinned.queryParameters['query'], '31.3084,30.2939');
 
       final worded = ExternalMapNavigator.googleMapsUriFor('جنب صيدلية النور');
@@ -398,7 +425,9 @@ void main() {
       expect(navigator.lastQuery, contains('صيدلية النور'));
     });
 
-    testWidgets('drives Waze to the pin when the order has one', (tester) async {
+    testWidgets('drives Waze to the pin when the order has one', (
+      tester,
+    ) async {
       await pump(
         tester,
         seed: [
@@ -418,8 +447,11 @@ void main() {
     });
 
     test('waze url carries the pin rather than the name', () {
-      final pinned = ExternalMapNavigator.wazeUriFor('جنب صيدلية النور',
-          lat: 31.3084, lng: 30.2939);
+      final pinned = ExternalMapNavigator.wazeUriFor(
+        'جنب صيدلية النور',
+        lat: 31.3084,
+        lng: 30.2939,
+      );
       expect(pinned.queryParameters['ll'], '31.3084,30.2939');
       expect(pinned.queryParameters['navigate'], 'yes');
 
@@ -428,21 +460,24 @@ void main() {
       expect(worded.queryParameters['navigate'], 'yes');
     });
 
-    test('ExternalMapNavigator hands off through ExternalLinks for both apps',
-        () async {
-      final fakeLinks = FakeExternalLinks();
-      final nav = ExternalMapNavigator(links: fakeLinks);
+    test(
+      'ExternalMapNavigator hands off through ExternalLinks for both apps',
+      () async {
+        final fakeLinks = FakeExternalLinks();
+        final nav = ExternalMapNavigator(links: fakeLinks);
 
-      await nav.navigateTo('المعمورة', app: MapApp.googleMaps);
-      expect(fakeLinks.opened.first.host, 'www.google.com');
+        await nav.navigateTo('المعمورة', app: MapApp.googleMaps);
+        expect(fakeLinks.opened.first.host, 'www.google.com');
 
-      await nav.navigateTo('المعمورة', app: MapApp.waze);
-      expect(fakeLinks.opened.last.host, 'waze.com');
-      expect(fakeLinks.opened.last.queryParameters['q'], 'المعمورة');
-    });
+        await nav.navigateTo('المعمورة', app: MapApp.waze);
+        expect(fakeLinks.opened.last.host, 'waze.com');
+        expect(fakeLinks.opened.last.queryParameters['q'], 'المعمورة');
+      },
+    );
 
-    testWidgets('offers nothing to navigate to when there is no address',
-        (tester) async {
+    testWidgets('offers nothing to navigate to when there is no address', (
+      tester,
+    ) async {
       await pump(tester, seed: [order(at: null)]);
       expect(find.byKey(CourierScreen.navigateKey('o1')), findsNothing);
       expect(find.byKey(CourierScreen.navigateWazeKey('o1')), findsNothing);
@@ -456,16 +491,19 @@ void main() {
     // There is no shop *address* here and deliberately so: `merchants` carries a zone and
     // a phone and nothing else — no street, no landmark, no coordinate. Drawing the zone
     // would put «إدكو» under a shop and call it where to collect.
-    testWidgets('a call button for the shop, distinct from the one for the customer',
-        (tester) async {
-      await pump(tester, seed: [order()]);
+    testWidgets(
+      'a call button for the shop, distinct from the one for the customer',
+      (tester) async {
+        await pump(tester, seed: [order()]);
 
-      expect(find.byKey(CourierScreen.callMerchantKey('o1')), findsOneWidget);
-      expect(find.byKey(CourierScreen.callKey('o1')), findsOneWidget);
-    });
+        expect(find.byKey(CourierScreen.callMerchantKey('o1')), findsOneWidget);
+        expect(find.byKey(CourierScreen.callKey('o1')), findsOneWidget);
+      },
+    );
 
-    testWidgets('tapping the merchant call button dials the merchant phone',
-        (tester) async {
+    testWidgets('tapping the merchant call button dials the merchant phone', (
+      tester,
+    ) async {
       await pump(tester, seed: [order()]);
 
       await tester.tap(find.byKey(CourierScreen.callMerchantKey('o1')));
@@ -475,27 +513,34 @@ void main() {
       expect(links.opened.single.path, '01111111111');
     });
 
-    testWidgets('a handset that refuses tel: on merchant call reads the number out',
-        (tester) async {
-      await pump(tester, seed: [order()], phoneCanDial: false);
+    testWidgets(
+      'a handset that refuses tel: on merchant call reads the number out',
+      (tester) async {
+        await pump(tester, seed: [order()], phoneCanDial: false);
 
-      await tester.tap(find.byKey(CourierScreen.callMerchantKey('o1')));
-      await tester.pumpAndSettle();
+        await tester.tap(find.byKey(CourierScreen.callMerchantKey('o1')));
+        await tester.pumpAndSettle();
 
-      expect(find.textContaining('01111111111'), findsWidgets);
-    });
+        expect(find.textContaining('01111111111'), findsWidgets);
+      },
+    );
 
-    testWidgets('if the merchant cannot be read, the card still draws everything else',
-        (tester) async {
-      await pump(tester,
-          seed: [order()], merchantFailure: const OfflineFailure());
+    testWidgets(
+      'if the merchant cannot be read, the card still draws everything else',
+      (tester) async {
+        await pump(
+          tester,
+          seed: [order()],
+          merchantFailure: const OfflineFailure(),
+        );
 
-      expect(find.byKey(CourierScreen.cardKey('o1')), findsOneWidget);
-      expect(find.byKey(CourierScreen.cashKey('o1')), findsOneWidget);
-      expect(find.byKey(CourierScreen.callKey('o1')), findsOneWidget);
-      expect(find.byKey(CourierScreen.callMerchantKey('o1')), findsNothing);
-      expect(find.textContaining('أحمد محمود'), findsWidgets);
-    });
+        expect(find.byKey(CourierScreen.cardKey('o1')), findsOneWidget);
+        expect(find.byKey(CourierScreen.cashKey('o1')), findsOneWidget);
+        expect(find.byKey(CourierScreen.callKey('o1')), findsOneWidget);
+        expect(find.byKey(CourierScreen.callMerchantKey('o1')), findsNothing);
+        expect(find.textContaining('أحمد محمود'), findsWidgets);
+      },
+    );
   });
 
   group('the platform badge', () {
@@ -509,7 +554,9 @@ void main() {
       expect(find.text('منصة'), findsOneWidget);
     });
 
-    testWidgets('does not show the badge on ordinary shop orders', (tester) async {
+    testWidgets('does not show the badge on ordinary shop orders', (
+      tester,
+    ) async {
       await pump(
         tester,
         seed: [order().copyWith(deliveryBy: DeliveryBy.merchant)],
@@ -523,8 +570,9 @@ void main() {
   group('the two buttons', () {
     // A courier dismissed mid-shift: the database filters the order away from them, the
     // write finds nothing, and «جرّب تاني» sent them round a door that will not open.
-    testWidgets('an order no longer theirs to see says so, not «جرّب تاني»',
-        (tester) async {
+    testWidgets('an order no longer theirs to see says so, not «جرّب تاني»', (
+      tester,
+    ) async {
       await pump(tester, seed: [order()]);
       deliveries.failure = const NotFoundFailure();
 
@@ -564,7 +612,9 @@ void main() {
 
     // Delivered means the cash changed hands. Asking once costs a second; getting it
     // wrong costs the money.
-    testWidgets('delivering asks first, and says the amount again', (tester) async {
+    testWidgets('delivering asks first, and says the amount again', (
+      tester,
+    ) async {
       await pump(
         tester,
         seed: [order(status: OrderStatus.outForDelivery, courierUid: 'c1')],
@@ -577,8 +627,9 @@ void main() {
       expect(find.textContaining('250 ج'), findsWidgets);
     });
 
-    testWidgets('an order still in the kitchen offers no delivered button',
-        (tester) async {
+    testWidgets('an order still in the kitchen offers no delivered button', (
+      tester,
+    ) async {
       await pump(tester, seed: [order()]);
       expect(find.byKey(CourierScreen.deliveredKey('o1')), findsNothing);
     });
@@ -586,32 +637,34 @@ void main() {
 
   group('a courier saying "not now"', () {
     testWidgets(
-        'when available, offers pause button opening sheet with 4 return times',
-        (tester) async {
-      await pump(tester, now: DateTime(2026, 9, 22, 14, 0));
+      'when available, offers pause button opening sheet with 4 return times',
+      (tester) async {
+        await pump(tester, now: DateTime(2026, 9, 22, 14, 0));
 
-      expect(find.byKey(CourierScreen.pauseKey), findsOneWidget);
-      await tester.tap(find.byKey(CourierScreen.pauseKey));
-      await tester.pumpAndSettle();
+        expect(find.byKey(CourierScreen.pauseKey), findsOneWidget);
+        await tester.tap(find.byKey(CourierScreen.pauseKey));
+        await tester.pumpAndSettle();
 
-      expect(find.byKey(CourierScreen.pauseSheetKey), findsOneWidget);
-      for (final choice in CourierScreen.pauseChoices) {
-        expect(find.byKey(CourierScreen.choiceKey(choice)), findsOneWidget);
-      }
+        expect(find.byKey(CourierScreen.pauseSheetKey), findsOneWidget);
+        for (final choice in CourierScreen.pauseChoices) {
+          expect(find.byKey(CourierScreen.choiceKey(choice)), findsOneWidget);
+        }
 
-      // At 14:00 (2:00 م):
-      // 30 min -> 2:30 م
-      // 60 min -> 3:00 م
-      // 120 min -> 4:00 م
-      // 240 min -> 6:00 م
-      expect(find.textContaining('2:30'), findsWidgets);
-      expect(find.textContaining('3:00'), findsWidgets);
-      expect(find.textContaining('4:00'), findsWidgets);
-      expect(find.textContaining('6:00'), findsWidgets);
-    });
+        // At 14:00 (2:00 م):
+        // 30 min -> 2:30 م
+        // 60 min -> 3:00 م
+        // 120 min -> 4:00 م
+        // 240 min -> 6:00 م
+        expect(find.textContaining('2:30'), findsWidgets);
+        expect(find.textContaining('3:00'), findsWidgets);
+        expect(find.textContaining('4:00'), findsWidgets);
+        expect(find.textContaining('6:00'), findsWidgets);
+      },
+    );
 
-    testWidgets('choosing a pause duration sets pausedUntil in repository',
-        (tester) async {
+    testWidgets('choosing a pause duration sets pausedUntil in repository', (
+      tester,
+    ) async {
       final now = DateTime(2026, 9, 22, 14, 0);
       await pump(tester, now: now);
 
@@ -625,30 +678,30 @@ void main() {
       expect(member.pausedUntil, now.add(const Duration(minutes: 60)));
     });
 
-    testWidgets('when paused, screen displays paused banner and offers resume',
-        (tester) async {
-      final now = DateTime(2026, 9, 22, 14, 0);
-      final until = now.add(const Duration(minutes: 45));
-      await pump(tester, now: now, pausedUntil: until);
+    testWidgets(
+      'when paused, screen displays paused banner and offers resume',
+      (tester) async {
+        final now = DateTime(2026, 9, 22, 14, 0);
+        final until = now.add(const Duration(minutes: 45));
+        await pump(tester, now: now, pausedUntil: until);
 
-      expect(find.byKey(CourierScreen.pausedKey), findsOneWidget);
-      expect(find.byKey(CourierScreen.resumeKey), findsOneWidget);
+        expect(find.byKey(CourierScreen.pausedKey), findsOneWidget);
+        expect(find.byKey(CourierScreen.resumeKey), findsOneWidget);
 
-      await tester.tap(find.byKey(CourierScreen.resumeKey));
-      await tester.pumpAndSettle();
+        await tester.tap(find.byKey(CourierScreen.resumeKey));
+        await tester.pumpAndSettle();
 
-      final member = staffRepo.all.firstWhere((s) => s.uid == 'c1');
-      expect(member.pausedUntil, isNull);
-    });
+        final member = staffRepo.all.firstWhere((s) => s.uid == 'c1');
+        expect(member.pausedUntil, isNull);
+      },
+    );
   });
 
   group('which shops this rider carries for', () {
-    testWidgets('displays compact reference of carried shops and platform',
-        (tester) async {
-      await pump(
-        tester,
-        carriedMerchants: {'m1', 'm2', null},
-      );
+    testWidgets('displays compact reference of carried shops and platform', (
+      tester,
+    ) async {
+      await pump(tester, carriedMerchants: {'m1', 'm2', null});
 
       expect(find.byKey(CourierScreen.carriedShopsKey), findsOneWidget);
       expect(find.byKey(CourierScreen.carriedShopKey('m1')), findsOneWidget);
@@ -662,8 +715,9 @@ void main() {
   });
 
   group('a door nobody answers', () {
-    testWidgets('can be reported, with 6 reasons and next-action guidance',
-        (tester) async {
+    testWidgets('can be reported, with 6 reasons and next-action guidance', (
+      tester,
+    ) async {
       await pump(
         tester,
         seed: [order(status: OrderStatus.outForDelivery, courierUid: 'c1')],
@@ -694,50 +748,52 @@ void main() {
     });
 
     testWidgets(
-        'reason 6 takes free text and stores rider input into cancelReason',
-        (tester) async {
-      await pump(
-        tester,
-        seed: [order(status: OrderStatus.outForDelivery, courierUid: 'c1')],
-      );
+      'reason 6 takes free text and stores rider input into cancelReason',
+      (tester) async {
+        await pump(
+          tester,
+          seed: [order(status: OrderStatus.outForDelivery, courierUid: 'c1')],
+        );
 
-      await tester.tap(find.byKey(CourierScreen.failedKey('o1')));
-      await tester.pumpAndSettle();
+        await tester.tap(find.byKey(CourierScreen.failedKey('o1')));
+        await tester.pumpAndSettle();
 
-      await tester.tap(find.byKey(CourierScreen.reasonKey(5)));
-      await tester.pumpAndSettle();
+        await tester.tap(find.byKey(CourierScreen.reasonKey(5)));
+        await tester.pumpAndSettle();
 
-      expect(find.byKey(CourierScreen.customReasonInputKey), findsOneWidget);
-      expect(find.byKey(CourierScreen.customReasonSubmitKey), findsOneWidget);
+        expect(find.byKey(CourierScreen.customReasonInputKey), findsOneWidget);
+        expect(find.byKey(CourierScreen.customReasonSubmitKey), findsOneWidget);
 
-      await tester.enterText(
-        find.byKey(CourierScreen.customReasonInputKey),
-        'الشارع مقفول بالكامل وفيه حفر وتصليحات',
-      );
-      await tester.pumpAndSettle();
+        await tester.enterText(
+          find.byKey(CourierScreen.customReasonInputKey),
+          'الشارع مقفول بالكامل وفيه حفر وتصليحات',
+        );
+        await tester.pumpAndSettle();
 
-      await tester.tap(find.byKey(CourierScreen.customReasonSubmitKey));
-      await tester.pumpAndSettle();
+        await tester.tap(find.byKey(CourierScreen.customReasonSubmitKey));
+        await tester.pumpAndSettle();
 
-      expect(deliveries['o1']!.status, OrderStatus.cancelled);
-      expect(
-        deliveries['o1']!.cancelReason,
-        'الشارع مقفول بالكامل وفيه حفر وتصليحات',
-      );
-      expect(deliveries['o1']!.cancelledBy, OrderActor.courier);
-    });
+        expect(deliveries['o1']!.status, OrderStatus.cancelled);
+        expect(
+          deliveries['o1']!.cancelReason,
+          'الشارع مقفول بالكامل وفيه حفر وتصليحات',
+        );
+        expect(deliveries['o1']!.cancelledBy, OrderActor.courier);
+      },
+    );
   });
 
   group('filter queue by shop', () {
-    testWidgets('filters queue with chip row derived from on-screen orders',
-        (tester) async {
+    testWidgets('filters queue with chip row derived from on-screen orders', (
+      tester,
+    ) async {
       await pump(
         tester,
         seed: [
-          order(id: 'o1', number: 101).copyWith(
-            merchantId: 'm1',
-            merchantName: 'مطعم الشاطئ',
-          ),
+          order(
+            id: 'o1',
+            number: 101,
+          ).copyWith(merchantId: 'm1', merchantName: 'مطعم الشاطئ'),
           order(id: 'o2', number: 102).copyWith(
             merchantId: 'm2',
             merchantName: 'بيتزا روما',
@@ -756,7 +812,9 @@ void main() {
       expect(find.byKey(CourierScreen.cardKey('o2')), findsOneWidget);
 
       // Filter by m1 (shop only, non-platform)
-      await tester.ensureVisible(find.byKey(CourierScreen.filterMerchantKey('m1')));
+      await tester.ensureVisible(
+        find.byKey(CourierScreen.filterMerchantKey('m1')),
+      );
       await tester.tap(find.byKey(CourierScreen.filterMerchantKey('m1')));
       await tester.pumpAndSettle();
 
@@ -782,46 +840,56 @@ void main() {
 
     // A pickup notification is a delivery for any of the courier's shops. Filtered to one
     // shop, the one it announced for another sat behind the filter.
-    testWidgets('a tapped pickup notification clears the filter so the delivery shows',
-        (tester) async {
-      addTearDown(() => LuqmaPush.tapped.value = null);
-      await pump(
-        tester,
-        seed: [
-          order(id: 'o1', number: 101).copyWith(
-            merchantId: 'm1',
-            merchantName: 'مطعم الشاطئ',
-          ),
-          order(id: 'o2', number: 102).copyWith(
-            merchantId: 'm2',
-            merchantName: 'بيتزا روما',
-          ),
-        ],
-        carriedMerchants: {'m1', 'm2'},
-      );
+    testWidgets(
+      'a tapped pickup notification clears the filter so the delivery shows',
+      (tester) async {
+        addTearDown(() => LuqmaPush.tapped.value = null);
+        await pump(
+          tester,
+          seed: [
+            order(
+              id: 'o1',
+              number: 101,
+            ).copyWith(merchantId: 'm1', merchantName: 'مطعم الشاطئ'),
+            order(
+              id: 'o2',
+              number: 102,
+            ).copyWith(merchantId: 'm2', merchantName: 'بيتزا روما'),
+          ],
+          carriedMerchants: {'m1', 'm2'},
+        );
 
-      await tester.ensureVisible(find.byKey(CourierScreen.filterMerchantKey('m1')));
-      await tester.tap(find.byKey(CourierScreen.filterMerchantKey('m1')));
-      await tester.pumpAndSettle();
-      expect(find.byKey(CourierScreen.cardKey('o2')), findsNothing);
+        await tester.ensureVisible(
+          find.byKey(CourierScreen.filterMerchantKey('m1')),
+        );
+        await tester.tap(find.byKey(CourierScreen.filterMerchantKey('m1')));
+        await tester.pumpAndSettle();
+        expect(find.byKey(CourierScreen.cardKey('o2')), findsNothing);
 
-      LuqmaPush.tapped.value =
-          const LuqmaTap(kind: 'pickup', data: {'orderId': 'o2'});
-      await tester.pumpAndSettle();
+        LuqmaPush.tapped.value = const LuqmaTap(
+          kind: 'pickup',
+          data: {'orderId': 'o2'},
+        );
+        await tester.pumpAndSettle();
 
-      expect(find.byKey(CourierScreen.cardKey('o2')), findsOneWidget);
-      expect(LuqmaPush.tapped.value, isNull);
-    });
+        expect(find.byKey(CourierScreen.cardKey('o2')), findsOneWidget);
+        expect(LuqmaPush.tapped.value, isNull);
+      },
+    );
   });
 
   group('the platform courier', () {
-    testWidgets('sees the platform\'s work rather than one merchant\'s',
-        (tester) async {
+    testWidgets('sees the platform\'s work rather than one merchant\'s', (
+      tester,
+    ) async {
       await pump(
         tester,
         claims: const {'role': 'courier', 'scope': 'platform'},
         seed: [
-          order(id: 'ours', number: 101).copyWith(deliveryBy: DeliveryBy.platform),
+          order(
+            id: 'ours',
+            number: 101,
+          ).copyWith(deliveryBy: DeliveryBy.platform),
           order(id: 'theirs', number: 102),
         ],
       );
@@ -832,23 +900,24 @@ void main() {
   });
 
   group('carrying for several shops', () {
-    testWidgets('shows orders from every attached shop in one queue',
-        (tester) async {
+    testWidgets('shows orders from every attached shop in one queue', (
+      tester,
+    ) async {
       await pump(
         tester,
         seed: [
-          order(id: 'o1', number: 101).copyWith(
-            merchantId: 'm1',
-            merchantName: 'مطعم الشاطئ',
-          ),
-          order(id: 'o2', number: 102).copyWith(
-            merchantId: 'm2',
-            merchantName: 'بيتزا روما',
-          ),
-          order(id: 'o3', number: 103).copyWith(
-            merchantId: 'm3',
-            merchantName: 'حلويات الشرق',
-          ),
+          order(
+            id: 'o1',
+            number: 101,
+          ).copyWith(merchantId: 'm1', merchantName: 'مطعم الشاطئ'),
+          order(
+            id: 'o2',
+            number: 102,
+          ).copyWith(merchantId: 'm2', merchantName: 'بيتزا روما'),
+          order(
+            id: 'o3',
+            number: 103,
+          ).copyWith(merchantId: 'm3', merchantName: 'حلويات الشرق'),
         ],
         carriedMerchants: {'m1', 'm2'},
       );
@@ -895,45 +964,57 @@ void main() {
     // the one the card refuses to offer. The card read `order.status` alone, so after a
     // queued «بدأت التوصيل» the server still said `preparing` and the button on offer
     // was «بدأت التوصيل» again.
-    testWidgets('a run started with no signal can still be finished with no signal',
-        (tester) async {
-      await pump(tester, seed: [order(status: OrderStatus.preparing)]);
-      deliveries.failure = const OfflineFailure();
+    testWidgets(
+      'a run started with no signal can still be finished with no signal',
+      (tester) async {
+        await pump(tester, seed: [order(status: OrderStatus.preparing)]);
+        deliveries.failure = const OfflineFailure();
 
-      await tester.tap(find.byKey(CourierScreen.outKey('o1')));
-      await tester.pumpAndSettle();
+        await tester.tap(find.byKey(CourierScreen.outKey('o1')));
+        await tester.pumpAndSettle();
 
-      expect(find.byKey(CourierScreen.pendingKey), findsOneWidget);
-      // The card moves with the courier, and says plainly that the server has not heard
-      // it yet — that sentence is what stops the marking from being a lie.
-      expect(find.byKey(CourierScreen.unsentKey('o1')), findsOneWidget);
-      expect(find.byKey(CourierScreen.deliveredKey('o1')), findsOneWidget,
-          reason: 'the next tap of the delivery has to be reachable');
+        expect(find.byKey(CourierScreen.pendingKey), findsOneWidget);
+        // The card moves with the courier, and says plainly that the server has not heard
+        // it yet — that sentence is what stops the marking from being a lie.
+        expect(find.byKey(CourierScreen.unsentKey('o1')), findsOneWidget);
+        expect(
+          find.byKey(CourierScreen.deliveredKey('o1')),
+          findsOneWidget,
+          reason: 'the next tap of the delivery has to be reachable',
+        );
 
-      await tester.ensureVisible(find.byKey(CourierScreen.deliveredKey('o1')));
-      await tester.pumpAndSettle();
-      await tester.tap(find.byKey(CourierScreen.deliveredKey('o1')));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('اه، تم'));
-      await tester.pumpAndSettle();
+        await tester.ensureVisible(
+          find.byKey(CourierScreen.deliveredKey('o1')),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(CourierScreen.deliveredKey('o1')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('اه، تم'));
+        await tester.pumpAndSettle();
 
-      // Both taps are held, in the order they were made.
-      expect(find.byKey(CourierScreen.deliveredKey('o1')), findsNothing,
-          reason: 'there is nothing left to tap, so nothing is offered twice');
+        // Both taps are held, in the order they were made.
+        expect(
+          find.byKey(CourierScreen.deliveredKey('o1')),
+          findsNothing,
+          reason: 'there is nothing left to tap, so nothing is offered twice',
+        );
 
-      deliveries.failure = null;
-      await tester.tap(find.byKey(CourierScreen.retryKey));
-      await tester.pumpAndSettle();
+        deliveries.failure = null;
+        await tester.tap(find.byKey(CourierScreen.retryKey));
+        await tester.pumpAndSettle();
 
-      expect(deliveries['o1']!.status, OrderStatus.delivered);
-      expect(deliveries['o1']!.courierUid, 'c1');
-      expect(find.byKey(CourierScreen.pendingKey), findsNothing);
-    });
+        expect(deliveries['o1']!.status, OrderStatus.delivered);
+        expect(deliveries['o1']!.courierUid, 'c1');
+        expect(find.byKey(CourierScreen.pendingKey), findsNothing);
+      },
+    );
 
     // Dropping a conflicting write is right; dropping it silently is not. The banner
     // above promises "هيتبعت أول ما النت يرجع", so a count that quietly falls by one
     // reads as sent — while the cash for that order is already in the courier's pocket.
-    testWidgets('and a queued tap the server refuses is said out loud', (tester) async {
+    testWidgets('and a queued tap the server refuses is said out loud', (
+      tester,
+    ) async {
       await pump(
         tester,
         seed: [order(status: OrderStatus.outForDelivery, courierUid: 'c1')],
@@ -951,14 +1032,63 @@ void main() {
       await tester.tap(find.byKey(CourierScreen.retryKey));
       await tester.pumpAndSettle();
 
-      expect(find.byKey(CourierScreen.pendingKey), findsNothing,
-          reason: 'it is not retried for ever');
-      expect(find.byKey(CourierScreen.rejectedKey), findsOneWidget,
-          reason: 'but the courier is told it never landed');
+      expect(
+        find.byKey(CourierScreen.pendingKey),
+        findsNothing,
+        reason: 'it is not retried for ever',
+      );
+      expect(
+        find.byKey(CourierScreen.rejectedKey),
+        findsOneWidget,
+        reason: 'but the courier is told it never landed',
+      );
 
       await tester.tap(find.byKey(CourierScreen.dismissRejectedKey));
       await tester.pumpAndSettle();
       expect(find.byKey(CourierScreen.rejectedKey), findsNothing);
+    });
+  });
+
+  // A rider also hands over a name, a number and identity papers. The policy and the way
+  // to ask for deletion cannot exist only on the merchant's own tab.
+  group('the rider account', () {
+    testWidgets('the account menu carries the policy and a deletion request', (
+      tester,
+    ) async {
+      await pump(tester);
+
+      await tester.tap(find.byKey(CourierScreen.accountMenuKey));
+      await tester.pumpAndSettle();
+      expect(find.byKey(CourierScreen.privacyKey), findsOneWidget);
+      expect(find.byKey(CourierScreen.deleteAccountKey), findsOneWidget);
+
+      await tester.tap(find.byKey(CourierScreen.privacyKey));
+      await tester.pumpAndSettle();
+      expect(
+        links.opened.single,
+        Uri.parse('https://luqma-gules.vercel.app/privacy/partner'),
+      );
+    });
+
+    testWidgets('the deletion request names the rider and opens WhatsApp', (
+      tester,
+    ) async {
+      await pump(tester);
+
+      await tester.tap(find.byKey(CourierScreen.accountMenuKey));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(CourierScreen.deleteAccountKey));
+      await tester.pumpAndSettle();
+      expect(find.byKey(PartnerAccountKeys.deletionDialog), findsOneWidget);
+
+      await tester.tap(find.byKey(PartnerAccountKeys.confirmDeletion));
+      await tester.pumpAndSettle();
+
+      final opened = links.opened.single;
+      expect(opened.host, 'wa.me');
+      final text = opened.queryParameters['text']!;
+      expect(text, contains('مندوب توصيل'));
+      expect(text, contains('01011111111'));
     });
   });
 
@@ -983,8 +1113,11 @@ void main() {
       await pump(tester, seed: [order()]);
 
       await tapSignOut(tester);
-      expect(find.byKey(CourierScreen.unsentWarningKey), findsNothing,
-          reason: 'nothing is waiting, so there is nothing to warn about');
+      expect(
+        find.byKey(CourierScreen.unsentWarningKey),
+        findsNothing,
+        reason: 'nothing is waiting, so there is nothing to warn about',
+      );
       await tester.tap(find.byKey(CourierScreen.confirmSignOutKey));
       await tester.pumpAndSettle();
 
@@ -1024,8 +1157,12 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(auth.state, AuthState.signedOut);
-      expect(store.snapshotFor('c1'), hasLength(1),
-          reason: 'they wait for this account on this phone, as the dialog promised');
+      expect(
+        store.snapshotFor('c1'),
+        hasLength(1),
+        reason:
+            'they wait for this account on this phone, as the dialog promised',
+      );
       expect(deliveries['o1']!.status, OrderStatus.outForDelivery);
     });
   });
@@ -1050,22 +1187,25 @@ void main() {
 
     tearDown(() => SharedPreferencesAsyncPlatform.instance = previousPlatform);
 
-    test('an account gets a versioned envelope of only its own writes', () async {
-      await store.save(
-        accountId: 'c1',
-        pending: const [delivered],
-        rejected: const [],
-      );
+    test(
+      'an account gets a versioned envelope of only its own writes',
+      () async {
+        await store.save(
+          accountId: 'c1',
+          pending: const [delivered],
+          rejected: const [],
+        );
 
-      expect((await store.load(accountId: 'c2')).isEmpty, isTrue);
-      expect((await store.load(accountId: 'c1')).pending, hasLength(1));
+        expect((await store.load(accountId: 'c2')).isEmpty, isTrue);
+        expect((await store.load(accountId: 'c1')).pending, hasLength(1));
 
-      final raw = await prefs.getString('courier_write_queue.account.c1.v2');
-      final envelope = jsonDecode(raw!) as Map<String, dynamic>;
-      expect(envelope['version'], 2);
-      expect(envelope['writes'], hasLength(1));
-      expect(envelope['rejected'], isEmpty);
-    });
+        final raw = await prefs.getString('courier_write_queue.account.c1.v2');
+        final envelope = jsonDecode(raw!) as Map<String, dynamic>;
+        expect(envelope['version'], 2);
+        expect(envelope['writes'], hasLength(1));
+        expect(envelope['rejected'], isEmpty);
+      },
+    );
 
     // The «محصلش» banner is the courier being told a tap never landed, and the cash for
     // it is in their pocket. Kept only in memory, it went with the first app kill.
@@ -1076,8 +1216,9 @@ void main() {
         rejected: const [delivered],
       );
 
-      final reloaded =
-          await SharedPreferencesCourierWriteStore(prefs: prefs).load(accountId: 'c1');
+      final reloaded = await SharedPreferencesCourierWriteStore(
+        prefs: prefs,
+      ).load(accountId: 'c1');
 
       expect(reloaded.pending, isEmpty);
       expect(reloaded.rejected.single.orderId, 'o1');
@@ -1085,28 +1226,34 @@ void main() {
 
     // A phone upgrading from the build before refused writes were stored has its queued
     // cash writes under the version-1 key. They are this courier's, and they come along.
-    test('a store written by the previous version loads its pending writes', () async {
-      await prefs.setString(
-        'courier_write_queue.account.c1.v1',
-        jsonEncode({
-          'version': 1,
-          'writes': [delivered.toJson()],
-        }),
-      );
+    test(
+      'a store written by the previous version loads its pending writes',
+      () async {
+        await prefs.setString(
+          'courier_write_queue.account.c1.v1',
+          jsonEncode({
+            'version': 1,
+            'writes': [delivered.toJson()],
+          }),
+        );
 
-      final loaded = await store.load(accountId: 'c1');
+        final loaded = await store.load(accountId: 'c1');
 
-      expect(loaded.pending.single.orderId, 'o1');
-      expect(loaded.rejected, isEmpty);
-      // Moved, not copied: a later save must not leave the old writes behind to be
-      // loaded a second time.
-      expect(await prefs.getString('courier_write_queue.account.c1.v1'), isNull);
-      expect(
-        (await store.load(accountId: 'c1')).pending.single.orderId,
-        'o1',
-      );
-      expect((await store.load(accountId: 'c2')).isEmpty, isTrue);
-    });
+        expect(loaded.pending.single.orderId, 'o1');
+        expect(loaded.rejected, isEmpty);
+        // Moved, not copied: a later save must not leave the old writes behind to be
+        // loaded a second time.
+        expect(
+          await prefs.getString('courier_write_queue.account.c1.v1'),
+          isNull,
+        );
+        expect(
+          (await store.load(accountId: 'c1')).pending.single.orderId,
+          'o1',
+        );
+        expect((await store.load(accountId: 'c2')).isEmpty, isTrue);
+      },
+    );
 
     test('the signed-in account claims the old bare list once', () async {
       final legacy = jsonEncode([delivered.toJson()]);
@@ -1150,57 +1297,93 @@ void main() {
   });
 
   group('shift summary', () {
-    testWidgets('a rider who has done nothing is told nothing, not an error or empty box', (tester) async {
-      await pump(tester, seed: const []);
-      await tester.pumpAndSettle();
+    testWidgets(
+      'a rider who has done nothing is told nothing, not an error or empty box',
+      (tester) async {
+        await pump(tester, seed: const []);
+        await tester.pumpAndSettle();
 
-      expect(find.byKey(CourierScreen.summaryKey), findsNothing);
-      expect(find.text('شغلك'), findsNothing);
-      expect(find.byKey(CourierScreen.errorKey), findsNothing);
-    });
+        expect(find.byKey(CourierScreen.summaryKey), findsNothing);
+        expect(find.text('شغلك'), findsNothing);
+        expect(find.byKey(CourierScreen.errorKey), findsNothing);
+      },
+    );
 
-    testWidgets('shows three totals and per-shop split above the queue', (tester) async {
+    testWidgets('shows three totals and per-shop split above the queue', (
+      tester,
+    ) async {
       final now = DateTime(2026, 9, 22, 14, 0);
       await pump(
         tester,
         now: now,
         seed: [
           // Delivered order from shop 1 (m1 - 'مطعم الشاطئ')
-          order(id: 'o_deliv_1', courierUid: 'c1', status: OrderStatus.delivered)
-              .copyWith(
+          order(
+            id: 'o_deliv_1',
+            courierUid: 'c1',
+            status: OrderStatus.delivered,
+          ).copyWith(
             merchantId: 'm1',
             merchantName: 'مطعم الشاطئ',
             deliveredAt: now,
-            pricing: const OrderPricing(subtotal: 12000, deliveryFee: 1000, total: 13000),
+            pricing: const OrderPricing(
+              subtotal: 12000,
+              deliveryFee: 1000,
+              total: 13000,
+            ),
           ),
           // Second delivered order from shop 1 (m1 - 'مطعم الشاطئ')
-          order(id: 'o_deliv_2', courierUid: 'c1', status: OrderStatus.delivered)
-              .copyWith(
+          order(
+            id: 'o_deliv_2',
+            courierUid: 'c1',
+            status: OrderStatus.delivered,
+          ).copyWith(
             merchantId: 'm1',
             merchantName: 'مطعم الشاطئ',
             deliveredAt: now,
-            pricing: const OrderPricing(subtotal: 7000, deliveryFee: 0, total: 7000),
+            pricing: const OrderPricing(
+              subtotal: 7000,
+              deliveryFee: 0,
+              total: 7000,
+            ),
           ),
           // Return from shop 1 (m1 - 'مطعم الشاطئ'): trip made, 0 cash
-          order(id: 'o_ret_1', courierUid: 'c1', status: OrderStatus.cancelled)
-              .copyWith(
+          order(
+            id: 'o_ret_1',
+            courierUid: 'c1',
+            status: OrderStatus.cancelled,
+          ).copyWith(
             merchantId: 'm1',
             merchantName: 'مطعم الشاطئ',
             cancelledBy: OrderActor.courier,
             deliveredAt: now,
-            pricing: const OrderPricing(subtotal: 9000, deliveryFee: 1000, total: 10000),
+            pricing: const OrderPricing(
+              subtotal: 9000,
+              deliveryFee: 1000,
+              total: 10000,
+            ),
           ),
           // Delivered order from shop 2 (m2 - 'بيتزا روما')
-          order(id: 'o_deliv_3', courierUid: 'c1', status: OrderStatus.delivered)
-              .copyWith(
+          order(
+            id: 'o_deliv_3',
+            courierUid: 'c1',
+            status: OrderStatus.delivered,
+          ).copyWith(
             merchantId: 'm2',
             merchantName: 'بيتزا روما',
             deliveredAt: now,
-            pricing: const OrderPricing(subtotal: 5000, deliveryFee: 0, total: 5000),
+            pricing: const OrderPricing(
+              subtotal: 5000,
+              deliveryFee: 0,
+              total: 5000,
+            ),
           ),
           // One active order in queue
-          order(id: 'o_active', courierUid: 'c1', status: OrderStatus.preparing)
-              .copyWith(merchantId: 'm1', merchantName: 'مطعم الشاطئ'),
+          order(
+            id: 'o_active',
+            courierUid: 'c1',
+            status: OrderStatus.preparing,
+          ).copyWith(merchantId: 'm1', merchantName: 'مطعم الشاطئ'),
         ],
         carriedMerchants: const {'m1', 'm2'},
       );
@@ -1213,24 +1396,54 @@ void main() {
       // Three totals:
       // 1. Deliveries: 3
       expect(find.byKey(CourierScreen.summaryDeliveredKey), findsOneWidget);
-      expect(find.descendant(of: find.byKey(CourierScreen.summaryDeliveredKey), matching: find.text('3 طلبات')), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byKey(CourierScreen.summaryDeliveredKey),
+          matching: find.text('3 طلبات'),
+        ),
+        findsOneWidget,
+      );
 
       // 2. Returns: 1
       expect(find.byKey(CourierScreen.summaryReturnedKey), findsOneWidget);
-      expect(find.descendant(of: find.byKey(CourierScreen.summaryReturnedKey), matching: find.text('طلب واحد')), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byKey(CourierScreen.summaryReturnedKey),
+          matching: find.text('طلب واحد'),
+        ),
+        findsOneWidget,
+      );
 
       // 3. Cash in hand: 13000 + 7000 + 5000 = 25000 piastres = 250 ج
       expect(find.byKey(CourierScreen.summaryCashKey), findsOneWidget);
-      expect(find.descendant(of: find.byKey(CourierScreen.summaryCashKey), matching: find.text('250 ج')), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byKey(CourierScreen.summaryCashKey),
+          matching: find.text('250 ج'),
+        ),
+        findsOneWidget,
+      );
 
       // Per-shop split:
       // m1 (مطعم الشاطئ): 200 ج (20000 piastres)
       expect(find.byKey(CourierScreen.summaryShopKey('m1')), findsOneWidget);
-      expect(find.descendant(of: find.byKey(CourierScreen.summaryShopKey('m1')), matching: find.text('200 ج')), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byKey(CourierScreen.summaryShopKey('m1')),
+          matching: find.text('200 ج'),
+        ),
+        findsOneWidget,
+      );
 
       // m2 (بيتزا روما): 50 ج (5000 piastres)
       expect(find.byKey(CourierScreen.summaryShopKey('m2')), findsOneWidget);
-      expect(find.descendant(of: find.byKey(CourierScreen.summaryShopKey('m2')), matching: find.text('50 ج')), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byKey(CourierScreen.summaryShopKey('m2')),
+          matching: find.text('50 ج'),
+        ),
+        findsOneWidget,
+      );
 
       // Must not mention wages, earnings, share, or debt
       expect(find.textContaining('أرباح'), findsNothing);
@@ -1242,12 +1455,10 @@ void main() {
       expect(find.byKey(CourierScreen.cardKey('o_active')), findsOneWidget);
     });
 
-    testWidgets('summary error does not break the screen or show error card', (tester) async {
-      await pump(
-        tester,
-        failure: const OfflineFailure(),
-        seed: const [],
-      );
+    testWidgets('summary error does not break the screen or show error card', (
+      tester,
+    ) async {
+      await pump(tester, failure: const OfflineFailure(), seed: const []);
       await tester.pumpAndSettle();
 
       expect(find.byKey(CourierScreen.summaryKey), findsNothing);
@@ -1257,8 +1468,11 @@ void main() {
 
   group('whose money is in the rider’s hand', () {
     Order platformOrder({int fee = 2000, int subtotal = 10000}) =>
-        order(id: 'o_split', courierUid: 'c1', status: OrderStatus.outForDelivery)
-            .copyWith(
+        order(
+          id: 'o_split',
+          courierUid: 'c1',
+          status: OrderStatus.outForDelivery,
+        ).copyWith(
           deliveryBy: DeliveryBy.platform,
           pricing: OrderPricing(
             subtotal: subtotal,
@@ -1267,18 +1481,31 @@ void main() {
           ),
         );
 
-    testWidgets('splits the cash three ways on a platform delivery', (tester) async {
+    testWidgets('splits the cash three ways on a platform delivery', (
+      tester,
+    ) async {
       await pump(tester, seed: [platformOrder()]);
       await tester.pumpAndSettle();
 
       final split = find.byKey(CourierScreen.cutKey('o_split'));
       expect(split, findsOneWidget);
-      expect(find.descendant(of: split, matching: find.text('تدي المحل')), findsOneWidget);
-      expect(find.descendant(of: split, matching: find.text('ليك')), findsOneWidget);
-      expect(find.descendant(of: split, matching: find.text('عمولة لقمة')), findsOneWidget);
+      expect(
+        find.descendant(of: split, matching: find.text('تدي المحل')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: split, matching: find.text('ليك')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: split, matching: find.text('عمولة لقمة')),
+        findsOneWidget,
+      );
     });
 
-    testWidgets('says the commission is not coming out of this cash', (tester) async {
+    testWidgets('says the commission is not coming out of this cash', (
+      tester,
+    ) async {
       // A rider who thinks it is will hand over the wrong money at the door, which is the
       // one mistake this whole card exists to stop.
       await pump(tester, seed: [platformOrder()]);
@@ -1287,44 +1514,73 @@ void main() {
       expect(find.textContaining('مش بتتخصم دلوقتي'), findsOneWidget);
     });
 
-    testWidgets("a shop's rider on a platform order is not shown a commission",
-        (tester) async {
+    testWidgets("a shop's rider on a platform order is not shown a commission", (
+      tester,
+    ) async {
       // E5. The server charges a rider who is not on the platform roster nothing
       // (`notPlatformCourier`); telling them at the door that 10% of the fee is the
       // platform's and the rest theirs is money the statement will never show.
-      await pump(tester, seed: [platformOrder()], carriedMerchants: const {'m1'});
+      await pump(
+        tester,
+        seed: [platformOrder()],
+        carriedMerchants: const {'m1'},
+      );
       await tester.pumpAndSettle();
 
       final split = find.byKey(CourierScreen.cutKey('o_split'));
       expect(split, findsOneWidget);
-      expect(find.descendant(of: split, matching: find.text('عمولة لقمة')), findsNothing);
-      expect(find.textContaining('بينك وبين المحل'), findsOneWidget);
-    });
-
-    testWidgets('claims to know nothing when the shop delivers with its own rider',
-        (tester) async {
-      final own = order(id: 'o_split', courierUid: 'c1', status: OrderStatus.outForDelivery)
-          .copyWith(
-        deliveryBy: DeliveryBy.merchant,
-        pricing: const OrderPricing(subtotal: 10000, deliveryFee: 2000, total: 12000),
+      expect(
+        find.descendant(of: split, matching: find.text('عمولة لقمة')),
+        findsNothing,
       );
-      await pump(tester, seed: [own]);
-      await tester.pumpAndSettle();
-
-      final split = find.byKey(CourierScreen.cutKey('o_split'));
-      expect(find.descendant(of: split, matching: find.text('ليك')), findsNothing);
       expect(find.textContaining('بينك وبين المحل'), findsOneWidget);
     });
+
+    testWidgets(
+      'claims to know nothing when the shop delivers with its own rider',
+      (tester) async {
+        final own =
+            order(
+              id: 'o_split',
+              courierUid: 'c1',
+              status: OrderStatus.outForDelivery,
+            ).copyWith(
+              deliveryBy: DeliveryBy.merchant,
+              pricing: const OrderPricing(
+                subtotal: 10000,
+                deliveryFee: 2000,
+                total: 12000,
+              ),
+            );
+        await pump(tester, seed: [own]);
+        await tester.pumpAndSettle();
+
+        final split = find.byKey(CourierScreen.cutKey('o_split'));
+        expect(
+          find.descendant(of: split, matching: find.text('ليك')),
+          findsNothing,
+        );
+        expect(find.textContaining('بينك وبين المحل'), findsOneWidget);
+      },
+    );
   });
 
   group('the three spans', () {
-    testWidgets('offers today, this week and this month on the one card', (tester) async {
+    testWidgets('offers today, this week and this month on the one card', (
+      tester,
+    ) async {
       // Courier mode stays one screen somebody can read at a junction, so this is a
       // modification of the card that was already there rather than a shell of its own.
-      await pump(tester, seed: [
-        order(id: 'o_d', courierUid: 'c1', status: OrderStatus.delivered)
-            .copyWith(deliveredAt: DateTime(2026, 9, 22, 13)),
-      ]);
+      await pump(
+        tester,
+        seed: [
+          order(
+            id: 'o_d',
+            courierUid: 'c1',
+            status: OrderStatus.delivered,
+          ).copyWith(deliveredAt: DateTime(2026, 9, 22, 13)),
+        ],
+      );
       await tester.pumpAndSettle();
 
       expect(find.byKey(CourierScreen.spanKey('today')), findsOneWidget);
@@ -1332,13 +1588,21 @@ void main() {
       expect(find.byKey(CourierScreen.spanKey('month')), findsOneWidget);
     });
 
-    testWidgets('stops calling it cash in hand once it is not today', (tester) async {
+    testWidgets('stops calling it cash in hand once it is not today', (
+      tester,
+    ) async {
       // Last month's takings were handed over weeks ago. Calling them «كاش في إيدك» has a
       // rider counting money they no longer have.
-      await pump(tester, seed: [
-        order(id: 'o_d', courierUid: 'c1', status: OrderStatus.delivered)
-            .copyWith(deliveredAt: DateTime(2026, 9, 22, 13)),
-      ]);
+      await pump(
+        tester,
+        seed: [
+          order(
+            id: 'o_d',
+            courierUid: 'c1',
+            status: OrderStatus.delivered,
+          ).copyWith(deliveredAt: DateTime(2026, 9, 22, 13)),
+        ],
+      );
       await tester.pumpAndSettle();
       expect(find.text('كاش في إيدك'), findsOneWidget);
 
@@ -1349,12 +1613,20 @@ void main() {
       expect(find.text('حصّلت'), findsOneWidget);
     });
 
-    testWidgets('keeps the per-shop split to today, where it settles a shift',
-        (tester) async {
-      await pump(tester, seed: [
-        order(id: 'o_d', courierUid: 'c1', status: OrderStatus.delivered)
-            .copyWith(deliveredAt: DateTime(2026, 9, 22, 13)),
-      ], carriedMerchants: const {'m1'});
+    testWidgets('keeps the per-shop split to today, where it settles a shift', (
+      tester,
+    ) async {
+      await pump(
+        tester,
+        seed: [
+          order(
+            id: 'o_d',
+            courierUid: 'c1',
+            status: OrderStatus.delivered,
+          ).copyWith(deliveredAt: DateTime(2026, 9, 22, 13)),
+        ],
+        carriedMerchants: const {'m1'},
+      );
       await tester.pumpAndSettle();
       expect(find.byKey(CourierScreen.summaryShopKey('m1')), findsOneWidget);
 

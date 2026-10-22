@@ -75,6 +75,8 @@ class LuqmaConfig {
     required this.adminUpdateUrl,
     required this.updateMessage,
     required this.supportWhatsapp,
+    this.privacyPolicyUrl,
+    this.partnerPrivacyPolicyUrl,
     this.defaultCommissionPercent = 5,
     this.courierCommissionPercent = 10,
     this.commissionAlertPounds = 500,
@@ -124,6 +126,22 @@ class LuqmaConfig {
   final String? adminUpdateUrl;
   final String updateMessage;
   final String supportWhatsapp;
+
+  /// The public privacy policy for the customer app.
+  ///
+  /// Google Play requires the policy to be reachable from the store listing and from
+  /// inside the app. It is a remote value so the owner can move it to a custom domain
+  /// without shipping a build, but [compiledPrivacyUrls] is the destination that always
+  /// exists — a blank or malformed control-plane value must never leave the in-app link
+  /// pointing at nothing.
+  final String? privacyPolicyUrl;
+
+  /// The privacy policy for MerchantApp: shop owners, their staff, and couriers.
+  ///
+  /// Deliberately separate from [privacyPolicyUrl]. The two audiences get different
+  /// disclosures — a merchant's business records and a courier's identity documents are
+  /// not part of the customer policy — so one URL cannot serve both.
+  final String? partnerPrivacyPolicyUrl;
 
   /// The one commission rate every shop follows unless the owner agreed it another
   /// (`merchants.commission_custom`). A percentage of the food, never of delivery.
@@ -253,6 +271,8 @@ class LuqmaConfig {
           text('support_whatsapp') ??
           text('supportWhatsapp') ??
           defaults.supportWhatsapp,
+      privacyPolicyUrl: text('privacy_policy_url'),
+      partnerPrivacyPolicyUrl: text('partner_privacy_policy_url'),
       defaultCommissionPercent: () {
         final value = source.read('default_commission_percent');
         if (value is num && value >= 0 && value <= 50) return value.toDouble();
@@ -286,6 +306,15 @@ class LuqmaConfig {
         'https://play.google.com/store/apps/details?id=com.luqma.merchant',
   };
 
+  /// Destinations compiled into the binary for the two policies.
+  ///
+  /// AdminApp is distributed directly and has no public policy page; the map has no entry
+  /// for it, which is the same shape as [compiledUpdateUrls].
+  static const compiledPrivacyUrls = <LuqmaApp, String>{
+    LuqmaApp.customer: 'https://luqma-gules.vercel.app/privacy',
+    LuqmaApp.merchant: 'https://luqma-gules.vercel.app/privacy/partner',
+  };
+
   String? minSupportedVersionFor(LuqmaApp app) {
     final appMinimum = switch (app) {
       LuqmaApp.customer => customerMinSupportedVersion,
@@ -305,6 +334,27 @@ class LuqmaConfig {
     if (raw == null) return null;
     final uri = Uri.tryParse(raw);
     return uri != null && uri.isAbsolute ? uri : null;
+  }
+
+  /// The policy for [app], falling back to the compiled URL when the control plane has
+  /// no usable value.
+  ///
+  /// Unlike [updateUrlFor], a malformed remote value does not win by being present: the
+  /// in-app privacy row has to open something, and a typo in AdminApp must not turn the
+  /// Play-required link into a dead tap.
+  Uri? privacyUrlFor(LuqmaApp app) {
+    final configured = switch (app) {
+      LuqmaApp.customer => privacyPolicyUrl,
+      LuqmaApp.merchant => partnerPrivacyPolicyUrl,
+      LuqmaApp.admin => null,
+    };
+    for (final raw in [configured, compiledPrivacyUrls[app]]) {
+      final text = raw?.trim();
+      if (text == null || text.isEmpty) continue;
+      final uri = Uri.tryParse(text);
+      if (uri != null && uri.isAbsolute) return uri;
+    }
+    return null;
   }
 
   /// Whether [currentVersion] is below the minimum the backend still supports.

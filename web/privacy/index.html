@@ -102,7 +102,10 @@
   td:first-child { font-weight: 600; white-space: nowrap; }
   .scroll { overflow-x: auto; }
 
-  ol { margin: 0 0 1rem; padding-inline-start: 1.4rem; display: flex; flex-direction: column; gap: .5rem; }
+  ol { margin: 0 0 1rem; padding-inline-start: 1.6rem; list-style: decimal; }
+  ol li { display: list-item; }
+  ol li::before { content: none; }
+  ol li + li { margin-top: .5rem; }
 
   footer {
     margin-top: 3.5rem; padding-top: 1.5rem; border-top: 1px solid var(--hairline);
@@ -118,7 +121,7 @@
   <header>
     <div class="mark">لقمة</div>
     <h1>سياسة الخصوصية</h1>
-    <div class="updated">آخر تحديث: ٢٤ سبتمبر ٢٠٢٦</div>
+    <div class="updated">آخر تحديث: ٢٣ أكتوبر ٢٠٢٦</div>
     <p class="lede">
       دي مش صفحة قانونية عشان نقفل بيها الموضوع. دي بالظبط إيه اللي التطبيق بياخده منك،
       ليه، ومين بيشوفه.
@@ -129,12 +132,16 @@
     <h2>مين إحنا</h2>
     <p>
       «لقمة» تطبيق لطلب الأكل من مطاعم ومطابخ بيتية في مدينة <strong>إدكو</strong>،
-      محافظة البحيرة. السياسة دي بتخص تطبيق العميل وبس — تطبيقات التاجر والدليفري
-      بيستخدمها ناس بيشتغلوا معانا وليها شروط تانية.
+      محافظة البحيرة. السياسة دي بتخص تطبيق العميل وبس. تطبيق الشريك — أصحاب المطاعم
+      والمطابخ والمندوبين — ليه سياسة منفصلة لأن بياناته مختلفة:
+      <a href="/privacy/partner">سياسة خصوصية الشريك</a>.
     </p>
     <p>
       الجهة المسؤولة عن البيانات: <strong>محمد رمضان — Mohamed Ramadan</strong>،
       إدكو، محافظة البحيرة، مصر.
+    </p>
+    <p>
+      تقدر تفتح الصفحة دي من جوه التطبيق في <strong>حسابي ← سياسة الخصوصية</strong>.
     </p>
   </section>
 
@@ -274,7 +281,7 @@
     </p>
   </section>
 
-  <section>
+  <section id="delete-account">
     <h2>حذف حسابك</h2>
     <p>تقدر تمسح حسابك بنفسك من جوه التطبيق، من غير ما تكلّم حد:</p>
     <ol>
@@ -368,6 +375,7 @@
   <footer>
     لقمة — إدكو، البحيرة، مصر · نسخة هذه الصفحة على
     <a href="https://luqma-gules.vercel.app/privacy">luqma-gules.vercel.app/privacy</a>
+    · <a href="/privacy/partner">سياسة الشريك</a>
   </footer>
 
 </div>

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:luqma_core/luqma_core.dart';
+import 'package:merchant_app/src/privacy/partner_privacy.dart';
 import 'package:merchant_app/src/shop/busy_toggle.dart';
 import 'package:merchant_app/src/shop/shop_screen.dart';
 
@@ -20,7 +21,11 @@ void main() {
   const alwaysOpen = [
     OpeningWindow(weekday: DateTime.monday, openMinute: 0, closeMinute: 1440),
     OpeningWindow(weekday: DateTime.tuesday, openMinute: 0, closeMinute: 1440),
-    OpeningWindow(weekday: DateTime.wednesday, openMinute: 0, closeMinute: 1440),
+    OpeningWindow(
+      weekday: DateTime.wednesday,
+      openMinute: 0,
+      closeMinute: 1440,
+    ),
     OpeningWindow(weekday: DateTime.thursday, openMinute: 0, closeMinute: 1440),
     OpeningWindow(weekday: DateTime.friday, openMinute: 0, closeMinute: 1440),
     OpeningWindow(weekday: DateTime.saturday, openMinute: 0, closeMinute: 1440),
@@ -38,17 +43,27 @@ void main() {
     openingHours: alwaysOpen,
   );
 
+  late FakeExternalLinks links;
+
+  Future<void> reveal(WidgetTester tester, Finder finder) async {
+    await tester.ensureVisible(finder);
+    await tester.pumpAndSettle();
+  }
+
   Future<void> pump(
     WidgetTester tester, {
     Failure? failure,
     Failure? saveFailure,
     Merchant seed = shop,
+    Map<String, Object> config = const {},
   }) async {
     // A phone, not the runner's 800x600 default — that window is wider than it is tall
     // and unlike anything this ships on.
     tester.view.physicalSize = const Size(1080, 2340);
     tester.view.devicePixelRatio = 3;
     addTearDown(tester.view.reset);
+
+    links = FakeExternalLinks();
 
     await tester.pumpWidget(
       ProviderScope(
@@ -57,7 +72,11 @@ void main() {
             FakeAuthService(
               restoring: const LuqmaIdentity(
                 uid: 'owner1',
-                claims: {'role': 'owner', 'scope': 'merchant', 'merchantId': 'm1'},
+                claims: {
+                  'role': 'owner',
+                  'scope': 'merchant',
+                  'merchantId': 'm1',
+                },
               ),
             ),
           ),
@@ -68,8 +87,10 @@ void main() {
               saveFailure: saveFailure,
             ),
           ),
-          remoteConfigServiceProvider
-              .overrideWithValue(RemoteConfigService(FakeConfigFetcher({}))),
+          externalLinksProvider.overrideWithValue(links),
+          remoteConfigServiceProvider.overrideWithValue(
+            RemoteConfigService(FakeConfigFetcher(config)),
+          ),
         ],
         child: MaterialApp(
           theme: LuqmaTheme.light,
@@ -86,8 +107,9 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  testWidgets('the shop that loads shows its name and the busy control',
-      (tester) async {
+  testWidgets('the shop that loads shows its name and the busy control', (
+    tester,
+  ) async {
     await pump(tester);
 
     expect(find.text('مطعم الشاطئ'), findsOneWidget);
@@ -95,12 +117,17 @@ void main() {
     expect(find.byType(LuqmaErrorView), findsNothing);
   });
 
-  testWidgets('a shop that will not load says so, with a way to try again',
-      (tester) async {
+  testWidgets('a shop that will not load says so, with a way to try again', (
+    tester,
+  ) async {
     await pump(tester, failure: const OfflineFailure());
 
-    expect(find.byType(LuqmaErrorView), findsOneWidget,
-        reason: 'an empty page is indistinguishable from a shop with nothing in it');
+    expect(
+      find.byType(LuqmaErrorView),
+      findsOneWidget,
+      reason:
+          'an empty page is indistinguishable from a shop with nothing in it',
+    );
     expect(find.text('مطعم الشاطئ'), findsNothing);
   });
 
@@ -109,8 +136,9 @@ void main() {
   // that worked: the merchant sees their new cover, closes the app, and the row still
   // carries the old id. The customer keeps seeing the tinted placeholder, and nobody
   // involved has any reason to think anything went wrong.
-  testWidgets('a cover that could not be saved does not stay on the screen',
-      (tester) async {
+  testWidgets('a cover that could not be saved does not stay on the screen', (
+    tester,
+  ) async {
     await pump(tester, saveFailure: const OfflineFailure());
 
     // Straight through the real handler: the picker itself needs a file, and what is
@@ -118,28 +146,38 @@ void main() {
     //
     // By key, not by type: the identity card carries two pickers now — the cover and the
     // logo — and `find.byType` on its own picks between them by luck.
-    final picker = tester.widget<MediaPicker>(find.byKey(const Key('shop.cover')));
-    picker.onUploaded(const Media(
-      id: 'md1',
-      kind: MediaKind.merchantCover,
-      url: 'https://example.test/cover.jpg',
-    ));
+    final picker = tester.widget<MediaPicker>(
+      find.byKey(const Key('shop.cover')),
+    );
+    picker.onUploaded(
+      const Media(
+        id: 'md1',
+        kind: MediaKind.merchantCover,
+        url: 'https://example.test/cover.jpg',
+      ),
+    );
     await tester.pumpAndSettle();
 
     expect(find.textContaining('جرّب تاني'), findsOneWidget);
   });
 
-  testWidgets('offers the address tile leading to the address editor', (tester) async {
+  testWidgets('offers the address tile leading to the address editor', (
+    tester,
+  ) async {
     await pump(tester);
 
     expect(find.byKey(ShopScreen.addressKey), findsOneWidget);
     // The shop's own discount codes, from the same section as its money and campaigns.
-    expect(find.byKey(ShopScreen.couponsKey, skipOffstage: false), findsOneWidget);
+    expect(
+      find.byKey(ShopScreen.couponsKey, skipOffstage: false),
+      findsOneWidget,
+    );
     expect(find.text('عنوان المطعم'), findsOneWidget);
   });
 
-  testWidgets('organizes the shop into clear sections with headers',
-      (tester) async {
+  testWidgets('organizes the shop into clear sections with headers', (
+    tester,
+  ) async {
     await pump(tester);
 
     expect(find.text('هوية المتجر'), findsOneWidget);
@@ -152,12 +190,17 @@ void main() {
 
   // 2026-09-19: commission is collected weekly; the shop sees what it owes on its own card,
   // and is told plainly once it passes the owner's line (500 ج).
-  testWidgets('what the shop owes is on its card, and marked past the line', (tester) async {
-    await pump(tester, seed: shop.copyWith(
-      revenueModel: RevenueModel.commission,
-      revenueValue: 500,
-      commissionOwed: 60000,
-    ));
+  testWidgets('what the shop owes is on its card, and marked past the line', (
+    tester,
+  ) async {
+    await pump(
+      tester,
+      seed: shop.copyWith(
+        revenueModel: RevenueModel.commission,
+        revenueValue: 500,
+        commissionOwed: 60000,
+      ),
+    );
     await tester.scrollUntilVisible(
       find.byKey(ShopScreen.owedKey),
       200,
@@ -169,11 +212,14 @@ void main() {
   });
 
   testWidgets('under the line there is no warning', (tester) async {
-    await pump(tester, seed: shop.copyWith(
-      revenueModel: RevenueModel.commission,
-      revenueValue: 500,
-      commissionOwed: 1000,
-    ));
+    await pump(
+      tester,
+      seed: shop.copyWith(
+        revenueModel: RevenueModel.commission,
+        revenueValue: 500,
+        commissionOwed: 1000,
+      ),
+    );
     await tester.scrollUntilVisible(
       find.byKey(ShopScreen.owedKey),
       200,
@@ -182,4 +228,51 @@ void main() {
 
     expect(find.byKey(ShopScreen.owedAlertKey), findsNothing);
   });
+
+  testWidgets(
+    'the partner policy opens the merchant page, not the customer one',
+    (tester) async {
+      await pump(tester);
+      await reveal(tester, find.byKey(ShopScreen.privacyKey));
+
+      await tester.tap(find.byKey(ShopScreen.privacyKey));
+      await tester.pumpAndSettle();
+
+      expect(
+        links.opened.single,
+        Uri.parse('https://luqma-gules.vercel.app/privacy/partner'),
+      );
+    },
+  );
+
+  // A shop cannot delete itself from the phone: it may owe commission, and an order may
+  // still be on its way. Play still requires a path, so the path is a named request that
+  // reaches a person who can do it.
+  testWidgets(
+    'account deletion is a request that names the shop and its phone',
+    (tester) async {
+      await pump(tester);
+      await reveal(tester, find.byKey(ShopScreen.deleteAccountKey));
+
+      await tester.tap(find.byKey(ShopScreen.deleteAccountKey));
+      await tester.pumpAndSettle();
+      expect(find.byKey(PartnerAccountKeys.deletionDialog), findsOneWidget);
+
+      await tester.tap(find.byKey(PartnerAccountKeys.confirmDeletion));
+      await tester.pumpAndSettle();
+
+      final opened = links.opened.single;
+      expect(opened.host, 'wa.me');
+      expect(
+        opened.path,
+        contains('201032210681'),
+        reason:
+            'the published support line is the fallback when config is blank',
+      );
+      final text = opened.queryParameters['text']!;
+      expect(text, contains('مطعم الشاطئ'));
+      expect(text, contains('01000000000'));
+      expect(text, contains('طلب حذف حساب شريك'));
+    },
+  );
 }

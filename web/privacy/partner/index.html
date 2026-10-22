@@ -1,0 +1,419 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>سياسة خصوصية الشريك — لقمة</title>
+<meta name="description" content="إيه اللي بيجمعه تطبيق لقمة للشريك من أصحاب المطاعم والمطابخ والمندوبين، ليه، ومين بيشوفه — وإزاي تطلب حذف حسابك.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&display=swap">
+<style>
+  :root {
+    --brand: #761812;
+    --brand-deep: #451410;
+    --accent: #D67F2B;
+    --ground: #F5EBE2;
+    --card: #FFFFFF;
+    --mat: #E5D3C1;
+    --hairline: #D6BFA9;
+    --ink: #130B07;
+    --ink-2: #5A452B;
+    --yes: #1B4332;
+    --yes-bg: #E2EDE7;
+    --no: #8A1B14;
+    --no-bg: #F6E0DD;
+    --flag: #995A1D;
+    --flag-bg: #F7E7D4;
+    --shadow: 0 1px 2px rgba(19,11,7,.06), 0 6px 20px rgba(19,11,7,.05);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --brand: #C9584E; --brand-deep: #E0857C; --accent: #E2954A;
+      --ground: #17100D; --card: #221814; --mat: #2E211B; --hairline: #40302A;
+      --ink: #F3E7DE; --ink-2: #B49B8B;
+      --yes: #7FCBA4; --yes-bg: #17322A;
+      --no: #EE8F86; --no-bg: #34201E;
+      --flag: #E0A264; --flag-bg: #33241A;
+      --shadow: 0 1px 2px rgba(0,0,0,.4), 0 6px 20px rgba(0,0,0,.3);
+    }
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: Cairo, "Segoe UI", system-ui, sans-serif;
+    font-size: 16px;
+    line-height: 1.85;
+  }
+  .wrap { max-width: 46rem; margin: 0 auto; padding: 3rem 1.25rem 5rem; }
+
+  header { display: flex; flex-direction: column; gap: .35rem; margin-bottom: 2.5rem; }
+  .mark {
+    font-size: 2rem; font-weight: 900; color: var(--brand); line-height: 1;
+    letter-spacing: -.01em;
+  }
+  h1 { margin: .5rem 0 0; font-size: 1.55rem; font-weight: 700; line-height: 1.35; }
+  .updated { font-size: .85rem; color: var(--ink-2); }
+  .lede {
+    margin: 1.25rem 0 0; font-size: 1.05rem; color: var(--ink-2); max-width: 42ch;
+  }
+
+  section { margin-top: 2.75rem; }
+  h2 {
+    margin: 0 0 .75rem; font-size: 1.15rem; font-weight: 700;
+    padding-bottom: .5rem; border-bottom: 2px solid var(--hairline);
+  }
+  h3 { margin: 1.5rem 0 .4rem; font-size: 1rem; font-weight: 700; color: var(--ink-2); }
+  p { margin: 0 0 1rem; }
+  p:last-child { margin-bottom: 0; }
+
+  ul { margin: 0 0 1rem; padding: 0; list-style: none; display: flex; flex-direction: column; gap: .55rem; }
+  li { display: grid; grid-template-columns: 1.35rem 1fr; gap: .55rem; align-items: baseline; }
+  li::before { content: "—"; color: var(--accent); font-weight: 700; }
+  li.yes::before { content: "✓"; color: var(--yes); }
+  li.no::before  { content: "✕"; color: var(--no); }
+
+  .panel {
+    background: var(--card); border: 1px solid var(--hairline);
+    border-radius: 14px; box-shadow: var(--shadow);
+    padding: 1.25rem 1.4rem; margin: 1.25rem 0;
+  }
+  .panel h3 { margin-top: 0; color: var(--brand); font-size: 1rem; }
+
+  .never { background: var(--no-bg); border-color: transparent; }
+  .never h3 { color: var(--no); }
+  .never li::before { content: "✕"; color: var(--no); }
+
+  .keep { background: var(--yes-bg); border-color: transparent; }
+  .keep h3 { color: var(--yes); }
+
+  .fill {
+    background: var(--flag-bg); border: 1px dashed var(--flag);
+    border-radius: 10px; padding: .85rem 1.1rem; margin: 1rem 0;
+    color: var(--flag); font-weight: 600; font-size: .95rem;
+  }
+
+  table { width: 100%; border-collapse: collapse; margin: 1rem 0; font-size: .95rem; }
+  th, td { text-align: right; padding: .7rem .6rem; border-bottom: 1px solid var(--hairline); vertical-align: top; }
+  th { font-weight: 700; color: var(--ink-2); font-size: .85rem; }
+  td:first-child { font-weight: 600; white-space: nowrap; }
+  .scroll { overflow-x: auto; }
+
+  ol { margin: 0 0 1rem; padding-inline-start: 1.6rem; list-style: decimal; }
+  ol li { display: list-item; }
+  ol li::before { content: none; }
+  ol li + li { margin-top: .5rem; }
+
+  .actions { display: flex; flex-wrap: wrap; gap: .65rem; margin: 1.25rem 0; }
+  .button {
+    display: inline-block; padding: .7rem 1.15rem; border-radius: 10px;
+    background: var(--brand); color: #fff; text-decoration: none; font-weight: 700;
+    border: 1px solid var(--brand);
+  }
+  .button.secondary { background: transparent; color: var(--brand); }
+  .button:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+
+  footer {
+    margin-top: 3.5rem; padding-top: 1.5rem; border-top: 1px solid var(--hairline);
+    color: var(--ink-2); font-size: .9rem;
+  }
+  a { color: var(--brand); text-underline-offset: 3px; }
+  a:focus-visible, summary:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="mark">لقمة</div>
+    <h1>سياسة خصوصية الشريك</h1>
+    <div class="updated">آخر تحديث: ٢٣ أكتوبر ٢٠٢٦</div>
+    <p class="lede">
+      دي سياسة تطبيق <strong>لقمة للشريك</strong> — أصحاب المطاعم والمطابخ والمندوبين.
+      مش سياسة العميل؛ بيانات العميل وطلباته من تطبيق تاني ليه صفحة تانية.
+    </p>
+  </header>
+
+  <section>
+    <h2>مين إحنا ونطاق الصفحة</h2>
+    <p>
+      «لقمة» منصة لطلب الأكل من مطاعم ومطابخ بيتية في مدينة <strong>إدكو</strong>،
+      محافظة البحيرة. تطبيق الشريك هو اللي بيستخدمه صاحب المحل أو المندوب عشان يستلم
+      الأوردرات، يدير المنيو والمواعيد، ويتابع التحصيل.
+    </p>
+    <p>
+      الجهة المسؤولة عن البيانات: <strong>محمد رمضان — Mohamed Ramadan</strong>،
+      إدكو، محافظة البحيرة، مصر.
+    </p>
+    <p>
+      لو بتستخدم تطبيق العميل، اقرأ <a href="/privacy">سياسة خصوصية العميل</a>.
+    </p>
+  </section>
+
+  <section>
+    <h2>اللي بنجمعه</h2>
+
+    <h3>قبل ما يبقى فيه حساب — طلب الانضمام</h3>
+    <ul>
+      <li><strong>نوع النشاط</strong> — مطعم، مطبخ بيتي، أو مندوب.</li>
+      <li><strong>اسمك ورقم موبايلك</strong> — عشان نكلّمك ونعرف مين قدّم.</li>
+      <li><strong>الملاحظات اللي بتكتبها</strong> — عنوان المحل، المناطق اللي بتغطيها، أو مواعيد شغلك.</li>
+      <li>تاريخ الطلب وقرار المراجعة. الطلب ده <strong>مالوش أي صلاحيات</strong> جوه النظام.</li>
+    </ul>
+    <p>
+      لو طلبك مااتقبلش أو لسه مااتراجعتش، بيتشال مع حسابك لما تمسحه. لو اتقبل، بيفضل
+      <strong>سجل تعيين</strong> بيوضّح إنك اشتغلت معانا وإمتى — وبيتشال لو طلبت كده
+      في رسالة الحذف.
+    </p>
+
+    <h3>حساب الشريك</h3>
+    <ul>
+      <li><strong>اسمك</strong>، ورقم الموبايل أو الإيميل اللي بتسجّل دخولك بيه.</li>
+      <li><strong>كلمة السر</strong> — متخزّنة مشفّرة، ومحدش يقدر يقراها؛ ولا إحنا.</li>
+      <li><strong>دورك</strong> — صاحب محل، مندوب، أو مشرف — والمحل اللي الحساب مربوط بيه.</li>
+      <li>حالة الحساب (شغّال أو موقوف) وتاريخ الإنشاء.</li>
+    </ul>
+
+    <h3>بيانات المحل</h3>
+    <ul>
+      <li>اسم المحل، رقم التليفون، المنطقة، العلامة المميزة، والشارع.</li>
+      <li>النقطة على الخريطة، <strong>لو انت حددتها بنفسك</strong>.</li>
+      <li>مواعيد العمل، المنيو والأصناف والأسعار، وصور الشعار والغلاف والأكل اللي ترفعها.</li>
+      <li>حالة المحل (فاتح/مقفول)، الاشتراك، نسبة العمولة، والمستحقات.</li>
+    </ul>
+    <p>
+      التطبيق <strong>مبياخدش موقعك من الجوال</strong> ومش طالب إذن الموقع. النقطة
+      اللي بتظهر على الخريطة هي اللي انت بتحطها بإيدك، وبتستخدمها عشان العميل
+      والمندوب يوصلوا للمحل.
+    </p>
+
+    <h3>الأوردرات والفلوس</h3>
+    <ul>
+      <li>الأوردرات اللي المحل استلمها: الأصناف، الكمية، الإجمالي، والوقت.</li>
+      <li>اسم العميل ورقمه وعنوانه <strong>وقت التوصيل</strong> — عشان تجهّز وتوصّل.</li>
+      <li>حالة الأوردر، تقييم العميل وتعليقه على المحل، وأي شكوى.</li>
+      <li>التحصيل، العمولة، كشف الحساب، والدفعات — كسجلات مالية.</li>
+    </ul>
+    <p>
+      بيانات العميل دي بتوصلك عشان تنفّذ الأوردر وبس. ممنوع تستخدمها في تسويق أو
+      تبعت رسايل لحد من غير موافقته.
+    </p>
+
+    <h3>للمندوب</h3>
+    <ul>
+      <li>اسمك، رقمك، ودورك، والمحلات اللي بتشتغل معاها.</li>
+      <li>
+        <strong>صور البطاقة</strong> — الوش والضهر، وصورة سيلفي وانت ماسك البطاقة.
+        دي بتتحفظ في مساحة خاصة، وبيشوفها انت والإدارة بس.
+      </li>
+      <li>سجل التوصيل: الأوردرات اللي استلمتها وسلّمتها، والتحصيل النقدي اللي معاك.</li>
+    </ul>
+    <p>
+      صور البطاقة بتتشال بعد <strong>٣٠ يوم</strong> من وقف العمل (أو المدة اللي
+      محددة في إعدادات المنصة)، إلا لو فيه نزاع أو التزام قانوني لسه مخلصش.
+    </p>
+
+    <h3>الإشعارات والأعطال</h3>
+    <ul>
+      <li>
+        <strong>رمز الجهاز</strong> — رقم بيديه جوجل للتطبيق على تليفونك عشان الإشعارات
+        توصل. الرمز بيخص نسخة التطبيق، مش شخصك.
+      </li>
+      <li>
+        <strong>معرّف جهاز عشوائي</strong> وعدد مرات فتح التطبيق في اليوم — عشان نعرف
+        المنصة شغّالة ولا لأ، من غير ما نعرف مين انت.
+      </li>
+      <li>
+        <strong>تقرير عطل</strong> — نوع التليفون، إصدار الأندرويد، ومكان الغلطة في الكود.
+        <strong>مفيش بيانات عملاء أو أوردرات في التقرير ده.</strong>
+      </li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>اللي عمرنا ما بناخده</h2>
+    <div class="panel never">
+      <h3>مش موجود في التطبيق أصلاً</h3>
+      <ul>
+        <li class="no"><strong>أي بيانات كارت أو محفظة.</strong> الدفع كاش، ومفيش خانة لإدخال بيانات دفع.</li>
+        <li class="no"><strong>تتبّع موقعك.</strong> مفيش GPS ومفيش تتبّع في الخلفية.</li>
+        <li class="no"><strong>جهات اتصالك أو الميكروفون.</strong> الكاميرا والصور بتتفتح بس لما تختار ترفع صورة بنفسك.</li>
+        <li class="no"><strong>مبنبيعش بياناتك</strong> ولا بنستخدمها في إعلانات بره التطبيق.</li>
+      </ul>
+    </div>
+  </section>
+
+  <section>
+    <h2>مين بيشوف إيه</h2>
+    <div class="scroll">
+      <table>
+        <thead>
+          <tr><th>مين</th><th>بيشوف إيه</th><th>ليه</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>العميل</td>
+            <td>اسم المحل، عنوانه، رقمه، المنيو، التقييمات</td>
+            <td>عشان يطلب ويتواصل مع المحل</td>
+          </tr>
+          <tr>
+            <td>المندوب</td>
+            <td>اسم العميل، رقمه، عنوان التوصيل، وتفاصيل الأوردر</td>
+            <td>عشان يوصّل الأوردر ويحصّل</td>
+          </tr>
+          <tr>
+            <td>إدارة لقمة</td>
+            <td>بيانات الحساب والمحل والأوردرات والبطاقة</td>
+            <td>المراجعة، الدعم، الحسابات، والأمان</td>
+          </tr>
+          <tr>
+            <td>Supabase</td>
+            <td>الداتابيز والتخزين (استضافة)</td>
+            <td>السيرفرات اللي شغّالة عليها الخدمة</td>
+          </tr>
+          <tr>
+            <td>جوجل (Firebase)</td>
+            <td>رمز الجهاز بس</td>
+            <td>عشان الإشعار يوصل</td>
+          </tr>
+          <tr>
+            <td>Sentry</td>
+            <td>تقارير الأعطال</td>
+            <td>عشان نعرف التطبيق وقع فين ونصلحه</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p>
+      مبنكشفش بياناتك لأي حد تاني، غير لو القانون ألزمنا بكده وبس. ولو فيه تحقيق في
+      شكوى أو نزاع على تحصيل، بنشارك القدر اللي محتاجه التحقيق.
+    </p>
+  </section>
+
+  <section>
+    <h2>البيانات متخزنة فين</h2>
+    <p>
+      على سيرفرات <strong>Supabase في فرانكفورت بألمانيا</strong> (الاتحاد الأوروبي).
+      الاتصال بين تليفونك والسيرفر مشفّر، وكلمة سرك متخزّنة مشفّرة. صور البطاقة
+      والصور اللي بترفعها في مساحات تخزين ليها صلاحيات وصول محددة.
+    </p>
+  </section>
+
+  <section>
+    <h2>مدة الاحتفاظ</h2>
+    <ul>
+      <li>بيانات حسابك ومحلك بتفضل طول ما الحساب شغّال.</li>
+      <li>طلب انضمام مااتقبلش بيتشال مع حسابك.</li>
+      <li>طلب انضمام اتقبل بيفضل سجل تعيين، وبيتشال لو طلبت كده.</li>
+      <li>صور البطاقة بتتشال بعد ٣٠ يوم من وقف العمل، إلا لو فيه نزاع أو التزام قانوني.</li>
+      <li>الأوردرات والكشوف والعمولات بتفضل كسجلات مالية ومحاسبية.</li>
+      <li>تقارير الأعطال بتتشال تلقائياً بعد <strong>٩٠ يوم</strong>.</li>
+    </ul>
+  </section>
+
+  <section id="delete-account">
+    <h2>حذف حساب الشريك</h2>
+    <p>
+      تقدر تطلب حذف حسابك من جوه التطبيق. الحساب بيتحذف بمراجعة من الإدارة لأن المحل
+      ممكن يكون عليه أوردرات أو مستحقات، والمندوب ممكن يكون معاه تحصيل لسه مااتسلّمش.
+    </p>
+    <ol>
+      <li>افتح تطبيق <strong>لقمة للشريك</strong>.</li>
+      <li>
+        لو صاحب محل: تبويب <strong>المحل</strong> ← <strong>طلب حذف الحساب</strong>.
+        لو مندوب: قائمة الحساب فوق ← <strong>طلب حذف الحساب</strong>.
+      </li>
+      <li>أكّد الطلب، وهيتفتح واتساب برسالة فيها نوع حسابك واسم المحل ورقمك.</li>
+    </ol>
+
+    <div class="actions">
+      <a class="button" href="/privacy/partner/delete">صفحة طلب الحذف</a>
+      <a class="button secondary" href="https://wa.me/201032210681?text=%D8%B7%D9%84%D8%A8%20%D8%AD%D8%B0%D9%81%20%D8%AD%D8%B3%D8%A7%D8%A8%20%D8%B4%D8%B1%D9%8A%D9%83">واتساب الإدارة</a>
+    </div>
+
+    <p>
+      لو مش قادر تفتح التطبيق، استخدم <a href="/privacy/partner/delete">صفحة الحذف</a>
+      أو كلّمنا على واتساب
+      <a href="https://wa.me/201032210681"><strong>٠١٠٣٢٢١٠٦٨١</strong></a>.
+      هنتأكد إن الرقم بتاع صاحب الحساب، وننفّذ الطلب خلال <strong>٣٠ يوم</strong> على الأكثر.
+    </p>
+
+    <div class="panel keep">
+      <h3>اللي بيتشال</h3>
+      <ul>
+        <li class="yes">حساب الدخول نفسه — مش هتقدر تسجّل دخول تاني.</li>
+        <li class="yes">اسمك ورقمك أو إيميلك من حساب الشريك.</li>
+        <li class="yes">ربط الحساب بالمحل، ورموز أجهزتك — الإشعارات بتقف.</li>
+        <li class="yes">صور البطاقة بعد مدة الاحتفاظ، والطلبات اللي مااتقبلتش.</li>
+      </ul>
+    </div>
+
+    <div class="panel">
+      <h3>اللي بيفضل، وليه</h3>
+      <p>
+        <strong>أوردرات العملاء والكشوف والعمولات بتفضل كسجل مالي</strong> — لأنها فلوس
+        اتحصّلت وحسابات ناس تانية مبنية عليها. بنشيل منها ارتباطها بحسابك الشخصي.
+      </p>
+      <p>
+        <strong>اسم المحل ورقمه وعنوانه</strong> ممكن يفضلوا جزء من سجل النشاط لو المحل
+        ليه أوردرات. لو المحل ملوش أوردرات، بنشيله. لو ليه أوردرات، بنوقف النشاط
+        ونسلّم المحل أو نقفله بعد تسوية المستحقات.
+      </p>
+      <p>
+        ولو طلب انضمامك كان <strong>اتقبل</strong>، سجل التعيين بيفضل لأنه إثبات إنك
+        اشتغلت معانا. تقدر تطلب شيله كمان في رسالة الحذف.
+      </p>
+    </div>
+  </section>
+
+  <section>
+    <h2>حقوقك</h2>
+    <ul>
+      <li>تعرف إيه المتخزّن عنك، وتطلب نسخة منه.</li>
+      <li>تصحّح اسمك أو رقمك أو بيانات محلك من جوه التطبيق في أي وقت.</li>
+      <li>تطلب حذف حسابك، زي ما فوق.</li>
+      <li>توقف الإشعارات من إعدادات تليفونك، من غير ما تمسح الحساب.</li>
+    </ul>
+    <p>
+      لأي طلب من دول، كلّمنا على واتساب
+      <a href="https://wa.me/201032210681"><strong>٠١٠٣٢٢١٠٦٨١</strong></a>.
+    </p>
+  </section>
+
+  <section>
+    <h2>الأطفال</h2>
+    <p>
+      الشريك لازم يكون <strong>١٨ سنة أو أكبر</strong>. الخدمة مش موجّهة لأقل من كده،
+      ومبنجمعش بيانات عن قصد من حد في السن ده. لو وصلت لعلمنا بيانات زي دي بنمسحها.
+    </p>
+  </section>
+
+  <section>
+    <h2>لو السياسة اتغيّرت</h2>
+    <p>
+      لو غيّرنا حاجة جوهرية — بيانات جديدة بنجمعها، أو جهة جديدة بتشوفها — هنغيّر تاريخ
+      «آخر تحديث» فوق، وهنقولك جوه التطبيق قبل ما التغيير يشتغل.
+    </p>
+  </section>
+
+  <section>
+    <h2>التواصل</h2>
+    <p>
+      لأي سؤال عن خصوصيتك أو بياناتك، كلّمنا على واتساب
+      <a href="https://wa.me/201032210681"><strong>٠١٠٣٢٢١٠٦٨١</strong></a>
+      — محمد رمضان.
+    </p>
+  </section>
+
+  <footer>
+    لقمة — إدكو، البحيرة، مصر · نسخة هذه الصفحة على
+    <a href="https://luqma-gules.vercel.app/privacy/partner">luqma-gules.vercel.app/privacy/partner</a>
+    · <a href="/privacy">سياسة العميل</a>
+  </footer>
+
+</div>
+</body>
+</html>
