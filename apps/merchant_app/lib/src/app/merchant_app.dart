@@ -10,6 +10,7 @@ import '../meals/meals_screen.dart';
 import '../menu/menu_screen.dart';
 import '../orders/inbox_screen.dart';
 import '../orders/live_board_screen.dart';
+import '../privacy/partner_privacy.dart';
 import '../shop/shop_screen.dart';
 import '../shop/statement_screen.dart';
 import '../shop/subscription_screen.dart';
@@ -42,6 +43,8 @@ class MerchantApp extends ConsumerWidget {
   static const noAccessKey = Key('app.noAccess');
   static const refreshAccessKey = Key('app.refreshAccess');
   static const finishApplicationKey = Key('app.finishApplication');
+  static const privacyKey = Key('app.privacy');
+  static const deleteAccountKey = Key('app.deleteAccount');
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -354,6 +357,31 @@ class _NoAccessState extends ConsumerState<_NoAccess> {
               OutlinedButton(
                 onPressed: () => ref.read(authServiceProvider).signOut(),
                 child: const Text('تسجيل الخروج'),
+              ),
+              // An applicant has an account before an admin approves it, so this screen is
+              // the only place they can reach while they wait. Play requires the policy and
+              // a deletion request to be reachable here, not only after approval.
+              const SizedBox(height: Space.sm),
+              Wrap(
+                alignment: WrapAlignment.center,
+                spacing: Space.md,
+                children: [
+                  TextButton(
+                    key: MerchantApp.privacyKey,
+                    onPressed: () => openPartnerPrivacy(context, ref),
+                    child: const Text('سياسة الخصوصية'),
+                  ),
+                  TextButton(
+                    key: MerchantApp.deleteAccountKey,
+                    onPressed: () => showPartnerAccountDeletionRequest(
+                      context,
+                      ref,
+                      accountLabel: 'حساب شريك — قيد التفعيل',
+                      phone: ref.read(authServiceProvider).identity?.phone,
+                    ),
+                    child: const Text('طلب حذف الحساب'),
+                  ),
+                ],
               ),
             ],
           ),

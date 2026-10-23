@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:luqma_core/luqma_core.dart';
 import 'package:merchant_app/src/auth/sign_in_screen.dart';
+import 'package:merchant_app/src/privacy/partner_privacy.dart';
 
 /// Remembers which of the two ways in was used, because that is the whole question here.
 class _RecordingAuth extends FakeAuthService {
@@ -130,6 +131,18 @@ void main() {
         links.opened.single,
         Uri.parse('https://luqma-gules.vercel.app/privacy/partner'),
       );
+    });
+
+    // A partner who cannot get in still has an account. The request is reviewed before
+    // anything is removed, so the path can be offered before sign-in.
+    testWidgets('an account can be deleted before signing in', (tester) async {
+      await pumpScreen(tester);
+
+      await tester.ensureVisible(find.byKey(SignInScreen.deleteAccountKey));
+      await tester.tap(find.byKey(SignInScreen.deleteAccountKey));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(PartnerAccountKeys.deletionDialog), findsOneWidget);
     });
   });
 

@@ -11,6 +11,7 @@ import 'package:merchant_app/src/meals/meals_screen.dart';
 import 'package:merchant_app/src/menu/menu_screen.dart';
 import 'package:merchant_app/src/orders/inbox_screen.dart';
 import 'package:merchant_app/src/orders/live_board_screen.dart';
+import 'package:merchant_app/src/privacy/partner_privacy.dart';
 import 'package:merchant_app/src/shop/busy_toggle.dart';
 import 'package:merchant_app/src/shop/shop_screen.dart';
 import 'package:merchant_app/src/shop/subscription_screen.dart';
@@ -213,6 +214,21 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byType(ApplyScreen), findsOneWidget);
+    });
+
+    // The account exists before the application is approved. This is the only screen the
+    // applicant can reach, so the deletion request has to be here too.
+    testWidgets('a pending applicant can ask for the account to be deleted',
+        (tester) async {
+      await pump(
+        tester,
+        signedInAs: const LuqmaIdentity(uid: 'u1', phone: '01000000000'),
+      );
+
+      await tester.tap(find.byKey(MerchantApp.deleteAccountKey));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(PartnerAccountKeys.deletionDialog), findsOneWidget);
     });
 
     // An approved partner is holding a token stamped before they were approved, and a

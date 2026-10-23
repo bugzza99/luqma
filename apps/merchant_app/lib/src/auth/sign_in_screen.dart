@@ -28,6 +28,7 @@ class SignInScreen extends ConsumerStatefulWidget {
   static const submitKey = Key('signIn.submit');
   static const applyKey = Key('signIn.apply');
   static const privacyKey = Key('signIn.privacy');
+  static const deleteAccountKey = Key('signIn.deleteAccount');
   static const errorKey = Key('signIn.error');
 
   @override
@@ -187,6 +188,18 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                     key: SignInScreen.privacyKey,
                     onPressed: () => openPartnerPrivacy(context, ref),
                     child: const Text('سياسة الخصوصية'),
+                  ),
+                  // Someone who cannot get in still has an account and still has the
+                  // right to ask for it to be removed. The request is reviewed before
+                  // anything is deleted, so it is safe to offer before sign-in.
+                  TextButton(
+                    key: SignInScreen.deleteAccountKey,
+                    onPressed: () => showPartnerAccountDeletionRequest(
+                      context,
+                      ref,
+                      accountLabel: 'حساب شريك',
+                    ),
+                    child: const Text('طلب حذف الحساب'),
                   ),
                 ],
               ),
