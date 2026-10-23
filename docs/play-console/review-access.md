@@ -26,7 +26,7 @@ Account deletion: "حسابي" (Account) tab → "حذف الحساب نهائي
 
 Privacy policy: "حسابي" (Account) tab → "سياسة الخصوصية" (Privacy policy).
 
-The demo account has no real orders and is not linked to a real customer. Please do not place a live order; it would notify a real shop. If you need to test the order flow, use the demo shop described below.
+The demo account has no real orders and is not linked to a real customer. Please do not place an order at a real shop; it would notify a real merchant. If you need to test the order flow, use the demo shop described below.
 
 Demo shop (if provided): <DEMO_SHOP_NAME>
 ```
@@ -64,7 +64,7 @@ After sign-in, the app opens the orders inbox ("الطلبات"). Depending on t
 Privacy policy and account deletion:
 "المحل" (Shop) tab → "الخصوصية والحساب" (Privacy and account) → "سياسة الخصوصية" (Privacy policy) or "طلب حذف الحساب" (Request account deletion).
 
-The demo shop is <DEMO_SHOP_NAME>. It is a review-only shop; please do not fulfill any real orders.
+The demo shop is <DEMO_SHOP_NAME>. It is a review-only shop; orders placed there are not fulfilled by a real merchant.
 
 Courier demo (optional):
 Phone or email: <COURIER_DEMO_LOGIN>
