@@ -327,6 +327,9 @@ What Phase 9 has shipped so far:
 Still open, none of it code:
 
 - Play Console account, listings, and enrolling Play App Signing with this key.
+- **`USE_FULL_SCREEN_INTENT` stays in MerchantApp** for order alarms that wake the
+  screen. Declare it in Play Console as core order-alert functionality; if review refuses
+  it, remove the permission and fall back to high-importance heads-up notifications.
 - Onboarding the first 10–15 merchants at zero commission.
 - **Edku's real zone and landmark names**, entered from AdminApp. A wrong zone name sends
   a courier to the wrong part of town.
