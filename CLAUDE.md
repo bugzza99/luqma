@@ -344,10 +344,13 @@ Still open, none of it code:
   the shop's «الخصوصية والحساب» section, and in the rider's account menu. A merchant or
   rider asks for deletion there; the request opens WhatsApp because staff deletion is an
   admin act, and the partner policy explains what is removed and what financial record
-  stays. The public pages are `web/privacy/partner/index.html` and
-  `web/privacy/partner/delete/index.html`, deployed to
-  `https://luqma-gules.vercel.app/privacy/partner` and
-  `https://luqma-gules.vercel.app/privacy/partner/delete` on 2026-10-23.
+  stays. The public pages are `web/privacy/partner/index.html`,
+  `web/privacy/partner/delete/index.html`, and `web/privacy/delete/index.html`, deployed
+  to `https://luqma-gules.vercel.app/privacy/partner`,
+  `https://luqma-gules.vercel.app/privacy/partner/delete`, and
+  `https://luqma-gules.vercel.app/privacy/delete` on 2026-10-23. The last one is the
+  Play Console data-deletion URL for CustomerApp: it lets someone request deletion
+  without opening the app, which the in-app path alone does not satisfy.
 
 ### Images, the customer's home, and the merchant's phone (2026-08-27)
 
