@@ -334,16 +334,17 @@ Still open, none of it code:
   it until somebody types one into AdminApp. The account-deletion path deliberately falls
   back to the published number on the policy page, because Play requires that path to exist
   even when the support row has not been filled in yet.
-- **Privacy links and the partner deletion path are built but the pages still need a
-  production deploy.** `LuqmaConfig.compiledPrivacyUrls` carries the two fallbacks
-  (`/privacy` and `/privacy/partner`); AdminApp exposes `privacy_policy_url` and
-  `partner_privacy_policy_url` as remote overrides. CustomerApp draws the link in حسابي
-  signed in or out. MerchantApp draws it on the sign-in screen, in the shop's
-  «الخصوصية والحساب» section, and in the rider's account menu. A merchant or rider asks
-  for deletion there; the request opens WhatsApp because staff deletion is an admin act,
-  and the partner policy explains what is removed and what financial record stays. The
-  public pages are `web/privacy/partner/index.html` and
-  `web/privacy/partner/delete/index.html`.
+- **Privacy links and the partner deletion path are live.** `LuqmaConfig.compiledPrivacyUrls`
+  carries the two fallbacks (`/privacy` and `/privacy/partner`); AdminApp exposes
+  `privacy_policy_url` and `partner_privacy_policy_url` as remote overrides. CustomerApp
+  draws the link in حسابي signed in or out. MerchantApp draws it on the sign-in screen, in
+  the shop's «الخصوصية والحساب» section, and in the rider's account menu. A merchant or
+  rider asks for deletion there; the request opens WhatsApp because staff deletion is an
+  admin act, and the partner policy explains what is removed and what financial record
+  stays. The public pages are `web/privacy/partner/index.html` and
+  `web/privacy/partner/delete/index.html`, deployed to
+  `https://luqma-gules.vercel.app/privacy/partner` and
+  `https://luqma-gules.vercel.app/privacy/partner/delete` on 2026-10-23.
 
 ### Images, the customer's home, and the merchant's phone (2026-08-27)
 
